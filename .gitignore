@@ -1,0 +1,26 @@
+# Ambiente
+.env
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Banco local
+*.db
+*.db-shm
+*.db-wal
+
+# Arquivos gerados
+arquivos/
+*.pdf
+*.xlsm
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,108 @@
+from __future__ import annotations
+import enum
+from datetime import datetime, date
+from sqlalchemy import (
+    String, Boolean, DateTime, Date, Float, Text,
+    ForeignKey, Enum as SAEnum,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from ..database import Base
+
+
+class RequisitionStatus(str, enum.Enum):
+    RASCUNHO = "rascunho"
+    EMITIDA = "emitida"
+    RECEBIDA_PRODUCAO = "recebida_producao"
+    EM_FABRICACAO = "em_fabricacao"
+    PRONTA = "pronta"
+    EM_ROTA = "em_rota"
+    AGUARDANDO_RETIRADA = "aguardando_retirada"
+    CONCLUIDA = "concluida"
+    CANCELADA = "cancelada"
+
+
+class Requisition(Base):
+    __tablename__ = "requisitions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    ped_number: Mapped[str] = mapped_column(String(50), index=True)
+    emission_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    os_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    vendor_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"))
+
+    obra: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    nf_attachment: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    retirada: Mapped[bool] = mapped_column(Boolean, default=False)
+    entrega: Mapped[bool] = mapped_column(Boolean, default=False)
+    delivery_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    weight: Mapped[float] = mapped_column(Float, default=0.0)
+
+    status: Mapped[RequisitionStatus] = mapped_column(
+        SAEnum(RequisitionStatus), default=RequisitionStatus.RASCUNHO
+    )
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    vendor: Mapped[User] = relationship("User", foreign_keys=[vendor_id])
+    client: Mapped[Client] = relationship("Client", back_populates="requisitions")
+    items: Mapped[list[RequisitionItem]] = relationship(
+        "RequisitionItem", back_populates="requisition", cascade="all, delete-orphan"
+    )
+    canvas: Mapped[CanvasData | None] = relationship(
+        "CanvasData", back_populates="requisition", uselist=False, cascade="all, delete-orphan"
+    )
+    status_history: Mapped[list[StatusHistory]] = relationship(
+        "StatusHistory", back_populates="requisition", cascade="all, delete-orphan"
+    )
+
+
+class RequisitionItem(Base):
+    __tablename__ = "requisition_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    requisition_id: Mapped[int] = mapped_column(ForeignKey("requisitions.id"))
+    position: Mapped[str] = mapped_column(String(10))
+    quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    comp: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    desenv: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    chapa: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    tipo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    weight: Mapped[float | None] = mapped_column(Float, nullable=True)
+    draw_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    requisition: Mapped[Requisition] = relationship("Requisition", back_populates="items")
+
+
+class CanvasData(Base):
+    __tablename__ = "canvas_data"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    requisition_id: Mapped[int] = mapped_column(ForeignKey("requisitions.id"), unique=True)
+    json_data: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    requisition: Mapped[Requisition] = relationship("Requisition", back_populates="canvas")
+
+
+class StatusHistory(Base):
+    __tablename__ = "status_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    requisition_id: Mapped[int] = mapped_column(ForeignKey("requisitions.id"))
+    old_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(50))
+    changed_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    requisition: Mapped[Requisition] = relationship("Requisition", back_populates="status_history")
+    changed_by: Mapped[User] = relationship("User", foreign_keys=[changed_by_id])
