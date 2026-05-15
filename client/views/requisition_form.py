@@ -10,8 +10,9 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
     QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox,
     QGraphicsDropShadowEffect, QSizePolicy,
+    QListWidget, QListWidgetItem,
 )
-from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject
+from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer
 from PySide6.QtGui import QPixmap, QColor, QFont
 
 try:
@@ -97,6 +98,172 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
         f"font-weight:bold; border:none;"
     )
     return lbl
+
+
+# ── Campo de busca de cliente ─────────────────────────────────────────────────
+class ClientSearchBox(QWidget):
+    """
+    Caixa de busca com dropdown em tempo real.
+    Filtra por nome, código ou CPF/CNPJ simultaneamente.
+    """
+    client_selected = Signal(object)   # dict do cliente ou None
+
+    def __init__(self, scale: float = 1.0, parent=None):
+        super().__init__(parent)
+        self.scale = scale
+        self._clients: list[dict] = []
+        self._selected: dict | None = None
+        self._setup_ui()
+
+    def _setup_ui(self):
+        s = self.scale
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        self.input = QLineEdit()
+        self.input.setPlaceholderText("Buscar por nome, código ou CPF/CNPJ...")
+        self.input.setFixedHeight(max(30, int(36 * s)))
+        self.input.setStyleSheet(theme.input_style(s))
+        self.input.textChanged.connect(self._on_text)
+        self.input.installEventFilter(self)
+        lay.addWidget(self.input)
+
+        # Dropdown flutuante — fica acima dos outros widgets
+        self._drop = QListWidget()
+        self._drop.setWindowFlags(
+            Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
+        )
+        self._drop.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._drop.setStyleSheet(
+            f"QListWidget {{ background:{theme.CARD_BG};"
+            f"border:2px solid {theme.PRIMARY}; border-radius:0 0 6px 6px;"
+            f"font-size:{max(9,int(10*s))}pt; outline:none; }}"
+            f"QListWidget::item {{ padding:7px 12px; color:{theme.TEXT_DARK}; }}"
+            f"QListWidget::item:hover, QListWidget::item:selected"
+            f" {{ background:{theme.PRIMARY}; color:#fff; }}"
+        )
+        self._drop.itemClicked.connect(self._pick)
+        self._drop.installEventFilter(self)
+        self._drop.hide()
+
+    # ── Filtragem ─────────────────────────────────────────────────────────────
+    def _on_text(self, text: str):
+        q = text.strip().lower()
+        # Se já há um cliente selecionado e o texto bate exatamente, não re-abre
+        if self._selected:
+            expected = f"{self._selected['code']} — {self._selected['name']}"
+            if text == expected:
+                return
+            self._selected = None
+
+        if not q:
+            self._drop.hide()
+            return
+
+        matches = [
+            c for c in self._clients
+            if q in (c.get("name") or "").lower()
+            or q in (c.get("code") or "").lower()
+            or q in (c.get("cnpj") or "").lower()
+        ]
+
+        if not matches:
+            self._drop.hide()
+            return
+
+        self._drop.clear()
+        for c in matches[:30]:
+            cnpj = c.get("cnpj") or ""
+            label = f"{c['code']}  —  {c['name']}"
+            if cnpj:
+                label += f"    ({cnpj})"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, c)
+            self._drop.addItem(item)
+
+        self._reposition()
+        self._drop.show()
+
+    def _reposition(self):
+        s = self.scale
+        gpos = self.input.mapToGlobal(self.input.rect().bottomLeft())
+        rows = min(self._drop.count(), 8)
+        row_h = max(30, int(34 * s))
+        self._drop.move(gpos)
+        self._drop.resize(self.input.width(), rows * row_h + 6)
+
+    # ── Seleção ───────────────────────────────────────────────────────────────
+    def _pick(self, item: QListWidgetItem):
+        client = item.data(Qt.ItemDataRole.UserRole)
+        self._selected = client
+        self.input.blockSignals(True)
+        self.input.setText(f"{client['code']} — {client['name']}")
+        self.input.blockSignals(False)
+        self._drop.hide()
+        self.client_selected.emit(client)
+
+    # ── Navegação por teclado ─────────────────────────────────────────────────
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+
+            if obj is self.input:
+                if key == Qt.Key.Key_Escape:
+                    self._drop.hide()
+                    return True
+                if key == Qt.Key.Key_Down and self._drop.isVisible():
+                    if self._drop.count():
+                        self._drop.setFocus()
+                        self._drop.setCurrentRow(0)
+                    return True
+                if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                    if self._drop.isVisible() and self._drop.count():
+                        self._pick(self._drop.item(0))
+                    return True
+
+            elif obj is self._drop:
+                if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                    cur = self._drop.currentItem()
+                    if cur:
+                        self._pick(cur)
+                    return True
+                if key == Qt.Key.Key_Escape:
+                    self._drop.hide()
+                    self.input.setFocus()
+                    return True
+
+        if obj is self.input and event.type() == QEvent.Type.FocusOut:
+            # Pequeno delay para que o clique no item registre antes de fechar
+            QTimer.singleShot(180, self._drop.hide)
+
+        return super().eventFilter(obj, event)
+
+    # ── API pública ───────────────────────────────────────────────────────────
+    def set_clients(self, clients: list):
+        self._clients = clients
+
+    def get_client_id(self) -> int | None:
+        return self._selected["id"] if self._selected else None
+
+    def get_selected(self) -> dict | None:
+        return self._selected
+
+    def set_client_by_id(self, client_id: int):
+        """Seleciona um cliente pelo ID (carregamento de requisição existente)."""
+        c = next((x for x in self._clients if x["id"] == client_id), None)
+        if c:
+            self._selected = c
+            self.input.blockSignals(True)
+            self.input.setText(f"{c['code']} — {c['name']}")
+            self.input.blockSignals(False)
+
+    def clear(self):
+        self._selected = None
+        self.input.blockSignals(True)
+        self.input.clear()
+        self.input.blockSignals(False)
+        self._drop.hide()
 
 
 # ── View principal ────────────────────────────────────────────────────────────
@@ -292,15 +459,11 @@ class RequisitionForm(QWidget):
         layout.setHorizontalSpacing(max(16,int(20*s)))
         layout.setVerticalSpacing(max(6,int(8*s)))
 
-        # Cliente (busca)
+        # Cliente (busca em tempo real por nome, código ou CPF/CNPJ)
         layout.addWidget(_field_label("👤  CLIENTE", s), 0, 0)
-        self.combo_client = QComboBox()
-        self.combo_client.setEditable(True)
-        self.combo_client.setPlaceholderText("Buscar cliente...")
-        self.combo_client.setFixedHeight(max(30,int(36*s)))
-        self.combo_client.setStyleSheet(theme.input_style(s))
-        self.combo_client.currentIndexChanged.connect(self._on_client_changed)
-        layout.addWidget(self.combo_client, 1, 0)
+        self.client_search = ClientSearchBox(s, self)
+        self.client_search.client_selected.connect(self._on_client_selected)
+        layout.addWidget(self.client_search, 1, 0)
 
         # Obra
         layout.addWidget(_field_label("🏗️  OBRA", s), 0, 1)
@@ -455,26 +618,19 @@ class RequisitionForm(QWidget):
 
     def _on_clients_loaded(self, clients: list):
         self._clients = clients
-        self.combo_client.blockSignals(True)
-        self.combo_client.clear()
-        self.combo_client.addItem("— Selecione um cliente —", None)
-        for c in clients:
-            self.combo_client.addItem(c["name"], c["id"])
-        self.combo_client.blockSignals(False)
+        self.client_search.set_clients(clients)
 
-    def _on_client_changed(self, idx: int):
-        if idx <= 0:
+    def _on_client_selected(self, client: dict):
+        """Preenche Fone e Endereço automaticamente ao selecionar um cliente."""
+        if not client:
             return
-        client_id = self.combo_client.currentData()
-        client = next((c for c in self._clients if c["id"] == client_id), None)
-        if client:
-            self.input_fone.setText(client.get("phone") or "")
-            addr_parts = [
-                client.get("address") or "",
-                client.get("city") or "",
-                client.get("state") or "",
-            ]
-            self.input_address.setText(", ".join(p for p in addr_parts if p))
+        self.input_fone.setText(client.get("phone") or "")
+        addr_parts = [
+            client.get("address") or "",
+            client.get("city") or "",
+            client.get("state") or "",
+        ]
+        self.input_address.setText(", ".join(p for p in addr_parts if p))
 
     # ── Eventos ───────────────────────────────────────────────────────────────
     def _on_weight_changed(self, total: float):
@@ -484,7 +640,7 @@ class RequisitionForm(QWidget):
 
     # ── API pública ──────────────────────────────────────────────────────────
     def get_form_data(self) -> dict:
-        client_id = self.combo_client.currentData()
+        client_id = self.client_search.get_client_id()
         prazo = self.input_prazo.date().toString("yyyy-MM-dd")
         return {
             "ped_number":       self.input_ped.text().strip() or "0",
@@ -517,6 +673,11 @@ class RequisitionForm(QWidget):
         self.status_badge.set_status(data.get("status", "rascunho"))
         self.lbl_ped_num.setText(f"#{str(data.get('ped_number','0')).zfill(6)}")
 
+        # Cliente
+        client_id = data.get("client_id")
+        if client_id:
+            self.client_search.set_client_by_id(client_id)
+
         # Itens
         self.item_table.set_items(data.get("items", []))
 
@@ -536,7 +697,7 @@ class RequisitionForm(QWidget):
         self.input_prazo.setDate(QDate.currentDate())
         self.chk_retirada.setChecked(False)
         self.chk_entrega.setChecked(False)
-        self.combo_client.setCurrentIndex(0)
+        self.client_search.clear()
         self.status_badge.set_status("rascunho")
         self.lbl_ped_num.setText("#000000")
         self.item_table.set_items([])
