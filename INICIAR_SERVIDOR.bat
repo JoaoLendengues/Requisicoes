@@ -4,7 +4,7 @@ color 0A
 echo.
 echo  ============================================
 echo   Sistema de Requisicoes - Ferragens Pinheiro
-echo   API rodando em http://0.0.0.0:8000
+echo   API rodando em http://0.0.0.0:5000
 echo  ============================================
 echo.
 cd /d "%~dp0"

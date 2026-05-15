@@ -110,7 +110,7 @@ class SettingsView(QWidget):
         self.input_url = QLineEdit(res.server_url)
         self.input_url.setFixedHeight(max(30,int(36*s)))
         self.input_url.setStyleSheet(theme.input_style(s))
-        self.input_url.setPlaceholderText("http://192.168.1.100:8000")
+        self.input_url.setPlaceholderText("http://192.168.1.100:5000")
         grid.addWidget(self.input_url, 0, 1)
 
         self.btn_test = QPushButton("Testar conexão")
