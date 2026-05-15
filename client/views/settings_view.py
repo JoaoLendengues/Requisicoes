@@ -212,7 +212,7 @@ class SettingsView(QWidget):
         self.txt_import_log.setMaximumHeight(max(100,int(120*s)))
         self.txt_import_log.setVisible(False)
         self.txt_import_log.setStyleSheet(
-            f"background:#F8FAFC; border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+            f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
             f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:4px;"
         )
         layout.addWidget(self.txt_import_log)

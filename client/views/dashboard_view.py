@@ -83,12 +83,10 @@ class DashboardView(QWidget):
 
         self._stat_cards: dict[str, QLabel] = {}
         card_defs = [
-            ("total",            theme.PRIMARY,                           "Total de Requisições"),
-            ("em_fabricacao",    theme.STATUS_COLORS["em_fabricacao"],    "Em Fabricação"),
-            ("concluida",        theme.STATUS_COLORS["concluida"],        "Concluídas"),
-            ("cancelada",        theme.STATUS_COLORS["cancelada"],        "Canceladas"),
-            ("pronta",           theme.STATUS_COLORS["pronta"],           "Prontas"),
-            ("em_rota",          theme.STATUS_COLORS["em_rota"],          "Em Rota"),
+            ("total",         theme.PRIMARY,                        "Total de Requisições"),
+            ("em_fabricacao", theme.STATUS_COLORS["em_fabricacao"], "Em Fabricação"),
+            ("concluida",     theme.STATUS_COLORS["concluida"],     "Concluídas"),
+            ("cancelada",     theme.STATUS_COLORS["cancelada"],     "Canceladas"),
         ]
 
         for i, (key, color, label) in enumerate(card_defs):
@@ -115,7 +113,7 @@ class DashboardView(QWidget):
             cl.addWidget(lbl_t)
             cl.addWidget(lbl_v)
             self._stat_cards[key] = lbl_v
-            self.cards_layout.addWidget(card, i // 3, i % 3)
+            self.cards_layout.addWidget(card, 0, i)   # 4 cards numa linha só
 
         # Tabela de requisições recentes
         lbl_rec = QLabel("Requisições Recentes")
@@ -134,7 +132,7 @@ class DashboardView(QWidget):
             f"QTableWidget {{ border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
             f"font-size:{max(9,int(10*s))}pt; }}"
             f"QHeaderView::section {{ background:{theme.TABLE_HEADER_BG}; color:#fff;"
-            f"padding:6px; font-weight:bold; border:none; border-right:1px solid #2d3f63; }}"
+            f"padding:6px; font-weight:bold; border:none; border-right:1px solid {theme.TABLE_BORDER}; }}"
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
         )
         layout.addWidget(self.table)

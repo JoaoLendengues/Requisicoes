@@ -1,23 +1,30 @@
-# ── Paleta de cores ───────────────────────────────────────────────────────────
-SIDEBAR_BG        = "#1B2B4B"
-SIDEBAR_HOVER     = "#243a5e"
-SIDEBAR_ACTIVE    = "#1E40AF"
-SIDEBAR_INDICATOR = "#60A5FA"
-CONTENT_BG        = "#E8ECF2"
-CARD_BG           = "#FFFFFF"
-PRIMARY           = "#1B4FD8"
-PRIMARY_HOVER     = "#1a3fa8"
-BORDER_COLOR      = "#CBD5E1"
-TEXT_DARK         = "#0A0F1E"
-TEXT_MEDIUM       = "#1F2937"
-TEXT_LIGHT        = "#374151"
-TEXT_LABEL        = "#4B5563"
+# ── Paleta — Dark Mode ────────────────────────────────────────────────────────
+SIDEBAR_BG        = "#0B1120"   # quase preto azulado
+SIDEBAR_HOVER     = "#161E30"
+SIDEBAR_ACTIVE    = "#1D4ED8"   # azul royal
+SIDEBAR_INDICATOR = "#60A5FA"   # azul claro
+
+CONTENT_BG        = "#0F172A"   # fundo principal (slate-900)
+CARD_BG           = "#1E293B"   # cards / painéis (slate-800)
+INPUT_BG          = "#0F172A"   # fundo dos campos
+
+PRIMARY           = "#3B82F6"   # azul-500 (mais brilhante no dark)
+PRIMARY_HOVER     = "#2563EB"
+
+BORDER_COLOR      = "#334155"   # slate-700
+TABLE_HEADER_BG   = "#0B1120"
+TABLE_ALT_ROW     = "#243044"
+TABLE_BORDER      = "#2A3F6F"
+SELECTION_BG      = "#1E3A6E"   # linha selecionada em tabelas
+
+TEXT_DARK         = "#F1F5F9"   # texto principal (quase branco)
+TEXT_MEDIUM       = "#CBD5E1"   # texto secundário
+TEXT_LIGHT        = "#94A3B8"   # texto auxiliar / placeholders
+TEXT_LABEL        = "#64748B"   # labels menores
 TEXT_WHITE        = "#FFFFFF"
-INPUT_BG          = "#F8FAFC"
+
 DANGER            = "#EF4444"
 SUCCESS           = "#22C55E"
-TABLE_HEADER_BG   = "#1B2B4B"
-TABLE_ALT_ROW     = "#F1F5F9"
 
 # ── Status ────────────────────────────────────────────────────────────────────
 STATUS_COLORS = {
@@ -53,7 +60,7 @@ def status_style(status: str) -> str:
     )
 
 
-# ── Stylesheets globais ───────────────────────────────────────────────────────
+# ── Stylesheets ───────────────────────────────────────────────────────────────
 def card_style() -> str:
     return (
         f"background:{CARD_BG}; border:1px solid {BORDER_COLOR}; "
@@ -72,6 +79,14 @@ def input_style(scale: float = 1.0) -> str:
         f"  border:1px solid {PRIMARY};"
         f"}}"
         f"QComboBox::drop-down {{ border:none; }}"
+        f"QComboBox QAbstractItemView {{"
+        f"  background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"
+        f"  selection-background-color:{PRIMARY};"
+        f"}}"
+        f"QDateEdit::drop-down {{ border:none; }}"
+        f"QDateEdit QAbstractItemView {{"
+        f"  background:{CARD_BG}; color:{TEXT_DARK};"
+        f"}}"
     )
 
 
@@ -83,8 +98,8 @@ def primary_btn_style(scale: float = 1.0) -> str:
         f"  padding:8px 18px; font-size:{fs}pt; font-weight:bold;"
         f"}}"
         f"QPushButton:hover {{ background:{PRIMARY_HOVER}; }}"
-        f"QPushButton:pressed {{ background:#162f96; }}"
-        f"QPushButton:disabled {{ background:#93acd4; }}"
+        f"QPushButton:pressed {{ background:#1a40c0; }}"
+        f"QPushButton:disabled {{ background:#2d4070; color:#64748b; }}"
     )
 
 
@@ -95,7 +110,7 @@ def secondary_btn_style(scale: float = 1.0) -> str:
         f"  background:transparent; color:{PRIMARY}; border:1px solid {PRIMARY};"
         f"  border-radius:6px; padding:7px 16px; font-size:{fs}pt; font-weight:bold;"
         f"}}"
-        f"QPushButton:hover {{ background:#EFF6FF; }}"
+        f"QPushButton:hover {{ background:#1e3a5f; }}"
     )
 
 
@@ -107,4 +122,33 @@ def danger_btn_style(scale: float = 1.0) -> str:
         f"  padding:8px 18px; font-size:{fs}pt; font-weight:bold;"
         f"}}"
         f"QPushButton:hover {{ background:#dc2626; }}"
+    )
+
+
+def global_style() -> str:
+    """Stylesheet global aplicado no QApplication."""
+    return (
+        f"QMainWindow, QWidget {{ background:{CONTENT_BG}; color:{TEXT_DARK}; }}"
+        f"QToolTip {{ background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"
+        f"  padding:4px 8px; }}"
+        # Scrollbars
+        f"QScrollBar:vertical {{ width:8px; background:{CONTENT_BG}; border-radius:4px; }}"
+        f"QScrollBar::handle:vertical {{ background:{BORDER_COLOR}; border-radius:4px; min-height:30px; }}"
+        f"QScrollBar::handle:vertical:hover {{ background:{TEXT_LABEL}; }}"
+        f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
+        f"QScrollBar:horizontal {{ height:8px; background:{CONTENT_BG}; border-radius:4px; }}"
+        f"QScrollBar::handle:horizontal {{ background:{BORDER_COLOR}; border-radius:4px; }}"
+        f"QScrollBar::handle:horizontal:hover {{ background:{TEXT_LABEL}; }}"
+        f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
+        # Menu / calendário do QDateEdit
+        f"QCalendarWidget QWidget {{ background:{CARD_BG}; color:{TEXT_DARK}; }}"
+        f"QCalendarWidget QAbstractItemView:enabled {{ background:{CARD_BG}; color:{TEXT_DARK};"
+        f"  selection-background-color:{PRIMARY}; selection-color:#fff; }}"
+        f"QCalendarWidget QToolButton {{ background:{SIDEBAR_BG}; color:{TEXT_DARK}; }}"
+        f"QCalendarWidget #qt_calendar_navigationbar {{ background:{SIDEBAR_BG}; }}"
+        f"QMessageBox {{ background:{CARD_BG}; }}"
+        f"QMessageBox QLabel {{ color:{TEXT_DARK}; }}"
+        f"QMessageBox QPushButton {{ background:{PRIMARY}; color:#fff; border:none;"
+        f"  border-radius:5px; padding:6px 16px; min-width:70px; }}"
+        f"QMessageBox QPushButton:hover {{ background:{PRIMARY_HOVER}; }}"
     )

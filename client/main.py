@@ -17,6 +17,7 @@ from PySide6.QtGui import QFont
 
 from client.core.resolution import res
 from client.core.session import session
+from client.core import theme
 from client.views.login_view import LoginView
 from client.views.main_window import MainWindow
 
@@ -38,16 +39,8 @@ def main():
     font = QFont("Segoe UI", res.font(10))
     app.setFont(font)
 
-    # Estilo global
-    app.setStyleSheet(
-        "QToolTip { background:#1B2B4B; color:#fff; border:none; padding:4px 8px; }"
-        "QScrollBar:vertical { width:8px; background:#F1F5F9; border-radius:4px; }"
-        "QScrollBar::handle:vertical { background:#CBD5E1; border-radius:4px; min-height:30px; }"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }"
-        "QScrollBar:horizontal { height:8px; background:#F1F5F9; border-radius:4px; }"
-        "QScrollBar::handle:horizontal { background:#CBD5E1; border-radius:4px; }"
-        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width:0; }"
-    )
+    # Estilo global (dark mode)
+    app.setStyleSheet(theme.global_style())
 
     main_window: MainWindow | None = None
     login_view = LoginView()

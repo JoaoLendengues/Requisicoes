@@ -138,9 +138,9 @@ class LoginView(QWidget):
                                     max(36, int(42 * self.scale)))
         self.btn_show.setCheckable(True)
         self.btn_show.setStyleSheet(
-            f"QPushButton {{ background:#F1F5F9; border:1px solid {theme.BORDER_COLOR};"
-            f"border-radius:5px; }}"
-            f"QPushButton:checked {{ background:#DBEAFE; }}"
+            f"QPushButton {{ background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:5px; color:{theme.TEXT_MEDIUM}; }}"
+            f"QPushButton:checked {{ background:{theme.SIDEBAR_ACTIVE}; color:#fff; }}"
         )
         self.btn_show.toggled.connect(
             lambda v: self.input_pass.setEchoMode(
@@ -156,7 +156,7 @@ class LoginView(QWidget):
         self.error_label.setWordWrap(True)
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.error_label.setStyleSheet(
-            f"color:{theme.DANGER}; font-size:{max(8, int(10*self.scale))}pt; background:#FEF2F2;"
+            f"color:{theme.DANGER}; font-size:{max(8, int(10*self.scale))}pt; background:#3b0f0f;"
             f"border-radius:6px; padding:6px;"
         )
         self.error_label.setVisible(False)
@@ -185,7 +185,7 @@ class LoginView(QWidget):
         footer = QLabel("pinheiroferragens.com.br")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer.setStyleSheet(
-            f"color:#64748b; font-size:{max(7, int(9*self.scale))}pt; margin-top:16px;"
+            f"color:{theme.TEXT_LABEL}; font-size:{max(7, int(9*self.scale))}pt; margin-top:16px;"
         )
         outer.addWidget(footer)
 

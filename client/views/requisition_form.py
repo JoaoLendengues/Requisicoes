@@ -532,7 +532,7 @@ class RequisitionForm(QWidget):
     def _build_items_and_canvas(self) -> QWidget:
         s = self.scale
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setStyleSheet("QSplitter::handle { background:#E2E8F0; width:4px; }")
+        splitter.setStyleSheet(f"QSplitter::handle {{ background:{theme.BORDER_COLOR}; width:4px; }}")
 
         # Tabela de itens
         items_card = _make_card()
