@@ -1,6 +1,12 @@
 """
-Importação de clientes a partir de arquivo .ods.
+Importação de clientes a partir de arquivo .ods / .xlsx.
 Colunas esperadas: Código, Nome, CPF/CNPJ
+
+Estratégia de performance:
+  - Toda a planilha é lida e validada localmente com pandas (rápido).
+  - Os registros válidos são enviados ao servidor numa única chamada HTTP
+    (POST /clients/bulk-import). O servidor resolve tudo numa transação.
+  - Resultado: segundos em vez de minutos, independente do tamanho da planilha.
 """
 import os
 import re
@@ -25,16 +31,16 @@ class ImportResult:
 
     def summary(self) -> str:
         lines = [
-            f"✅  Criados:    {self.created}",
-            f"🔄  Atualizados: {self.updated}",
-            f"⏭️  Ignorados:  {self.skipped}",
+            f"✅  Criados:      {self.created}",
+            f"🔄  Atualizados:  {self.updated}",
+            f"⏭️  Ignorados:   {self.skipped}",
         ]
         if self.errors:
-            lines.append(f"❌  Erros:     {len(self.errors)}")
-            for e in self.errors[:5]:   # mostra no máximo 5
+            lines.append(f"❌  Erros:        {len(self.errors)}")
+            for e in self.errors[:5]:
                 lines.append(f"   • {e}")
             if len(self.errors) > 5:
-                lines.append(f"   ... e mais {len(self.errors)-5} erro(s)")
+                lines.append(f"   ... e mais {len(self.errors) - 5} erro(s)")
         return "\n".join(lines)
 
 
@@ -55,26 +61,25 @@ def _normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9/]", "", result)
 
 
-# Mapeamento de variações de nome de coluna → campo interno
 _COL_MAP = {
-    "codigo":   "code",
-    "cod":      "code",
-    "code":     "code",
-    "nome":     "name",
-    "name":     "name",
+    "codigo":      "code",
+    "cod":         "code",
+    "code":        "code",
+    "nome":        "name",
+    "name":        "name",
     "razaosocial": "name",
-    "cpfcnpj":  "cnpj",
-    "cpf/cnpj": "cnpj",
-    "cnpj":     "cnpj",
-    "cpf":      "cnpj",
+    "cpfcnpj":     "cnpj",
+    "cpf/cnpj":    "cnpj",
+    "cnpj":        "cnpj",
+    "cpf":         "cnpj",
 }
 
 
 def _map_columns(df: pd.DataFrame) -> dict[str, str]:
-    """Retorna {campo_interno: nome_coluna_df} com base nos cabeçalhos."""
-    mapping = {}
+    """Retorna {campo_interno: nome_coluna_df}."""
+    mapping: dict[str, str] = {}
     for col in df.columns:
-        key = _normalize(col)
+        key = _normalize(str(col))
         internal = _COL_MAP.get(key)
         if internal and internal not in mapping:
             mapping[internal] = col
@@ -82,7 +87,7 @@ def _map_columns(df: pd.DataFrame) -> dict[str, str]:
 
 
 # ── Leitura do arquivo ────────────────────────────────────────────────────────
-def read_ods(path: str) -> pd.DataFrame:
+def read_spreadsheet(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
         raise FileNotFoundError(f"Arquivo não encontrado: {path}")
     ext = os.path.splitext(path)[1].lower()
@@ -95,24 +100,28 @@ def read_ods(path: str) -> pd.DataFrame:
 
 
 # ── Importação principal ──────────────────────────────────────────────────────
-def import_clients(path: str,
-                   on_progress=None) -> ImportResult:
+def import_clients(path: str, on_progress=None) -> ImportResult:
     """
-    Lê o arquivo ODS/Excel e sincroniza clientes via API.
-    on_progress(current, total, message) — callback opcional para progresso.
+    Lê o arquivo, valida as linhas localmente e envia tudo ao servidor
+    em uma única requisição HTTP.
+
+    on_progress(current, total, message) — callback para barra de progresso.
     """
     result = ImportResult()
 
-    # 1. Ler arquivo
-    df = read_ods(path)
-    df = df.dropna(how="all")           # remove linhas totalmente vazias
-    total = len(df)
+    # ── 1. Ler arquivo ────────────────────────────────────────────────────────
+    if on_progress:
+        on_progress(0, 3, "Lendo planilha...")
 
-    if total == 0:
+    df = read_spreadsheet(path)
+    df = df.dropna(how="all")
+    total_rows = len(df)
+
+    if total_rows == 0:
         result.errors.append("Planilha vazia ou sem dados.")
         return result
 
-    # 2. Mapear colunas
+    # ── 2. Mapear colunas ─────────────────────────────────────────────────────
     col_map = _map_columns(df)
     if "code" not in col_map or "name" not in col_map:
         result.errors.append(
@@ -122,56 +131,47 @@ def import_clients(path: str,
         )
         return result
 
-    # 3. Buscar clientes existentes (índice por código)
-    try:
-        existing = {c["code"]: c for c in api.list_clients()}
-    except Exception as e:
-        result.errors.append(f"Erro ao buscar clientes existentes: {e}")
-        return result
+    # ── 3. Montar lista de itens válidos ──────────────────────────────────────
+    if on_progress:
+        on_progress(1, 3, f"Validando {total_rows} registros...")
 
-    # 4. Processar cada linha
-    for i, (_, row) in enumerate(df.iterrows()):
+    items: list[dict] = []
+    for _, row in df.iterrows():
         code = str(row[col_map["code"]]).strip()
         name = str(row[col_map["name"]]).strip()
-        cnpj = str(row.get(col_map.get("cnpj", ""), "")).strip() if col_map.get("cnpj") else ""
 
         if not code or not name or code == "nan" or name == "nan":
             result.skipped += 1
             continue
 
-        # Limpa CNPJ — mantém só dígitos e pontuação relevante
-        cnpj = cnpj if cnpj and cnpj != "nan" else None
+        item: dict = {"code": code, "name": name}
 
-        payload = {"code": code, "name": name}
-        if cnpj:
-            payload["cnpj"] = cnpj
+        if col_map.get("cnpj"):
+            cnpj = str(row.get(col_map["cnpj"], "")).strip()
+            if cnpj and cnpj != "nan":
+                item["cnpj"] = cnpj
 
-        if on_progress:
-            on_progress(i + 1, total, f"Processando: {name[:40]}")
+        items.append(item)
 
-        if code in existing:
-            # Atualizar
-            try:
-                api.update_client(existing[code]["id"], {"name": name, "cnpj": cnpj})
-                result.updated += 1
-            except Exception as e:
-                result.errors.append(f"[{code}] {name}: {e}")
-        else:
-            # Criar
-            try:
-                api.create_client(payload)
-                result.created += 1
-            except api.APIError as e:
-                if e.status_code == 400:
-                    # CNPJ duplicado — tenta sem CNPJ
-                    try:
-                        api.create_client({"code": code, "name": name})
-                        result.created += 1
-                    except Exception as e2:
-                        result.errors.append(f"[{code}] {name}: {e2}")
-                else:
-                    result.errors.append(f"[{code}] {name}: {e.detail}")
-            except Exception as e:
-                result.errors.append(f"[{code}] {name}: {e}")
+    if not items:
+        result.errors.append("Nenhum registro válido encontrado na planilha.")
+        return result
+
+    # ── 4. Enviar em lote ao servidor (uma única chamada HTTP) ────────────────
+    if on_progress:
+        on_progress(2, 3, f"Enviando {len(items)} clientes ao servidor...")
+
+    try:
+        server_result = api.bulk_import_clients(items)
+        result.created = server_result.get("created", 0)
+        result.updated = server_result.get("updated", 0)
+        result.skipped += server_result.get("skipped", 0)
+        result.errors.extend(server_result.get("errors", []))
+    except Exception as e:
+        result.errors.append(f"Erro na comunicação com o servidor: {e}")
+        return result
+
+    if on_progress:
+        on_progress(3, 3, "Concluído!")
 
     return result

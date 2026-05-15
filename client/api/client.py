@@ -91,6 +91,13 @@ def update_client(client_id: int, data: dict) -> dict:
         return _check(c.patch(f"/clients/{client_id}", json=data))
 
 
+def bulk_import_clients(items: list) -> dict:
+    """Importa uma lista de clientes em lote (uma única chamada HTTP)."""
+    with _cli() as c:
+        return _check(c.post("/clients/bulk-import", json=items,
+                             timeout=120))   # planilhas grandes podem demorar
+
+
 # ── Requisições ───────────────────────────────────────────────────────────────
 def list_requisitions(status: str = "", search: str = "",
                       skip: int = 0, limit: int = 50) -> list:

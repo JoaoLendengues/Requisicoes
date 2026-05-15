@@ -25,6 +25,20 @@ class ClientUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
+class ClientBulkItem(BaseModel):
+    """Um item dentro de uma importação em lote."""
+    code: str
+    name: str
+    cnpj: Optional[str] = None
+
+
+class BulkImportResult(BaseModel):
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    errors: list[str] = []
+
+
 class ClientResponse(BaseModel):
     id: int
     code: str

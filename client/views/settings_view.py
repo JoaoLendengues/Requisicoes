@@ -304,7 +304,7 @@ class SettingsView(QWidget):
         if total > 0:
             self.progress_bar.setMaximum(total)
             self.progress_bar.setValue(current)
-            self.progress_bar.setFormat(f"{msg} ({current}/{total})")
+            self.progress_bar.setFormat(f"{msg}")
 
     def _on_import_done(self, result):
         self.btn_import.setEnabled(True)
