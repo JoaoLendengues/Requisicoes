@@ -53,16 +53,41 @@ class ApiWorker(QObject):
             self.finished.emit()
 
 
-def _run_in_thread(fn, *args, on_result=None, on_error=None, **kwargs) -> QThread:
+class _Callback(QObject):
+    """
+    Intermediário criado na thread principal.
+    Quando o worker (outra thread) emite result/error, Qt detecta
+    a diferença de threads e usa QueuedConnection automaticamente,
+    garantindo que os callbacks rodem sempre na thread principal.
+    """
+    result = Signal(object)
+    error  = Signal(str)
+
+
+def _run_in_thread(fn, *args, on_result=None, on_error=None, **kwargs):
     worker = ApiWorker(fn, *args, **kwargs)
     thread = QThread()
+
+    # _Callback criado aqui (main thread) → tem afinidade com a main thread
+    cb = _Callback()
+
     worker.moveToThread(thread)
     thread.started.connect(worker.run)
-    if on_result:
-        worker.result.connect(on_result)
-    if on_error:
-        worker.error.connect(on_error)
+
+    # worker → cb: cross-thread, Qt usa QueuedConnection automaticamente
+    worker.result.connect(cb.result)
+    worker.error.connect(cb.error)
     worker.finished.connect(thread.quit)
+
+    # cb → callbacks do usuário: cb vive na main thread → roda na main thread
+    if on_result:
+        cb.result.connect(on_result)
+    if on_error:
+        cb.error.connect(on_error)
+
+    # Guarda cb no worker para não ser coletado pelo GC antes do término
+    worker._cb = cb
+
     thread.start()
     return thread, worker
 
@@ -427,7 +452,7 @@ class RequisitionForm(QWidget):
         )
         self.lbl_ped_num = QLabel("#000000")
         self.lbl_ped_num.setStyleSheet(
-            f"color:{theme.SIDEBAR_BG}; font-size:{max(16,int(20*s))}pt; font-weight:bold; border:none;"
+            f"color:{theme.PRIMARY}; font-size:{max(16,int(20*s))}pt; font-weight:bold; border:none;"
         )
         title_col.addWidget(lbl_req)
         title_col.addWidget(self.lbl_ped_num)
@@ -761,6 +786,7 @@ class RequisitionForm(QWidget):
             "delivery_address": self.input_address.text().strip() or None,
             "weight":           0.0,
             "items":            self.item_table.get_items(),
+            "obs":              self.input_obs.toPlainText().strip() or None,
         }
 
     def load_requisition(self, data: dict):
@@ -788,6 +814,7 @@ class RequisitionForm(QWidget):
 
         # Itens
         self.item_table.set_items(data.get("items", []))
+        self.input_obs.setPlainText(data.get("obs") or "")
 
         # Canvas — armazena JSON; será carregado no dialog ao abrir
         canvas_data = data.get("canvas")

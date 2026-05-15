@@ -158,6 +158,36 @@ class SettingsView(QWidget):
         )
         layout.addWidget(screen_info)
 
+        # ── Pasta de PDFs ─────────────────────────────────────────────────────
+        layout.addWidget(_section("📄  PDF Automático", s))
+        layout.addWidget(_separator())
+
+        layout.addWidget(self._lbl(
+            "Pasta onde os PDFs serão salvos automaticamente ao salvar uma requisição.",
+            s, color=theme.TEXT_LIGHT, italic=True
+        ))
+
+        pdf_row = QHBoxLayout()
+        pdf_row.addWidget(self._lbl("Pasta de PDFs:", s))
+
+        self.input_pdf_folder = QLineEdit(
+            res._read_file().get("pdf_folder", "")
+        )
+        self.input_pdf_folder.setPlaceholderText(
+            r"Ex.: Z:\REQUISIÇÕES (VENDAS)\PDFs"
+        )
+        self.input_pdf_folder.setFixedHeight(max(30, int(36 * s)))
+        self.input_pdf_folder.setStyleSheet(theme.input_style(s))
+        pdf_row.addWidget(self.input_pdf_folder, 1)
+
+        btn_browse_pdf = QPushButton("📂")
+        btn_browse_pdf.setFixedSize(max(30, int(36 * s)), max(30, int(36 * s)))
+        btn_browse_pdf.setStyleSheet(theme.secondary_btn_style(s))
+        btn_browse_pdf.setToolTip("Selecionar pasta...")
+        btn_browse_pdf.clicked.connect(self._browse_pdf_folder)
+        pdf_row.addWidget(btn_browse_pdf)
+        layout.addLayout(pdf_row)
+
         # ── Importação de Clientes ────────────────────────────────────────────
         layout.addWidget(_section("📥  Importação de Clientes (ODS/Excel)", s))
         layout.addWidget(_separator())
@@ -260,10 +290,11 @@ class SettingsView(QWidget):
         self.btn_test.setText("Testar conexão")
 
     def _save(self):
-        url   = self.input_url.text().strip()
-        scale = self.slider_scale.value() / 100.0
-        path  = self.input_ods_path.text().strip()
-        res.save(server_url=url, font_scale=scale, ods_path=path)
+        url        = self.input_url.text().strip()
+        scale      = self.slider_scale.value() / 100.0
+        path       = self.input_ods_path.text().strip()
+        pdf_folder = self.input_pdf_folder.text().strip()
+        res.save(server_url=url, font_scale=scale, ods_path=path, pdf_folder=pdf_folder)
         QMessageBox.information(self, "Salvo",
                                 "Configurações salvas.\n"
                                 "Reinicie o aplicativo para aplicar a nova escala.")
@@ -277,6 +308,13 @@ class SettingsView(QWidget):
         )
         if path:
             self.input_ods_path.setText(path)
+
+    def _browse_pdf_folder(self):
+        folder = QFileDialog.getExistingDirectory(
+            self, "Selecionar pasta para PDFs", ""
+        )
+        if folder:
+            self.input_pdf_folder.setText(folder)
 
     def _start_import(self):
         path = self.input_ods_path.text().strip()

@@ -38,6 +38,7 @@ class Requisition(Base):
     retirada: Mapped[bool] = mapped_column(Boolean, default=False)
     entrega: Mapped[bool] = mapped_column(Boolean, default=False)
     delivery_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    obs: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     weight: Mapped[float] = mapped_column(Float, default=0.0)
 

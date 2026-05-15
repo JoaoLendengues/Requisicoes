@@ -65,6 +65,10 @@ class ResolutionManager:
     def start_maximized(self) -> bool:
         return bool(self._maximized)
 
+    @property
+    def pdf_folder(self) -> str:
+        return self._load_setting("pdf_folder") or ""
+
     def save(self, **kwargs):
         data = self._read_file()
         for k, v in kwargs.items():
@@ -75,6 +79,8 @@ class ResolutionManager:
                 self._server_url = v
             if k == "maximized":
                 self._maximized = v
+            if k == "pdf_folder":
+                self._pdf_folder = v
         self._write_file(data)
 
     # ── Helpers ─────────────────────────────────────────────────────────────

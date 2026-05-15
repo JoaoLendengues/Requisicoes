@@ -33,6 +33,7 @@ class RequisitionCreate(BaseModel):
     delivery_address: Optional[str] = None
     phone: Optional[str] = None
     weight: float = 0.0
+    obs: Optional[str] = None
     items: List[RequisitionItemCreate] = []
 
 
@@ -47,6 +48,7 @@ class RequisitionUpdate(BaseModel):
     delivery_address: Optional[str] = None
     phone: Optional[str] = None
     weight: Optional[float] = None
+    obs: Optional[str] = None
     items: Optional[List[RequisitionItemCreate]] = None
 
 
@@ -57,6 +59,13 @@ class StatusUpdate(BaseModel):
 
 class CanvasUpdate(BaseModel):
     json_data: str
+
+
+class CanvasDataResponse(BaseModel):
+    json_data: str
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
 
 
 class StatusHistoryResponse(BaseModel):
@@ -85,11 +94,13 @@ class RequisitionResponse(BaseModel):
     delivery_address: Optional[str]
     phone: Optional[str]
     weight: float
+    obs: Optional[str] = None
     status: RequisitionStatus
     finalized_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
     items: List[RequisitionItemResponse] = []
     status_history: List[StatusHistoryResponse] = []
+    canvas: Optional[CanvasDataResponse] = None
 
     model_config = {"from_attributes": True}

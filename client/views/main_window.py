@@ -143,44 +143,69 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Atenção", "Selecione um cliente antes de salvar.")
             return
 
-        # Usar JSON do canvas (armazenado no formulário, sem widget oculto)
         canvas_json = self.form_view._canvas_json
+        client      = self.form_view.client_search.get_selected()
+        obs         = self.form_view.input_obs.toPlainText().strip()
 
         if self.form_view.req_id:
-            # Atualizar existente
             req_id = self.form_view.req_id
             t, w = _run_in_thread(
                 api.update_requisition, req_id, data,
-                on_result=lambda r: self._after_save(r, canvas_json),
+                on_result=lambda r: self._after_save(r, canvas_json, client, obs),
                 on_error=self._on_save_error,
             )
         else:
-            # Criar novo
             t, w = _run_in_thread(
                 api.create_requisition, data,
-                on_result=lambda r: self._after_save(r, canvas_json),
+                on_result=lambda r: self._after_save(r, canvas_json, client, obs),
                 on_error=self._on_save_error,
             )
         self._threads.append((t, w))
 
-    def _after_save(self, req: dict, canvas_json: str):
+    def _after_save(self, req: dict, canvas_json: str,
+                    client: dict | None = None, obs: str = ""):
         req_id = req["id"]
         self.form_view.req_id = req_id
-        # Salvar canvas separadamente
         t, w = _run_in_thread(
             api.update_canvas, req_id, canvas_json,
-            on_result=lambda _: self._show_saved(),
-            on_error=lambda e: None,
+            on_result=lambda _: self._on_fully_saved(req, canvas_json, client, obs),
+            on_error=lambda _: self._on_fully_saved(req, canvas_json, client, obs),
         )
         self._threads.append((t, w))
 
-    def _show_saved(self):
-        # Garante execução na thread principal (callback vem de worker thread)
-        QTimer.singleShot(0, self._show_saved_dialog)
+    def _on_fully_saved(self, req: dict, canvas_json: str,
+                        client: dict | None, obs: str):
+        pdf_path = self._generate_pdf_sync(req, client, obs, canvas_json)
+        self._show_saved(pdf_path)
 
-    def _show_saved_dialog(self):
-        QMessageBox.information(self, "Requisição Salva",
-                                "✅  Requisição salva com sucesso!")
+    def _generate_pdf_sync(self, req: dict, client: dict | None,
+                            obs: str, canvas_json: str = "{}") -> str:
+        """Gera o PDF localmente (operação rápida, sem thread).
+        Retorna o caminho gerado ou '' se não configurado/erro."""
+        try:
+            from ..services.pdf_generator import generate_pdf, HAS_REPORTLAB
+        except ImportError:
+            return ""
+        if not HAS_REPORTLAB:
+            return ""
+        from ..core.resolution import res as _res
+        folder = _res.pdf_folder.strip()
+        if not folder:
+            return ""
+        try:
+            return generate_pdf(req, client, obs, folder, canvas_json)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Aviso",
+                f"Requisição salva, mas o PDF não pôde ser gerado:\n{e}",
+            )
+            return ""
+
+    def _show_saved(self, pdf_path: str = ""):
+        msg = "✅  Requisição salva com sucesso!"
+        if pdf_path:
+            msg += f"\n\n📄  PDF gerado em:\n{pdf_path}"
+        QMessageBox.information(self, "Requisição Salva", msg)
 
     def _on_save_error(self, msg: str):
         QMessageBox.critical(self, "Erro ao salvar", msg)

@@ -2,15 +2,30 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from sqlalchemy import text
 from .database import engine, Base
 from .models import user, client, requisition  # garante registro dos modelos no SQLAlchemy
 from .routers import auth, users, clients, requisitions
 from .seed import seed_admin
 
 
+def _migrate():
+    """Aplica migrações de colunas adicionadas após criação inicial do banco."""
+    stmts = [
+        "ALTER TABLE requisitions ADD COLUMN obs TEXT",
+    ]
+    with engine.begin() as conn:
+        for s in stmts:
+            try:
+                conn.execute(text(s))
+            except Exception:
+                pass   # coluna já existe
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _migrate()
     seed_admin()
     yield
 
