@@ -118,7 +118,7 @@ class ClientSearchBox(QWidget):
         # Timer de debounce — dispara busca 300 ms após parar de digitar
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
-        self._debounce.setInterval(300)
+        self._debounce.setInterval(150)
         self._debounce.timeout.connect(self._do_search)
 
         self._setup_ui()
@@ -362,7 +362,6 @@ class RequisitionForm(QWidget):
         self._clients: list[dict] = []
         self._threads: list = []
         self._canvas_json: str = "{}"   # armazena o JSON do desenho
-        self.canvas = DrawingCanvas(scale)  # instância oculta — usada para to_json()
         self._setup_ui()
         self._load_clients()
 
@@ -717,8 +716,6 @@ class RequisitionForm(QWidget):
         dlg = CanvasDialog(self._canvas_json, self.scale, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._canvas_json = dlg.get_json()
-            # Sincroniza a instância oculta para que to_json() no MainWindow funcione
-            self.canvas.from_json(self._canvas_json)
 
     # ── Clientes ──────────────────────────────────────────────────────────────
     def _load_clients(self):
@@ -794,11 +791,7 @@ class RequisitionForm(QWidget):
 
         # Canvas — armazena JSON; será carregado no dialog ao abrir
         canvas_data = data.get("canvas")
-        if canvas_data and canvas_data.get("json_data"):
-            self._canvas_json = canvas_data["json_data"]
-            self.canvas.from_json(self._canvas_json)
-        else:
-            self._canvas_json = "{}"
+        self._canvas_json = (canvas_data or {}).get("json_data") or "{}"
 
     def reset(self):
         """Limpa o formulário para nova requisição."""
@@ -816,5 +809,4 @@ class RequisitionForm(QWidget):
         self.lbl_ped_num.setText("#000000")
         self.item_table.set_items([])
         self._canvas_json = "{}"
-        self.canvas._clear()
         self.lbl_peso_header.setText("0,00")

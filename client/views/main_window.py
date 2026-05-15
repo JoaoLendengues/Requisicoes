@@ -143,8 +143,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Atenção", "Selecione um cliente antes de salvar.")
             return
 
-        # Salvar canvas
-        canvas_json = self.form_view.canvas.to_json()
+        # Usar JSON do canvas (armazenado no formulário, sem widget oculto)
+        canvas_json = self.form_view._canvas_json
 
         if self.form_view.req_id:
             # Atualizar existente
@@ -175,7 +175,12 @@ class MainWindow(QMainWindow):
         self._threads.append((t, w))
 
     def _show_saved(self):
-        self.statusBar().showMessage("✅  Requisição salva com sucesso!", 4000)
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Requisição Salva")
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setText("✅  Requisição salva com sucesso!")
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
 
     def _on_save_error(self, msg: str):
         QMessageBox.critical(self, "Erro ao salvar", msg)
