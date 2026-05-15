@@ -1,0 +1,544 @@
+"""
+Formulário principal de requisição — fiel ao mockup fornecido.
+"""
+import os
+import io
+from datetime import date, datetime
+
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
+    QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
+    QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox,
+    QGraphicsDropShadowEffect, QSizePolicy,
+)
+from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject
+from PySide6.QtGui import QPixmap, QColor, QFont
+
+try:
+    import qrcode
+    HAS_QR = True
+except ImportError:
+    HAS_QR = False
+
+from ..core import theme
+from ..core.resolution import res
+from ..core.session import session
+from ..api import client as api
+from ..widgets.status_badge import StatusBadge
+from ..widgets.item_table import ItemTable
+from ..widgets.canvas_widget import DrawingCanvas
+
+
+# ── Worker genérico ───────────────────────────────────────────────────────────
+class ApiWorker(QObject):
+    result   = Signal(object)
+    error    = Signal(str)
+    finished = Signal()
+
+    def __init__(self, fn, *args, **kwargs):
+        super().__init__()
+        self._fn = fn
+        self._args = args
+        self._kwargs = kwargs
+
+    def run(self):
+        try:
+            self.result.emit(self._fn(*self._args, **self._kwargs))
+        except api.APIError as e:
+            self.error.emit(e.detail)
+        except Exception as e:
+            self.error.emit(str(e))
+        finally:
+            self.finished.emit()
+
+
+def _run_in_thread(fn, *args, on_result=None, on_error=None, **kwargs) -> QThread:
+    worker = ApiWorker(fn, *args, **kwargs)
+    thread = QThread()
+    worker.moveToThread(thread)
+    thread.started.connect(worker.run)
+    if on_result:
+        worker.result.connect(on_result)
+    if on_error:
+        worker.error.connect(on_error)
+    worker.finished.connect(thread.quit)
+    thread.start()
+    return thread, worker
+
+
+# ── Card helper ───────────────────────────────────────────────────────────────
+def _make_card(parent=None) -> QFrame:
+    card = QFrame(parent)
+    card.setStyleSheet(
+        f"QFrame {{ background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
+        f"border-radius:8px; }}"
+    )
+    shadow = QGraphicsDropShadowEffect()
+    shadow.setBlurRadius(10)
+    shadow.setOffset(0, 2)
+    shadow.setColor(QColor(0, 0, 0, 20))
+    card.setGraphicsEffect(shadow)
+    return card
+
+
+def _field_label(text: str, scale: float) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setStyleSheet(
+        f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*scale))}pt; "
+        f"font-weight:bold; text-transform:uppercase; border:none;"
+    )
+    return lbl
+
+
+def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setStyleSheet(
+        f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11*scale))}pt; "
+        f"font-weight:bold; border:none;"
+    )
+    return lbl
+
+
+# ── View principal ────────────────────────────────────────────────────────────
+class RequisitionForm(QWidget):
+    saved    = Signal(dict)
+    req_id: int | None = None
+
+    def __init__(self, scale: float = 1.0, parent=None):
+        super().__init__(parent)
+        self.scale = scale
+        self._clients: list[dict] = []
+        self._threads: list = []
+        self._setup_ui()
+        self._load_clients()
+
+    # ── Construção da UI ──────────────────────────────────────────────────────
+    def _setup_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # ScrollArea
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}"
+        )
+        root.addWidget(scroll)
+
+        container = QWidget()
+        container.setStyleSheet(f"background:{theme.CONTENT_BG};")
+        scroll.setWidget(container)
+
+        layout = QVBoxLayout(container)
+        s = self.scale
+        margin = max(12, int(16 * s))
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(max(10, int(12 * s)))
+
+        layout.addWidget(self._build_header())
+        layout.addWidget(self._build_info_bar())
+        layout.addWidget(self._build_client_section())
+        layout.addWidget(self._build_items_and_canvas())
+        layout.addWidget(self._build_bottom_section())
+        layout.addStretch()
+
+    # ── Cabeçalho ─────────────────────────────────────────────────────────────
+    def _build_header(self) -> QFrame:
+        card = _make_card()
+        layout = QHBoxLayout(card)
+        s = self.scale
+        layout.setContentsMargins(max(12, int(16*s)), max(8, int(12*s)),
+                                   max(12, int(16*s)), max(8, int(12*s)))
+        layout.setSpacing(max(12, int(16*s)))
+
+        # Título Requisição + número
+        title_col = QVBoxLayout()
+        title_col.setSpacing(0)
+        lbl_req = QLabel("REQUISIÇÃO")
+        lbl_req.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8,int(9*s))}pt; font-weight:bold; border:none;"
+        )
+        self.lbl_ped_num = QLabel("#000000")
+        self.lbl_ped_num.setStyleSheet(
+            f"color:{theme.SIDEBAR_BG}; font-size:{max(16,int(20*s))}pt; font-weight:bold; border:none;"
+        )
+        title_col.addWidget(lbl_req)
+        title_col.addWidget(self.lbl_ped_num)
+        layout.addLayout(title_col)
+
+        layout.addStretch()
+
+        # Data
+        date_col = QVBoxLayout()
+        date_col.setSpacing(2)
+        date_col.addWidget(_field_label("📅  DATA", s))
+        self.lbl_date = _value_label(date.today().strftime("%d/%m/%Y"), s)
+        date_col.addWidget(self.lbl_date)
+        layout.addLayout(date_col)
+
+        # Vendedor
+        vend_col = QVBoxLayout()
+        vend_col.setSpacing(2)
+        vend_col.addWidget(_field_label("👤  VENDEDOR", s))
+        self.lbl_vendor = _value_label(session.user_name.upper(), s)
+        vend_col.addWidget(self.lbl_vendor)
+        layout.addLayout(vend_col)
+
+        # Status
+        status_col = QVBoxLayout()
+        status_col.setSpacing(2)
+        status_col.addWidget(_field_label("STATUS", s))
+        self.status_badge = StatusBadge("rascunho", s)
+        status_col.addWidget(self.status_badge)
+        layout.addLayout(status_col)
+
+        # PED
+        ped_col = QVBoxLayout()
+        ped_col.setSpacing(2)
+        ped_col.addWidget(_field_label("PED:", s))
+        self.input_ped = QLineEdit("0")
+        self.input_ped.setPlaceholderText("Nº pedido")
+        self.input_ped.setFixedWidth(max(80, int(100*s)))
+        self.input_ped.setFixedHeight(max(30, int(36*s)))
+        self.input_ped.setStyleSheet(
+            f"font-size:{max(14,int(18*s))}pt; font-weight:bold; color:{theme.PRIMARY};"
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:5px; padding:2px 6px;"
+            f"background:{theme.INPUT_BG};"
+        )
+        self.input_ped.textChanged.connect(
+            lambda t: self.lbl_ped_num.setText(f"#{t.zfill(6)}" if t else "#000000")
+        )
+        ped_col.addWidget(self.input_ped)
+        layout.addLayout(ped_col)
+
+        return card
+
+    # ── Barra de informações ───────────────────────────────────────────────────
+    def _build_info_bar(self) -> QFrame:
+        card = _make_card()
+        layout = QHBoxLayout(card)
+        s = self.scale
+        layout.setContentsMargins(max(12,int(16*s)), max(8,int(10*s)),
+                                   max(12,int(16*s)), max(8,int(10*s)))
+        layout.setSpacing(max(16,int(20*s)))
+
+        def add_field(icon, label, widget):
+            col = QVBoxLayout()
+            col.setSpacing(2)
+            col.addWidget(_field_label(f"{icon}  {label}", s))
+            col.addWidget(widget)
+            layout.addLayout(col)
+
+        # Prazo de entrega
+        self.input_prazo = QDateEdit(QDate.currentDate())
+        self.input_prazo.setDisplayFormat("dd/MM/yyyy")
+        self.input_prazo.setCalendarPopup(True)
+        self.input_prazo.setFixedHeight(max(28,int(32*s)))
+        self.input_prazo.setStyleSheet(theme.input_style(s))
+        add_field("📅", "PRAZO DE ENTREGA", self.input_prazo)
+
+        # Retirada — mutuamente exclusivo com Entrega
+        self.chk_retirada = QCheckBox("SIM")
+        self.chk_retirada.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
+        )
+        add_field("🚛", "RETIRADA", self.chk_retirada)
+
+        # Entrega — mutuamente exclusivo com Retirada
+        self.chk_entrega = QCheckBox("SIM")
+        self.chk_entrega.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
+        )
+        add_field("🚚", "ENTREGA", self.chk_entrega)
+
+        # Lógica mutuamente exclusiva
+        self.chk_retirada.toggled.connect(
+            lambda checked: self.chk_entrega.setChecked(False) if checked else None
+        )
+        self.chk_entrega.toggled.connect(
+            lambda checked: self.chk_retirada.setChecked(False) if checked else None
+        )
+
+        # WhatsApp
+        self.input_whatsapp = QLineEdit()
+        self.input_whatsapp.setPlaceholderText("(61) 99999-9999")
+        self.input_whatsapp.setFixedHeight(max(28,int(32*s)))
+        self.input_whatsapp.setStyleSheet(theme.input_style(s))
+        add_field("💬", "WHATSAPP", self.input_whatsapp)
+
+        layout.addStretch()
+
+        # Peso total
+        peso_col = QVBoxLayout()
+        peso_col.setSpacing(2)
+        peso_col.addWidget(_field_label("⚖️  PESO TOTAL", s))
+        self.lbl_peso_header = _value_label("0,00", s)
+        self.lbl_peso_header.setStyleSheet(
+            f"color:{theme.PRIMARY}; font-size:{max(12,int(14*s))}pt; font-weight:bold; border:none;"
+        )
+        peso_col.addWidget(self.lbl_peso_header)
+        layout.addLayout(peso_col)
+
+        return card
+
+    # ── Seção Cliente ─────────────────────────────────────────────────────────
+    def _build_client_section(self) -> QFrame:
+        card = _make_card()
+        layout = QGridLayout(card)
+        s = self.scale
+        layout.setContentsMargins(max(12,int(16*s)), max(10,int(12*s)),
+                                   max(12,int(16*s)), max(10,int(12*s)))
+        layout.setHorizontalSpacing(max(16,int(20*s)))
+        layout.setVerticalSpacing(max(6,int(8*s)))
+
+        # Cliente (busca)
+        layout.addWidget(_field_label("👤  CLIENTE", s), 0, 0)
+        self.combo_client = QComboBox()
+        self.combo_client.setEditable(True)
+        self.combo_client.setPlaceholderText("Buscar cliente...")
+        self.combo_client.setFixedHeight(max(30,int(36*s)))
+        self.combo_client.setStyleSheet(theme.input_style(s))
+        self.combo_client.currentIndexChanged.connect(self._on_client_changed)
+        layout.addWidget(self.combo_client, 1, 0)
+
+        # Obra
+        layout.addWidget(_field_label("🏗️  OBRA", s), 0, 1)
+        self.input_obra = QLineEdit()
+        self.input_obra.setPlaceholderText("Nome da obra")
+        self.input_obra.setFixedHeight(max(30,int(36*s)))
+        self.input_obra.setStyleSheet(theme.input_style(s))
+        layout.addWidget(self.input_obra, 1, 1)
+
+        # Fone
+        layout.addWidget(_field_label("📞  FONE", s), 2, 0)
+        self.input_fone = QLineEdit()
+        self.input_fone.setPlaceholderText("(61) 9 9999-9999")
+        self.input_fone.setFixedHeight(max(30,int(36*s)))
+        self.input_fone.setStyleSheet(theme.input_style(s))
+        layout.addWidget(self.input_fone, 3, 0)
+
+        # Endereço
+        layout.addWidget(_field_label("📍  ENDEREÇO A ENTREGAR", s), 2, 1)
+        self.input_address = QLineEdit()
+        self.input_address.setPlaceholderText("Endereço completo de entrega")
+        self.input_address.setFixedHeight(max(30,int(36*s)))
+        self.input_address.setStyleSheet(theme.input_style(s))
+        layout.addWidget(self.input_address, 3, 1)
+
+        layout.setColumnStretch(0, 1)
+        layout.setColumnStretch(1, 2)
+        return card
+
+    # ── Itens + Canvas ────────────────────────────────────────────────────────
+    def _build_items_and_canvas(self) -> QWidget:
+        s = self.scale
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setStyleSheet("QSplitter::handle { background:#E2E8F0; width:4px; }")
+
+        # Tabela de itens
+        items_card = _make_card()
+        items_layout = QVBoxLayout(items_card)
+        items_layout.setContentsMargins(max(10,int(12*s)), max(10,int(12*s)),
+                                         max(10,int(12*s)), max(10,int(12*s)))
+        self.item_table = ItemTable(s)
+        self.item_table.weight_changed.connect(self._on_weight_changed)
+        items_layout.addWidget(self.item_table)
+        splitter.addWidget(items_card)
+
+        # Canvas
+        canvas_card = _make_card()
+        canvas_layout = QVBoxLayout(canvas_card)
+        canvas_layout.setContentsMargins(max(10,int(12*s)), max(10,int(12*s)),
+                                          max(10,int(12*s)), max(10,int(12*s)))
+        self.canvas = DrawingCanvas(s)
+        canvas_layout.addWidget(self.canvas)
+        splitter.addWidget(canvas_card)
+
+        splitter.setSizes([500, 500])
+        return splitter
+
+    # ── Rodapé: Observação + Assinatura + QR ─────────────────────────────────
+    def _build_bottom_section(self) -> QFrame:
+        s = self.scale
+        wrapper = QWidget()
+        wrapper.setStyleSheet("background:transparent; border:none;")
+        layout = QHBoxLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(max(10,int(12*s)))
+
+        # Observação
+        obs_card = _make_card()
+        obs_layout = QVBoxLayout(obs_card)
+        obs_layout.setContentsMargins(max(10,int(12*s)), max(10,int(12*s)),
+                                       max(10,int(12*s)), max(10,int(12*s)))
+        obs_layout.addWidget(_field_label("📝  OBSERVAÇÃO", s))
+        self.input_obs = QTextEdit()
+        self.input_obs.setPlaceholderText("Observações adicionais...")
+        self.input_obs.setMaximumHeight(max(100,int(120*s)))
+        self.input_obs.setStyleSheet(
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+            f"font-size:{max(9,int(11*s))}pt; padding:6px; background:{theme.INPUT_BG};"
+        )
+        obs_layout.addWidget(self.input_obs)
+        layout.addWidget(obs_card, 2)
+
+        # Assinatura + QR
+        sig_card = _make_card()
+        sig_layout = QHBoxLayout(sig_card)
+        sig_layout.setContentsMargins(max(10,int(12*s)), max(10,int(12*s)),
+                                       max(10,int(12*s)), max(10,int(12*s)))
+
+        sig_col = QVBoxLayout()
+        sig_col.addWidget(_field_label("✍️  ASSINATURA DO CLIENTE", s))
+        sig_col.addStretch()
+        sig_line = QFrame()
+        sig_line.setFrameShape(QFrame.Shape.HLine)
+        sig_line.setStyleSheet(f"color:{theme.BORDER_COLOR};")
+        sig_col.addWidget(sig_line)
+        lbl_click = QLabel("Imprimir e assinar")
+        lbl_click.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_click.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8,int(9*s))}pt; font-style:italic; border:none;"
+        )
+        sig_col.addWidget(lbl_click)
+        sig_layout.addLayout(sig_col, 2)
+
+        # QR Code
+        qr_col = QVBoxLayout()
+        qr_col.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr_label = QLabel()
+        self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr_label.setFixedSize(max(80,int(90*s)), max(80,int(90*s)))
+        self.qr_label.setStyleSheet(
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:4px; background:#fff;"
+        )
+        lbl_qr_txt = QLabel("QR CODE\nVendedor")
+        lbl_qr_txt.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_qr_txt.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(7,int(8*s))}pt; border:none;"
+        )
+        qr_col.addWidget(self.qr_label)
+        qr_col.addWidget(lbl_qr_txt)
+        sig_layout.addLayout(qr_col, 1)
+
+        layout.addWidget(sig_card, 1)
+        self._generate_qr()
+        return wrapper
+
+    # ── QR Code ───────────────────────────────────────────────────────────────
+    def _generate_qr(self):
+        if not HAS_QR or not session.whatsapp:
+            return
+        try:
+            phone = "".join(filter(str.isdigit, session.whatsapp))
+            url = f"https://wa.me/55{phone}"
+            qr = qrcode.make(url)
+            buf = io.BytesIO()
+            qr.save(buf, format="PNG")
+            buf.seek(0)
+            pix = QPixmap()
+            pix.loadFromData(buf.read())
+            size = max(80, int(90 * self.scale))
+            pix = pix.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
+            self.qr_label.setPixmap(pix)
+        except Exception:
+            pass
+
+    # ── Clientes ──────────────────────────────────────────────────────────────
+    def _load_clients(self):
+        t, w = _run_in_thread(api.list_clients,
+                               on_result=self._on_clients_loaded,
+                               on_error=lambda e: None)
+        self._threads.append((t, w))
+
+    def _on_clients_loaded(self, clients: list):
+        self._clients = clients
+        self.combo_client.blockSignals(True)
+        self.combo_client.clear()
+        self.combo_client.addItem("— Selecione um cliente —", None)
+        for c in clients:
+            self.combo_client.addItem(c["name"], c["id"])
+        self.combo_client.blockSignals(False)
+
+    def _on_client_changed(self, idx: int):
+        if idx <= 0:
+            return
+        client_id = self.combo_client.currentData()
+        client = next((c for c in self._clients if c["id"] == client_id), None)
+        if client:
+            self.input_fone.setText(client.get("phone") or "")
+            addr_parts = [
+                client.get("address") or "",
+                client.get("city") or "",
+                client.get("state") or "",
+            ]
+            self.input_address.setText(", ".join(p for p in addr_parts if p))
+
+    # ── Eventos ───────────────────────────────────────────────────────────────
+    def _on_weight_changed(self, total: float):
+        self.lbl_peso_header.setText(
+            f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
+
+    # ── API pública ──────────────────────────────────────────────────────────
+    def get_form_data(self) -> dict:
+        client_id = self.combo_client.currentData()
+        prazo = self.input_prazo.date().toString("yyyy-MM-dd")
+        return {
+            "ped_number":       self.input_ped.text().strip() or "0",
+            "client_id":        client_id,
+            "obra":             self.input_obra.text().strip() or None,
+            "delivery_date":    prazo,
+            "retirada":         self.chk_retirada.isChecked(),
+            "entrega":          self.chk_entrega.isChecked(),
+            "phone":            self.input_fone.text().strip() or None,
+            "delivery_address": self.input_address.text().strip() or None,
+            "weight":           0.0,
+            "items":            self.item_table.get_items(),
+        }
+
+    def load_requisition(self, data: dict):
+        """Popula o formulário com dados de uma requisição existente."""
+        self.req_id = data.get("id")
+        self.input_ped.setText(str(data.get("ped_number") or ""))
+        self.input_obra.setText(data.get("obra") or "")
+        self.input_fone.setText(data.get("phone") or "")
+        self.input_address.setText(data.get("delivery_address") or "")
+
+        delivery = data.get("delivery_date")
+        if delivery:
+            qd = QDate.fromString(str(delivery)[:10], "yyyy-MM-dd")
+            self.input_prazo.setDate(qd)
+
+        self.chk_retirada.setChecked(data.get("retirada", False))
+        self.chk_entrega.setChecked(data.get("entrega", False))
+        self.status_badge.set_status(data.get("status", "rascunho"))
+        self.lbl_ped_num.setText(f"#{str(data.get('ped_number','0')).zfill(6)}")
+
+        # Itens
+        self.item_table.set_items(data.get("items", []))
+
+        # Canvas
+        canvas_data = data.get("canvas")
+        if canvas_data and canvas_data.get("json_data"):
+            self.canvas.from_json(canvas_data["json_data"])
+
+    def reset(self):
+        """Limpa o formulário para nova requisição."""
+        self.req_id = None
+        self.input_ped.clear()
+        self.input_obra.clear()
+        self.input_fone.clear()
+        self.input_address.clear()
+        self.input_obs.clear()
+        self.input_prazo.setDate(QDate.currentDate())
+        self.chk_retirada.setChecked(False)
+        self.chk_entrega.setChecked(False)
+        self.combo_client.setCurrentIndex(0)
+        self.status_badge.set_status("rascunho")
+        self.lbl_ped_num.setText("#000000")
+        self.item_table.set_items([])
+        self.canvas._clear()
+        self.lbl_peso_header.setText("0,00")
