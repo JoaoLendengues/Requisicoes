@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, or_
 from typing import List, Optional
 from ..database import get_db
 from ..models.client import Client
@@ -13,13 +14,40 @@ router = APIRouter(prefix="/clients", tags=["Clientes"])
 @router.get("/", response_model=List[ClientResponse])
 def list_clients(
     search: Optional[str] = None,
+    limit: int = 30,
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):
     q = db.query(Client).filter(Client.is_active == True)
+
     if search:
-        q = q.filter(Client.name.ilike(f"%{search}%"))
-    return q.order_by(Client.name).all()
+        # Remove pontuação do termo buscado para comparar com código e CNPJ
+        plain = (search
+                 .replace(".", "")
+                 .replace("-", "")
+                 .replace("/", "")
+                 .replace(" ", ""))
+
+        s      = f"%{search}%"
+        plain_s = f"%{plain}%"
+
+        # Strip de pontuação nas colunas via SQL (compatível com SQLite e Oracle)
+        clean_code = func.replace(Client.code, ".", "")
+        clean_cnpj = func.replace(
+                        func.replace(
+                            func.replace(Client.cnpj, ".", ""),
+                        "-", ""),
+                     "/", "")
+
+        q = q.filter(or_(
+            Client.name.ilike(s),
+            Client.code.ilike(s),
+            clean_code.ilike(plain_s),
+            Client.cnpj.ilike(s),
+            clean_cnpj.ilike(plain_s),
+        ))
+
+    return q.order_by(Client.name).limit(limit).all()
 
 
 @router.post("/", response_model=ClientResponse, status_code=status.HTTP_201_CREATED)

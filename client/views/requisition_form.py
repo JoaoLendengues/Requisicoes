@@ -103,16 +103,24 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
 # ── Campo de busca de cliente ─────────────────────────────────────────────────
 class ClientSearchBox(QWidget):
     """
-    Caixa de busca com dropdown em tempo real.
-    Filtra por nome, código ou CPF/CNPJ simultaneamente.
+    Caixa de busca com dropdown em tempo real — filtragem no SERVIDOR.
+    Suporta 100k+ clientes. Debounce de 300 ms para não sobrecarregar a API.
+    Pesquisa por nome, código ou CPF/CNPJ (ignora pontuação).
     """
     client_selected = Signal(object)   # dict do cliente ou None
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
-        self._clients: list[dict] = []
         self._selected: dict | None = None
+        self._threads: list = []
+
+        # Timer de debounce — dispara busca 300 ms após parar de digitar
+        self._debounce = QTimer(self)
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(300)
+        self._debounce.timeout.connect(self._do_search)
+
         self._setup_ui()
 
     def _setup_ui(self):
@@ -129,7 +137,7 @@ class ClientSearchBox(QWidget):
         self.input.installEventFilter(self)
         lay.addWidget(self.input)
 
-        # Dropdown flutuante — fica acima dos outros widgets
+        # Dropdown flutuante
         self._drop = QListWidget()
         self._drop.setWindowFlags(
             Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
@@ -147,44 +155,57 @@ class ClientSearchBox(QWidget):
         self._drop.installEventFilter(self)
         self._drop.hide()
 
-    # ── Filtragem ─────────────────────────────────────────────────────────────
+    # ── Digitação → debounce → busca no servidor ──────────────────────────────
     def _on_text(self, text: str):
-        q = text.strip().lower()
-        # Se já há um cliente selecionado e o texto bate exatamente, não re-abre
         if self._selected:
             expected = f"{self._selected['code']} — {self._selected['name']}"
             if text == expected:
                 return
             self._selected = None
 
-        if not q:
+        if len(text.strip()) < 2:
+            self._debounce.stop()
             self._drop.hide()
             return
 
-        def _strip_punct(s: str) -> str:
-            return s.replace(".", "").replace("-", "").replace("/", "").replace(" ", "")
+        self._debounce.start()
 
-        q_plain = _strip_punct(q)   # "12345678000190" bate "12.345.678/0001-90"
-        matches = [
-            c for c in self._clients
-            if q in (c.get("name") or "").lower()
-            or q_plain in _strip_punct((c.get("code") or "").lower())
-            or q_plain in _strip_punct((c.get("cnpj") or "").lower())
-        ]
-
-        if not matches:
-            self._drop.hide()
+    def _do_search(self):
+        term = self.input.text().strip()
+        if len(term) < 2:
             return
 
+        # Feedback visual imediato
         self._drop.clear()
-        for c in matches[:30]:
-            cnpj = c.get("cnpj") or ""
-            label = f"{c['code']}  —  {c['name']}"
-            if cnpj:
-                label += f"    ({cnpj})"
-            item = QListWidgetItem(label)
-            item.setData(Qt.ItemDataRole.UserRole, c)
-            self._drop.addItem(item)
+        loading = QListWidgetItem("  🔍  Buscando...")
+        loading.setFlags(Qt.ItemFlag.NoItemFlags)
+        self._drop.addItem(loading)
+        self._reposition()
+        self._drop.show()
+
+        t, w = _run_in_thread(
+            api.list_clients, term,
+            on_result=self._on_results,
+            on_error=lambda _: self._drop.hide(),
+        )
+        self._threads.append((t, w))
+
+    def _on_results(self, clients: list):
+        self._drop.clear()
+        if not clients:
+            it = QListWidgetItem("  Nenhum cliente encontrado")
+            it.setFlags(Qt.ItemFlag.NoItemFlags)
+            it.setForeground(QColor(theme.TEXT_LIGHT))
+            self._drop.addItem(it)
+        else:
+            for c in clients:
+                cnpj = c.get("cnpj") or ""
+                label = f"{c['code']}  —  {c['name']}"
+                if cnpj:
+                    label += f"    ({cnpj})"
+                it = QListWidgetItem(label)
+                it.setData(Qt.ItemDataRole.UserRole, c)
+                self._drop.addItem(it)
 
         self._reposition()
         self._drop.show()
@@ -192,7 +213,7 @@ class ClientSearchBox(QWidget):
     def _reposition(self):
         s = self.scale
         gpos = self.input.mapToGlobal(self.input.rect().bottomLeft())
-        rows = min(self._drop.count(), 8)
+        rows = min(max(self._drop.count(), 1), 8)
         row_h = max(30, int(34 * s))
         self._drop.move(gpos)
         self._drop.resize(self.input.width(), rows * row_h + 6)
@@ -200,6 +221,8 @@ class ClientSearchBox(QWidget):
     # ── Seleção ───────────────────────────────────────────────────────────────
     def _pick(self, item: QListWidgetItem):
         client = item.data(Qt.ItemDataRole.UserRole)
+        if not client:
+            return
         self._selected = client
         self.input.blockSignals(True)
         self.input.setText(f"{client['code']} — {client['name']}")
@@ -238,14 +261,14 @@ class ClientSearchBox(QWidget):
                     return True
 
         if obj is self.input and event.type() == QEvent.Type.FocusOut:
-            # Pequeno delay para que o clique no item registre antes de fechar
             QTimer.singleShot(180, self._drop.hide)
 
         return super().eventFilter(obj, event)
 
     # ── API pública ───────────────────────────────────────────────────────────
     def set_clients(self, clients: list):
-        self._clients = clients
+        """Mantido por compatibilidade — não é mais necessário."""
+        pass
 
     def get_client_id(self) -> int | None:
         return self._selected["id"] if self._selected else None
@@ -254,13 +277,21 @@ class ClientSearchBox(QWidget):
         return self._selected
 
     def set_client_by_id(self, client_id: int):
-        """Seleciona um cliente pelo ID (carregamento de requisição existente)."""
-        c = next((x for x in self._clients if x["id"] == client_id), None)
-        if c:
-            self._selected = c
-            self.input.blockSignals(True)
-            self.input.setText(f"{c['code']} — {c['name']}")
-            self.input.blockSignals(False)
+        """Carrega o cliente pelo ID ao abrir uma requisição existente."""
+        t, w = _run_in_thread(
+            api.get_client, client_id,
+            on_result=self._on_client_loaded_by_id,
+            on_error=lambda _: None,
+        )
+        self._threads.append((t, w))
+
+    def _on_client_loaded_by_id(self, client: dict):
+        if not client:
+            return
+        self._selected = client
+        self.input.blockSignals(True)
+        self.input.setText(f"{client['code']} — {client['name']}")
+        self.input.blockSignals(False)
 
     def clear(self):
         self._selected = None

@@ -70,9 +70,11 @@ def deactivate_user(user_id: int):
 
 
 # ── Clientes ──────────────────────────────────────────────────────────────────
-def list_clients(search: str = "") -> list:
+def list_clients(search: str = "", limit: int = 30) -> list:
     with _cli() as c:
-        params = {"search": search} if search else {}
+        params: dict = {"limit": limit}
+        if search:
+            params["search"] = search
         return _check(c.get("/clients/", params=params))
 
 
