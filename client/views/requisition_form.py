@@ -161,10 +161,11 @@ class ClientSearchBox(QWidget):
             self._drop.hide()
             return
 
+        q_no_dot = q.replace(".", "")   # permite buscar "1001" e encontrar "1.001"
         matches = [
             c for c in self._clients
             if q in (c.get("name") or "").lower()
-            or q in (c.get("code") or "").lower()
+            or q_no_dot in (c.get("code") or "").replace(".", "").lower()
             or q in (c.get("cnpj") or "").lower()
         ]
 
