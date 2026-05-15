@@ -52,7 +52,7 @@ class HistoryView(QWidget):
         layout.setSpacing(max(10,int(12*s)))
 
         # Título
-        title = QLabel("HISTÓRICO DE REQUISIÇÕES")
+        title = QLabel("HISTÓRICO / BUSCA DE REQUISIÇÕES")
         title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(12,int(15*s))}pt; font-weight:bold;"
         )
@@ -69,7 +69,7 @@ class HistoryView(QWidget):
         self.combo_status.setStyleSheet(theme.input_style(s))
 
         self.input_search = QLineEdit()
-        self.input_search.setPlaceholderText("Buscar por nº PED...")
+        self.input_search.setPlaceholderText("Buscar por nº PED, cliente ou obra...")
         self.input_search.setFixedHeight(max(30,int(34*s)))
         self.input_search.setStyleSheet(theme.input_style(s))
 

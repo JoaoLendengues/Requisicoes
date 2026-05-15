@@ -12,15 +12,13 @@ LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
 
 NAV_ITEMS = [
     ("nova",        "📋",  "NOVA REQUISIÇÃO"),
-    ("historico",   "🕐",  "HISTÓRICO"),
-    ("buscar",      "🔍",  "BUSCAR PEDIDO"),
+    ("historico",   "🕐",  "HISTÓRICO / BUSCA"),
     ("dashboard",   "📊",  "DASHBOARD"),
     ("config",      "⚙️",  "CONFIGURAÇÕES"),
 ]
 
 # Ações (não mudam de view, disparam sinais)
 ACTION_ITEMS = [
-    ("salvar",      "💾",  "SALVAR"),
     ("pdf",         "📄",  "GERAR PDF"),
     ("whatsapp",    "💬",  "ENVIAR WHATSAPP"),
 ]

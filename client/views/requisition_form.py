@@ -8,7 +8,7 @@ from datetime import date, datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
-    QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox,
+    QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
     QGraphicsDropShadowEffect, QSizePolicy,
     QListWidget, QListWidgetItem,
 )
@@ -301,9 +301,59 @@ class ClientSearchBox(QWidget):
         self._drop.hide()
 
 
+# ── Dialog do editor de desenho ───────────────────────────────────────────────
+class CanvasDialog(QDialog):
+    """Janela modal com o editor de desenho técnico."""
+
+    def __init__(self, json_data: str, scale: float, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Editor de Desenho")
+        self.setModal(True)
+        self.setStyleSheet(f"background:{theme.CONTENT_BG};")
+
+        # Tamanho: 90% da tela disponível
+        from PySide6.QtWidgets import QApplication
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.resize(int(screen.width() * 0.90), int(screen.height() * 0.88))
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        self.canvas = DrawingCanvas(scale)
+        layout.addWidget(self.canvas, 1)
+
+        # Botões inferiores
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        btn_cancel = QPushButton("✕  Descartar alterações")
+        btn_cancel.setFixedHeight(max(34, int(38 * scale)))
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(scale))
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_ok = QPushButton("✔  Salvar desenho e fechar")
+        btn_ok.setFixedHeight(max(34, int(38 * scale)))
+        btn_ok.setStyleSheet(theme.primary_btn_style(scale))
+        btn_ok.clicked.connect(self.accept)
+
+        btn_row.addWidget(btn_cancel)
+        btn_row.addSpacing(8)
+        btn_row.addWidget(btn_ok)
+        layout.addLayout(btn_row)
+
+        # Carrega dados existentes
+        if json_data and json_data not in ("{}", ""):
+            self.canvas.from_json(json_data)
+
+    def get_json(self) -> str:
+        return self.canvas.to_json()
+
+
 # ── View principal ────────────────────────────────────────────────────────────
 class RequisitionForm(QWidget):
-    saved    = Signal(dict)
+    saved           = Signal(dict)
+    save_requested  = Signal()          # emitido pelo botão Salvar do formulário
     req_id: int | None = None
 
     def __init__(self, scale: float = 1.0, parent=None):
@@ -311,6 +361,8 @@ class RequisitionForm(QWidget):
         self.scale = scale
         self._clients: list[dict] = []
         self._threads: list = []
+        self._canvas_json: str = "{}"   # armazena o JSON do desenho
+        self.canvas = DrawingCanvas(scale)  # instância oculta — usada para to_json()
         self._setup_ui()
         self._load_clients()
 
@@ -341,8 +393,21 @@ class RequisitionForm(QWidget):
         layout.addWidget(self._build_header())
         layout.addWidget(self._build_info_bar())
         layout.addWidget(self._build_client_section())
-        layout.addWidget(self._build_items_and_canvas())
+        layout.addWidget(self._build_items_section())
         layout.addWidget(self._build_bottom_section())
+
+        # ── Botão Salvar ──────────────────────────────────────────────────────
+        s = self.scale
+        save_row = QHBoxLayout()
+        save_row.addStretch()
+        btn_save = QPushButton("💾   SALVAR REQUISIÇÃO")
+        btn_save.setFixedHeight(max(42, int(48 * s)))
+        btn_save.setMinimumWidth(max(220, int(260 * s)))
+        btn_save.setStyleSheet(theme.primary_btn_style(s))
+        btn_save.clicked.connect(self.save_requested.emit)
+        save_row.addWidget(btn_save)
+        layout.addLayout(save_row)
+
         layout.addStretch()
 
     # ── Cabeçalho ─────────────────────────────────────────────────────────────
@@ -528,33 +593,36 @@ class RequisitionForm(QWidget):
         layout.setColumnStretch(1, 2)
         return card
 
-    # ── Itens + Canvas ────────────────────────────────────────────────────────
-    def _build_items_and_canvas(self) -> QWidget:
+    # ── Itens (largura total) ─────────────────────────────────────────────────
+    def _build_items_section(self) -> QFrame:
         s = self.scale
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setStyleSheet(f"QSplitter::handle {{ background:{theme.BORDER_COLOR}; width:4px; }}")
-
-        # Tabela de itens
         items_card = _make_card()
         items_layout = QVBoxLayout(items_card)
-        items_layout.setContentsMargins(max(10,int(12*s)), max(10,int(12*s)),
-                                         max(10,int(12*s)), max(10,int(12*s)))
+        items_layout.setContentsMargins(max(10, int(12*s)), max(10, int(12*s)),
+                                         max(10, int(12*s)), max(10, int(12*s)))
+        items_layout.setSpacing(max(8, int(10*s)))
+
+        # Cabeçalho com botão para abrir o editor
+        header_row = QHBoxLayout()
+        lbl_items = QLabel("ITENS DA REQUISIÇÃO")
+        lbl_items.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt;"
+            f"font-weight:bold; border:none;"
+        )
+        header_row.addWidget(lbl_items)
+        header_row.addStretch()
+
+        btn_canvas = QPushButton("📐   Abrir Editor de Desenho")
+        btn_canvas.setFixedHeight(max(28, int(32*s)))
+        btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
+        btn_canvas.clicked.connect(self._open_canvas_dialog)
+        header_row.addWidget(btn_canvas)
+        items_layout.addLayout(header_row)
+
         self.item_table = ItemTable(s)
         self.item_table.weight_changed.connect(self._on_weight_changed)
         items_layout.addWidget(self.item_table)
-        splitter.addWidget(items_card)
-
-        # Canvas
-        canvas_card = _make_card()
-        canvas_layout = QVBoxLayout(canvas_card)
-        canvas_layout.setContentsMargins(max(10,int(12*s)), max(10,int(12*s)),
-                                          max(10,int(12*s)), max(10,int(12*s)))
-        self.canvas = DrawingCanvas(s)
-        canvas_layout.addWidget(self.canvas)
-        splitter.addWidget(canvas_card)
-
-        splitter.setSizes([500, 500])
-        return splitter
+        return items_card
 
     # ── Rodapé: Observação + Assinatura + QR ─────────────────────────────────
     def _build_bottom_section(self) -> QFrame:
@@ -644,6 +712,14 @@ class RequisitionForm(QWidget):
         except Exception:
             pass
 
+    # ── Editor de desenho (modal) ─────────────────────────────────────────────
+    def _open_canvas_dialog(self):
+        dlg = CanvasDialog(self._canvas_json, self.scale, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._canvas_json = dlg.get_json()
+            # Sincroniza a instância oculta para que to_json() no MainWindow funcione
+            self.canvas.from_json(self._canvas_json)
+
     # ── Clientes ──────────────────────────────────────────────────────────────
     def _load_clients(self):
         t, w = _run_in_thread(api.list_clients,
@@ -716,10 +792,13 @@ class RequisitionForm(QWidget):
         # Itens
         self.item_table.set_items(data.get("items", []))
 
-        # Canvas
+        # Canvas — armazena JSON; será carregado no dialog ao abrir
         canvas_data = data.get("canvas")
         if canvas_data and canvas_data.get("json_data"):
-            self.canvas.from_json(canvas_data["json_data"])
+            self._canvas_json = canvas_data["json_data"]
+            self.canvas.from_json(self._canvas_json)
+        else:
+            self._canvas_json = "{}"
 
     def reset(self):
         """Limpa o formulário para nova requisição."""
@@ -736,5 +815,6 @@ class RequisitionForm(QWidget):
         self.status_badge.set_status("rascunho")
         self.lbl_ped_num.setText("#000000")
         self.item_table.set_items([])
+        self._canvas_json = "{}"
         self.canvas._clear()
         self.lbl_peso_header.setText("0,00")

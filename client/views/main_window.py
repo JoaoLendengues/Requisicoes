@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.settings_view)   # 3
 
         self.history_view.open_requisition.connect(self._open_requisition)
+        self.form_view.save_requested.connect(self._save_requisition)
 
         # Dashboard só para gerente/admin
         if not session.is_manager_or_admin:
@@ -104,7 +105,6 @@ class MainWindow(QMainWindow):
         mapping = {
             "nova":       PAGE_FORM,
             "historico":  PAGE_HISTORY,
-            "buscar":     PAGE_HISTORY,
             "dashboard":  PAGE_DASHBOARD,
             "config":     PAGE_SETTINGS,
         }
@@ -127,9 +127,7 @@ class MainWindow(QMainWindow):
 
     # ── Ações do formulário ───────────────────────────────────────────────────
     def _on_action(self, key: str):
-        if key == "salvar":
-            self._save_requisition()
-        elif key == "pdf":
+        if key == "pdf":
             QMessageBox.information(self, "Gerar PDF",
                                     "Geração de PDF será implementada na Fase 4.")
         elif key == "whatsapp":
