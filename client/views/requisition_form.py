@@ -161,12 +161,15 @@ class ClientSearchBox(QWidget):
             self._drop.hide()
             return
 
-        q_no_dot = q.replace(".", "")   # permite buscar "1001" e encontrar "1.001"
+        def _strip_punct(s: str) -> str:
+            return s.replace(".", "").replace("-", "").replace("/", "").replace(" ", "")
+
+        q_plain = _strip_punct(q)   # "12345678000190" bate "12.345.678/0001-90"
         matches = [
             c for c in self._clients
             if q in (c.get("name") or "").lower()
-            or q_no_dot in (c.get("code") or "").replace(".", "").lower()
-            or q in (c.get("cnpj") or "").lower()
+            or q_plain in _strip_punct((c.get("code") or "").lower())
+            or q_plain in _strip_punct((c.get("cnpj") or "").lower())
         ]
 
         if not matches:
