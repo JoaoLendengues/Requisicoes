@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QStackedWidget, QLabel, QStatusBar, QMessageBox, QFrame,
 )
-from PySide6.QtCore import Qt, QThread, QObject, Signal
+from PySide6.QtCore import Qt, QThread, QObject, Signal, QTimer
 from PySide6.QtGui import QFont
 
 from ..core import theme
@@ -175,12 +175,12 @@ class MainWindow(QMainWindow):
         self._threads.append((t, w))
 
     def _show_saved(self):
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Requisição Salva")
-        msg.setIcon(QMessageBox.Icon.Information)
-        msg.setText("✅  Requisição salva com sucesso!")
-        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-        msg.exec()
+        # Garante execução na thread principal (callback vem de worker thread)
+        QTimer.singleShot(0, self._show_saved_dialog)
+
+    def _show_saved_dialog(self):
+        QMessageBox.information(self, "Requisição Salva",
+                                "✅  Requisição salva com sucesso!")
 
     def _on_save_error(self, msg: str):
         QMessageBox.critical(self, "Erro ao salvar", msg)
