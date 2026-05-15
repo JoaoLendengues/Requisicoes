@@ -24,7 +24,7 @@ class ResolutionManager:
         self._geo          = screen.availableGeometry()
         self._auto_scale   = self._logical_dpi / 96.0
         self._user_scale   = self._load_setting("font_scale")
-        self._server_url   = self._load_setting("server_url") or "http://localhost:8000"
+        self._server_url   = self._load_setting("server_url") or "http://10.1.1.151:5000"
         self._maximized    = self._load_setting("maximized", True)
         self._ready = True
 
