@@ -12,8 +12,8 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect, QSizePolicy,
     QListWidget, QListWidgetItem,
 )
-from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer
-from PySide6.QtGui import QPixmap, QColor, QFont
+from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression
+from PySide6.QtGui import QPixmap, QColor, QFont, QRegularExpressionValidator
 
 try:
     import qrcode
@@ -507,6 +507,10 @@ class RequisitionForm(QWidget):
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:5px; padding:2px 6px;"
             f"background:{theme.INPUT_BG};"
         )
+        # Apenas dígitos permitidos
+        self.input_ped.setValidator(
+            QRegularExpressionValidator(QRegularExpression(r"\d*"))
+        )
         self.input_ped.textChanged.connect(
             lambda t: self.lbl_ped_num.setText(f"#{t.zfill(6)}" if t else "#000000")
         )
@@ -564,12 +568,13 @@ class RequisitionForm(QWidget):
         self.chk_retirada.toggled.connect(_on_retirada)
         self.chk_entrega.toggled.connect(_on_entrega)
 
-        # WhatsApp
-        self.input_whatsapp = QLineEdit()
-        self.input_whatsapp.setPlaceholderText("(61) 99999-9999")
-        self.input_whatsapp.setFixedHeight(max(28,int(32*s)))
-        self.input_whatsapp.setStyleSheet(theme.input_style(s))
-        add_field("💬", "WHATSAPP", self.input_whatsapp)
+        # WhatsApp do vendedor (somente leitura — vem da sessão)
+        self.lbl_whatsapp = QLabel(session.whatsapp or "—")
+        self.lbl_whatsapp.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt;"
+            f"font-weight:bold; border:none;"
+        )
+        add_field("💬", "WHATSAPP", self.lbl_whatsapp)
 
         layout.addStretch()
 
@@ -751,15 +756,14 @@ class RequisitionForm(QWidget):
 
     # ── WhatsApp do cliente ───────────────────────────────────────────────────
     def _send_whatsapp_client(self):
-        """Abre o WhatsApp Web com o número do cliente preenchido no formulário."""
+        """Abre o WhatsApp Web com o telefone do cliente (campo FONE)."""
         import re, webbrowser
-        raw = self.input_whatsapp.text().strip()
+        raw = self.input_fone.text().strip()
         digits = re.sub(r"\D", "", raw)
         if not digits:
             QMessageBox.warning(self, "WhatsApp",
-                                "Preencha o campo WhatsApp antes de enviar.")
+                                "Preencha o campo FONE do cliente antes de enviar.")
             return
-        # Adiciona DDI 55 se não tiver
         if not digits.startswith("55"):
             digits = "55" + digits
         webbrowser.open(f"https://wa.me/{digits}")
