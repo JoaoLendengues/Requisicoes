@@ -50,7 +50,6 @@ class MainWindow(QMainWindow):
         # Sidebar
         self.sidebar = Sidebar(self.scale)
         self.sidebar.nav_clicked.connect(self._on_nav)
-        self.sidebar.action_clicked.connect(self._on_action)
         self.sidebar.logout_clicked.connect(self._logout)
         root.addWidget(self.sidebar)
 
@@ -124,15 +123,6 @@ class MainWindow(QMainWindow):
             return
 
         self.stack.setCurrentIndex(page)
-
-    # ── Ações do formulário ───────────────────────────────────────────────────
-    def _on_action(self, key: str):
-        if key == "pdf":
-            QMessageBox.information(self, "Gerar PDF",
-                                    "Geração de PDF será implementada na Fase 4.")
-        elif key == "whatsapp":
-            QMessageBox.information(self, "WhatsApp",
-                                    "Envio via WhatsApp será implementado na Fase 5.")
 
     def _save_requisition(self):
         if self.stack.currentIndex() != PAGE_FORM:

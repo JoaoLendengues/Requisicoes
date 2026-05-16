@@ -420,10 +420,20 @@ class RequisitionForm(QWidget):
         layout.addWidget(self._build_items_section())
         layout.addWidget(self._build_bottom_section())
 
-        # ── Botão Salvar ──────────────────────────────────────────────────────
+        # ── Botões Salvar + WhatsApp ──────────────────────────────────────────
         s = self.scale
         save_row = QHBoxLayout()
         save_row.addStretch()
+
+        btn_whatsapp = QPushButton("💬   ENVIAR WHATSAPP")
+        btn_whatsapp.setFixedHeight(max(42, int(48 * s)))
+        btn_whatsapp.setMinimumWidth(max(180, int(210 * s)))
+        btn_whatsapp.setStyleSheet(theme.secondary_btn_style(s))
+        btn_whatsapp.clicked.connect(self._send_whatsapp_client)
+        save_row.addWidget(btn_whatsapp)
+
+        save_row.addSpacing(max(8, int(10 * s)))
+
         btn_save = QPushButton("💾   SALVAR REQUISIÇÃO")
         btn_save.setFixedHeight(max(42, int(48 * s)))
         btn_save.setMinimumWidth(max(220, int(260 * s)))
@@ -735,6 +745,21 @@ class RequisitionForm(QWidget):
             self.qr_label.setPixmap(pix)
         except Exception:
             pass
+
+    # ── WhatsApp do cliente ───────────────────────────────────────────────────
+    def _send_whatsapp_client(self):
+        """Abre o WhatsApp Web com o número do cliente preenchido no formulário."""
+        import re, webbrowser
+        raw = self.input_whatsapp.text().strip()
+        digits = re.sub(r"\D", "", raw)
+        if not digits:
+            QMessageBox.warning(self, "WhatsApp",
+                                "Preencha o campo WhatsApp antes de enviar.")
+            return
+        # Adiciona DDI 55 se não tiver
+        if not digits.startswith("55"):
+            digits = "55" + digits
+        webbrowser.open(f"https://wa.me/{digits}")
 
     # ── Editor de desenho (modal) ─────────────────────────────────────────────
     def _open_canvas_dialog(self):

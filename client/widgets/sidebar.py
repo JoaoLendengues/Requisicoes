@@ -12,21 +12,14 @@ LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
 
 NAV_ITEMS = [
     ("nova",        "📋",  "NOVA REQUISIÇÃO"),
-    ("historico",   "🕐",  "HISTÓRICO / BUSCA"),
     ("dashboard",   "📊",  "DASHBOARD"),
+    ("historico",   "🕐",  "HISTÓRICO / BUSCA"),
     ("config",      "⚙️",  "CONFIGURAÇÕES"),
-]
-
-# Ações (não mudam de view, disparam sinais)
-ACTION_ITEMS = [
-    ("pdf",         "📄",  "GERAR PDF"),
-    ("whatsapp",    "💬",  "ENVIAR WHATSAPP"),
 ]
 
 
 class Sidebar(QWidget):
-    nav_clicked    = Signal(str)    # ex: "nova", "historico" ...
-    action_clicked = Signal(str)    # ex: "salvar", "pdf", "whatsapp"
+    nav_clicked    = Signal(str)
     logout_clicked = Signal()
 
     def __init__(self, scale: float = 1.0, parent=None):
@@ -65,14 +58,6 @@ class Sidebar(QWidget):
         layout.addWidget(logo_container)
 
         # ── Separador ────────────────────────────────────────────────────────
-        layout.addWidget(self._separator())
-
-        # ── Ações do formulário ───────────────────────────────────────────────
-        for key, icon, label in ACTION_ITEMS:
-            btn = self._make_btn(icon, label, action=True)
-            btn.clicked.connect(lambda checked=False, k=key: self.action_clicked.emit(k))
-            layout.addWidget(btn)
-
         layout.addWidget(self._separator())
 
         # ── Navegação ─────────────────────────────────────────────────────────
