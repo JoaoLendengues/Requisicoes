@@ -13,10 +13,10 @@ def _migrate():
     """Aplica migrações de colunas adicionadas após criação inicial do banco."""
     stmts = [
         "ALTER TABLE requisitions ADD COLUMN obs TEXT",
-        # Migração de status antigos → novos 3 valores
-        "UPDATE requisitions SET status = 'em_andamento' WHERE status IN "
-        "('rascunho','emitida','recebida_producao','pronta','em_rota','aguardando_retirada','concluida')",
-        "UPDATE requisitions SET status = 'em_producao' WHERE status = 'em_fabricacao'",
+        # Migração de status — cobre tanto valores minúsculos quanto nomes em maiúsculo
+        "UPDATE requisitions SET status = 'em_andamento' WHERE UPPER(status) IN "
+        "('RASCUNHO','EMITIDA','RECEBIDA_PRODUCAO','PRONTA','EM_ROTA','AGUARDANDO_RETIRADA','CONCLUIDA')",
+        "UPDATE requisitions SET status = 'em_producao' WHERE UPPER(status) = 'EM_FABRICACAO'",
     ]
     with engine.begin() as conn:
         for s in stmts:
