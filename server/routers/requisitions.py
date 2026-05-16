@@ -19,6 +19,8 @@ _LOAD_OPTS = [
     selectinload(Requisition.items),
     selectinload(Requisition.status_history),
     selectinload(Requisition.canvas),
+    selectinload(Requisition.client),
+    selectinload(Requisition.vendor),
 ]
 
 
@@ -76,7 +78,7 @@ def create_requisition(
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=None,
-        new_status=RequisitionStatus.RASCUNHO,
+        new_status=RequisitionStatus.EM_ANDAMENTO,
         changed_by_id=current_user.id,
     ))
     db.commit()
@@ -98,10 +100,10 @@ def update_requisition(
     _: User = Depends(require_creator),
 ):
     req = _get_or_404(db, req_id)
-    if req.status not in (RequisitionStatus.RASCUNHO, RequisitionStatus.EMITIDA):
+    if req.status == RequisitionStatus.CANCELADA:
         raise HTTPException(
             status_code=400,
-            detail="Requisição em andamento de fabricação não pode ser editada",
+            detail="Requisição cancelada não pode ser editada",
         )
 
     for k, v in data.model_dump(exclude_unset=True, exclude={"items"}).items():
@@ -128,9 +130,6 @@ def update_status(
     req = _get_or_404(db, req_id)
     old_status = req.status
     req.status = data.status
-
-    if data.status == RequisitionStatus.EMITIDA and not req.finalized_at:
-        req.finalized_at = datetime.utcnow()
 
     db.add(StatusHistory(
         requisition_id=req.id,

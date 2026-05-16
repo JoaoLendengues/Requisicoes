@@ -142,9 +142,9 @@ class HistoryView(QWidget):
             self.table.insertRow(row)
             vals = [
                 str(req.get("ped_number", "")),
-                str(req.get("client_id", "")),
+                req.get("client_name") or str(req.get("client_id", "")),
                 req.get("obra") or "—",
-                str(req.get("vendor_id", "")),
+                req.get("vendor_name") or str(req.get("vendor_id", "")),
                 str(req.get("emission_date", ""))[:10],
                 req.get("status", ""),
                 f"{req.get('weight', 0):.2f}",
