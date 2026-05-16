@@ -6,17 +6,7 @@ Registro de melhorias e ajustes a serem aplicados no decorrer do desenvolvimento
 
 ## Pendentes
 
-### 1. Status de Produção
-Ajustar os status disponíveis no fluxo de produção para:
-- **Em Andamento**
-- **Cancelada**
-- **Em Produção**
-
-> Verificar impacto no histórico de status e nos filtros da listagem.
-
----
-
-### 2. Calculadora de Peso
+### 1. Calculadora de Peso
 Adicionar uma calculadora de peso acessível dentro do formulário de requisição.
 
 - O resultado **não alimenta nenhum campo** da requisição — é apenas para controle pessoal dos vendedores.
@@ -24,7 +14,7 @@ Adicionar uma calculadora de peso acessível dentro do formulário de requisiç�
 
 ---
 
-### 3. Retirada × Entrega — Comportamento Exclusivo
+### 2. Retirada × Entrega — Comportamento Exclusivo
 Na tela de Nova Requisição, os botões/checkboxes de **Retirada** e **Entrega** devem se comportar de forma mutuamente exclusiva:
 
 - Ao marcar **Retirada → Sim**, **Entrega** muda automaticamente para **Não**.
@@ -32,7 +22,7 @@ Na tela de Nova Requisição, os botões/checkboxes de **Retirada** e **Entrega*
 
 ---
 
-### 4. Mais Opções de Personalização (Configurações)
+### 3. Mais Opções de Personalização (Configurações)
 Pensar e implementar novas opções na tela de Configurações. Sugestões iniciais:
 
 - Tema claro / escuro
@@ -50,3 +40,8 @@ Pensar e implementar novas opções na tela de Configurações. Sugestões inici
 | 2026-05-16 | Campo de Observações persistido no banco e no formulário |
 | 2026-05-16 | Fix thread safety no salvamento (callbacks na main thread) |
 | 2026-05-16 | Pasta de PDFs configurável nas Configurações |
+| 2026-05-16 | Status simplificados: Em Andamento / Em Produção / Cancelada |
+| 2026-05-16 | Histórico exibe nome do cliente e vendedor (em vez dos IDs) |
+| 2026-05-16 | Sidebar reorganizada: Nova Req → Dashboard → Histórico → Config |
+| 2026-05-16 | Botão ENVIAR WHATSAPP movido para dentro do formulário |
+| 2026-05-16 | Botão GERAR PDF removido do sidebar |
