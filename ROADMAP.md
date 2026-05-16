@@ -14,6 +14,50 @@ Adicionar uma calculadora de peso acessível dentro do formulário de requisiç�
 
 ---
 
+### 3. Remover Peso Total da Segunda Grade
+Remover o campo/label **Peso Total** da segunda grade de informações da tela de Nova Requisição.
+
+---
+
+### 4. Remover Peso da Tabela de Itens
+Remover a coluna **Peso** da segunda linha da tabela de itens da requisição.
+
+---
+
+### 5. Bloquear Salvamento sem Número de Pedido
+Não permitir salvar a requisição se o campo **PED** estiver vazio ou igual a zero.
+
+- Exibir aviso claro ao vendedor antes de bloquear o salvamento.
+
+---
+
+### 6. Código do Produto na Tabela de Itens
+Adicionar coluna **Código do Produto** ao lado da coluna **Posição** na tabela de itens.
+
+- O código deve ser puxado da planilha de cadastros (ODS/Excel já importada).
+- Pensar em autocomplete ou lookup pelo código.
+
+---
+
+### 7. QR Code com Número do Vendedor (WhatsApp)
+Gerar QR Code que linka diretamente para o WhatsApp do vendedor logado.
+
+- QR Code deve aparecer na tela de Nova Requisição.
+- Ao escanear, deve abrir conversa no WhatsApp com o número do vendedor.
+
+---
+
+### 8. Botão "Encaminhar para Produção"
+Adicionar botão para encaminhar a requisição para a produção, com seleção de destino:
+
+- **A&R**
+- **Pinheiro Indústria**
+
+- Pensar no fluxo: o status muda para "Em Produção" ao encaminhar?
+- O destino selecionado deve ficar registrado na requisição.
+
+---
+
 ### 2. Mais Opções de Personalização (Configurações)
 Pensar e implementar novas opções na tela de Configurações. Sugestões iniciais:
 
