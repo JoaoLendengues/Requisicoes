@@ -58,6 +58,15 @@ Adicionar botão para encaminhar a requisição para a produção, com seleção
 
 ---
 
+### 9. Grade Quadriculada no Editor de Desenho
+Adicionar fundo quadriculado (grid) na área do canvas do Editor de Desenho como referência visual.
+
+- As linhas do grid **não aparecem** no PDF, impressão ou arquivo exportado — são apenas visuais.
+- O grid deve ser desenhado via `drawBackground()` da `QGraphicsScene`, garantindo que não integra os itens serializados.
+- Espaçamento sugerido: 20px entre linhas (ajustável).
+
+---
+
 ### 2. Mais Opções de Personalização (Configurações)
 Pensar e implementar novas opções na tela de Configurações. Sugestões iniciais:
 
