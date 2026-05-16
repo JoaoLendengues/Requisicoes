@@ -478,13 +478,20 @@ class RequisitionForm(QWidget):
         date_col.addWidget(self.lbl_date)
         layout.addLayout(date_col)
 
-        # Vendedor
+        # Vendedor + WhatsApp do vendedor
         vend_col = QVBoxLayout()
         vend_col.setSpacing(2)
         vend_col.addWidget(_field_label("👤  VENDEDOR", s))
         self.lbl_vendor = _value_label(session.user_name.upper(), s)
         vend_col.addWidget(self.lbl_vendor)
         layout.addLayout(vend_col)
+
+        wa_col = QVBoxLayout()
+        wa_col.setSpacing(2)
+        wa_col.addWidget(_field_label("💬  WHATSAPP", s))
+        self.lbl_whatsapp = _value_label(session.whatsapp or "—", s)
+        wa_col.addWidget(self.lbl_whatsapp)
+        layout.addLayout(wa_col)
 
         # Status
         status_col = QVBoxLayout()
@@ -568,13 +575,6 @@ class RequisitionForm(QWidget):
         self.chk_retirada.toggled.connect(_on_retirada)
         self.chk_entrega.toggled.connect(_on_entrega)
 
-        # WhatsApp do vendedor (somente leitura — vem da sessão)
-        self.lbl_whatsapp = QLabel(session.whatsapp or "—")
-        self.lbl_whatsapp.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt;"
-            f"font-weight:bold; border:none;"
-        )
-        add_field("💬", "WHATSAPP", self.lbl_whatsapp)
 
         layout.addStretch()
 
