@@ -1,4 +1,4 @@
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from datetime import datetime, date
 from typing import Optional, List
 from ..models.requisition import RequisitionStatus
@@ -106,20 +106,3 @@ class RequisitionResponse(BaseModel):
     canvas: Optional[CanvasDataResponse] = None
 
     model_config = {"from_attributes": True}
-
-    @model_validator(mode="before")
-    @classmethod
-    def _populate_names(cls, data):
-        """Extrai nome do cliente e do vendedor do relacionamento ORM."""
-        if not isinstance(data, dict):
-            client = getattr(data, "client", None)
-            vendor = getattr(data, "vendor", None)
-            try:
-                data.__dict__["client_name"] = client.name if client else None
-            except Exception:
-                pass
-            try:
-                data.__dict__["vendor_name"] = vendor.name if vendor else None
-            except Exception:
-                pass
-        return data

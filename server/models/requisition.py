@@ -47,6 +47,14 @@ class Requisition(Base):
 
     vendor: Mapped[User] = relationship("User", foreign_keys=[vendor_id])
     client: Mapped[Client] = relationship("Client", back_populates="requisitions")
+
+    @property
+    def client_name(self) -> str | None:
+        return self.client.name if self.client else None
+
+    @property
+    def vendor_name(self) -> str | None:
+        return self.vendor.name if self.vendor else None
     items: Mapped[list[RequisitionItem]] = relationship(
         "RequisitionItem", back_populates="requisition", cascade="all, delete-orphan"
     )
