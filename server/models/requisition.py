@@ -37,7 +37,8 @@ class Requisition(Base):
     weight: Mapped[float] = mapped_column(Float, default=0.0)
 
     status: Mapped[RequisitionStatus] = mapped_column(
-        SAEnum(RequisitionStatus), default=RequisitionStatus.EM_ANDAMENTO
+        SAEnum(RequisitionStatus, values_callable=lambda x: [e.value for e in x]),
+        default=RequisitionStatus.EM_ANDAMENTO,
     )
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
