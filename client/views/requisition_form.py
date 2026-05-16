@@ -480,7 +480,7 @@ class RequisitionForm(QWidget):
         status_col = QVBoxLayout()
         status_col.setSpacing(2)
         status_col.addWidget(_field_label("STATUS", s))
-        self.status_badge = StatusBadge("rascunho", s)
+        self.status_badge = StatusBadge("em_andamento", s)
         status_col.addWidget(self.status_badge)
         layout.addLayout(status_col)
 
@@ -804,7 +804,7 @@ class RequisitionForm(QWidget):
 
         self.chk_retirada.setChecked(data.get("retirada", False))
         self.chk_entrega.setChecked(data.get("entrega", False))
-        self.status_badge.set_status(data.get("status", "rascunho"))
+        self.status_badge.set_status(data.get("status", "em_andamento"))
         self.lbl_ped_num.setText(f"#{str(data.get('ped_number','0')).zfill(6)}")
 
         # Cliente
@@ -832,7 +832,7 @@ class RequisitionForm(QWidget):
         self.chk_retirada.setChecked(False)
         self.chk_entrega.setChecked(False)
         self.client_search.clear()
-        self.status_badge.set_status("rascunho")
+        self.status_badge.set_status("em_andamento")
         self.lbl_ped_num.setText("#000000")
         self.item_table.set_items([])
         self._canvas_json = "{}"

@@ -28,27 +28,15 @@ SUCCESS           = "#22C55E"
 
 # ── Status ────────────────────────────────────────────────────────────────────
 STATUS_COLORS = {
-    "rascunho":            "#6B7280",
-    "emitida":             "#2563EB",
-    "recebida_producao":   "#0EA5E9",
-    "em_fabricacao":       "#F59E0B",
-    "pronta":              "#8B5CF6",
-    "em_rota":             "#14B8A6",
-    "aguardando_retirada": "#EAB308",
-    "concluida":           "#22C55E",
-    "cancelada":           "#EF4444",
+    "em_andamento": "#2563EB",
+    "em_producao":  "#F59E0B",
+    "cancelada":    "#EF4444",
 }
 
 STATUS_LABELS = {
-    "rascunho":            "Rascunho",
-    "emitida":             "Emitida",
-    "recebida_producao":   "Recebida",
-    "em_fabricacao":       "Em Fabricação",
-    "pronta":              "Pronta",
-    "em_rota":             "Em Rota",
-    "aguardando_retirada": "Ag. Retirada",
-    "concluida":           "Concluída",
-    "cancelada":           "Cancelada",
+    "em_andamento": "Em Andamento",
+    "em_producao":  "Em Produção",
+    "cancelada":    "Cancelada",
 }
 
 

@@ -4,7 +4,7 @@ from ..core.theme import STATUS_COLORS, STATUS_LABELS
 
 
 class StatusBadge(QLabel):
-    def __init__(self, status: str = "rascunho", scale: float = 1.0, parent=None):
+    def __init__(self, status: str = "em_andamento", scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)

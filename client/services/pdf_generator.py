@@ -253,11 +253,9 @@ def generate_pdf(req: dict, client: dict | None, obs: str,
     from ..core.session import session as _sess
 
     status_labels = {
-        "rascunho": "Rascunho", "emitida": "Emitida",
-        "recebida_producao": "Recebida p/ Produção",
-        "em_fabricacao": "Em Fabricação", "pronta": "Pronta",
-        "em_rota": "Em Rota", "aguardando_retirada": "Ag. Retirada",
-        "concluida": "Concluída", "cancelada": "Cancelada",
+        "em_andamento": "Em Andamento",
+        "em_producao":  "Em Produção",
+        "cancelada":    "Cancelada",
     }
     status_str = status_labels.get(req.get("status", ""), req.get("status", "—"))
     vendor_str = req.get("vendor_name", "") or _sess.user_name or "—"

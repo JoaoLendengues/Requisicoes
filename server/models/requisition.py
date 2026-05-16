@@ -10,15 +10,9 @@ from ..database import Base
 
 
 class RequisitionStatus(str, enum.Enum):
-    RASCUNHO = "rascunho"
-    EMITIDA = "emitida"
-    RECEBIDA_PRODUCAO = "recebida_producao"
-    EM_FABRICACAO = "em_fabricacao"
-    PRONTA = "pronta"
-    EM_ROTA = "em_rota"
-    AGUARDANDO_RETIRADA = "aguardando_retirada"
-    CONCLUIDA = "concluida"
-    CANCELADA = "cancelada"
+    EM_ANDAMENTO = "em_andamento"
+    EM_PRODUCAO  = "em_producao"
+    CANCELADA    = "cancelada"
 
 
 class Requisition(Base):

@@ -83,10 +83,10 @@ class DashboardView(QWidget):
 
         self._stat_cards: dict[str, QLabel] = {}
         card_defs = [
-            ("total",         theme.PRIMARY,                        "Total de Requisições"),
-            ("em_fabricacao", theme.STATUS_COLORS["em_fabricacao"], "Em Fabricação"),
-            ("concluida",     theme.STATUS_COLORS["concluida"],     "Concluídas"),
-            ("cancelada",     theme.STATUS_COLORS["cancelada"],     "Canceladas"),
+            ("total",         theme.PRIMARY,                       "Total de Requisições"),
+            ("em_andamento",  theme.STATUS_COLORS["em_andamento"], "Em Andamento"),
+            ("em_producao",   theme.STATUS_COLORS["em_producao"],  "Em Produção"),
+            ("cancelada",     theme.STATUS_COLORS["cancelada"],    "Canceladas"),
         ]
 
         for i, (key, color, label) in enumerate(card_defs):
