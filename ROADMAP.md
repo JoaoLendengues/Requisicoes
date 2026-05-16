@@ -14,15 +14,7 @@ Adicionar uma calculadora de peso acessível dentro do formulário de requisiç�
 
 ---
 
-### 2. Retirada × Entrega — Comportamento Exclusivo
-Na tela de Nova Requisição, os botões/checkboxes de **Retirada** e **Entrega** devem se comportar de forma mutuamente exclusiva:
-
-- Ao marcar **Retirada → Sim**, **Entrega** muda automaticamente para **Não**.
-- Ao marcar **Entrega → Sim**, **Retirada** muda automaticamente para **Não**.
-
----
-
-### 3. Mais Opções de Personalização (Configurações)
+### 2. Mais Opções de Personalização (Configurações)
 Pensar e implementar novas opções na tela de Configurações. Sugestões iniciais:
 
 - Tema claro / escuro
@@ -45,3 +37,4 @@ Pensar e implementar novas opções na tela de Configurações. Sugestões inici
 | 2026-05-16 | Sidebar reorganizada: Nova Req → Dashboard → Histórico → Config |
 | 2026-05-16 | Botão ENVIAR WHATSAPP movido para dentro do formulário |
 | 2026-05-16 | Botão GERAR PDF removido do sidebar |
+| 2026-05-16 | Retirada × Entrega mutuamente exclusivos (já estava implementado) |
