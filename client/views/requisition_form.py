@@ -540,26 +540,29 @@ class RequisitionForm(QWidget):
         add_field("📅", "PRAZO DE ENTREGA", self.input_prazo)
 
         # Retirada — mutuamente exclusivo com Entrega
-        self.chk_retirada = QCheckBox("SIM")
-        self.chk_retirada.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
-        )
+        chk_style = f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
+
+        self.chk_retirada = QCheckBox("NÃO")
+        self.chk_retirada.setStyleSheet(chk_style)
         add_field("🚛", "RETIRADA", self.chk_retirada)
 
-        # Entrega — mutuamente exclusivo com Retirada
-        self.chk_entrega = QCheckBox("SIM")
-        self.chk_entrega.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
-        )
+        self.chk_entrega = QCheckBox("NÃO")
+        self.chk_entrega.setStyleSheet(chk_style)
         add_field("🚚", "ENTREGA", self.chk_entrega)
 
-        # Lógica mutuamente exclusiva
-        self.chk_retirada.toggled.connect(
-            lambda checked: self.chk_entrega.setChecked(False) if checked else None
-        )
-        self.chk_entrega.toggled.connect(
-            lambda checked: self.chk_retirada.setChecked(False) if checked else None
-        )
+        # Mutuamente exclusivos + texto dinâmico SIM / NÃO
+        def _on_retirada(checked: bool):
+            self.chk_retirada.setText("SIM" if checked else "NÃO")
+            if checked:
+                self.chk_entrega.setChecked(False)
+
+        def _on_entrega(checked: bool):
+            self.chk_entrega.setText("SIM" if checked else "NÃO")
+            if checked:
+                self.chk_retirada.setChecked(False)
+
+        self.chk_retirada.toggled.connect(_on_retirada)
+        self.chk_entrega.toggled.connect(_on_entrega)
 
         # WhatsApp
         self.input_whatsapp = QLineEdit()
