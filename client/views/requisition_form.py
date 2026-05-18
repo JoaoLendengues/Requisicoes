@@ -842,13 +842,16 @@ class RequisitionForm(QWidget):
         if not destination:
             return
 
+        previous_status = getattr(self.status_badge, "_status", "em_andamento")
+        self.status_badge.set_status("aguardando_recebimento")
+
         thread, worker = _run_in_thread(
             api.update_status,
             self.req_id,
             "aguardando_recebimento",
             _build_production_note(PROD_SEND, destination),
             on_result=lambda req, dest=destination: self._on_sent_to_production(req, dest),
-            on_error=self._on_send_to_production_error,
+            on_error=lambda msg, prev=previous_status: self._on_send_to_production_error(msg, prev),
         )
         self._threads.append((thread, worker))
 
@@ -878,7 +881,8 @@ class RequisitionForm(QWidget):
             f"Requisição enviada para {destination}.",
         )
 
-    def _on_send_to_production_error(self, msg: str):
+    def _on_send_to_production_error(self, msg: str, previous_status: str = "em_andamento"):
+        self.status_badge.set_status(previous_status)
         friendly = msg
         if "aguardando_recebimento" in msg and "Input should be" in msg:
             friendly = (
