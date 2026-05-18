@@ -107,7 +107,8 @@ class MainWindow(QMainWindow):
 
         if key == "nova":
             if not self._confirm_new_requisition():
-                self._highlight_current_page()
+                self.stack.setCurrentIndex(PAGE_FORM)
+                self.sidebar._highlight("nova")
                 return
             self.form_view.reset()
 

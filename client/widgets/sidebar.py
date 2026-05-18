@@ -11,11 +11,11 @@ from ..core.session import session
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
 
 NAV_ITEMS = [
-    ("nova", "NOVA REQUISIÇÃO"),
-    ("dashboard", "DASHBOARD"),
-    ("producao", "PRODUÇÃO"),
-    ("historico", "HISTÓRICO / BUSCA"),
-    ("config", "CONFIGURAÇÕES"),
+    ("nova", "▣", "NOVA REQUISIÇÃO"),
+    ("dashboard", "◫", "DASHBOARD"),
+    ("producao", "⚒", "PRODUÇÃO"),
+    ("historico", "◷", "HISTÓRICO / BUSCA"),
+    ("config", "⚙", "CONFIGURAÇÕES"),
 ]
 
 
@@ -59,8 +59,8 @@ class Sidebar(QWidget):
 
         layout.addWidget(self._separator())
 
-        for key, label in NAV_ITEMS:
-            btn = self._make_btn(label, nav_key=key)
+        for key, icon, label in NAV_ITEMS:
+            btn = self._make_btn(icon, label, nav_key=key)
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
             layout.addWidget(btn)
@@ -68,22 +68,22 @@ class Sidebar(QWidget):
         layout.addStretch()
         layout.addWidget(self._separator())
 
-        self.user_label = QLabel(f"USUÁRIO: {session.user_name}")
+        self.user_label = QLabel(f"◉ USUÁRIO: {session.user_name}")
         self.user_label.setStyleSheet(
             f"color:#94A3B8; font-size:{max(8, int(9 * self.scale))}pt; padding:8px 16px;"
         )
         self.user_label.setWordWrap(True)
         layout.addWidget(self.user_label)
 
-        btn_sair = self._make_btn("SAIR")
+        btn_sair = self._make_btn("↩", "SAIR")
         btn_sair.clicked.connect(self.logout_clicked.emit)
         layout.addWidget(btn_sair)
         layout.addSpacing(8)
 
         self._highlight(self._active)
 
-    def _make_btn(self, label: str, nav_key: str = "") -> QPushButton:
-        btn = QPushButton(f"  {label}")
+    def _make_btn(self, icon: str, label: str, nav_key: str = "") -> QPushButton:
+        btn = QPushButton(f"  {icon}  {label}")
         btn.setCheckable(bool(nav_key))
         height = max(38, int(44 * self.scale))
         font_size = max(8, int(10 * self.scale))
@@ -121,7 +121,7 @@ class Sidebar(QWidget):
             btn.setChecked(nav_key == key)
 
     def refresh_user(self):
-        self.user_label.setText(f"USUÁRIO: {session.user_name}")
+        self.user_label.setText(f"◉ USUÁRIO: {session.user_name}")
 
     def set_actions_visible(self, visible: bool):
         pass

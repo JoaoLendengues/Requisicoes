@@ -89,7 +89,7 @@ class SettingsView(QWidget):
                                   max(12,int(16*s)), max(12,int(16*s)))
         outer.setSpacing(max(10,int(14*s)))
 
-        title = QLabel("CONFIGURAÇÕES")
+        title = QLabel("⚙ CONFIGURAÇÕES")
         title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
         )
@@ -110,7 +110,7 @@ class SettingsView(QWidget):
                                    max(16,int(24*s)), max(16,int(20*s)))
         layout.setSpacing(max(10,int(14*s)))
 
-        layout.addWidget(_section("Conexão com o Servidor", s))
+        layout.addWidget(_section("⌁ Conexão com o Servidor", s))
         layout.addWidget(_separator())
 
         grid = QGridLayout()
@@ -134,7 +134,7 @@ class SettingsView(QWidget):
         grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
         layout.addLayout(grid)
 
-        layout.addWidget(_section("Aparência", s))
+        layout.addWidget(_section("◫ Aparência", s))
         layout.addWidget(_separator())
 
         scale_row = QHBoxLayout()
@@ -167,7 +167,7 @@ class SettingsView(QWidget):
         )
         layout.addWidget(screen_info)
 
-        layout.addWidget(_section("PDF Automático", s))
+        layout.addWidget(_section("▣ PDF Automático", s))
         layout.addWidget(_separator())
 
         layout.addWidget(self._lbl(
@@ -195,7 +195,7 @@ class SettingsView(QWidget):
         self._create_import_section(
             layout=layout,
             kind="clients",
-            title="Importação de Clientes (ODS/Excel)",
+            title="⇪ Importação de Clientes (ODS/Excel)",
             description=(
                 "Planilha com colunas: Código, Nome, CPF/CNPJ "
                 "(novos clientes são criados; existentes são atualizados)."
@@ -209,7 +209,7 @@ class SettingsView(QWidget):
         self._create_import_section(
             layout=layout,
             kind="products",
-            title="Importação de Produtos (ODS/Excel)",
+            title="⇪ Importação de Produtos (ODS/Excel)",
             description=(
                 "Planilha com colunas como Código e Nome/Descrição. "
                 "Os produtos são importados em lote e ficam disponíveis para lookup na requisição."
@@ -219,7 +219,7 @@ class SettingsView(QWidget):
         )
 
         layout.addSpacing(4)
-        btn_save = QPushButton("Salvar configurações")
+        btn_save = QPushButton("✦ Salvar configurações")
         btn_save.setFixedHeight(max(36,int(42*s)))
         btn_save.setStyleSheet(theme.primary_btn_style(s))
         btn_save.clicked.connect(self._save)
