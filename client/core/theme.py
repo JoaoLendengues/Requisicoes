@@ -29,12 +29,14 @@ SUCCESS           = "#22C55E"
 # ── Status ────────────────────────────────────────────────────────────────────
 STATUS_COLORS = {
     "em_andamento": "#2563EB",
+    "aguardando_recebimento": "#EAB308",
     "em_producao":  "#F59E0B",
     "cancelada":    "#EF4444",
 }
 
 STATUS_LABELS = {
     "em_andamento": "Em Andamento",
+    "aguardando_recebimento": "Aguardando Recebimento",
     "em_producao":  "Em Produção",
     "cancelada":    "Cancelada",
 }

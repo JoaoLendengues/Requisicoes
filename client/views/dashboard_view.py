@@ -70,7 +70,7 @@ class DashboardView(QWidget):
                                    max(12,int(16*s)), max(12,int(16*s)))
         layout.setSpacing(max(12,int(16*s)))
 
-        title = QLabel("DASHBOARD")
+        title = QLabel("📊 DASHBOARD")
         title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
         )
@@ -85,6 +85,7 @@ class DashboardView(QWidget):
         card_defs = [
             ("total",         theme.PRIMARY,                       "Total de Requisições"),
             ("em_andamento",  theme.STATUS_COLORS["em_andamento"], "Em Andamento"),
+            ("aguardando_recebimento", theme.STATUS_COLORS["aguardando_recebimento"], "Aguardando Recebimento"),
             ("em_producao",   theme.STATUS_COLORS["em_producao"],  "Em Produção"),
             ("cancelada",     theme.STATUS_COLORS["cancelada"],    "Canceladas"),
         ]
@@ -116,7 +117,7 @@ class DashboardView(QWidget):
             self.cards_layout.addWidget(card, 0, i)   # 4 cards numa linha só
 
         # Tabela de requisições recentes
-        lbl_rec = QLabel("Requisições Recentes")
+        lbl_rec = QLabel("🧾 Requisições Recentes")
         lbl_rec.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(11,int(13*s))}pt; font-weight:bold;"
         )

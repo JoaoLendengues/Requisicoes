@@ -95,7 +95,7 @@ class LoginView(QWidget):
         card_layout.addWidget(logo_label)
 
         # Título
-        title = QLabel("◈ Sistema de Requisições")
+        title = QLabel("📋 Sistema de Requisições")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(10, int(12*self.scale))}pt;"
@@ -133,7 +133,7 @@ class LoginView(QWidget):
         self.input_pass.setStyleSheet(theme.input_style(self.scale))
         self.input_pass.returnPressed.connect(self._do_login)
 
-        self.btn_show = QPushButton("◉")
+        self.btn_show = QPushButton("👁")
         self.btn_show.setFixedSize(max(36, int(42 * self.scale)),
                                     max(36, int(42 * self.scale)))
         self.btn_show.setCheckable(True)

@@ -87,15 +87,18 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
     reason = prod_event["reason"]
 
     if action == _PROD_SEND:
-        req.status = RequisitionStatus.EM_PRODUCAO
+        req.status = RequisitionStatus.AGUARDANDO_RECEBIMENTO
         req.finalized_at = None
         return
 
     if action == _PROD_RECEIVED:
-        if req.status != RequisitionStatus.EM_PRODUCAO:
+        if req.status not in (
+            RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+            RequisitionStatus.EM_PRODUCAO,
+        ):
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisições em produção podem confirmar recebimento",
+                detail="Somente requisições aguardando recebimento podem confirmar recebimento",
             )
         if req.finalized_at is not None:
             raise HTTPException(

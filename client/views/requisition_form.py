@@ -440,7 +440,7 @@ class RequisitionForm(QWidget):
         btn_production.clicked.connect(self._send_to_production)
         save_row.addWidget(btn_production)
         self.btn_production = btn_production
-        self.btn_production.setText("⚒ ENVIAR PARA PRODUÇÃO")
+        self.btn_production.setText("🏭 ENVIAR PARA PRODUÇÃO")
 
         save_row.addSpacing(max(8, int(10 * s)))
 
@@ -451,7 +451,7 @@ class RequisitionForm(QWidget):
         btn_whatsapp.clicked.connect(self._send_whatsapp_client)
         save_row.addWidget(btn_whatsapp)
         self.btn_whatsapp = btn_whatsapp
-        self.btn_whatsapp.setText("☏ ENVIAR WHATSAPP")
+        self.btn_whatsapp.setText("📲 ENVIAR WHATSAPP")
 
         save_row.addSpacing(max(8, int(10 * s)))
 
@@ -462,7 +462,7 @@ class RequisitionForm(QWidget):
         btn_save.clicked.connect(self.save_requested.emit)
         save_row.addWidget(btn_save)
         self.btn_save = btn_save
-        self.btn_save.setText("✦ SALVAR REQUISIÇÃO")
+        self.btn_save.setText("💾 SALVAR REQUISIÇÃO")
         layout.addLayout(save_row)
 
         self.lock_label = QLabel("")
@@ -521,7 +521,7 @@ class RequisitionForm(QWidget):
         # Data
         date_col = QVBoxLayout()
         date_col.setSpacing(2)
-        date_col.addWidget(_field_label("◷ DATA", s))
+        date_col.addWidget(_field_label("📅 DATA", s))
         self.lbl_date = _value_label(date.today().strftime("%d/%m/%Y"), s)
         date_col.addWidget(self.lbl_date)
         layout.addLayout(date_col)
@@ -529,7 +529,7 @@ class RequisitionForm(QWidget):
         # Vendedor
         vend_col = QVBoxLayout()
         vend_col.setSpacing(2)
-        vend_col.addWidget(_field_label("◉ VENDEDOR", s))
+        vend_col.addWidget(_field_label("👤 VENDEDOR", s))
         self.lbl_vendor = _value_label(session.user_name.upper(), s)
         vend_col.addWidget(self.lbl_vendor)
         layout.addLayout(vend_col)
@@ -590,18 +590,18 @@ class RequisitionForm(QWidget):
         self.input_prazo.setCalendarPopup(True)
         self.input_prazo.setFixedHeight(max(28,int(32*s)))
         self.input_prazo.setStyleSheet(theme.input_style(s))
-        add_field("◷", "PRAZO DE ENTREGA", self.input_prazo)
+        add_field("📦", "PRAZO DE ENTREGA", self.input_prazo)
 
         # Retirada — mutuamente exclusivo com Entrega
         chk_style = f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
 
         self.chk_retirada = QCheckBox("NÃO")
         self.chk_retirada.setStyleSheet(chk_style)
-        add_field("↖", "RETIRADA", self.chk_retirada)
+        add_field("🏪", "RETIRADA", self.chk_retirada)
 
         self.chk_entrega = QCheckBox("NÃO")
         self.chk_entrega.setStyleSheet(chk_style)
-        add_field("↗", "ENTREGA", self.chk_entrega)
+        add_field("🚚", "ENTREGA", self.chk_entrega)
 
         # Mutuamente exclusivos + texto dinâmico SIM / NÃO
         def _on_retirada(checked: bool):
@@ -632,13 +632,13 @@ class RequisitionForm(QWidget):
         layout.setVerticalSpacing(max(6,int(8*s)))
 
         # Cliente (busca em tempo real por nome, código ou CPF/CNPJ)
-        layout.addWidget(_field_label("◎ CLIENTE", s), 0, 0)
+        layout.addWidget(_field_label("👤 CLIENTE", s), 0, 0)
         self.client_search = ClientSearchBox(s, self)
         self.client_search.client_selected.connect(self._on_client_selected)
         layout.addWidget(self.client_search, 1, 0)
 
         # Obra
-        layout.addWidget(_field_label("▥ OBRA", s), 0, 1)
+        layout.addWidget(_field_label("🏗️ OBRA", s), 0, 1)
         self.input_obra = QLineEdit()
         self.input_obra.setPlaceholderText("Nome da obra")
         self.input_obra.setFixedHeight(max(30,int(36*s)))
@@ -646,7 +646,7 @@ class RequisitionForm(QWidget):
         layout.addWidget(self.input_obra, 1, 1)
 
         # Fone
-        layout.addWidget(_field_label("☎ FONE", s), 2, 0)
+        layout.addWidget(_field_label("📞 FONE", s), 2, 0)
         self.input_fone = QLineEdit()
         self.input_fone.setPlaceholderText("(61) 9 9999-9999")
         self.input_fone.setFixedHeight(max(30,int(36*s)))
@@ -654,7 +654,7 @@ class RequisitionForm(QWidget):
         layout.addWidget(self.input_fone, 3, 0)
 
         # Endereço
-        layout.addWidget(_field_label("⌂ ENDEREÇO A ENTREGAR", s), 2, 1)
+        layout.addWidget(_field_label("📍 ENDEREÇO A ENTREGAR", s), 2, 1)
         self.input_address = QLineEdit()
         self.input_address.setPlaceholderText("Endereço completo de entrega")
         self.input_address.setFixedHeight(max(30,int(36*s)))
@@ -696,7 +696,7 @@ class RequisitionForm(QWidget):
             f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11*s))}pt; font-weight:bold; border:none;"
         )
         preview_layout.addWidget(lbl_preview)
-        lbl_preview.setText("✎ EDITOR DE DESENHO")
+        lbl_preview.setText("🎨 EDITOR DE DESENHO")
 
         lbl_preview_hint = QLabel("Prévia do desenho salvo na requisição.")
         lbl_preview_hint.setWordWrap(True)
@@ -714,9 +714,9 @@ class RequisitionForm(QWidget):
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt; border:none;"
         )
         preview_layout.addWidget(self.lbl_canvas_info)
-        self.lbl_canvas_info.setText("◌ Nenhum desenho salvo ainda.")
+        self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
 
-        btn_canvas = QPushButton("✎ Abrir Editor de Desenho")
+        btn_canvas = QPushButton("✏️ Abrir Editor de Desenho")
         btn_canvas.setFixedHeight(max(30, int(34*s)))
         btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
         btn_canvas.clicked.connect(self._open_canvas_dialog)
@@ -740,7 +740,7 @@ class RequisitionForm(QWidget):
         obs_layout = QVBoxLayout(obs_card)
         obs_layout.setContentsMargins(max(10,int(12*s)), max(10,int(12*s)),
                                        max(10,int(12*s)), max(10,int(12*s)))
-        obs_layout.addWidget(_field_label("✐ OBSERVAÇÃO", s))
+        obs_layout.addWidget(_field_label("📝 OBSERVAÇÃO", s))
         self.input_obs = QTextEdit()
         self.input_obs.setPlaceholderText("Observações adicionais...")
         self.input_obs.setMaximumHeight(max(100,int(120*s)))
@@ -758,7 +758,7 @@ class RequisitionForm(QWidget):
                                        max(10,int(12*s)), max(10,int(12*s)))
 
         sig_col = QVBoxLayout()
-        sig_col.addWidget(_field_label("✎ ASSINATURA DO CLIENTE", s))
+        sig_col.addWidget(_field_label("✍️ ASSINATURA DO CLIENTE", s))
         sig_col.addStretch()
         sig_line = QFrame()
         sig_line.setFrameShape(QFrame.Shape.HLine)
@@ -786,7 +786,7 @@ class RequisitionForm(QWidget):
         lbl_qr_txt.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
-        lbl_qr_txt.setText("◫ QR CODE\nVendedor")
+        lbl_qr_txt.setText("🔳 QR CODE\nVendedor")
         qr_col.addWidget(self.qr_label)
         qr_col.addWidget(lbl_qr_txt)
         sig_layout.addLayout(qr_col, 1)
@@ -845,7 +845,7 @@ class RequisitionForm(QWidget):
         thread, worker = _run_in_thread(
             api.update_status,
             self.req_id,
-            "em_producao",
+            "aguardando_recebimento",
             _build_production_note(PROD_SEND, destination),
             on_result=lambda req, dest=destination: self._on_sent_to_production(req, dest),
             on_error=lambda msg: QMessageBox.critical(self, "Produção", msg),
@@ -871,7 +871,7 @@ class RequisitionForm(QWidget):
         return None
 
     def _on_sent_to_production(self, req: dict, destination: str):
-        self.status_badge.set_status(req.get("status", "em_producao"))
+        self.status_badge.set_status(req.get("status", "aguardando_recebimento"))
         QMessageBox.information(
             self,
             "Produção",
@@ -951,6 +951,15 @@ class RequisitionForm(QWidget):
             )
         else:
             self.lbl_canvas_info.setText("◌ Nenhum desenho salvo ainda.")
+
+        if result.get("items"):
+            self.lbl_canvas_info.setText("🎨 Prévia atual do desenho técnico.")
+        elif pdf_path:
+            self.lbl_canvas_info.setText(
+                f"📎 Referência em PDF anexada: {os.path.basename(pdf_path)}"
+            )
+        else:
+            self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
 
     def _set_form_locked(self, locked: bool, message: str = ""):
         for widget in getattr(self, "_editable_widgets", []):
@@ -1041,7 +1050,7 @@ class RequisitionForm(QWidget):
         if data.get("finalized_at"):
             self._set_form_locked(
                 True,
-                "◷ Produção recebida ou finalizada. Esta requisição não pode mais ser editada.",
+                "🏭 Produção recebida ou finalizada. Esta requisição não pode mais ser editada.",
             )
 
     def reset(self):

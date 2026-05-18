@@ -11,11 +11,11 @@ from ..core.session import session
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
 
 NAV_ITEMS = [
-    ("nova", "▣", "NOVA REQUISIÇÃO"),
-    ("dashboard", "◫", "DASHBOARD"),
-    ("producao", "⚒", "PRODUÇÃO"),
-    ("historico", "◷", "HISTÓRICO / BUSCA"),
-    ("config", "⚙", "CONFIGURAÇÕES"),
+    ("nova", "📝", "NOVA REQUISIÇÃO"),
+    ("dashboard", "📊", "DASHBOARD"),
+    ("producao", "🏭", "PRODUÇÃO"),
+    ("historico", "🕘", "HISTÓRICO / BUSCA"),
+    ("config", "⚙️", "CONFIGURAÇÕES"),
 ]
 
 
@@ -68,14 +68,14 @@ class Sidebar(QWidget):
         layout.addStretch()
         layout.addWidget(self._separator())
 
-        self.user_label = QLabel(f"◉ USUÁRIO: {session.user_name}")
+        self.user_label = QLabel(f"👤 USUÁRIO: {session.user_name}")
         self.user_label.setStyleSheet(
             f"color:#94A3B8; font-size:{max(8, int(9 * self.scale))}pt; padding:8px 16px;"
         )
         self.user_label.setWordWrap(True)
         layout.addWidget(self.user_label)
 
-        btn_sair = self._make_btn("↩", "SAIR")
+        btn_sair = self._make_btn("🚪", "SAIR")
         btn_sair.clicked.connect(self.logout_clicked.emit)
         layout.addWidget(btn_sair)
         layout.addSpacing(8)
@@ -121,7 +121,7 @@ class Sidebar(QWidget):
             btn.setChecked(nav_key == key)
 
     def refresh_user(self):
-        self.user_label.setText(f"◉ USUÁRIO: {session.user_name}")
+        self.user_label.setText(f"👤 USUÁRIO: {session.user_name}")
 
     def set_actions_visible(self, visible: bool):
         pass
