@@ -24,7 +24,15 @@ class HistoryWorker(QObject):
 
     def run(self):
         try:
-            self.result.emit(api.list_requisitions(self.status, self.search, limit=100))
+            if self.status == "aguardando_recebimento":
+                reqs = api.list_requisitions("", self.search, limit=100)
+                reqs = [
+                    req for req in reqs
+                    if req.get("status") == "aguardando_recebimento"
+                ]
+                self.result.emit(reqs)
+            else:
+                self.result.emit(api.list_requisitions(self.status, self.search, limit=100))
         except Exception as e:
             self.error.emit(str(e))
         finally:
@@ -52,7 +60,7 @@ class HistoryView(QWidget):
         layout.setSpacing(max(10,int(12*s)))
 
         # Título
-        title = QLabel("◷ HISTÓRICO / BUSCA DE REQUISIÇÕES")
+        title = QLabel("🕘 HISTÓRICO / BUSCA DE REQUISIÇÕES")
         title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(12,int(15*s))}pt; font-weight:bold;"
         )
@@ -73,12 +81,12 @@ class HistoryView(QWidget):
         self.input_search.setFixedHeight(max(30,int(34*s)))
         self.input_search.setStyleSheet(theme.input_style(s))
 
-        btn_search = QPushButton("⌕ Buscar")
+        btn_search = QPushButton("🔎 Buscar")
         btn_search.setFixedHeight(max(30,int(34*s)))
         btn_search.setStyleSheet(theme.primary_btn_style(s))
         btn_search.clicked.connect(self.refresh)
 
-        btn_clear = QPushButton("✕ Limpar")
+        btn_clear = QPushButton("🧹 Limpar")
         btn_clear.setFixedHeight(max(30,int(34*s)))
         btn_clear.setStyleSheet(theme.secondary_btn_style(s))
         btn_clear.clicked.connect(self._clear_filters)

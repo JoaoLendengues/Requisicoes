@@ -1,6 +1,7 @@
 {
   "server_url": "http://10.1.1.151:5000",
   "font_scale": 0.8,
+<<<<<<< HEAD
   "ods_path": "Z:\\REQUISIÇÕES (VENDAS)\\relacao_cadastros.ods",
   "pdf_folder": "Z:/REQUISIÇÕES (VENDAS)/PDF",
 <<<<<<< HEAD
@@ -8,4 +9,9 @@
 =======
   "products_path": "X:/REQUISIÇÕES (VENDAS)/produtos.ods"
 >>>>>>> a3c458b3f5422b101a44f075a82367c7d32fa174
+=======
+  "ods_path": "X:/REQUISIÇÕES (VENDAS)/relacao_cadastros.ods",
+  "products_path": "X:/REQUISIÇÕES (VENDAS)/produtos.ods",
+  "pdf_folder": ""
+>>>>>>> 266d0ecf0f49fdadef3a9fba795e56fda85b2f71
 }

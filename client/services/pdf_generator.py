@@ -254,6 +254,7 @@ def generate_pdf(req: dict, client: dict | None, obs: str,
 
     status_labels = {
         "em_andamento": "Em Andamento",
+        "aguardando_recebimento": "Aguardando Recebimento",
         "em_producao":  "Em Produção",
         "cancelada":    "Cancelada",
     }

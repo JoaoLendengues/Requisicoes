@@ -273,7 +273,7 @@ class DrawingCanvas(QWidget):
             f"color:{theme.TEXT_DARK}; font-size:{fs}pt; font-weight:bold;"
         )
         layout.addWidget(title)
-        title.setText("✎ DESENHO / REFERÊNCIA")
+        title.setText("🎨 DESENHO / REFERÊNCIA")
 
         # ── Toolbar ──────────────────────────────────────────────────────────
         toolbar = QHBoxLayout()
@@ -298,11 +298,11 @@ class DrawingCanvas(QWidget):
             toolbar.addWidget(btn)
 
         toolbar.addSpacing(8)
-        self._tool_btns[Tool.SELECT].setText("↖ Selec. [S]")
-        self._tool_btns[Tool.PEN].setText("⌁ Caneta [P]")
-        self._tool_btns[Tool.LINE].setText("╱ Linha [L]")
-        self._tool_btns[Tool.RECT].setText("▭ Ret. [R]")
-        self._tool_btns[Tool.ELLIPSE].setText("◯ Elipse [E]")
+        self._tool_btns[Tool.SELECT].setText("🖱️ Selec. [S]")
+        self._tool_btns[Tool.PEN].setText("✏️ Caneta [P]")
+        self._tool_btns[Tool.LINE].setText("📏 Linha [L]")
+        self._tool_btns[Tool.RECT].setText("⬛ Ret. [R]")
+        self._tool_btns[Tool.ELLIPSE].setText("⭕ Elipse [E]")
         self._tool_btns[Tool.TEXT].setText("T Texto [T]")
 
         # Cor
@@ -318,7 +318,7 @@ class DrawingCanvas(QWidget):
         # Espessura
         lbl_esp = QLabel("Esp:")
         lbl_esp.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(9*self.scale))}pt;")
-        lbl_esp.setText("◉ Esp.:")
+        lbl_esp.setText("📐 Esp.:")
         self.spin_width = QSpinBox()
         self.spin_width.setRange(1, 20)
         self.spin_width.setValue(self.pen_width)
@@ -342,8 +342,8 @@ class DrawingCanvas(QWidget):
 
         toolbar.addWidget(btn_undo)
         toolbar.addWidget(btn_redo)
-        btn_undo.setText("↺ Desfazer")
-        btn_redo.setText("↻ Refazer")
+        btn_undo.setText("↩️ Desfazer")
+        btn_redo.setText("↪️ Refazer")
 
         toolbar.addSpacing(8)
         # Imagem e PDF
@@ -368,9 +368,9 @@ class DrawingCanvas(QWidget):
         toolbar.addWidget(btn_img)
         toolbar.addWidget(btn_pdf)
         toolbar.addWidget(btn_clear)
-        btn_img.setText("▣ Imagem")
-        btn_pdf.setText("▤ PDF")
-        btn_clear.setText("✕ Limpar")
+        btn_img.setText("🖼️ Imagem")
+        btn_pdf.setText("📎 PDF")
+        btn_clear.setText("🗑️ Limpar")
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
@@ -380,7 +380,7 @@ class DrawingCanvas(QWidget):
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*self.scale))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
-        hint.setText("⌁ Shift = traço reto  |  Del = apagar seleção  |  Scroll = zoom")
+        hint.setText("✨ Shift = traço reto  |  Del = apagar seleção  |  Scroll = zoom")
 
         # ── Cena + View ──────────────────────────────────────────────────────
         self.scene = DrawingScene(self)
@@ -407,12 +407,12 @@ class DrawingCanvas(QWidget):
         btn_open_pdf = QPushButton("Abrir")
         btn_open_pdf.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_pdf.clicked.connect(self._open_pdf)
-        btn_open_pdf.setText("↗ Abrir")
+        btn_open_pdf.setText("📂 Abrir")
         btn_rm_pdf = QPushButton("X")
         btn_rm_pdf.setFixedWidth(28)
         btn_rm_pdf.setStyleSheet(theme.danger_btn_style(self.scale))
         btn_rm_pdf.clicked.connect(self._remove_pdf)
-        pdf_layout.addWidget(QLabel("▤ PDF"))
+        pdf_layout.addWidget(QLabel("📎 PDF"))
         pdf_layout.addWidget(self.pdf_label, 1)
         pdf_layout.addWidget(btn_open_pdf)
         pdf_layout.addWidget(btn_rm_pdf)
@@ -654,7 +654,7 @@ class CanvasPreview(QGraphicsView):
             font = QFont("Segoe UI", max(9, int(10 * self.scale_factor)))
             placeholder.setFont(font)
             placeholder.setPos(20, 20)
-            placeholder.setPlainText("◌ Nenhum desenho salvo")
+            placeholder.setPlainText("🖼️ Nenhum desenho salvo")
         self._fit_scene()
 
     def resizeEvent(self, event):

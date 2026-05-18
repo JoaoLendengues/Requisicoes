@@ -17,7 +17,6 @@ DESENV_COL = 5
 CHAPA_COL = 6
 TIPO_COL = 7
 WEIGHT_COL = 8
-ACTION_COL = 9
 
 COLUMNS = [
     "POSIÇÃO",
@@ -29,7 +28,6 @@ COLUMNS = [
     "CHAPA",
     "TIPO",
     "PESO (KG)",
-    "AÇÃO",
 ]
 
 POSITIONS = [chr(i) for i in range(ord("A"), ord("Z") + 1)]
@@ -64,9 +62,6 @@ class ItemTable(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(
             PRODUCT_NAME_COL, QHeaderView.ResizeMode.Stretch
         )
-        self.table.horizontalHeader().setSectionResizeMode(
-            ACTION_COL, QHeaderView.ResizeMode.ResizeToContents
-        )
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
@@ -82,16 +77,22 @@ class ItemTable(QWidget):
 
         for row in range(10):
             self._set_position_item(row)
-            self._set_action_button(row)
 
         self.table.itemChanged.connect(self._on_item_changed)
         layout.addWidget(self.table)
 
         footer = QHBoxLayout()
+
         self.btn_add = QPushButton("+  ADICIONAR ITEM")
         self.btn_add.setStyleSheet(theme.secondary_btn_style(self.scale))
         self.btn_add.clicked.connect(self._add_row)
         footer.addWidget(self.btn_add)
+
+        self.btn_clear_selected = QPushButton("LIMPAR LINHA SELECIONADA")
+        self.btn_clear_selected.setStyleSheet(theme.secondary_btn_style(self.scale))
+        self.btn_clear_selected.clicked.connect(self._clear_selected_row)
+        footer.addWidget(self.btn_clear_selected)
+
         footer.addStretch()
 
         peso_label = QLabel("PESO TOTAL:")
@@ -125,31 +126,31 @@ class ItemTable(QWidget):
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(row, POSITION_COL, item)
 
-    def _set_action_button(self, row: int):
-        btn = QPushButton("LIMPAR")
-        btn.setFixedHeight(max(24, int(28 * self.scale)))
-        btn.setStyleSheet(theme.secondary_btn_style(self.scale))
-        btn.clicked.connect(lambda checked=False, r=row: self._clear_row(r))
-        self.table.setCellWidget(row, ACTION_COL, btn)
-
     def _clear_row(self, row: int):
         self.table.blockSignals(True)
         for col in range(PRODUCT_CODE_COL, WEIGHT_COL + 1):
             self.table.takeItem(row, col)
+
         pos_item = self.table.item(row, POSITION_COL)
         if pos_item is not None:
-            pos_item.setText((pos_item.text().strip().upper() or self._default_position(row)))
+            pos_item.setText(pos_item.text().strip().upper() or self._default_position(row))
             pos_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         else:
             self._set_position_item(row)
+
         self.table.blockSignals(False)
         self._recalculate_total()
+
+    def _clear_selected_row(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return
+        self._clear_row(row)
 
     def _add_row(self):
         row = self.table.rowCount()
         self.table.insertRow(row)
         self._set_position_item(row)
-        self._set_action_button(row)
 
     def _ensure_cell(self, row: int, col: int) -> QTableWidgetItem:
         item = self.table.item(row, col)
@@ -191,6 +192,7 @@ class ItemTable(QWidget):
                     total += float(cell.text().replace(",", "."))
                 except ValueError:
                     pass
+
         self.total_label.setText(
             f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         )
@@ -239,7 +241,6 @@ class ItemTable(QWidget):
 
         for row in range(self.table.rowCount()):
             self._set_position_item(row)
-            self._set_action_button(row)
 
         for row, item in enumerate(items):
             self._set_position_item(row, item.get("position"))

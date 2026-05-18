@@ -11,6 +11,7 @@ from ..database import Base
 
 class RequisitionStatus(str, enum.Enum):
     EM_ANDAMENTO = "em_andamento"
+    AGUARDANDO_RECEBIMENTO = "aguardando_recebimento"
     EM_PRODUCAO  = "em_producao"
     CANCELADA    = "cancelada"
 

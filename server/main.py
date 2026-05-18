@@ -19,6 +19,8 @@ def _migrate():
         "UPDATE requisitions SET status = 'em_andamento' WHERE UPPER(status) IN "
         "('RASCUNHO','EMITIDA','RECEBIDA_PRODUCAO','PRONTA','EM_ROTA','AGUARDANDO_RETIRADA','CONCLUIDA')",
         "UPDATE requisitions SET status = 'em_producao' WHERE UPPER(status) = 'EM_FABRICACAO'",
+        "UPDATE requisitions SET status = 'aguardando_recebimento' "
+        "WHERE status = 'em_producao' AND finalized_at IS NULL",
     ]
     with engine.begin() as conn:
         for s in stmts:

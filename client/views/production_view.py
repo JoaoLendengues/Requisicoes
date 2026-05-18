@@ -10,24 +10,25 @@ from ..api import client as api
 from ..core import theme
 
 
-COLS = ["PED", "CLIENTE", "OBRA", "FASE", "DATA"]
+COLS = ["PED", "CLIENTE", "OBRA", "DATA"]
 DESTINATIONS = ("A&R", "Pinheiro Indústria")
+WAITING_STAGE = "waiting"
+PRODUCTION_STAGE = "production"
 
 PROD_NOTE_PREFIX = "PRODUCAO"
-PROD_SEND = "ENVIADA"
 PROD_RECEIVED = "RECEBIDA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
 
 
 class ProductionWorker(QObject):
-    result = Signal(list)
+    result = Signal(object)
     error = Signal(str)
     finished = Signal()
 
     def run(self):
         try:
-            self.result.emit(api.list_requisitions("em_producao", limit=200))
+            self.result.emit(api.list_requisitions(limit=200))
         except Exception as exc:
             self.error.emit(str(exc))
         finally:
@@ -53,6 +54,11 @@ class ActionWorker(QObject):
             self.error.emit(str(exc))
         finally:
             self.finished.emit()
+
+
+class UiCallback(QObject):
+    result = Signal(object)
+    error = Signal(str)
 
 
 def _make_card(scale: float) -> QFrame:
@@ -91,9 +97,12 @@ class ProductionView(QWidget):
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
-        self._threads: list = []
-        self._rows_by_destination: dict[str, list[dict]] = {dest: [] for dest in DESTINATIONS}
-        self._cards: dict[str, dict] = {}
+        self._threads: list[tuple[QThread, QObject]] = []
+        self._rows_by_destination: dict[str, dict[str, list[dict]]] = {
+            destination: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
+            for destination in DESTINATIONS
+        }
+        self._cards: dict[str, dict[str, dict]] = {}
         self._count_labels: dict[str, QLabel] = {}
         self._setup_ui()
 
@@ -106,11 +115,14 @@ class ProductionView(QWidget):
 
         header = QHBoxLayout()
         title_col = QVBoxLayout()
-        title = QLabel("⚒ PRODUÇÃO")
+
+        title = QLabel("🏭 PRODUÇÃO")
         title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(14, int(17 * s))}pt; font-weight:bold;"
         )
-        subtitle = QLabel("Acompanhe o recebimento, cancelamento e finalização das requisições enviadas para produção.")
+        subtitle = QLabel(
+            "Acompanhe por destino o que aguarda recebimento e o que já está em produção."
+        )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
@@ -120,7 +132,7 @@ class ProductionView(QWidget):
         header.addLayout(title_col)
         header.addStretch()
 
-        btn_refresh = QPushButton("↻ ATUALIZAR")
+        btn_refresh = QPushButton("🔄 ATUALIZAR")
         btn_refresh.setFixedHeight(max(32, int(36 * s)))
         btn_refresh.setStyleSheet(theme.secondary_btn_style(s))
         btn_refresh.clicked.connect(self.refresh)
@@ -134,7 +146,8 @@ class ProductionView(QWidget):
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(max(12, int(14 * s)), max(10, int(12 * s)),
                                            max(12, int(14 * s)), max(10, int(12 * s)))
-            lbl_title = QLabel(f"▣ {destination.upper()}")
+
+            lbl_title = QLabel(f"🔖 {destination}")
             lbl_title.setStyleSheet(
                 f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
             )
@@ -142,57 +155,113 @@ class ProductionView(QWidget):
             lbl_value.setStyleSheet(
                 f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:bold;"
             )
+            lbl_hint = QLabel("Requisições ativas")
+            lbl_hint.setStyleSheet(
+                f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
+            )
+
             card_layout.addWidget(lbl_title)
             card_layout.addWidget(lbl_value)
+            card_layout.addWidget(lbl_hint)
             self._count_labels[destination] = lbl_value
             counts.addWidget(card, 0, index)
+
         layout.addLayout(counts)
 
-        tables_row = QHBoxLayout()
-        tables_row.setSpacing(max(10, int(12 * s)))
+        columns_row = QHBoxLayout()
+        columns_row.setSpacing(max(10, int(12 * s)))
         for destination in DESTINATIONS:
-            tables_row.addWidget(self._build_destination_card(destination), 1)
-        layout.addLayout(tables_row, 1)
+            columns_row.addWidget(self._build_destination_column(destination), 1)
+        layout.addLayout(columns_row, 1)
 
-        hint = QLabel("Selecione uma requisição para liberar as ações do card.")
+        hint = QLabel(
+            "Use os painéis de cada destino para abrir, confirmar recebimento, finalizar ou cancelar requisições."
+        )
         hint.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
 
-    def _build_destination_card(self, destination: str) -> QFrame:
+    def _build_destination_column(self, destination: str) -> QFrame:
         s = self.scale
         card = _make_card(s)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(12, int(14 * s)), max(12, int(14 * s)),
                                   max(12, int(14 * s)), max(12, int(14 * s)))
+        layout.setSpacing(max(10, int(12 * s)))
+
+        title = QLabel(f"🏭 {destination}")
+        title.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
+        )
+        layout.addWidget(title)
+
+        self._cards[destination] = {}
+
+        waiting_panel = self._build_stage_panel(destination, WAITING_STAGE)
+        production_panel = self._build_stage_panel(destination, PRODUCTION_STAGE)
+
+        self._cards[destination][WAITING_STAGE] = waiting_panel
+        self._cards[destination][PRODUCTION_STAGE] = production_panel
+
+        layout.addWidget(waiting_panel["card"])
+        layout.addWidget(production_panel["card"])
+        return card
+
+    def _build_stage_panel(self, destination: str, stage: str) -> dict:
+        s = self.scale
+        card = QFrame()
+        card.setStyleSheet(
+            f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(max(10, int(12 * s)), max(10, int(12 * s)),
+                                  max(10, int(12 * s)), max(10, int(12 * s)))
         layout.setSpacing(max(8, int(10 * s)))
 
-        lbl_title = QLabel(f"◈ {destination}")
-        lbl_title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+        if stage == WAITING_STAGE:
+            title_text = "📥 Aguardando Recebimento"
+            subtitle_text = "Requisições enviadas para produção e ainda não recebidas."
+            primary_text = "✅ Confirmar Recebimento"
+        else:
+            title_text = "🏗 Em Produção"
+            subtitle_text = "Requisições já recebidas pela produção."
+            primary_text = "🏁 Finalizar"
+
+        title = QLabel(title_text)
+        title.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt; font-weight:bold;"
         )
-        layout.addWidget(lbl_title)
+        subtitle = QLabel(subtitle_text)
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
+        )
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
 
         actions = QHBoxLayout()
-        btn_open = QPushButton("◎ Abrir")
-        btn_receive = QPushButton("✓ Confirmar Recebimento")
-        btn_cancel = QPushButton("✕ Cancelar")
-        btn_finish = QPushButton("✔ Finalizar")
-        for btn in (btn_open, btn_receive, btn_cancel, btn_finish):
+        btn_open = QPushButton("📂 Abrir")
+        btn_primary = QPushButton(primary_text)
+        btn_cancel = QPushButton("❌ Cancelar")
+
+        for btn in (btn_open, btn_primary, btn_cancel):
             btn.setFixedHeight(max(28, int(32 * s)))
+
         btn_open.setStyleSheet(theme.secondary_btn_style(s))
-        btn_receive.setStyleSheet(theme.secondary_btn_style(s))
+        btn_primary.setStyleSheet(theme.primary_btn_style(s))
         btn_cancel.setStyleSheet(theme.danger_btn_style(s))
-        btn_finish.setStyleSheet(theme.primary_btn_style(s))
 
-        btn_open.clicked.connect(lambda: self._open_selected(destination))
-        btn_receive.clicked.connect(lambda: self._confirm_receipt(destination))
-        btn_cancel.clicked.connect(lambda: self._cancel_requisition(destination))
-        btn_finish.clicked.connect(lambda: self._finish_production(destination))
+        btn_open.clicked.connect(lambda: self._open_selected(destination, stage))
+        if stage == WAITING_STAGE:
+            btn_primary.clicked.connect(lambda: self._confirm_receipt(destination))
+        else:
+            btn_primary.clicked.connect(lambda: self._finish_production(destination))
+        btn_cancel.clicked.connect(lambda: self._cancel_requisition(destination, stage))
 
-        for btn in (btn_open, btn_receive, btn_cancel, btn_finish):
-            actions.addWidget(btn)
+        actions.addWidget(btn_open)
+        actions.addWidget(btn_primary)
+        actions.addWidget(btn_cancel)
         layout.addLayout(actions)
 
         table = QTableWidget(0, len(COLS))
@@ -203,7 +272,6 @@ class ProductionView(QWidget):
         table.setAlternatingRowColors(True)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
@@ -216,140 +284,158 @@ class ProductionView(QWidget):
             f"}}"
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
         )
-        table.doubleClicked.connect(lambda index, dest=destination: self._open_row(dest, index.row()))
-        table.itemSelectionChanged.connect(lambda dest=destination: self._update_action_state(dest))
+        table.doubleClicked.connect(
+            lambda index, dest=destination, current_stage=stage: self._open_row(dest, current_stage, index.row())
+        )
         layout.addWidget(table, 1)
 
-        self._cards[destination] = {
+        return {
+            "card": card,
             "table": table,
             "open": btn_open,
-            "receive": btn_receive,
+            "primary": btn_primary,
             "cancel": btn_cancel,
-            "finish": btn_finish,
         }
-        self._update_action_state(destination)
-        return card
 
     def refresh(self):
         worker = ProductionWorker()
         thread = QThread()
+        cb = UiCallback()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.result.connect(self._populate)
-        worker.error.connect(lambda msg: QMessageBox.critical(self, "Produção", msg))
+        worker.result.connect(cb.result)
+        worker.error.connect(cb.error)
+        cb.result.connect(self._on_refresh_result)
+        cb.error.connect(self._show_error)
         worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        worker._cb = cb
         thread.start()
         self._threads.append((thread, worker))
 
-    def _populate(self, requisitions: list):
-        grouped = {dest: [] for dest in DESTINATIONS}
-        for req in requisitions:
-            state = self._production_state_for(req)
-            destination = state.get("destination")
-            if destination not in grouped:
-                continue
-            if state["action"] == PROD_FINISHED:
-                continue
-            req_copy = dict(req)
-            req_copy["_production_action"] = state["action"]
-            req_copy["_production_phase"] = state["phase"]
-            req_copy["_production_destination"] = destination
-            grouped[destination].append(req_copy)
+    def _cleanup_thread(self, thread: QThread, worker: QObject):
+        self._threads = [pair for pair in self._threads if pair != (thread, worker)]
+
+    def _on_refresh_result(self, payload: object):
+        try:
+            self._populate(payload)
+        except Exception as exc:
+            self._show_error(f"Não foi possível carregar a aba de produção.\n\n{exc}")
+
+    def _show_error(self, msg: str):
+        QMessageBox.critical(self, "Produção", msg)
+
+    def _populate(self, payload: object):
+        grouped = {
+            destination: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
+            for destination in DESTINATIONS
+        }
+
+        if isinstance(payload, list):
+            for req in payload:
+                if not isinstance(req, dict):
+                    continue
+
+                destination = self._production_destination(req)
+                if destination not in grouped:
+                    continue
+
+                status = str(req.get("status") or "").strip()
+                if status == "aguardando_recebimento":
+                    grouped[destination][WAITING_STAGE].append(dict(req))
+                elif status == "em_producao":
+                    grouped[destination][PRODUCTION_STAGE].append(dict(req))
+        elif isinstance(payload, dict):
+            for req in payload.get("waiting", []) or []:
+                if not isinstance(req, dict):
+                    continue
+                destination = self._production_destination(req)
+                if destination in grouped:
+                    grouped[destination][WAITING_STAGE].append(dict(req))
+
+            for req in payload.get("production", []) or []:
+                if not isinstance(req, dict):
+                    continue
+                destination = self._production_destination(req)
+                if destination in grouped:
+                    grouped[destination][PRODUCTION_STAGE].append(dict(req))
+        else:
+            raise ValueError("Resposta inválida ao carregar a produção.")
 
         self._rows_by_destination = grouped
 
         for destination in DESTINATIONS:
-            rows = grouped[destination]
-            self._count_labels[destination].setText(str(len(rows)))
-            table = self._cards[destination]["table"]
-            table.setRowCount(0)
-            for req in rows:
-                row = table.rowCount()
-                table.insertRow(row)
-                values = [
-                    str(req.get("ped_number", "")),
-                    req.get("client_name") or str(req.get("client_id", "")),
-                    req.get("obra") or "—",
-                    req.get("_production_phase", ""),
-                    str(req.get("emission_date", ""))[:10],
-                ]
-                for col, value in enumerate(values):
-                    item = QTableWidgetItem(str(value))
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    table.setItem(row, col, item)
-            self._update_action_state(destination)
+            waiting_rows = grouped[destination][WAITING_STAGE]
+            production_rows = grouped[destination][PRODUCTION_STAGE]
+            self._count_labels[destination].setText(str(len(waiting_rows) + len(production_rows)))
+            self._fill_stage_table(destination, WAITING_STAGE, waiting_rows)
+            self._fill_stage_table(destination, PRODUCTION_STAGE, production_rows)
 
-    def _production_state_for(self, req: dict) -> dict:
+    def _fill_stage_table(self, destination: str, stage: str, rows: list[dict]):
+        table = self._cards[destination][stage]["table"]
+        table.setRowCount(0)
+
+        for req in rows:
+            row = table.rowCount()
+            table.insertRow(row)
+            values = [
+                str(req.get("ped_number", "")),
+                req.get("client_name") or str(req.get("client_id", "")),
+                req.get("obra") or "—",
+                str(req.get("emission_date", ""))[:10],
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(row, col, item)
+
+    def _production_destination(self, req: dict) -> str:
         history = req.get("status_history") or []
+        if not isinstance(history, list):
+            return ""
+
         for entry in reversed(history):
+            if not isinstance(entry, dict):
+                continue
+
             note = (entry.get("note") or "").strip()
             parsed = _parse_production_note(note)
-            if parsed:
-                action = parsed["action"]
-                destination = parsed["destination"]
-                if action == PROD_RECEIVED:
-                    phase = "Recebimento confirmado"
-                elif action == PROD_FINISHED:
-                    phase = "Produção finalizada"
-                else:
-                    phase = "Aguardando recebimento"
-                return {
-                    "action": action,
-                    "destination": destination,
-                    "phase": phase,
-                }
+            if parsed and parsed["destination"] in DESTINATIONS:
+                return parsed["destination"]
             if note in DESTINATIONS:
-                return {
-                    "action": PROD_SEND,
-                    "destination": note,
-                    "phase": "Aguardando recebimento",
-                }
-        return {
-            "action": PROD_SEND,
-            "destination": "",
-            "phase": "Aguardando recebimento",
-        }
+                return note
 
-    def _selected_req(self, destination: str) -> dict | None:
-        table = self._cards[destination]["table"]
+        return ""
+
+    def _selected_req(self, destination: str, stage: str) -> dict | None:
+        table = self._cards[destination][stage]["table"]
         row = table.currentRow()
-        rows = self._rows_by_destination.get(destination, [])
+        rows = self._rows_by_destination.get(destination, {}).get(stage, [])
         if 0 <= row < len(rows):
             return rows[row]
         return None
 
-    def _update_action_state(self, destination: str):
-        req = self._selected_req(destination)
-        card = self._cards[destination]
-        has_selection = req is not None
-        action = req.get("_production_action") if req else ""
-        card["open"].setEnabled(has_selection)
-        card["cancel"].setEnabled(has_selection)
-        card["receive"].setEnabled(has_selection and action == PROD_SEND)
-        card["finish"].setEnabled(has_selection and action == PROD_RECEIVED)
-
-    def _open_row(self, destination: str, row: int):
-        rows = self._rows_by_destination.get(destination, [])
+    def _open_row(self, destination: str, stage: str, row: int):
+        rows = self._rows_by_destination.get(destination, {}).get(stage, [])
         if 0 <= row < len(rows):
             self.open_requisition.emit(rows[row]["id"])
 
-    def _open_selected(self, destination: str):
-        req = self._selected_req(destination)
+    def _open_selected(self, destination: str, stage: str):
+        req = self._selected_req(destination, stage)
         if not req:
             QMessageBox.information(self, "Produção", "Selecione uma requisição primeiro.")
             return
         self.open_requisition.emit(req["id"])
 
     def _confirm_receipt(self, destination: str):
-        req = self._selected_req(destination)
+        req = self._selected_req(destination, WAITING_STAGE)
         if not req:
-            QMessageBox.information(self, "Produção", "Selecione uma requisição primeiro.")
-            return
-        if req.get("_production_action") != PROD_SEND:
             QMessageBox.information(
                 self,
                 "Produção",
-                "O recebimento só pode ser confirmado para requisições ainda não recebidas.",
+                "Selecione uma requisição no painel de aguardando recebimento.",
             )
             return
 
@@ -363,15 +449,12 @@ class ProductionView(QWidget):
         self._threads.append((thread, worker))
 
     def _finish_production(self, destination: str):
-        req = self._selected_req(destination)
+        req = self._selected_req(destination, PRODUCTION_STAGE)
         if not req:
-            QMessageBox.information(self, "Produção", "Selecione uma requisição primeiro.")
-            return
-        if req.get("_production_action") != PROD_RECEIVED:
             QMessageBox.information(
                 self,
                 "Produção",
-                "Finalize apenas requisições que já tiveram o recebimento confirmado.",
+                "Selecione uma requisição no painel de em produção.",
             )
             return
 
@@ -393,10 +476,15 @@ class ProductionView(QWidget):
         )
         self._threads.append((thread, worker))
 
-    def _cancel_requisition(self, destination: str):
-        req = self._selected_req(destination)
+    def _cancel_requisition(self, destination: str, stage: str):
+        req = self._selected_req(destination, stage)
         if not req:
-            QMessageBox.information(self, "Produção", "Selecione uma requisição primeiro.")
+            panel_name = "aguardando recebimento" if stage == WAITING_STAGE else "em produção"
+            QMessageBox.information(
+                self,
+                "Produção",
+                f"Selecione uma requisição no painel de {panel_name}.",
+            )
             return
 
         reason = self._ask_cancel_reason()
@@ -435,11 +523,18 @@ class ProductionView(QWidget):
     def _run_action(self, fn, *args, success_message: str):
         worker = ActionWorker(fn, *args)
         thread = QThread()
+        cb = UiCallback()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.result.connect(lambda _: self._after_action(success_message))
-        worker.error.connect(lambda msg: QMessageBox.critical(self, "Produção", msg))
+        worker.result.connect(cb.result)
+        worker.error.connect(cb.error)
+        cb.result.connect(lambda _: self._after_action(success_message))
+        cb.error.connect(self._show_error)
         worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        worker._cb = cb
         thread.start()
         return thread, worker
 
