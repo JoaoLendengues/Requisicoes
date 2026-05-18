@@ -672,14 +672,8 @@ class RequisitionForm(QWidget):
         btn_canvas.clicked.connect(self._open_canvas_dialog)
         preview_layout.addWidget(btn_canvas)
 
-<<<<<<< HEAD
-        self.item_table = ItemTable(s)
-        items_layout.addWidget(self.item_table)
-        return items_card
-=======
         row.addWidget(preview_card, 1)
         return wrapper
->>>>>>> beb6ecc00acaa3cfe550bd2218527dedd259b0dd
 
     # ── Rodapé: Observação + Assinatura + QR ─────────────────────────────────
     def _build_bottom_section(self) -> QFrame:
@@ -814,8 +808,6 @@ class RequisitionForm(QWidget):
         self.input_address.setText(", ".join(p for p in addr_parts if p))
 
     # ── Eventos ───────────────────────────────────────────────────────────────
-<<<<<<< HEAD
-=======
     def _lookup_product_by_code(self, row: int, code: str):
         lookup_code = code.strip()
         if not lookup_code:
@@ -851,7 +843,6 @@ class RequisitionForm(QWidget):
         else:
             self.lbl_canvas_info.setText("Nenhum desenho salvo ainda.")
 
->>>>>>> beb6ecc00acaa3cfe550bd2218527dedd259b0dd
     # ── API pública ──────────────────────────────────────────────────────────
     def get_form_data(self) -> dict:
         client_id = self.client_search.get_client_id()
@@ -866,10 +857,7 @@ class RequisitionForm(QWidget):
             "entrega":          self.chk_entrega.isChecked(),
             "phone":            self.input_fone.text().strip() or None,
             "delivery_address": self.input_address.text().strip() or None,
-<<<<<<< HEAD
-=======
             "weight":           total_weight,
->>>>>>> beb6ecc00acaa3cfe550bd2218527dedd259b0dd
             "items":            self.item_table.get_items(),
             "obs":              self.input_obs.toPlainText().strip() or None,
         }
@@ -922,7 +910,4 @@ class RequisitionForm(QWidget):
         self.lbl_ped_num.setText("#000000")
         self.item_table.set_items([])
         self._canvas_json = "{}"
-<<<<<<< HEAD
-=======
         self._update_canvas_preview()
->>>>>>> beb6ecc00acaa3cfe550bd2218527dedd259b0dd
