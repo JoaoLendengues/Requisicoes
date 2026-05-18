@@ -3,5 +3,9 @@
   "font_scale": 0.8,
   "ods_path": "Z:\\REQUISIÇÕES (VENDAS)\\relacao_cadastros.ods",
   "pdf_folder": "Z:/REQUISIÇÕES (VENDAS)/PDF",
+<<<<<<< HEAD
+  "products_path": "Z:/REQUISIÇÕES (VENDAS)/produtos.ods"
+=======
   "products_path": "X:/REQUISIÇÕES (VENDAS)/produtos.ods"
+>>>>>>> a3c458b3f5422b101a44f075a82367c7d32fa174
 }
