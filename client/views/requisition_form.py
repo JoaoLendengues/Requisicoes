@@ -1042,7 +1042,7 @@ class RequisitionForm(QWidget):
                 chapa = float(inp_chapa.text().replace(",", ".") or "0")
                 var   = float(inp_var.text().replace(",", ".") or "7.865")
                 peso  = (qnt * comp * larg * chapa * var) / 1_000_000
-                txt   = f"{peso:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                txt   = f"{peso:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 lbl_result.setText(f"PESO = {txt} kg")
             except (ValueError, ZeroDivisionError):
                 lbl_result.setText("PESO = —")
