@@ -25,6 +25,12 @@ _LOAD_OPTS = [
     selectinload(Requisition.vendor),
 ]
 
+_PROD_NOTE_PREFIX = "PRODUCAO"
+_PROD_SEND = "ENVIADA"
+_PROD_RECEIVED = "RECEBIDA"
+_PROD_FINISHED = "FINALIZADA"
+_PROD_CANCELED = "CANCELADA"
+
 
 def _get_or_404(db: Session, req_id: int) -> Requisition:
     req = db.query(Requisition).options(*_LOAD_OPTS).filter(Requisition.id == req_id).first()
@@ -35,6 +41,94 @@ def _get_or_404(db: Session, req_id: int) -> Requisition:
 
 def _sum_item_weights(items: Optional[list]) -> float:
     return sum((item.weight or 0.0) for item in (items or []))
+
+
+def _parse_production_note(note: Optional[str]) -> dict | None:
+    if not note:
+        return None
+
+    parts = str(note).split("|", 3)
+    if len(parts) < 3 or parts[0] != _PROD_NOTE_PREFIX:
+        return None
+
+    data = {
+        "action": parts[1].strip(),
+        "target": parts[2].strip(),
+        "reason": "",
+    }
+    if len(parts) > 3:
+        data["reason"] = parts[3].strip()
+    return data
+
+
+def _is_locked_for_edit(req: Requisition) -> bool:
+    return req.finalized_at is not None
+
+
+def _ensure_editable(req: Requisition):
+    if req.status == RequisitionStatus.CANCELADA:
+        raise HTTPException(
+            status_code=400,
+            detail="Requisição cancelada não pode ser editada",
+        )
+    if _is_locked_for_edit(req):
+        raise HTTPException(
+            status_code=400,
+            detail="Requisição em produção recebida ou finalizada não pode ser editada",
+        )
+
+
+def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
+    prod_event = _parse_production_note(status_update.note)
+    if not prod_event:
+        return
+
+    action = prod_event["action"]
+    reason = prod_event["reason"]
+
+    if action == _PROD_SEND:
+        req.status = RequisitionStatus.EM_PRODUCAO
+        req.finalized_at = None
+        return
+
+    if action == _PROD_RECEIVED:
+        if req.status != RequisitionStatus.EM_PRODUCAO:
+            raise HTTPException(
+                status_code=400,
+                detail="Somente requisições em produção podem confirmar recebimento",
+            )
+        if req.finalized_at is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="O recebimento desta requisição já foi confirmado",
+            )
+        req.status = RequisitionStatus.EM_PRODUCAO
+        req.finalized_at = datetime.utcnow()
+        return
+
+    if action == _PROD_FINISHED:
+        if req.status != RequisitionStatus.EM_PRODUCAO:
+            raise HTTPException(
+                status_code=400,
+                detail="Somente requisições em produção podem ser finalizadas",
+            )
+        if req.finalized_at is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Confirme o recebimento antes de finalizar a produção",
+            )
+        req.status = RequisitionStatus.EM_ANDAMENTO
+        return
+
+    if action == _PROD_CANCELED:
+        if len(reason.strip()) < 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Informe um motivo de cancelamento com pelo menos 10 caracteres",
+            )
+        req.status = RequisitionStatus.EM_ANDAMENTO
+        req.finalized_at = None
+        return
 
 
 @router.get("/", response_model=List[RequisitionResponse])
@@ -116,11 +210,7 @@ def update_requisition(
     _: User = Depends(require_creator),
 ):
     req = _get_or_404(db, req_id)
-    if req.status == RequisitionStatus.CANCELADA:
-        raise HTTPException(
-            status_code=400,
-            detail="Requisição cancelada não pode ser editada",
-        )
+    _ensure_editable(req)
 
     for k, v in data.model_dump(exclude_unset=True, exclude={"items", "weight"}).items():
         setattr(req, k, v)
@@ -149,6 +239,7 @@ def update_status(
     req = _get_or_404(db, req_id)
     old_status = req.status
     req.status = data.status
+    _apply_production_transition(req, data)
 
     db.add(StatusHistory(
         requisition_id=req.id,
@@ -169,6 +260,7 @@ def update_canvas(
     _=Depends(require_creator),
 ):
     req = _get_or_404(db, req_id)
+    _ensure_editable(req)
     if req.canvas:
         req.canvas.json_data = data.json_data
     else:
@@ -185,6 +277,7 @@ def attach_nf(
     _=Depends(require_creator),
 ):
     req = _get_or_404(db, req_id)
+    _ensure_editable(req)
     req.nf_attachment = nf_path
     db.commit()
     return _get_or_404(db, req_id)
