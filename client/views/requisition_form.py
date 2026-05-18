@@ -983,6 +983,11 @@ class RequisitionForm(QWidget):
         inp_larg  = _input("mm", "")
         inp_chapa = _input("mm", "")
         inp_var   = _input("constante", "7.865")
+        inp_var.setReadOnly(True)
+        inp_var.setStyleSheet(
+            inp_var.styleSheet() +
+            f"background:{theme.TABLE_HEADER_BG}; color:#94A3B8;"
+        )
 
         grid.addWidget(_lbl("QNT:"),          0, 0)
         grid.addWidget(inp_qnt,               0, 1)
@@ -1046,7 +1051,7 @@ class RequisitionForm(QWidget):
         inp_comp.textChanged.connect(_recalculate)
         inp_larg.textChanged.connect(_recalculate)
         inp_chapa.textChanged.connect(_recalculate)
-        inp_var.textChanged.connect(_recalculate)
+        # inp_var é fixo — sem listener necessário
 
         dlg.exec()
 
