@@ -114,6 +114,7 @@ class RequisitionResponse(BaseModel):
     vendor_id: int
     vendor_name: Optional[str] = None
     client_id: int
+    client_code: Optional[str] = None
     client_name: Optional[str] = None
     obra: Optional[str]
     nf_attachment: Optional[str]

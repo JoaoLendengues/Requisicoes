@@ -228,16 +228,28 @@ class ProductionView(QWidget):
             subtitle_text = "Requisições já recebidas pela produção."
             primary_text = "🏁 Finalizar"
 
+        title_row = QHBoxLayout()
         title = QLabel(title_text)
         title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt; font-weight:bold;"
         )
+        count = QLabel("0")
+        count.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        count.setMinimumWidth(max(28, int(34 * s)))
+        count.setStyleSheet(
+            f"background:{theme.TABLE_HEADER_BG}; color:#fff; border-radius:999px;"
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:bold; padding:2px 8px;"
+        )
+        title_row.addWidget(title)
+        title_row.addStretch()
+        title_row.addWidget(count)
+
         subtitle = QLabel(subtitle_text)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
         )
-        layout.addWidget(title)
+        layout.addLayout(title_row)
         layout.addWidget(subtitle)
 
         actions = QHBoxLayout()
@@ -292,6 +304,7 @@ class ProductionView(QWidget):
         return {
             "card": card,
             "table": table,
+            "count": count,
             "open": btn_open,
             "primary": btn_primary,
             "cancel": btn_cancel,
@@ -374,7 +387,9 @@ class ProductionView(QWidget):
             self._fill_stage_table(destination, PRODUCTION_STAGE, production_rows)
 
     def _fill_stage_table(self, destination: str, stage: str, rows: list[dict]):
-        table = self._cards[destination][stage]["table"]
+        panel = self._cards[destination][stage]
+        table = panel["table"]
+        panel["count"].setText(str(len(rows)))
         table.setRowCount(0)
 
         for req in rows:

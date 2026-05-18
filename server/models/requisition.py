@@ -55,8 +55,13 @@ class Requisition(Base):
         return self.client.name if self.client else None
 
     @property
+    def client_code(self) -> str | None:
+        return self.client.code if self.client else None
+
+    @property
     def vendor_name(self) -> str | None:
         return self.vendor.name if self.vendor else None
+
     items: Mapped[list[RequisitionItem]] = relationship(
         "RequisitionItem", back_populates="requisition", cascade="all, delete-orphan"
     )

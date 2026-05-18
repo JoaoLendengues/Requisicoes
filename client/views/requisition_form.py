@@ -817,17 +817,101 @@ class RequisitionForm(QWidget):
 
     # ── WhatsApp do cliente ───────────────────────────────────────────────────
     def _send_whatsapp_client(self):
-        """Abre o WhatsApp Web com o telefone do cliente (campo FONE)."""
-        import re, webbrowser
-        raw = self.input_fone.text().strip()
-        digits = re.sub(r"\D", "", raw)
-        if not digits:
-            QMessageBox.warning(self, "WhatsApp",
-                                "Preencha o campo FONE do cliente antes de enviar.")
+        if not self.req_id:
+            QMessageBox.warning(
+                self,
+                "WhatsApp",
+                "Salve a requisição antes de enviar o PDF pelo WhatsApp.",
+            )
             return
+
+        self._set_whatsapp_busy(True)
+        thread, worker = _run_in_thread(
+            api.get_requisition,
+            self.req_id,
+            on_result=self._open_saved_pdf_for_whatsapp,
+            on_error=self._on_whatsapp_error,
+        )
+        self._threads.append((thread, worker))
+
+    def _set_whatsapp_busy(self, busy: bool):
+        if not hasattr(self, "btn_whatsapp"):
+            return
+
+        self.btn_whatsapp.setEnabled(not busy)
+        self.btn_whatsapp.setText("⏳ PREPARANDO PDF..." if busy else "📲 ENVIAR WHATSAPP")
+
+    def _on_whatsapp_error(self, msg: str):
+        self._set_whatsapp_busy(False)
+        QMessageBox.critical(self, "WhatsApp", msg)
+
+    def _open_saved_pdf_for_whatsapp(self, req: dict):
+        try:
+            digits = self._normalize_whatsapp_number(req.get("phone") or self.input_fone.text())
+            if not digits:
+                QMessageBox.warning(
+                    self,
+                    "WhatsApp",
+                    "A requisição salva não possui um telefone válido para envio.",
+                )
+                return
+
+            pdf_path = self._generate_saved_pdf(req)
+
+            import os
+            import webbrowser
+
+            try:
+                os.startfile(os.path.dirname(pdf_path))
+            except Exception:
+                pass
+
+            webbrowser.open(f"https://wa.me/{digits}")
+            QMessageBox.information(
+                self,
+                "WhatsApp",
+                "O PDF salvo foi gerado e a conversa do cliente foi aberta.\n\n"
+                f"Arquivo pronto:\n{pdf_path}\n\n"
+                "O anexo ainda precisa ser enviado manualmente porque o projeto "
+                "não tem uma integração configurada de envio de documentos pelo WhatsApp.",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "WhatsApp", str(exc))
+        finally:
+            self._set_whatsapp_busy(False)
+
+    def _normalize_whatsapp_number(self, raw: str | None) -> str:
+        import re
+
+        digits = re.sub(r"\D", "", (raw or "").strip())
+        if not digits:
+            return ""
         if not digits.startswith("55"):
             digits = "55" + digits
-        webbrowser.open(f"https://wa.me/{digits}")
+        return digits
+
+    def _generate_saved_pdf(self, req: dict) -> str:
+        folder = res.pdf_folder.strip()
+        if not folder:
+            raise RuntimeError(
+                "Defina a pasta de PDFs nas Configurações antes de enviar a requisição pelo WhatsApp."
+            )
+
+        try:
+            from ..services.pdf_generator import generate_pdf, HAS_REPORTLAB
+        except ImportError as exc:
+            raise RuntimeError("A geração de PDF não está disponível neste ambiente.") from exc
+
+        if not HAS_REPORTLAB:
+            raise RuntimeError("A geração de PDF está indisponível porque o ReportLab não está instalado.")
+
+        client = {
+            "code": req.get("client_code") or "",
+            "name": req.get("client_name") or "",
+            "phone": req.get("phone") or "",
+        }
+        canvas_json = (req.get("canvas") or {}).get("json_data") or "{}"
+        return generate_pdf(req, client, req.get("obs") or "", folder, canvas_json)
 
     def _send_to_production(self):
         if not self.req_id:

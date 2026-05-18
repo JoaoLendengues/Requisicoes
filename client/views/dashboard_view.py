@@ -124,7 +124,7 @@ class DashboardView(QWidget):
         layout.addWidget(lbl_rec)
 
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["PED", "OBRA", "DATA", "STATUS"])
+        self.table.setHorizontalHeaderLabels(["PED", "CLIENTE", "DATA", "STATUS"])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
@@ -165,9 +165,17 @@ class DashboardView(QWidget):
         for req in reqs[:20]:
             row = self.table.rowCount()
             self.table.insertRow(row)
+            client_code = (req.get("client_code") or "").strip()
+            client_name = (req.get("client_name") or "").strip()
+            client_label = client_name or "—"
+            if client_code and client_name:
+                client_label = f"{client_code} - {client_name}"
+            elif client_code:
+                client_label = client_code
+
             vals = [
                 req.get("ped_number", ""),
-                req.get("obra") or "—",
+                client_label,
                 str(req.get("emission_date", ""))[:10],
                 req.get("status", ""),
             ]
