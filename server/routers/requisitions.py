@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from datetime import datetime
 from ..database import get_db
+from ..models.client import Client
 from ..models.requisition import (
     Requisition, RequisitionItem, CanvasData, StatusHistory, RequisitionStatus,
 )
@@ -31,6 +33,10 @@ def _get_or_404(db: Session, req_id: int) -> Requisition:
     return req
 
 
+def _sum_item_weights(items: Optional[list]) -> float:
+    return sum((item.weight or 0.0) for item in (items or []))
+
+
 @router.get("/", response_model=List[RequisitionResponse])
 def list_requisitions(
     req_status: Optional[RequisitionStatus] = Query(None, alias="status"),
@@ -51,7 +57,13 @@ def list_requisitions(
     if vendor_id:
         q = q.filter(Requisition.vendor_id == vendor_id)
     if search:
-        q = q.filter(Requisition.ped_number.ilike(f"%{search}%"))
+        search_term = f"%{search.strip()}%"
+        q = q.join(Requisition.client).filter(or_(
+            Requisition.ped_number.ilike(search_term),
+            Requisition.obra.ilike(search_term),
+            Client.name.ilike(search_term),
+            Client.code.ilike(search_term),
+        ))
 
     # Vendedor e gerente só veem as próprias requisições
     if current_user.role in (Role.VENDEDOR, Role.GERENTE):
@@ -67,7 +79,11 @@ def create_requisition(
     current_user: User = Depends(require_creator),
 ):
     items_data = data.items
-    req = Requisition(**data.model_dump(exclude={"items"}), vendor_id=current_user.id)
+    req = Requisition(
+        **data.model_dump(exclude={"items", "weight"}),
+        vendor_id=current_user.id,
+        weight=_sum_item_weights(items_data),
+    )
     db.add(req)
     db.flush()
 
@@ -106,7 +122,7 @@ def update_requisition(
             detail="Requisição cancelada não pode ser editada",
         )
 
-    for k, v in data.model_dump(exclude_unset=True, exclude={"items"}).items():
+    for k, v in data.model_dump(exclude_unset=True, exclude={"items", "weight"}).items():
         setattr(req, k, v)
 
     if data.items is not None:
@@ -115,6 +131,9 @@ def update_requisition(
         db.flush()
         for item in data.items:
             db.add(RequisitionItem(**item.model_dump(), requisition_id=req.id))
+        req.weight = _sum_item_weights(data.items)
+    elif data.weight is not None:
+        req.weight = data.weight
 
     db.commit()
     return _get_or_404(db, req_id)

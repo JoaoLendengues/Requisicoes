@@ -128,6 +128,15 @@ class MainWindow(QMainWindow):
         if self.stack.currentIndex() != PAGE_FORM:
             return
         data = self.form_view.get_form_data()
+        ped_number = (data.get("ped_number") or "").strip()
+
+        if not ped_number or not ped_number.isdigit() or int(ped_number) == 0:
+            QMessageBox.warning(
+                self,
+                "Atenção",
+                "Informe um número de PED válido antes de salvar.",
+            )
+            return
 
         if not data.get("client_id"):
             QMessageBox.warning(self, "Atenção", "Selecione um cliente antes de salvar.")

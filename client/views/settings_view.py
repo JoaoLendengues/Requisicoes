@@ -1,3 +1,5 @@
+import os
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QSlider, QFrame,
@@ -28,39 +30,49 @@ def _separator() -> QFrame:
     return sep
 
 
-# ── Worker de importação (não bloqueia UI) ────────────────────────────────────
 class ImportWorker(QObject):
-    progress = Signal(int, int, str)   # atual, total, mensagem
-    finished = Signal(object)          # ImportResult
-    error    = Signal(str)
+    progress = Signal(str, int, int, str)
+    finished = Signal(str, object)
+    error = Signal(str, str)
 
-    def __init__(self, path: str):
+    def __init__(self, kind: str, path: str):
         super().__init__()
+        self.kind = kind
         self.path = path
 
     def run(self):
         try:
-            from ..services.client_importer import import_clients
-            result = import_clients(self.path, on_progress=self.progress.emit)
-            self.finished.emit(result)
-        except Exception as e:
-            self.error.emit(str(e))
+            if self.kind == "clients":
+                from ..services.client_importer import import_clients as import_fn
+            elif self.kind == "products":
+                from ..services.product_importer import import_products as import_fn
+            else:
+                raise ValueError(f"Tipo de importação inválido: {self.kind}")
+
+            result = import_fn(
+                self.path,
+                on_progress=lambda current, total, msg: self.progress.emit(
+                    self.kind, current, total, msg
+                ),
+            )
+            self.finished.emit(self.kind, result)
+        except Exception as exc:
+            self.error.emit(self.kind, str(exc))
 
 
-# ── View de Configurações ─────────────────────────────────────────────────────
 class SettingsView(QWidget):
     scale_changed = Signal(float)
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
-        self._import_thread = None
+        self._import_threads: dict[str, tuple[QThread, ImportWorker]] = {}
+        self._import_ui: dict[str, dict] = {}
         self._setup_ui()
 
     def _setup_ui(self):
         s = self.scale
 
-        # ScrollArea para suportar telas pequenas
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { border:none; background:transparent; }")
@@ -83,7 +95,6 @@ class SettingsView(QWidget):
         )
         outer.addWidget(title)
 
-        # ── Card principal ────────────────────────────────────────────────────
         card = QFrame()
         card.setStyleSheet(
             f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
@@ -99,7 +110,6 @@ class SettingsView(QWidget):
                                    max(16,int(24*s)), max(16,int(20*s)))
         layout.setSpacing(max(10,int(14*s)))
 
-        # ── Servidor ─────────────────────────────────────────────────────────
         layout.addWidget(_section("🌐  Conexão com o Servidor", s))
         layout.addWidget(_separator())
 
@@ -124,7 +134,6 @@ class SettingsView(QWidget):
         grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
         layout.addLayout(grid)
 
-        # ── Aparência ─────────────────────────────────────────────────────────
         layout.addWidget(_section("🎨  Aparência", s))
         layout.addWidget(_separator())
 
@@ -158,7 +167,6 @@ class SettingsView(QWidget):
         )
         layout.addWidget(screen_info)
 
-        # ── Pasta de PDFs ─────────────────────────────────────────────────────
         layout.addWidget(_section("📄  PDF Automático", s))
         layout.addWidget(_separator())
 
@@ -170,12 +178,8 @@ class SettingsView(QWidget):
         pdf_row = QHBoxLayout()
         pdf_row.addWidget(self._lbl("Pasta de PDFs:", s))
 
-        self.input_pdf_folder = QLineEdit(
-            res._read_file().get("pdf_folder", "")
-        )
-        self.input_pdf_folder.setPlaceholderText(
-            r"Ex.: Z:\REQUISIÇÕES (VENDAS)\PDFs"
-        )
+        self.input_pdf_folder = QLineEdit(res._read_file().get("pdf_folder", ""))
+        self.input_pdf_folder.setPlaceholderText(r"Ex.: Z:\REQUISIÇÕES (VENDAS)\PDFs")
         self.input_pdf_folder.setFixedHeight(max(30, int(36 * s)))
         self.input_pdf_folder.setStyleSheet(theme.input_style(s))
         pdf_row.addWidget(self.input_pdf_folder, 1)
@@ -188,66 +192,32 @@ class SettingsView(QWidget):
         pdf_row.addWidget(btn_browse_pdf)
         layout.addLayout(pdf_row)
 
-        # ── Importação de Clientes ────────────────────────────────────────────
-        layout.addWidget(_section("📥  Importação de Clientes (ODS/Excel)", s))
-        layout.addWidget(_separator())
-
-        layout.addWidget(self._lbl(
-            "Planilha com colunas: Código, Nome, CPF/CNPJ  "
-            "(novos clientes são criados; existentes são atualizados)", s,
-            color=theme.TEXT_LIGHT, italic=True
-        ))
-
-        path_row = QHBoxLayout()
-        path_row.addWidget(self._lbl("Arquivo:", s))
-
-        self.input_ods_path = QLineEdit(
-            res._read_file().get("ods_path",
-                                  r"Z:\REQUISIÇÕES (VENDAS)\relacao_cadastros.ods")
+        self._create_import_section(
+            layout=layout,
+            kind="clients",
+            title="📥  Importação de Clientes (ODS/Excel)",
+            description=(
+                "Planilha com colunas: Código, Nome, CPF/CNPJ "
+                "(novos clientes são criados; existentes são atualizados)."
+            ),
+            default_path=res._read_file().get(
+                "ods_path", r"Z:\REQUISIÇÕES (VENDAS)\relacao_cadastros.ods"
+            ),
+            button_text="⬆  Importar Clientes",
         )
-        self.input_ods_path.setFixedHeight(max(30,int(36*s)))
-        self.input_ods_path.setStyleSheet(theme.input_style(s))
-        path_row.addWidget(self.input_ods_path, 1)
 
-        btn_browse = QPushButton("📂")
-        btn_browse.setFixedSize(max(30,int(36*s)), max(30,int(36*s)))
-        btn_browse.setStyleSheet(theme.secondary_btn_style(s))
-        btn_browse.setToolTip("Navegar...")
-        btn_browse.clicked.connect(self._browse_ods)
-        path_row.addWidget(btn_browse)
-        layout.addLayout(path_row)
-
-        # Barra de progresso + botão importar
-        import_row = QHBoxLayout()
-        self.btn_import = QPushButton("⬆  Importar Clientes")
-        self.btn_import.setFixedHeight(max(34,int(40*s)))
-        self.btn_import.setStyleSheet(theme.primary_btn_style(s))
-        self.btn_import.clicked.connect(self._start_import)
-        import_row.addWidget(self.btn_import)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setFixedHeight(max(18,int(22*s)))
-        self.progress_bar.setVisible(False)
-        self.progress_bar.setStyleSheet(
-            f"QProgressBar {{ border:1px solid {theme.BORDER_COLOR}; border-radius:4px;"
-            f"background:{theme.INPUT_BG}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
-            f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
+        self._create_import_section(
+            layout=layout,
+            kind="products",
+            title="📦  Importação de Produtos (ODS/Excel)",
+            description=(
+                "Planilha com colunas como Código e Nome/Descrição. "
+                "Os produtos são importados em lote e ficam disponíveis para lookup na requisição."
+            ),
+            default_path=self._default_products_path(),
+            button_text="⬆  Importar Produtos",
         )
-        import_row.addWidget(self.progress_bar, 1)
-        layout.addLayout(import_row)
 
-        # Log do resultado
-        self.txt_import_log = QTextEdit()
-        self.txt_import_log.setReadOnly(True)
-        self.txt_import_log.setMaximumHeight(max(100,int(120*s)))
-        self.txt_import_log.setVisible(False)
-        self.txt_import_log.setStyleSheet(
-            f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
-            f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:4px;"
-        )
-        layout.addWidget(self.txt_import_log)
-
-        # ── Botão Salvar ──────────────────────────────────────────────────────
         layout.addSpacing(4)
         btn_save = QPushButton("💾  Salvar configurações")
         btn_save.setFixedHeight(max(36,int(42*s)))
@@ -258,7 +228,82 @@ class SettingsView(QWidget):
         outer.addWidget(card)
         outer.addStretch()
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    def _create_import_section(self, layout: QVBoxLayout, kind: str, title: str,
+                               description: str, default_path: str, button_text: str):
+        s = self.scale
+        layout.addWidget(_section(title, s))
+        layout.addWidget(_separator())
+        layout.addWidget(self._lbl(description, s, color=theme.TEXT_LIGHT, italic=True))
+
+        path_row = QHBoxLayout()
+        path_row.addWidget(self._lbl("Arquivo:", s))
+
+        input_path = QLineEdit(default_path)
+        input_path.setFixedHeight(max(30,int(36*s)))
+        input_path.setStyleSheet(theme.input_style(s))
+        path_row.addWidget(input_path, 1)
+
+        btn_browse = QPushButton("📂")
+        btn_browse.setFixedSize(max(30,int(36*s)), max(30,int(36*s)))
+        btn_browse.setStyleSheet(theme.secondary_btn_style(s))
+        btn_browse.setToolTip("Navegar...")
+        btn_browse.clicked.connect(lambda: self._browse_import_path(kind))
+        path_row.addWidget(btn_browse)
+        layout.addLayout(path_row)
+
+        import_row = QHBoxLayout()
+        btn_import = QPushButton(button_text)
+        btn_import.setFixedHeight(max(34,int(40*s)))
+        btn_import.setStyleSheet(theme.primary_btn_style(s))
+        btn_import.clicked.connect(lambda: self._start_import(kind))
+        import_row.addWidget(btn_import)
+
+        progress_bar = QProgressBar()
+        progress_bar.setFixedHeight(max(18,int(22*s)))
+        progress_bar.setVisible(False)
+        progress_bar.setStyleSheet(
+            f"QProgressBar {{ border:1px solid {theme.BORDER_COLOR}; border-radius:4px;"
+            f"background:{theme.INPUT_BG}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
+            f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
+        )
+        import_row.addWidget(progress_bar, 1)
+        layout.addLayout(import_row)
+
+        txt_log = QTextEdit()
+        txt_log.setReadOnly(True)
+        txt_log.setMaximumHeight(max(100,int(120*s)))
+        txt_log.setVisible(False)
+        txt_log.setStyleSheet(
+            f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+            f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:4px;"
+        )
+        layout.addWidget(txt_log)
+
+        self._import_ui[kind] = {
+            "input": input_path,
+            "button": btn_import,
+            "button_text": button_text,
+            "progress": progress_bar,
+            "log": txt_log,
+        }
+
+        if kind == "clients":
+            self.input_ods_path = input_path
+        elif kind == "products":
+            self.input_products_path = input_path
+
+    def _default_products_path(self) -> str:
+        settings_data = res._read_file()
+        saved_products_path = settings_data.get("products_path")
+        if saved_products_path:
+            return saved_products_path
+
+        clients_path = settings_data.get("ods_path", "")
+        if clients_path:
+            return os.path.join(os.path.dirname(clients_path), "produtos.ods")
+
+        return r"Z:\REQUISIÇÕES (VENDAS)\produtos.ods"
+
     def _lbl(self, text: str, scale: float, color: str = None,
              italic: bool = False) -> QLabel:
         lbl = QLabel(text)
@@ -270,7 +315,6 @@ class SettingsView(QWidget):
         lbl.setStyleSheet(style)
         return lbl
 
-    # ── Servidor ──────────────────────────────────────────────────────────────
     def _on_scale_change(self, value: int):
         self.lbl_scale_val.setText(f"{value}%")
 
@@ -290,24 +334,36 @@ class SettingsView(QWidget):
         self.btn_test.setText("Testar conexão")
 
     def _save(self):
-        url        = self.input_url.text().strip()
-        scale      = self.slider_scale.value() / 100.0
-        path       = self.input_ods_path.text().strip()
+        url = self.input_url.text().strip()
+        scale = self.slider_scale.value() / 100.0
+        clients_path = self.input_ods_path.text().strip()
+        products_path = self.input_products_path.text().strip()
         pdf_folder = self.input_pdf_folder.text().strip()
-        res.save(server_url=url, font_scale=scale, ods_path=path, pdf_folder=pdf_folder)
-        QMessageBox.information(self, "Salvo",
-                                "Configurações salvas.\n"
-                                "Reinicie o aplicativo para aplicar a nova escala.")
+        res.save(
+            server_url=url,
+            font_scale=scale,
+            ods_path=clients_path,
+            products_path=products_path,
+            pdf_folder=pdf_folder,
+        )
+        QMessageBox.information(
+            self,
+            "Salvo",
+            "Configurações salvas.\nReinicie o aplicativo para aplicar a nova escala."
+        )
         self.scale_changed.emit(scale)
 
-    # ── Importação ────────────────────────────────────────────────────────────
-    def _browse_ods(self):
+    def _browse_import_path(self, kind: str):
+        title = (
+            "Selecionar planilha de clientes"
+            if kind == "clients"
+            else "Selecionar planilha de produtos"
+        )
         path, _ = QFileDialog.getOpenFileName(
-            self, "Selecionar planilha de clientes", "",
-            "Planilhas (*.ods *.xlsx *.xlsm *.xls)"
+            self, title, "", "Planilhas (*.ods *.xlsx *.xlsm *.xls)"
         )
         if path:
-            self.input_ods_path.setText(path)
+            self._import_ui[kind]["input"].setText(path)
 
     def _browse_pdf_folder(self):
         folder = QFileDialog.getExistingDirectory(
@@ -316,44 +372,59 @@ class SettingsView(QWidget):
         if folder:
             self.input_pdf_folder.setText(folder)
 
-    def _start_import(self):
-        path = self.input_ods_path.text().strip()
+    def _start_import(self, kind: str):
+        path = self._import_ui[kind]["input"].text().strip()
         if not path:
             QMessageBox.warning(self, "Atenção", "Informe o caminho do arquivo.")
             return
 
-        self.btn_import.setEnabled(False)
-        self.btn_import.setText("Importando...")
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setValue(0)
-        self.txt_import_log.setVisible(False)
+        self._set_import_busy(kind, True)
 
-        self._worker = ImportWorker(path)
-        self._import_thread = QThread()
-        self._worker.moveToThread(self._import_thread)
-        self._import_thread.started.connect(self._worker.run)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.finished.connect(self._on_import_done)
-        self._worker.error.connect(self._on_import_error)
-        self._worker.finished.connect(self._import_thread.quit)
-        self._import_thread.start()
+        worker = ImportWorker(kind, path)
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._on_progress)
+        worker.finished.connect(self._on_import_done)
+        worker.error.connect(self._on_import_error)
+        worker.finished.connect(lambda *_: thread.quit())
+        worker.error.connect(lambda *_: thread.quit())
+        thread.start()
+        self._import_threads[kind] = (thread, worker)
 
-    def _on_progress(self, current: int, total: int, msg: str):
-        if total > 0:
-            self.progress_bar.setMaximum(total)
-            self.progress_bar.setValue(current)
-            self.progress_bar.setFormat(f"{msg}")
+    def _set_import_busy(self, kind: str, busy: bool):
+        ui = self._import_ui[kind]
+        ui["button"].setEnabled(not busy)
+        ui["button"].setText("Importando..." if busy else ui["button_text"])
+        ui["progress"].setVisible(True if busy else ui["progress"].isVisible())
+        if busy:
+            ui["progress"].setMaximum(3)
+            ui["progress"].setValue(0)
+            ui["progress"].setFormat("")
+            ui["log"].setVisible(False)
 
-    def _on_import_done(self, result):
-        self.btn_import.setEnabled(True)
-        self.btn_import.setText("⬆  Importar Clientes")
-        self.progress_bar.setValue(self.progress_bar.maximum())
-        self.txt_import_log.setVisible(True)
-        self.txt_import_log.setPlainText(result.summary())
+    def _on_progress(self, kind: str, current: int, total: int, msg: str):
+        ui = self._import_ui[kind]
+        ui["progress"].setVisible(True)
+        ui["progress"].setMaximum(total if total > 0 else 3)
+        ui["progress"].setValue(current)
+        ui["progress"].setFormat(msg)
 
-    def _on_import_error(self, msg: str):
-        self.btn_import.setEnabled(True)
-        self.btn_import.setText("⬆  Importar Clientes")
-        self.progress_bar.setVisible(False)
-        self.txt_import_log.setVisible(True)
-        self.txt_import_log.setPlainText(f"❌  Erro:\n{msg}")
+    def _on_import_done(self, kind: str, result):
+        ui = self._import_ui[kind]
+        ui["button"].setEnabled(True)
+        ui["button"].setText(ui["button_text"])
+        ui["progress"].setVisible(True)
+        ui["progress"].setValue(ui["progress"].maximum())
+        ui["log"].setVisible(True)
+        ui["log"].setPlainText(result.summary())
+        self._import_threads.pop(kind, None)
+
+    def _on_import_error(self, kind: str, msg: str):
+        ui = self._import_ui[kind]
+        ui["button"].setEnabled(True)
+        ui["button"].setText(ui["button_text"])
+        ui["progress"].setVisible(False)
+        ui["log"].setVisible(True)
+        ui["log"].setPlainText(f"❌  Erro:\n{msg}")
+        self._import_threads.pop(kind, None)

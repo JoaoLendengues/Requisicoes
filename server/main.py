@@ -4,8 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from sqlalchemy import text
 from .database import engine, Base
-from .models import user, client, requisition  # garante registro dos modelos no SQLAlchemy
-from .routers import auth, users, clients, requisitions
+from .models import user, client, product, requisition  # garante registro dos modelos no SQLAlchemy
+from .routers import auth, users, clients, products, requisitions
 from .seed import seed_admin
 
 
@@ -13,6 +13,8 @@ def _migrate():
     """Aplica migrações de colunas adicionadas após criação inicial do banco."""
     stmts = [
         "ALTER TABLE requisitions ADD COLUMN obs TEXT",
+        "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
+        "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",
         # Migração de status — cobre tanto valores minúsculos quanto nomes em maiúsculo
         "UPDATE requisitions SET status = 'em_andamento' WHERE UPPER(status) IN "
         "('RASCUNHO','EMITIDA','RECEBIDA_PRODUCAO','PRONTA','EM_ROTA','AGUARDANDO_RETIRADA','CONCLUIDA')",
@@ -52,6 +54,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(clients.router)
+app.include_router(products.router)
 app.include_router(requisitions.router)
 
 

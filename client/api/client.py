@@ -8,10 +8,10 @@ def _url() -> str:
 
 
 def _headers() -> dict:
-    h = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
     if session.token:
-        h["Authorization"] = f"Bearer {session.token}"
-    return h
+        headers["Authorization"] = f"Bearer {session.token}"
+    return headers
 
 
 def _cli() -> httpx.Client:
@@ -37,107 +37,116 @@ def _check(resp: httpx.Response):
     return resp.json()
 
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
 def login(code: str, password: str) -> dict:
-    with _cli() as c:
-        return _check(c.post("/auth/login", json={"code": code, "password": password}))
+    with _cli() as client:
+        return _check(client.post("/auth/login", json={"code": code, "password": password}))
 
 
 def get_me() -> dict:
-    with _cli() as c:
-        return _check(c.get("/auth/me"))
+    with _cli() as client:
+        return _check(client.get("/auth/me"))
 
 
-# ── Usuários ──────────────────────────────────────────────────────────────────
 def list_users() -> list:
-    with _cli() as c:
-        return _check(c.get("/users/"))
+    with _cli() as client:
+        return _check(client.get("/users/"))
 
 
 def create_user(data: dict) -> dict:
-    with _cli() as c:
-        return _check(c.post("/users/", json=data))
+    with _cli() as client:
+        return _check(client.post("/users/", json=data))
 
 
 def update_user(user_id: int, data: dict) -> dict:
-    with _cli() as c:
-        return _check(c.patch(f"/users/{user_id}", json=data))
+    with _cli() as client:
+        return _check(client.patch(f"/users/{user_id}", json=data))
 
 
 def deactivate_user(user_id: int):
-    with _cli() as c:
-        _check(c.delete(f"/users/{user_id}"))
+    with _cli() as client:
+        _check(client.delete(f"/users/{user_id}"))
 
 
-# ── Clientes ──────────────────────────────────────────────────────────────────
 def list_clients(search: str = "", limit: int = 30) -> list:
-    with _cli() as c:
+    with _cli() as client:
         params: dict = {"limit": limit}
         if search:
             params["search"] = search
-        return _check(c.get("/clients/", params=params))
+        return _check(client.get("/clients/", params=params))
 
 
 def get_client(client_id: int) -> dict:
-    with _cli() as c:
-        return _check(c.get(f"/clients/{client_id}"))
+    with _cli() as client:
+        return _check(client.get(f"/clients/{client_id}"))
 
 
 def create_client(data: dict) -> dict:
-    with _cli() as c:
-        return _check(c.post("/clients/", json=data))
+    with _cli() as client:
+        return _check(client.post("/clients/", json=data))
 
 
 def update_client(client_id: int, data: dict) -> dict:
-    with _cli() as c:
-        return _check(c.patch(f"/clients/{client_id}", json=data))
+    with _cli() as client:
+        return _check(client.patch(f"/clients/{client_id}", json=data))
 
 
 def bulk_import_clients(items: list) -> dict:
-    """Importa uma lista de clientes em lote (uma única chamada HTTP)."""
-    with _cli() as c:
-        return _check(c.post("/clients/bulk-import", json=items,
-                             timeout=120))   # planilhas grandes podem demorar
+    with _cli() as client:
+        return _check(client.post("/clients/bulk-import", json=items, timeout=120))
 
 
-# ── Requisições ───────────────────────────────────────────────────────────────
+def list_products(search: str = "", code: str = "", limit: int = 30) -> list:
+    with _cli() as client:
+        params: dict = {"limit": limit}
+        if search:
+            params["search"] = search
+        if code:
+            params["code"] = code
+        return _check(client.get("/products/", params=params))
+
+
+def bulk_import_products(items: list) -> dict:
+    with _cli() as client:
+        return _check(client.post("/products/bulk-import", json=items, timeout=120))
+
+
 def list_requisitions(status: str = "", search: str = "",
                       skip: int = 0, limit: int = 50) -> list:
-    with _cli() as c:
+    with _cli() as client:
         params: dict = {"skip": skip, "limit": limit}
         if status:
             params["status"] = status
         if search:
             params["search"] = search
-        return _check(c.get("/requisitions/", params=params))
+        return _check(client.get("/requisitions/", params=params))
 
 
 def get_requisition(req_id: int) -> dict:
-    with _cli() as c:
-        return _check(c.get(f"/requisitions/{req_id}"))
+    with _cli() as client:
+        return _check(client.get(f"/requisitions/{req_id}"))
 
 
 def create_requisition(data: dict) -> dict:
-    with _cli() as c:
-        return _check(c.post("/requisitions/", json=data))
+    with _cli() as client:
+        return _check(client.post("/requisitions/", json=data))
 
 
 def update_requisition(req_id: int, data: dict) -> dict:
-    with _cli() as c:
-        return _check(c.patch(f"/requisitions/{req_id}", json=data))
+    with _cli() as client:
+        return _check(client.patch(f"/requisitions/{req_id}", json=data))
 
 
 def update_status(req_id: int, status: str, note: str = "") -> dict:
-    with _cli() as c:
-        return _check(c.patch(
+    with _cli() as client:
+        return _check(client.patch(
             f"/requisitions/{req_id}/status",
             json={"status": status, "note": note},
         ))
 
 
 def update_canvas(req_id: int, json_data: str) -> dict:
-    with _cli() as c:
-        return _check(c.patch(
+    with _cli() as client:
+        return _check(client.patch(
             f"/requisitions/{req_id}/canvas",
             json={"json_data": json_data},
         ))
