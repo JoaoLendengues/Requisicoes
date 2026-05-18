@@ -31,7 +31,7 @@ class HistoryWorker(QObject):
             self.finished.emit()
 
 
-COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS", "PESO (KG)"]
+COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS"]
 
 
 class HistoryView(QWidget):
@@ -147,7 +147,6 @@ class HistoryView(QWidget):
                 req.get("vendor_name") or str(req.get("vendor_id", "")),
                 str(req.get("emission_date", ""))[:10],
                 req.get("status", ""),
-                f"{req.get('weight', 0):.2f}",
             ]
             for col, val in enumerate(vals):
                 if col == 5:   # Status — badge colorido

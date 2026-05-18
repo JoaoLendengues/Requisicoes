@@ -578,17 +578,6 @@ class RequisitionForm(QWidget):
 
         layout.addStretch()
 
-        # Peso total
-        peso_col = QVBoxLayout()
-        peso_col.setSpacing(2)
-        peso_col.addWidget(_field_label("⚖️  PESO TOTAL", s))
-        self.lbl_peso_header = _value_label("0,00", s)
-        self.lbl_peso_header.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(12,int(14*s))}pt; font-weight:bold; border:none;"
-        )
-        peso_col.addWidget(self.lbl_peso_header)
-        layout.addLayout(peso_col)
-
         return card
 
     # ── Seção Cliente ─────────────────────────────────────────────────────────
@@ -662,7 +651,6 @@ class RequisitionForm(QWidget):
         items_layout.addLayout(header_row)
 
         self.item_table = ItemTable(s)
-        self.item_table.weight_changed.connect(self._on_weight_changed)
         items_layout.addWidget(self.item_table)
         return items_card
 
@@ -798,11 +786,6 @@ class RequisitionForm(QWidget):
         self.input_address.setText(", ".join(p for p in addr_parts if p))
 
     # ── Eventos ───────────────────────────────────────────────────────────────
-    def _on_weight_changed(self, total: float):
-        self.lbl_peso_header.setText(
-            f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
-
     # ── API pública ──────────────────────────────────────────────────────────
     def get_form_data(self) -> dict:
         client_id = self.client_search.get_client_id()
@@ -816,7 +799,6 @@ class RequisitionForm(QWidget):
             "entrega":          self.chk_entrega.isChecked(),
             "phone":            self.input_fone.text().strip() or None,
             "delivery_address": self.input_address.text().strip() or None,
-            "weight":           0.0,
             "items":            self.item_table.get_items(),
             "obs":              self.input_obs.toPlainText().strip() or None,
         }
@@ -868,4 +850,3 @@ class RequisitionForm(QWidget):
         self.lbl_ped_num.setText("#000000")
         self.item_table.set_items([])
         self._canvas_json = "{}"
-        self.lbl_peso_header.setText("0,00")

@@ -336,17 +336,13 @@ def generate_pdf(req: dict, client: dict | None, obs: str,
     entrega    = "✔ SIM" if req.get("entrega")  else "NÃO"
     whatsapp   = req.get("phone") or "—"
     items_list = req.get("items", [])
-    total_w    = sum((it.get("weight") or 0.0) for it in items_list)
-    weight_str = f"{total_w:.2f}".replace(".", ",") + " kg"
 
     del_t = Table([[
         P(f"<b>PRAZO DE ENTREGA</b><br/>{del_str}", size=9, leading=14),
         P(f"<b>RETIRADA</b><br/>{retirada}",         size=9, leading=14),
         P(f"<b>ENTREGA</b><br/>{entrega}",           size=9, leading=14),
         P(f"<b>WHATSAPP</b><br/>{whatsapp}",         size=9, leading=14),
-        P(f"<b>PESO TOTAL</b><br/>{weight_str}",     size=9, leading=14,
-          align=TA_CENTER),
-    ]], colWidths=[CW * w for w in (0.22, 0.14, 0.14, 0.28, 0.22)])
+    ]], colWidths=[CW * w for w in (0.28, 0.16, 0.16, 0.40)])
     del_t.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), C_GRAY_BG),
         ("TOPPADDING",    (0, 0), (-1, -1), 7),
@@ -364,8 +360,8 @@ def generate_pdf(req: dict, client: dict | None, obs: str,
     story += [P("ITENS DA REQUISIÇÃO", size=9, color=C_TEXT_MID, bold=True),
               Spacer(1, 2 * mm)]
 
-    col_headers  = ["POS.", "QTDE", "COMP", "DESENV.", "CHAPA", "TIPO", "PESO (KG)"]
-    col_w_items  = [CW * w for w in (0.06, 0.08, 0.11, 0.11, 0.11, 0.38, 0.15)]
+    col_headers  = ["POS.", "QTDE", "COMP", "LARGURA", "CHAPA", "TIPO"]
+    col_w_items  = [CW * w for w in (0.07, 0.10, 0.14, 0.14, 0.14, 0.41)]
 
     def hcell(t):        return P(f"<b>{t}</b>", size=8.5, color=C_WHITE, align=TA_CENTER)
     def dcell(t, b=False): return P(str(t), size=9, color=C_TEXT, align=TA_CENTER, bold=b)
@@ -378,8 +374,7 @@ def generate_pdf(req: dict, client: dict | None, obs: str,
         dcell(it.get("desenv") or ""),
         dcell(it.get("chapa")  or ""),
         dcell(it.get("tipo")   or ""),
-        dcell(_fmt_kg(it.get("weight"))),
-    ] for it in items_list] or [[dcell("") for _ in range(7)]] * 3
+    ] for it in items_list] or [[dcell("") for _ in range(6)]] * 3
 
     row_styles = [
         ("BACKGROUND", (0, 0), (-1, 0), C_HEADER),   # header escuro
