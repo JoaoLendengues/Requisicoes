@@ -1,6 +1,6 @@
 """
-Importação de produtos a partir de arquivo .ods / .xlsx.
-Colunas esperadas: Código e Nome/Descrição.
+Importacao de produtos a partir de arquivo .ods / .xlsx.
+Colunas esperadas: Codigo e Produto.
 """
 import re
 import unicodedata
@@ -34,13 +34,49 @@ _COL_MAP = {
 }
 
 
-def _map_columns(df) -> dict[str, str]:
+def _is_blank(value) -> bool:
+    if value is None:
+        return True
+    text = str(value).strip()
+    return not text or text.lower() in {"nan", "none"}
+
+
+def _map_columns(labels) -> dict[str, str]:
     mapping: dict[str, str] = {}
-    for col in df.columns:
-        internal = _COL_MAP.get(_normalize(col))
+    for col in labels:
+        if _is_blank(col):
+            continue
+        label = str(col).strip()
+        internal = _COL_MAP.get(_normalize(label))
         if internal and internal not in mapping:
-            mapping[internal] = col
+            mapping[internal] = label
     return mapping
+
+
+def _rebuild_header_from_row(df, row_index: int):
+    header_values: list[str] = []
+    for idx, value in enumerate(df.iloc[row_index].tolist()):
+        text = "" if _is_blank(value) else str(value).strip()
+        header_values.append(text or f"COL_{idx + 1}")
+
+    rebuilt = df.iloc[row_index + 1:].copy().reset_index(drop=True)
+    rebuilt.columns = header_values
+    return rebuilt
+
+
+def _prepare_dataframe(df):
+    col_map = _map_columns(df.columns)
+    if "code" in col_map and "name" in col_map:
+        return df, col_map
+
+    scan_limit = min(len(df), 5)
+    for row_index in range(scan_limit):
+        candidate_map = _map_columns(df.iloc[row_index].tolist())
+        if "code" in candidate_map and "name" in candidate_map:
+            rebuilt = _rebuild_header_from_row(df, row_index)
+            return rebuilt, _map_columns(rebuilt.columns)
+
+    return df, col_map
 
 
 def import_products(path: str, on_progress=None) -> ImportResult:
@@ -51,20 +87,22 @@ def import_products(path: str, on_progress=None) -> ImportResult:
 
     df = read_spreadsheet(path)
     df = df.dropna(how="all")
-    total_rows = len(df)
 
-    if total_rows == 0:
+    if len(df) == 0:
         result.errors.append("Planilha vazia ou sem dados.")
         return result
 
     if on_progress:
         on_progress(1, 3, "Validando registros...")
 
-    col_map = _map_columns(df)
+    df, col_map = _prepare_dataframe(df)
     if "code" not in col_map or "name" not in col_map:
+        found_columns = [str(col).strip() for col in list(df.columns) if not _is_blank(col)]
+        found_text = ", ".join(found_columns[:8]) if found_columns else "nenhuma coluna legivel"
         result.errors.append(
-            "Colunas obrigatórias não encontradas. "
-            "Esperado: 'Código' e 'Nome/Descrição'."
+            "Colunas obrigatorias nao encontradas. "
+            "Esperado: 'Codigo' e 'Produto'. "
+            f"Encontrado: {found_text}."
         )
         return result
 
@@ -80,11 +118,11 @@ def import_products(path: str, on_progress=None) -> ImportResult:
         items.append({"code": code, "name": name})
 
     if not items:
-        result.errors.append("Nenhum produto válido encontrado na planilha.")
+        result.errors.append("Nenhum produto valido encontrado na planilha.")
         return result
 
     if on_progress:
-        on_progress(2, 3, "Enviando ao servidor...")
+        on_progress(2, 3, f"Enviando {len(items)} produtos ao servidor...")
 
     try:
         server_result = api.bulk_import_products(items)
@@ -114,6 +152,6 @@ def import_products(path: str, on_progress=None) -> ImportResult:
         return result
 
     if on_progress:
-        on_progress(3, 3, "Concluído!")
+        on_progress(3, 3, "Concluido!")
 
     return result
