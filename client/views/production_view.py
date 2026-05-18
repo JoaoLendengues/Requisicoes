@@ -60,6 +60,11 @@ class ActionWorker(QObject):
             self.finished.emit()
 
 
+class UiCallback(QObject):
+    result = Signal(object)
+    error = Signal(str)
+
+
 def _make_card(scale: float) -> QFrame:
     card = QFrame()
     card.setStyleSheet(
@@ -299,14 +304,18 @@ class ProductionView(QWidget):
     def refresh(self):
         worker = ProductionWorker()
         thread = QThread()
+        cb = UiCallback()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.result.connect(self._on_refresh_result)
-        worker.error.connect(lambda msg: QMessageBox.critical(self, "Produção", msg))
+        worker.result.connect(cb.result)
+        worker.error.connect(cb.error)
+        cb.result.connect(self._on_refresh_result)
+        cb.error.connect(self._show_error)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
         thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        worker._cb = cb
         thread.start()
         self._threads.append((thread, worker))
 
@@ -317,11 +326,10 @@ class ProductionView(QWidget):
         try:
             self._populate(payload)
         except Exception as exc:
-            QMessageBox.critical(
-                self,
-                "Produção",
-                f"Não foi possível carregar a aba de produção.\n\n{exc}",
-            )
+            self._show_error(f"Não foi possível carregar a aba de produção.\n\n{exc}")
+
+    def _show_error(self, msg: str):
+        QMessageBox.critical(self, "Produção", msg)
 
     def _populate(self, payload: object):
         if not isinstance(payload, dict):
@@ -505,14 +513,18 @@ class ProductionView(QWidget):
     def _run_action(self, fn, *args, success_message: str):
         worker = ActionWorker(fn, *args)
         thread = QThread()
+        cb = UiCallback()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.result.connect(lambda _: self._after_action(success_message))
-        worker.error.connect(lambda msg: QMessageBox.critical(self, "Produção", msg))
+        worker.result.connect(cb.result)
+        worker.error.connect(cb.error)
+        cb.result.connect(lambda _: self._after_action(success_message))
+        cb.error.connect(self._show_error)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
         thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        worker._cb = cb
         thread.start()
         return thread, worker
 
