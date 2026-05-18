@@ -1,25 +1,26 @@
 import os
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QFrame, QSpacerItem,
-    QSizePolicy,
-)
-from PySide6.QtGui import QPixmap, QFont
+
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QFrame
+from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt, Signal
+
 from ..core import theme
 from ..core.session import session
+
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
 
 NAV_ITEMS = [
-    ("nova",        "📋",  "NOVA REQUISIÇÃO"),
-    ("dashboard",   "📊",  "DASHBOARD"),
-    ("historico",   "🕐",  "HISTÓRICO / BUSCA"),
-    ("config",      "⚙️",  "CONFIGURAÇÕES"),
+    ("nova", "▣", "NOVA REQUISIÇÃO"),
+    ("dashboard", "◫", "DASHBOARD"),
+    ("producao", "⚒", "PRODUÇÃO"),
+    ("historico", "◷", "HISTÓRICO / BUSCA"),
+    ("config", "⚙", "CONFIGURAÇÕES"),
 ]
 
 
 class Sidebar(QWidget):
-    nav_clicked    = Signal(str)
+    nav_clicked = Signal(str)
     logout_clicked = Signal()
 
     def __init__(self, scale: float = 1.0, parent=None):
@@ -36,7 +37,6 @@ class Sidebar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # ── Logo ─────────────────────────────────────────────────────────────
         logo_container = QWidget()
         logo_container.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
         logo_layout = QVBoxLayout(logo_container)
@@ -45,22 +45,20 @@ class Sidebar(QWidget):
         logo_label = QLabel()
         pix = QPixmap(LOGO_PATH)
         if not pix.isNull():
-            w = max(140, int(160 * self.scale))
-            pix = pix.scaledToWidth(w, Qt.TransformationMode.SmoothTransformation)
+            width = max(140, int(160 * self.scale))
+            pix = pix.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
             logo_label.setPixmap(pix)
         else:
             logo_label.setText("PINHEIRO FERRAGENS")
             logo_label.setStyleSheet(
-                f"color:#fff; font-size:{max(11, int(13*self.scale))}pt; font-weight:bold;"
+                f"color:#fff; font-size:{max(11, int(13 * self.scale))}pt; font-weight:bold;"
             )
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_layout.addWidget(logo_label)
         layout.addWidget(logo_container)
 
-        # ── Separador ────────────────────────────────────────────────────────
         layout.addWidget(self._separator())
 
-        # ── Navegação ─────────────────────────────────────────────────────────
         for key, icon, label in NAV_ITEMS:
             btn = self._make_btn(icon, label, nav_key=key)
             self._nav_btns[key] = btn
@@ -70,39 +68,31 @@ class Sidebar(QWidget):
         layout.addStretch()
         layout.addWidget(self._separator())
 
-        # ── Usuário logado ────────────────────────────────────────────────────
-        self.user_label = QLabel(f"👤  {session.user_name}")
+        self.user_label = QLabel(f"◉ USUÁRIO: {session.user_name}")
         self.user_label.setStyleSheet(
-            f"color:#94A3B8; font-size:{max(8, int(9*self.scale))}pt; padding:8px 16px;"
+            f"color:#94A3B8; font-size:{max(8, int(9 * self.scale))}pt; padding:8px 16px;"
         )
         self.user_label.setWordWrap(True)
         layout.addWidget(self.user_label)
 
-        # ── Sair ─────────────────────────────────────────────────────────────
-        btn_sair = self._make_btn("🚪", "SAIR", action=True)
-        btn_sair.setStyleSheet(btn_sair.styleSheet().replace(
-            theme.SIDEBAR_BG,
-            theme.SIDEBAR_BG,
-        ))
+        btn_sair = self._make_btn("↩", "SAIR")
         btn_sair.clicked.connect(self.logout_clicked.emit)
         layout.addWidget(btn_sair)
         layout.addSpacing(8)
 
         self._highlight(self._active)
 
-    # ── Helpers ──────────────────────────────────────────────────────────────
-    def _make_btn(self, icon: str, label: str, nav_key: str = "",
-                  action: bool = False) -> QPushButton:
+    def _make_btn(self, icon: str, label: str, nav_key: str = "") -> QPushButton:
         btn = QPushButton(f"  {icon}  {label}")
         btn.setCheckable(bool(nav_key))
-        h = max(38, int(44 * self.scale))
-        btn.setFixedHeight(h)
-        fs = max(8, int(10 * self.scale))
+        height = max(38, int(44 * self.scale))
+        font_size = max(8, int(10 * self.scale))
+        btn.setFixedHeight(height)
         btn.setStyleSheet(
             f"QPushButton {{"
             f"  background:transparent; color:#CBD5E1;"
             f"  text-align:left; padding-left:12px; border:none;"
-            f"  font-size:{fs}pt; border-left:3px solid transparent;"
+            f"  font-size:{font_size}pt; border-left:3px solid transparent;"
             f"}}"
             f"QPushButton:hover {{"
             f"  background:{theme.SIDEBAR_HOVER}; color:#fff;"
@@ -127,12 +117,11 @@ class Sidebar(QWidget):
 
     def _highlight(self, key: str):
         self._active = key
-        for k, btn in self._nav_btns.items():
-            btn.setChecked(k == key)
+        for nav_key, btn in self._nav_btns.items():
+            btn.setChecked(nav_key == key)
 
     def refresh_user(self):
-        self.user_label.setText(f"👤  {session.user_name}")
+        self.user_label.setText(f"◉ USUÁRIO: {session.user_name}")
 
     def set_actions_visible(self, visible: bool):
-        """Mostra/esconde ações de formulário conforme a view ativa."""
-        pass  # Implementado via CSS enable/disable
+        pass

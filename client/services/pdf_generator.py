@@ -332,8 +332,8 @@ def generate_pdf(req: dict, client: dict | None, obs: str,
     except Exception:
         del_str = str(del_date)[:10] if del_date else "—"
 
-    retirada   = "✔ SIM" if req.get("retirada") else "NÃO"
-    entrega    = "✔ SIM" if req.get("entrega")  else "NÃO"
+    retirada   = "SIM" if req.get("retirada") else "NÃO"
+    entrega    = "SIM" if req.get("entrega")  else "NÃO"
     items_list = req.get("items", [])
 
     del_t = Table([[
