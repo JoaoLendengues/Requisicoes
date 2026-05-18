@@ -16,7 +16,6 @@ WAITING_STAGE = "waiting"
 PRODUCTION_STAGE = "production"
 
 PROD_NOTE_PREFIX = "PRODUCAO"
-PROD_SEND = "ENVIADA"
 PROD_RECEIVED = "RECEBIDA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
@@ -29,10 +28,11 @@ class ProductionWorker(QObject):
 
     def run(self):
         try:
-            self.result.emit({
+            payload = {
                 "waiting": api.list_requisitions("aguardando_recebimento", limit=200),
                 "production": api.list_requisitions("em_producao", limit=200),
-            })
+            }
+            self.result.emit(payload)
         except Exception as exc:
             self.error.emit(str(exc))
         finally:
@@ -96,10 +96,10 @@ class ProductionView(QWidget):
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
-        self._threads: list = []
+        self._threads: list[tuple[QThread, QObject]] = []
         self._rows_by_destination: dict[str, dict[str, list[dict]]] = {
-            dest: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
-            for dest in DESTINATIONS
+            destination: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
+            for destination in DESTINATIONS
         }
         self._cards: dict[str, dict[str, dict]] = {}
         self._count_labels: dict[str, QLabel] = {}
@@ -114,12 +114,13 @@ class ProductionView(QWidget):
 
         header = QHBoxLayout()
         title_col = QVBoxLayout()
+
         title = QLabel("🏭 PRODUÇÃO")
         title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(14, int(17 * s))}pt; font-weight:bold;"
         )
         subtitle = QLabel(
-            "Acompanhe por destino o que ainda aguarda recebimento e o que já está em produção."
+            "Acompanhe por destino o que aguarda recebimento e o que já está em produção."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -144,7 +145,8 @@ class ProductionView(QWidget):
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(max(12, int(14 * s)), max(10, int(12 * s)),
                                            max(12, int(14 * s)), max(10, int(12 * s)))
-            lbl_title = QLabel(f"🏷️ {destination}")
+
+            lbl_title = QLabel(f"🔖 {destination}")
             lbl_title.setStyleSheet(
                 f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
             )
@@ -152,15 +154,17 @@ class ProductionView(QWidget):
             lbl_value.setStyleSheet(
                 f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:bold;"
             )
-            lbl_hint = QLabel("Ativas na produção")
+            lbl_hint = QLabel("Requisições ativas")
             lbl_hint.setStyleSheet(
                 f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
             )
+
             card_layout.addWidget(lbl_title)
             card_layout.addWidget(lbl_value)
             card_layout.addWidget(lbl_hint)
             self._count_labels[destination] = lbl_value
             counts.addWidget(card, 0, index)
+
         layout.addLayout(counts)
 
         columns_row = QHBoxLayout()
@@ -169,7 +173,9 @@ class ProductionView(QWidget):
             columns_row.addWidget(self._build_destination_column(destination), 1)
         layout.addLayout(columns_row, 1)
 
-        hint = QLabel("Use os painéis de cada destino para abrir, confirmar, finalizar ou cancelar requisições.")
+        hint = QLabel(
+            "Use os painéis de cada destino para abrir, confirmar recebimento, finalizar ou cancelar requisições."
+        )
         hint.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-style:italic;"
         )
@@ -190,8 +196,10 @@ class ProductionView(QWidget):
         layout.addWidget(title)
 
         self._cards[destination] = {}
+
         waiting_panel = self._build_stage_panel(destination, WAITING_STAGE)
         production_panel = self._build_stage_panel(destination, PRODUCTION_STAGE)
+
         self._cards[destination][WAITING_STAGE] = waiting_panel
         self._cards[destination][PRODUCTION_STAGE] = production_panel
 
@@ -212,16 +220,12 @@ class ProductionView(QWidget):
 
         if stage == WAITING_STAGE:
             title_text = "📥 Aguardando Recebimento"
-            subtitle_text = "Envios feitos para a produção e ainda não recebidos."
-            open_text = "📂 Abrir"
+            subtitle_text = "Requisições enviadas para produção e ainda não recebidas."
             primary_text = "✅ Confirmar Recebimento"
-            secondary_text = "❌ Cancelar"
         else:
-            title_text = "🛠️ Em Produção"
+            title_text = "🏗 Em Produção"
             subtitle_text = "Requisições já recebidas pela produção."
-            open_text = "📂 Abrir"
             primary_text = "🏁 Finalizar"
-            secondary_text = "❌ Cancelar"
 
         title = QLabel(title_text)
         title.setStyleSheet(
@@ -236,11 +240,13 @@ class ProductionView(QWidget):
         layout.addWidget(subtitle)
 
         actions = QHBoxLayout()
-        btn_open = QPushButton(open_text)
+        btn_open = QPushButton("📂 Abrir")
         btn_primary = QPushButton(primary_text)
-        btn_cancel = QPushButton(secondary_text)
+        btn_cancel = QPushButton("❌ Cancelar")
+
         for btn in (btn_open, btn_primary, btn_cancel):
             btn.setFixedHeight(max(28, int(32 * s)))
+
         btn_open.setStyleSheet(theme.secondary_btn_style(s))
         btn_primary.setStyleSheet(theme.primary_btn_style(s))
         btn_cancel.setStyleSheet(theme.danger_btn_style(s))
@@ -295,24 +301,47 @@ class ProductionView(QWidget):
         thread = QThread()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.result.connect(self._populate)
+        worker.result.connect(self._on_refresh_result)
         worker.error.connect(lambda msg: QMessageBox.critical(self, "Produção", msg))
         worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
         thread.start()
         self._threads.append((thread, worker))
 
-    def _populate(self, payload: dict):
+    def _cleanup_thread(self, thread: QThread, worker: QObject):
+        self._threads = [pair for pair in self._threads if pair != (thread, worker)]
+
+    def _on_refresh_result(self, payload: object):
+        try:
+            self._populate(payload)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Produção",
+                f"Não foi possível carregar a aba de produção.\n\n{exc}",
+            )
+
+    def _populate(self, payload: object):
+        if not isinstance(payload, dict):
+            raise ValueError("Resposta inválida ao carregar a produção.")
+
         grouped = {
-            dest: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
-            for dest in DESTINATIONS
+            destination: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
+            for destination in DESTINATIONS
         }
 
-        for req in payload.get("waiting", []):
+        for req in payload.get("waiting", []) or []:
+            if not isinstance(req, dict):
+                continue
             destination = self._production_destination(req)
             if destination in grouped:
                 grouped[destination][WAITING_STAGE].append(dict(req))
 
-        for req in payload.get("production", []):
+        for req in payload.get("production", []) or []:
+            if not isinstance(req, dict):
+                continue
             destination = self._production_destination(req)
             if destination in grouped:
                 grouped[destination][PRODUCTION_STAGE].append(dict(req))
@@ -329,6 +358,7 @@ class ProductionView(QWidget):
     def _fill_stage_table(self, destination: str, stage: str, rows: list[dict]):
         table = self._cards[destination][stage]["table"]
         table.setRowCount(0)
+
         for req in rows:
             row = table.rowCount()
             table.insertRow(row)
@@ -345,13 +375,20 @@ class ProductionView(QWidget):
 
     def _production_destination(self, req: dict) -> str:
         history = req.get("status_history") or []
+        if not isinstance(history, list):
+            return ""
+
         for entry in reversed(history):
+            if not isinstance(entry, dict):
+                continue
+
             note = (entry.get("note") or "").strip()
             parsed = _parse_production_note(note)
             if parsed and parsed["destination"] in DESTINATIONS:
                 return parsed["destination"]
             if note in DESTINATIONS:
                 return note
+
         return ""
 
     def _selected_req(self, destination: str, stage: str) -> dict | None:
@@ -424,11 +461,7 @@ class ProductionView(QWidget):
     def _cancel_requisition(self, destination: str, stage: str):
         req = self._selected_req(destination, stage)
         if not req:
-            panel_name = (
-                "aguardando recebimento"
-                if stage == WAITING_STAGE
-                else "em produção"
-            )
+            panel_name = "aguardando recebimento" if stage == WAITING_STAGE else "em produção"
             QMessageBox.information(
                 self,
                 "Produção",
@@ -477,6 +510,9 @@ class ProductionView(QWidget):
         worker.result.connect(lambda _: self._after_action(success_message))
         worker.error.connect(lambda msg: QMessageBox.critical(self, "Produção", msg))
         worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
         thread.start()
         return thread, worker
 
