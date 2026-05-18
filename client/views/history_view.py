@@ -24,7 +24,15 @@ class HistoryWorker(QObject):
 
     def run(self):
         try:
-            self.result.emit(api.list_requisitions(self.status, self.search, limit=100))
+            if self.status == "aguardando_recebimento":
+                reqs = api.list_requisitions("", self.search, limit=100)
+                reqs = [
+                    req for req in reqs
+                    if req.get("status") == "aguardando_recebimento"
+                ]
+                self.result.emit(reqs)
+            else:
+                self.result.emit(api.list_requisitions(self.status, self.search, limit=100))
         except Exception as e:
             self.error.emit(str(e))
         finally:

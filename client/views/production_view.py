@@ -28,11 +28,7 @@ class ProductionWorker(QObject):
 
     def run(self):
         try:
-            payload = {
-                "waiting": api.list_requisitions("aguardando_recebimento", limit=200),
-                "production": api.list_requisitions("em_producao", limit=200),
-            }
-            self.result.emit(payload)
+            self.result.emit(api.list_requisitions(limit=200))
         except Exception as exc:
             self.error.emit(str(exc))
         finally:
@@ -332,27 +328,41 @@ class ProductionView(QWidget):
         QMessageBox.critical(self, "Produção", msg)
 
     def _populate(self, payload: object):
-        if not isinstance(payload, dict):
-            raise ValueError("Resposta inválida ao carregar a produção.")
-
         grouped = {
             destination: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
             for destination in DESTINATIONS
         }
 
-        for req in payload.get("waiting", []) or []:
-            if not isinstance(req, dict):
-                continue
-            destination = self._production_destination(req)
-            if destination in grouped:
-                grouped[destination][WAITING_STAGE].append(dict(req))
+        if isinstance(payload, list):
+            for req in payload:
+                if not isinstance(req, dict):
+                    continue
 
-        for req in payload.get("production", []) or []:
-            if not isinstance(req, dict):
-                continue
-            destination = self._production_destination(req)
-            if destination in grouped:
-                grouped[destination][PRODUCTION_STAGE].append(dict(req))
+                destination = self._production_destination(req)
+                if destination not in grouped:
+                    continue
+
+                status = str(req.get("status") or "").strip()
+                if status == "aguardando_recebimento":
+                    grouped[destination][WAITING_STAGE].append(dict(req))
+                elif status == "em_producao":
+                    grouped[destination][PRODUCTION_STAGE].append(dict(req))
+        elif isinstance(payload, dict):
+            for req in payload.get("waiting", []) or []:
+                if not isinstance(req, dict):
+                    continue
+                destination = self._production_destination(req)
+                if destination in grouped:
+                    grouped[destination][WAITING_STAGE].append(dict(req))
+
+            for req in payload.get("production", []) or []:
+                if not isinstance(req, dict):
+                    continue
+                destination = self._production_destination(req)
+                if destination in grouped:
+                    grouped[destination][PRODUCTION_STAGE].append(dict(req))
+        else:
+            raise ValueError("Resposta inválida ao carregar a produção.")
 
         self._rows_by_destination = grouped
 

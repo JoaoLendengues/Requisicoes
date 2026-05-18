@@ -848,7 +848,7 @@ class RequisitionForm(QWidget):
             "aguardando_recebimento",
             _build_production_note(PROD_SEND, destination),
             on_result=lambda req, dest=destination: self._on_sent_to_production(req, dest),
-            on_error=lambda msg: QMessageBox.critical(self, "Produção", msg),
+            on_error=self._on_send_to_production_error,
         )
         self._threads.append((thread, worker))
 
@@ -877,6 +877,15 @@ class RequisitionForm(QWidget):
             "Produção",
             f"Requisição enviada para {destination}.",
         )
+
+    def _on_send_to_production_error(self, msg: str):
+        friendly = msg
+        if "aguardando_recebimento" in msg and "Input should be" in msg:
+            friendly = (
+                "O servidor ainda não reconhece o novo status de produção.\n\n"
+                "Reinicie o servidor da API e tente novamente."
+            )
+        QMessageBox.critical(self, "Produção", friendly)
 
     # ── Editor de desenho (modal) ─────────────────────────────────────────────
     def _open_canvas_dialog(self):
