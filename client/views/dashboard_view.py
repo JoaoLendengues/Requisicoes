@@ -122,8 +122,8 @@ class DashboardView(QWidget):
         )
         layout.addWidget(lbl_rec)
 
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["PED", "OBRA", "DATA", "STATUS", "PESO"])
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["PED", "OBRA", "DATA", "STATUS"])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
@@ -169,7 +169,6 @@ class DashboardView(QWidget):
                 req.get("obra") or "—",
                 str(req.get("emission_date", ""))[:10],
                 req.get("status", ""),
-                f"{req.get('weight', 0):.2f}",
             ]
             for col, val in enumerate(vals):
                 if col == 3:
