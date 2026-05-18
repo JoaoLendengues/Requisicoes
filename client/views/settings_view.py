@@ -378,6 +378,15 @@ class SettingsView(QWidget):
             QMessageBox.warning(self, "Atenção", "Informe o caminho do arquivo.")
             return
 
+        current = self._import_threads.get(kind)
+        if current and current[0].isRunning():
+            QMessageBox.information(
+                self,
+                "Importacao em andamento",
+                "Essa importacao ainda esta em execucao. Aguarde a conclusao.",
+            )
+            return
+
         self._set_import_busy(kind, True)
 
         worker = ImportWorker(kind, path)
@@ -389,8 +398,14 @@ class SettingsView(QWidget):
         worker.error.connect(self._on_import_error)
         worker.finished.connect(lambda *_: thread.quit())
         worker.error.connect(lambda *_: thread.quit())
-        thread.start()
         self._import_threads[kind] = (thread, worker)
+        worker.finished.connect(lambda *_: worker.deleteLater())
+        worker.error.connect(lambda *_: worker.deleteLater())
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(
+            lambda k=kind, t=thread, w=worker: self._cleanup_import_thread(k, t, w)
+        )
+        thread.start()
 
     def _set_import_busy(self, kind: str, busy: bool):
         ui = self._import_ui[kind]
@@ -418,7 +433,6 @@ class SettingsView(QWidget):
         ui["progress"].setValue(ui["progress"].maximum())
         ui["log"].setVisible(True)
         ui["log"].setPlainText(result.summary())
-        self._import_threads.pop(kind, None)
 
     def _on_import_error(self, kind: str, msg: str):
         ui = self._import_ui[kind]
@@ -427,4 +441,8 @@ class SettingsView(QWidget):
         ui["progress"].setVisible(False)
         ui["log"].setVisible(True)
         ui["log"].setPlainText(f"❌  Erro:\n{msg}")
-        self._import_threads.pop(kind, None)
+
+    def _cleanup_import_thread(self, kind: str, thread: QThread, worker: ImportWorker):
+        current = self._import_threads.get(kind)
+        if current == (thread, worker):
+            self._import_threads.pop(kind, None)

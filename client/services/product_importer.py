@@ -92,8 +92,25 @@ def import_products(path: str, on_progress=None) -> ImportResult:
         result.updated = server_result.get("updated", 0)
         result.skipped += server_result.get("skipped", 0)
         result.errors.extend(server_result.get("errors", []))
+    except api.APIError as exc:
+        if exc.status_code == 403:
+            result.errors.append(
+                "Seu usuario nao tem permissao para importar produtos."
+            )
+        elif exc.status_code == 404:
+            result.errors.append(
+                "O servidor atual nao reconheceu a rota de produtos. "
+                "Reinicie o servidor e tente novamente."
+            )
+        elif exc.status_code == 401:
+            result.errors.append(
+                "Sua sessao expirou. Faca login novamente e repita a importacao."
+            )
+        else:
+            result.errors.append(str(exc))
+        return result
     except Exception as exc:
-        result.errors.append(f"Erro na comunicação com o servidor: {exc}")
+        result.errors.append(f"Erro na comunicacao com o servidor: {exc}")
         return result
 
     if on_progress:
