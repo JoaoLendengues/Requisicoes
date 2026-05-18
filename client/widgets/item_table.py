@@ -17,6 +17,7 @@ DESENV_COL = 5
 CHAPA_COL = 6
 TIPO_COL = 7
 WEIGHT_COL = 8
+ACTION_COL = 9
 
 COLUMNS = [
     "POSIÇÃO",
@@ -28,6 +29,7 @@ COLUMNS = [
     "CHAPA",
     "TIPO",
     "PESO (KG)",
+    "AÇÃO",
 ]
 
 POSITIONS = [chr(i) for i in range(ord("A"), ord("Z") + 1)]
@@ -62,6 +64,9 @@ class ItemTable(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(
             PRODUCT_NAME_COL, QHeaderView.ResizeMode.Stretch
         )
+        self.table.horizontalHeader().setSectionResizeMode(
+            ACTION_COL, QHeaderView.ResizeMode.ResizeToContents
+        )
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
@@ -77,6 +82,7 @@ class ItemTable(QWidget):
 
         for row in range(10):
             self._set_position_item(row)
+            self._set_action_button(row)
 
         self.table.itemChanged.connect(self._on_item_changed)
         layout.addWidget(self.table)
@@ -107,9 +113,9 @@ class ItemTable(QWidget):
         text = (value or self._default_position(row)).strip().upper() or self._default_position(row)
         item = QTableWidgetItem(text)
         item.setFlags(
-            Qt.ItemFlag.ItemIsEnabled |
-            Qt.ItemFlag.ItemIsSelectable |
-            Qt.ItemFlag.ItemIsEditable
+            Qt.ItemFlag.ItemIsEnabled
+            | Qt.ItemFlag.ItemIsSelectable
+            | Qt.ItemFlag.ItemIsEditable
         )
         item.setBackground(QColor(theme.TABLE_HEADER_BG))
         item.setForeground(QColor("#ffffff"))
@@ -119,10 +125,31 @@ class ItemTable(QWidget):
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(row, POSITION_COL, item)
 
+    def _set_action_button(self, row: int):
+        btn = QPushButton("LIMPAR")
+        btn.setFixedHeight(max(24, int(28 * self.scale)))
+        btn.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn.clicked.connect(lambda checked=False, r=row: self._clear_row(r))
+        self.table.setCellWidget(row, ACTION_COL, btn)
+
+    def _clear_row(self, row: int):
+        self.table.blockSignals(True)
+        for col in range(PRODUCT_CODE_COL, WEIGHT_COL + 1):
+            self.table.takeItem(row, col)
+        pos_item = self.table.item(row, POSITION_COL)
+        if pos_item is not None:
+            pos_item.setText((pos_item.text().strip().upper() or self._default_position(row)))
+            pos_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        else:
+            self._set_position_item(row)
+        self.table.blockSignals(False)
+        self._recalculate_total()
+
     def _add_row(self):
         row = self.table.rowCount()
         self.table.insertRow(row)
         self._set_position_item(row)
+        self._set_action_button(row)
 
     def _ensure_cell(self, row: int, col: int) -> QTableWidgetItem:
         item = self.table.item(row, col)
@@ -145,10 +172,10 @@ class ItemTable(QWidget):
 
         if col == PRODUCT_CODE_COL:
             code = item.text().strip()
+            self.table.blockSignals(True)
+            self._ensure_cell(row, PRODUCT_NAME_COL).setText("")
+            self.table.blockSignals(False)
             if code:
-                self.table.blockSignals(True)
-                self._ensure_cell(row, PRODUCT_NAME_COL).setText("")
-                self.table.blockSignals(False)
                 self.product_lookup_requested.emit(row, code)
             return
 
@@ -207,9 +234,12 @@ class ItemTable(QWidget):
 
     def set_items(self, items: list[dict]):
         self.table.blockSignals(True)
+        self.table.clearContents()
         self.table.setRowCount(max(10, len(items)))
+
         for row in range(self.table.rowCount()):
             self._set_position_item(row)
+            self._set_action_button(row)
 
         for row, item in enumerate(items):
             self._set_position_item(row, item.get("position"))
@@ -234,6 +264,7 @@ class ItemTable(QWidget):
                 WEIGHT_COL,
                 QTableWidgetItem(f"{weight:.2f}".replace(".", ",") if weight else ""),
             )
+
         self.table.blockSignals(False)
         self._recalculate_total()
 

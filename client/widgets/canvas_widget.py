@@ -281,7 +281,7 @@ class DrawingCanvas(QWidget):
 
         tools = [
             (Tool.SELECT,  "↖ Selec.", "S"),
-            (Tool.PEN,     "✏ Caneta", "P"),
+            (Tool.PEN,     "Caneta", "P"),
             (Tool.LINE,    "╱ Linha",  "L"),
             (Tool.RECT,    "▭ Ret.",   "R"),
             (Tool.ELLIPSE, "○ Elipse", "E"),
@@ -299,7 +299,7 @@ class DrawingCanvas(QWidget):
         toolbar.addSpacing(8)
 
         # Cor
-        self.btn_color = QPushButton("🎨")
+        self.btn_color = QPushButton("")
         self.btn_color.setFixedSize(max(24, int(28 * self.scale)),
                                     max(24, int(28 * self.scale)))
         self.btn_color.setStyleSheet(
@@ -337,17 +337,17 @@ class DrawingCanvas(QWidget):
 
         toolbar.addSpacing(8)
         # Imagem e PDF
-        btn_img = QPushButton("🖼 Imagem")
+        btn_img = QPushButton("Imagem")
         btn_img.setFixedHeight(max(24, int(28 * self.scale)))
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
 
-        btn_pdf = QPushButton("📎 PDF")
+        btn_pdf = QPushButton("PDF")
         btn_pdf.setFixedHeight(max(24, int(28 * self.scale)))
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
 
-        btn_clear = QPushButton("🗑 Limpar")
+        btn_clear = QPushButton("Limpar")
         btn_clear.setFixedHeight(max(24, int(28 * self.scale)))
         btn_clear.clicked.connect(self._clear)
         btn_clear.setStyleSheet(
@@ -389,14 +389,14 @@ class DrawingCanvas(QWidget):
         pdf_layout.setContentsMargins(10, 6, 10, 6)
         self.pdf_label = QLabel("Nenhum arquivo anexado")
         self.pdf_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
-        btn_open_pdf = QPushButton("🔗 Abrir")
+        btn_open_pdf = QPushButton("Abrir")
         btn_open_pdf.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_pdf.clicked.connect(self._open_pdf)
-        btn_rm_pdf = QPushButton("✕")
+        btn_rm_pdf = QPushButton("X")
         btn_rm_pdf.setFixedWidth(28)
         btn_rm_pdf.setStyleSheet(theme.danger_btn_style(self.scale))
         btn_rm_pdf.clicked.connect(self._remove_pdf)
-        pdf_layout.addWidget(QLabel("📄"))
+        pdf_layout.addWidget(QLabel("PDF"))
         pdf_layout.addWidget(self.pdf_label, 1)
         pdf_layout.addWidget(btn_open_pdf)
         pdf_layout.addWidget(btn_rm_pdf)

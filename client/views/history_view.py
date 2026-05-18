@@ -73,12 +73,12 @@ class HistoryView(QWidget):
         self.input_search.setFixedHeight(max(30,int(34*s)))
         self.input_search.setStyleSheet(theme.input_style(s))
 
-        btn_search = QPushButton("🔍  Buscar")
+        btn_search = QPushButton("Buscar")
         btn_search.setFixedHeight(max(30,int(34*s)))
         btn_search.setStyleSheet(theme.primary_btn_style(s))
         btn_search.clicked.connect(self.refresh)
 
-        btn_clear = QPushButton("✕  Limpar")
+        btn_clear = QPushButton("Limpar")
         btn_clear.setFixedHeight(max(30,int(34*s)))
         btn_clear.setStyleSheet(theme.secondary_btn_style(s))
         btn_clear.clicked.connect(self._clear_filters)

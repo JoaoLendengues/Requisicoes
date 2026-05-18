@@ -31,12 +31,12 @@ class ImportResult:
 
     def summary(self) -> str:
         lines = [
-            f"✅  Criados:      {self.created}",
-            f"🔄  Atualizados:  {self.updated}",
-            f"⏭️  Ignorados:   {self.skipped}",
+            f"Criados:      {self.created}",
+            f"Atualizados:  {self.updated}",
+            f"Ignorados:   {self.skipped}",
         ]
         if self.errors:
-            lines.append(f"❌  Erros:        {len(self.errors)}")
+            lines.append(f"Erros:        {len(self.errors)}")
             for e in self.errors[:5]:
                 lines.append(f"   • {e}")
             if len(self.errors) > 5:

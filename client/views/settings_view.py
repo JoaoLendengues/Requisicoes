@@ -110,7 +110,7 @@ class SettingsView(QWidget):
                                    max(16,int(24*s)), max(16,int(20*s)))
         layout.setSpacing(max(10,int(14*s)))
 
-        layout.addWidget(_section("🌐  Conexão com o Servidor", s))
+        layout.addWidget(_section("Conexão com o Servidor", s))
         layout.addWidget(_separator())
 
         grid = QGridLayout()
@@ -134,7 +134,7 @@ class SettingsView(QWidget):
         grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
         layout.addLayout(grid)
 
-        layout.addWidget(_section("🎨  Aparência", s))
+        layout.addWidget(_section("Aparência", s))
         layout.addWidget(_separator())
 
         scale_row = QHBoxLayout()
@@ -167,7 +167,7 @@ class SettingsView(QWidget):
         )
         layout.addWidget(screen_info)
 
-        layout.addWidget(_section("📄  PDF Automático", s))
+        layout.addWidget(_section("PDF Automático", s))
         layout.addWidget(_separator())
 
         layout.addWidget(self._lbl(
@@ -184,7 +184,7 @@ class SettingsView(QWidget):
         self.input_pdf_folder.setStyleSheet(theme.input_style(s))
         pdf_row.addWidget(self.input_pdf_folder, 1)
 
-        btn_browse_pdf = QPushButton("📂")
+        btn_browse_pdf = QPushButton("...")
         btn_browse_pdf.setFixedSize(max(30, int(36 * s)), max(30, int(36 * s)))
         btn_browse_pdf.setStyleSheet(theme.secondary_btn_style(s))
         btn_browse_pdf.setToolTip("Selecionar pasta...")
@@ -195,7 +195,7 @@ class SettingsView(QWidget):
         self._create_import_section(
             layout=layout,
             kind="clients",
-            title="📥  Importação de Clientes (ODS/Excel)",
+            title="Importação de Clientes (ODS/Excel)",
             description=(
                 "Planilha com colunas: Código, Nome, CPF/CNPJ "
                 "(novos clientes são criados; existentes são atualizados)."
@@ -203,23 +203,23 @@ class SettingsView(QWidget):
             default_path=res._read_file().get(
                 "ods_path", r"Z:\REQUISIÇÕES (VENDAS)\relacao_cadastros.ods"
             ),
-            button_text="⬆  Importar Clientes",
+            button_text="Importar Clientes",
         )
 
         self._create_import_section(
             layout=layout,
             kind="products",
-            title="📦  Importação de Produtos (ODS/Excel)",
+            title="Importação de Produtos (ODS/Excel)",
             description=(
                 "Planilha com colunas como Código e Nome/Descrição. "
                 "Os produtos são importados em lote e ficam disponíveis para lookup na requisição."
             ),
             default_path=self._default_products_path(),
-            button_text="⬆  Importar Produtos",
+            button_text="Importar Produtos",
         )
 
         layout.addSpacing(4)
-        btn_save = QPushButton("💾  Salvar configurações")
+        btn_save = QPushButton("Salvar configurações")
         btn_save.setFixedHeight(max(36,int(42*s)))
         btn_save.setStyleSheet(theme.primary_btn_style(s))
         btn_save.clicked.connect(self._save)
@@ -243,7 +243,7 @@ class SettingsView(QWidget):
         input_path.setStyleSheet(theme.input_style(s))
         path_row.addWidget(input_path, 1)
 
-        btn_browse = QPushButton("📂")
+        btn_browse = QPushButton("...")
         btn_browse.setFixedSize(max(30,int(36*s)), max(30,int(36*s)))
         btn_browse.setStyleSheet(theme.secondary_btn_style(s))
         btn_browse.setToolTip("Navegar...")
@@ -325,10 +325,10 @@ class SettingsView(QWidget):
         ok = api.health_check(url)
         s = self.scale
         if ok:
-            self.lbl_conn_status.setText("✅  Servidor online e respondendo")
+            self.lbl_conn_status.setText("Servidor online e respondendo")
             self.lbl_conn_status.setStyleSheet(f"color:{theme.SUCCESS}; font-size:{max(9,int(10*s))}pt;")
         else:
-            self.lbl_conn_status.setText("❌  Não foi possível conectar ao servidor")
+            self.lbl_conn_status.setText("Não foi possível conectar ao servidor")
             self.lbl_conn_status.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(9,int(10*s))}pt;")
         self.btn_test.setEnabled(True)
         self.btn_test.setText("Testar conexão")
@@ -440,7 +440,7 @@ class SettingsView(QWidget):
         ui["button"].setText(ui["button_text"])
         ui["progress"].setVisible(False)
         ui["log"].setVisible(True)
-        ui["log"].setPlainText(f"❌  Erro:\n{msg}")
+        ui["log"].setPlainText(f"Erro:\n{msg}")
 
     def _cleanup_import_thread(self, kind: str, thread: QThread, worker: ImportWorker):
         current = self._import_threads.get(kind)
