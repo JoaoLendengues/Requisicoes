@@ -3,15 +3,36 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QHeaderView, QAbstractItemView,
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from ..core import theme
 
-COLUMNS = ["POSIÇÃO", "QUANT", "COMP", "DESENV.", "CHAPA", "TIPO", "PESO (KG)"]
+POSITION_COL = 0
+PRODUCT_CODE_COL = 1
+PRODUCT_NAME_COL = 2
+QUANTITY_COL = 3
+COMP_COL = 4
+DESENV_COL = 5
+CHAPA_COL = 6
+TIPO_COL = 7
+WEIGHT_COL = 8
+
+COLUMNS = [
+    "POSIÇÃO",
+    "CÓD. PROD.",
+    "PRODUTO",
+    "QUANT",
+    "COMP",
+    "DESENV.",
+    "CHAPA",
+    "TIPO",
+    "PESO (KG)",
+]
 POSITIONS = [chr(i) for i in range(ord("A"), ord("Z") + 1)]
 
 
 class ItemTable(QWidget):
     weight_changed = Signal(float)
+    product_lookup_requested = Signal(int, str)
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -23,7 +44,6 @@ class ItemTable(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        # Título
         title = QLabel("ITENS DA REQUISIÇÃO")
         fs_title = max(9, int(11 * self.scale))
         title.setStyleSheet(
@@ -31,13 +51,12 @@ class ItemTable(QWidget):
         )
         layout.addWidget(title)
 
-        # Tabela
         self.table = QTableWidget(10, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(PRODUCT_NAME_COL, QHeaderView.ResizeMode.Stretch)
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
@@ -51,14 +70,12 @@ class ItemTable(QWidget):
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
         )
 
-        # Popula coluna Posição
         for row in range(10):
             self._set_position_item(row)
 
         self.table.itemChanged.connect(self._on_item_changed)
         layout.addWidget(self.table)
 
-        # Rodapé: botão + peso total
         footer = QHBoxLayout()
         self.btn_add = QPushButton("＋  ADICIONAR ITEM")
         self.btn_add.setStyleSheet(theme.secondary_btn_style(self.scale))
@@ -78,31 +95,65 @@ class ItemTable(QWidget):
         footer.addWidget(self.total_label)
         layout.addLayout(footer)
 
-    def _set_position_item(self, row: int):
-        pos = POSITIONS[row] if row < len(POSITIONS) else f"#{row+1}"
-        item = QTableWidgetItem(pos)
-        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+    def _default_position(self, row: int) -> str:
+        return POSITIONS[row] if row < len(POSITIONS) else f"#{row + 1}"
+
+    def _set_position_item(self, row: int, value: str | None = None):
+        text = (value or self._default_position(row)).strip().upper() or self._default_position(row)
+        item = QTableWidgetItem(text)
+        item.setFlags(
+            Qt.ItemFlag.ItemIsEnabled |
+            Qt.ItemFlag.ItemIsSelectable |
+            Qt.ItemFlag.ItemIsEditable
+        )
         item.setBackground(QColor(theme.TABLE_HEADER_BG))
         item.setForeground(QColor("#ffffff"))
         font = item.font()
         font.setBold(True)
         item.setFont(font)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.table.setItem(row, 0, item)
+        self.table.setItem(row, POSITION_COL, item)
 
     def _add_row(self):
         row = self.table.rowCount()
         self.table.insertRow(row)
         self._set_position_item(row)
 
+    def _ensure_cell(self, row: int, col: int) -> QTableWidgetItem:
+        item = self.table.item(row, col)
+        if item is None:
+            item = QTableWidgetItem("")
+            self.table.setItem(row, col, item)
+        return item
+
     def _on_item_changed(self, item: QTableWidgetItem):
-        if item.column() == 6:  # Peso
+        row = item.row()
+        col = item.column()
+
+        if col == POSITION_COL:
+            text = item.text().strip().upper() or self._default_position(row)
+            self.table.blockSignals(True)
+            item.setText(text)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.blockSignals(False)
+            return
+
+        if col == PRODUCT_CODE_COL:
+            code = item.text().strip()
+            if code:
+                self.table.blockSignals(True)
+                self._ensure_cell(row, PRODUCT_NAME_COL).setText("")
+                self.table.blockSignals(False)
+                self.product_lookup_requested.emit(row, code)
+            return
+
+        if col == WEIGHT_COL:
             self._recalculate_total()
 
     def _recalculate_total(self):
         total = 0.0
         for row in range(self.table.rowCount()):
-            cell = self.table.item(row, 6)
+            cell = self.table.item(row, WEIGHT_COL)
             if cell and cell.text():
                 try:
                     total += float(cell.text().replace(",", "."))
@@ -111,19 +162,37 @@ class ItemTable(QWidget):
         self.total_label.setText(f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         self.weight_changed.emit(total)
 
-    # ── API pública ──────────────────────────────────────────────────────────
+    def get_total_weight(self) -> float:
+        total = 0.0
+        for row in range(self.table.rowCount()):
+            value = self._cell_float(row, WEIGHT_COL)
+            if value is not None:
+                total += value
+        return total
+
+    def get_product_code(self, row: int) -> str:
+        return self._cell_text(row, PRODUCT_CODE_COL)
+
+    def apply_product_lookup(self, row: int, product: dict):
+        self.table.blockSignals(True)
+        self._ensure_cell(row, PRODUCT_CODE_COL).setText(product.get("code", ""))
+        self._ensure_cell(row, PRODUCT_NAME_COL).setText(product.get("name", ""))
+        self.table.blockSignals(False)
+
     def get_items(self) -> list[dict]:
         items = []
         for row in range(self.table.rowCount()):
-            pos_item = self.table.item(row, 0)
+            pos_item = self.table.item(row, POSITION_COL)
             row_data = {
-                "position": pos_item.text() if pos_item else POSITIONS[row],
-                "quantity":  self._cell_float(row, 1),
-                "comp":      self._cell_text(row, 2),
-                "desenv":    self._cell_text(row, 3),
-                "chapa":     self._cell_text(row, 4),
-                "tipo":      self._cell_text(row, 5),
-                "weight":    self._cell_float(row, 6),
+                "position": pos_item.text() if pos_item else self._default_position(row),
+                "product_code": self._cell_text(row, PRODUCT_CODE_COL) or None,
+                "product_name": self._cell_text(row, PRODUCT_NAME_COL) or None,
+                "quantity": self._cell_float(row, QUANTITY_COL),
+                "comp": self._cell_text(row, COMP_COL),
+                "desenv": self._cell_text(row, DESENV_COL),
+                "chapa": self._cell_text(row, CHAPA_COL),
+                "tipo": self._cell_text(row, TIPO_COL),
+                "weight": self._cell_float(row, WEIGHT_COL),
             }
             if any(v for v in list(row_data.values())[1:]):
                 items.append(row_data)
@@ -134,14 +203,22 @@ class ItemTable(QWidget):
         self.table.setRowCount(max(10, len(items)))
         for row in range(self.table.rowCount()):
             self._set_position_item(row)
+
         for row, item in enumerate(items):
-            self.table.setItem(row, 1, QTableWidgetItem(str(item.get("quantity") or "")))
-            self.table.setItem(row, 2, QTableWidgetItem(item.get("comp") or ""))
-            self.table.setItem(row, 3, QTableWidgetItem(item.get("desenv") or ""))
-            self.table.setItem(row, 4, QTableWidgetItem(item.get("chapa") or ""))
-            self.table.setItem(row, 5, QTableWidgetItem(item.get("tipo") or ""))
-            w = item.get("weight")
-            self.table.setItem(row, 6, QTableWidgetItem(f"{w:.2f}".replace(".", ",") if w else ""))
+            self._set_position_item(row, item.get("position"))
+            self.table.setItem(row, PRODUCT_CODE_COL, QTableWidgetItem(item.get("product_code") or ""))
+            self.table.setItem(row, PRODUCT_NAME_COL, QTableWidgetItem(item.get("product_name") or ""))
+            self.table.setItem(row, QUANTITY_COL, QTableWidgetItem(str(item.get("quantity") or "")))
+            self.table.setItem(row, COMP_COL, QTableWidgetItem(item.get("comp") or ""))
+            self.table.setItem(row, DESENV_COL, QTableWidgetItem(item.get("desenv") or ""))
+            self.table.setItem(row, CHAPA_COL, QTableWidgetItem(item.get("chapa") or ""))
+            self.table.setItem(row, TIPO_COL, QTableWidgetItem(item.get("tipo") or ""))
+            weight = item.get("weight")
+            self.table.setItem(
+                row,
+                WEIGHT_COL,
+                QTableWidgetItem(f"{weight:.2f}".replace(".", ",") if weight else "")
+            )
         self.table.blockSignals(False)
         self._recalculate_total()
 

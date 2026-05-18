@@ -1,11 +1,27 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import datetime, date
 from typing import Optional, List
 from ..models.requisition import RequisitionStatus
 
 
+def _validate_ped_number(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+
+    ped_number = str(value).strip()
+    if not ped_number:
+        raise ValueError("Número de PED é obrigatório")
+    if not ped_number.isdigit():
+        raise ValueError("Número de PED deve conter apenas dígitos")
+    if int(ped_number) == 0:
+        raise ValueError("Número de PED deve ser maior que zero")
+    return ped_number
+
+
 class RequisitionItemCreate(BaseModel):
     position: str
+    product_code: Optional[str] = None
+    product_name: Optional[str] = None
     quantity: Optional[float] = None
     comp: Optional[str] = None
     desenv: Optional[str] = None
@@ -36,6 +52,11 @@ class RequisitionCreate(BaseModel):
     obs: Optional[str] = None
     items: List[RequisitionItemCreate] = []
 
+    @field_validator("ped_number")
+    @classmethod
+    def validate_ped_number(cls, value: str) -> str:
+        return _validate_ped_number(value) or ""
+
 
 class RequisitionUpdate(BaseModel):
     ped_number: Optional[str] = None
@@ -50,6 +71,11 @@ class RequisitionUpdate(BaseModel):
     weight: Optional[float] = None
     obs: Optional[str] = None
     items: Optional[List[RequisitionItemCreate]] = None
+
+    @field_validator("ped_number")
+    @classmethod
+    def validate_ped_number(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_ped_number(value)
 
 
 class StatusUpdate(BaseModel):

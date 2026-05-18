@@ -73,6 +73,8 @@ class RequisitionItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     requisition_id: Mapped[int] = mapped_column(ForeignKey("requisitions.id"))
     position: Mapped[str] = mapped_column(String(10))
+    product_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
     comp: Mapped[str | None] = mapped_column(String(50), nullable=True)
     desenv: Mapped[str | None] = mapped_column(String(50), nullable=True)

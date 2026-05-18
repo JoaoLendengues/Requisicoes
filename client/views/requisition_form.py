@@ -27,7 +27,7 @@ from ..core.session import session
 from ..api import client as api
 from ..widgets.status_badge import StatusBadge
 from ..widgets.item_table import ItemTable
-from ..widgets.canvas_widget import DrawingCanvas
+from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview
 
 
 # ── Worker genérico ───────────────────────────────────────────────────────────
@@ -389,6 +389,7 @@ class RequisitionForm(QWidget):
         self._canvas_json: str = "{}"   # armazena o JSON do desenho
         self._setup_ui()
         self._load_clients()
+        self._update_canvas_preview()
 
     # ── Construção da UI ──────────────────────────────────────────────────────
     def _setup_ui(self):
@@ -478,20 +479,13 @@ class RequisitionForm(QWidget):
         date_col.addWidget(self.lbl_date)
         layout.addLayout(date_col)
 
-        # Vendedor + WhatsApp do vendedor
+        # Vendedor
         vend_col = QVBoxLayout()
         vend_col.setSpacing(2)
         vend_col.addWidget(_field_label("👤  VENDEDOR", s))
         self.lbl_vendor = _value_label(session.user_name.upper(), s)
         vend_col.addWidget(self.lbl_vendor)
         layout.addLayout(vend_col)
-
-        wa_col = QVBoxLayout()
-        wa_col.setSpacing(2)
-        wa_col.addWidget(_field_label("💬  WHATSAPP", s))
-        self.lbl_whatsapp = _value_label(session.whatsapp or "—", s)
-        wa_col.addWidget(self.lbl_whatsapp)
-        layout.addLayout(wa_col)
 
         # Status
         status_col = QVBoxLayout()
@@ -505,7 +499,7 @@ class RequisitionForm(QWidget):
         ped_col = QVBoxLayout()
         ped_col.setSpacing(2)
         ped_col.addWidget(_field_label("PED:", s))
-        self.input_ped = QLineEdit("0")
+        self.input_ped = QLineEdit()
         self.input_ped.setPlaceholderText("Nº pedido")
         self.input_ped.setFixedWidth(max(80, int(100*s)))
         self.input_ped.setFixedHeight(max(30, int(36*s)))
@@ -575,19 +569,7 @@ class RequisitionForm(QWidget):
         self.chk_retirada.toggled.connect(_on_retirada)
         self.chk_entrega.toggled.connect(_on_entrega)
 
-
         layout.addStretch()
-
-        # Peso total
-        peso_col = QVBoxLayout()
-        peso_col.setSpacing(2)
-        peso_col.addWidget(_field_label("⚖️  PESO TOTAL", s))
-        self.lbl_peso_header = _value_label("0,00", s)
-        self.lbl_peso_header.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(12,int(14*s))}pt; font-weight:bold; border:none;"
-        )
-        peso_col.addWidget(self.lbl_peso_header)
-        layout.addLayout(peso_col)
 
         return card
 
@@ -638,33 +620,60 @@ class RequisitionForm(QWidget):
     # ── Itens (largura total) ─────────────────────────────────────────────────
     def _build_items_section(self) -> QFrame:
         s = self.scale
+        wrapper = QWidget()
+        wrapper.setStyleSheet("background:transparent; border:none;")
+        row = QHBoxLayout(wrapper)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(max(10, int(12 * s)))
+
         items_card = _make_card()
         items_layout = QVBoxLayout(items_card)
         items_layout.setContentsMargins(max(10, int(12*s)), max(10, int(12*s)),
                                          max(10, int(12*s)), max(10, int(12*s)))
         items_layout.setSpacing(max(8, int(10*s)))
 
-        # Cabeçalho com botão para abrir o editor
-        header_row = QHBoxLayout()
-        lbl_items = QLabel("ITENS DA REQUISIÇÃO")
-        lbl_items.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt;"
-            f"font-weight:bold; border:none;"
+        self.item_table = ItemTable(s)
+        self.item_table.product_lookup_requested.connect(self._lookup_product_by_code)
+        items_layout.addWidget(self.item_table)
+        row.addWidget(items_card, 2)
+
+        preview_card = _make_card()
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(max(10, int(12*s)), max(10, int(12*s)),
+                                          max(10, int(12*s)), max(10, int(12*s)))
+        preview_layout.setSpacing(max(8, int(10*s)))
+
+        lbl_preview = QLabel("EDITOR DE DESENHO")
+        lbl_preview.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11*s))}pt; font-weight:bold; border:none;"
         )
-        header_row.addWidget(lbl_items)
-        header_row.addStretch()
+        preview_layout.addWidget(lbl_preview)
+
+        lbl_preview_hint = QLabel("Prévia do desenho salvo na requisição.")
+        lbl_preview_hint.setWordWrap(True)
+        lbl_preview_hint.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt; border:none;"
+        )
+        preview_layout.addWidget(lbl_preview_hint)
+
+        self.canvas_preview = CanvasPreview(s)
+        preview_layout.addWidget(self.canvas_preview, 1)
+
+        self.lbl_canvas_info = QLabel("Nenhum desenho salvo ainda.")
+        self.lbl_canvas_info.setWordWrap(True)
+        self.lbl_canvas_info.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt; border:none;"
+        )
+        preview_layout.addWidget(self.lbl_canvas_info)
 
         btn_canvas = QPushButton("📐   Abrir Editor de Desenho")
-        btn_canvas.setFixedHeight(max(28, int(32*s)))
+        btn_canvas.setFixedHeight(max(30, int(34*s)))
         btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
         btn_canvas.clicked.connect(self._open_canvas_dialog)
-        header_row.addWidget(btn_canvas)
-        items_layout.addLayout(header_row)
+        preview_layout.addWidget(btn_canvas)
 
-        self.item_table = ItemTable(s)
-        self.item_table.weight_changed.connect(self._on_weight_changed)
-        items_layout.addWidget(self.item_table)
-        return items_card
+        row.addWidget(preview_card, 1)
+        return wrapper
 
     # ── Rodapé: Observação + Assinatura + QR ─────────────────────────────────
     def _build_bottom_section(self) -> QFrame:
@@ -773,6 +782,7 @@ class RequisitionForm(QWidget):
         dlg = CanvasDialog(self._canvas_json, self.scale, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._canvas_json = dlg.get_json()
+            self._update_canvas_preview()
 
     # ── Clientes ──────────────────────────────────────────────────────────────
     def _load_clients(self):
@@ -798,17 +808,48 @@ class RequisitionForm(QWidget):
         self.input_address.setText(", ".join(p for p in addr_parts if p))
 
     # ── Eventos ───────────────────────────────────────────────────────────────
-    def _on_weight_changed(self, total: float):
-        self.lbl_peso_header.setText(
-            f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    def _lookup_product_by_code(self, row: int, code: str):
+        lookup_code = code.strip()
+        if not lookup_code:
+            return
+
+        t, w = _run_in_thread(
+            api.list_products, "", lookup_code, 1,
+            on_result=lambda products, r=row, c=lookup_code: self._apply_product_lookup(r, c, products),
+            on_error=lambda _: None,
         )
+        self._threads.append((t, w))
+
+    def _apply_product_lookup(self, row: int, requested_code: str, products: list):
+        if self.item_table.get_product_code(row).strip() != requested_code:
+            return
+        if products:
+            self.item_table.apply_product_lookup(row, products[0])
+
+    def _update_canvas_preview(self):
+        if not hasattr(self, "canvas_preview"):
+            return
+
+        self.canvas_preview.set_json(self._canvas_json)
+        result = self.canvas_preview.last_result
+        pdf_path = result.get("pdf") or ""
+
+        if result.get("items"):
+            self.lbl_canvas_info.setText("Prévia atual do desenho técnico.")
+        elif pdf_path:
+            self.lbl_canvas_info.setText(
+                f"Referência em PDF anexada: {os.path.basename(pdf_path)}"
+            )
+        else:
+            self.lbl_canvas_info.setText("Nenhum desenho salvo ainda.")
 
     # ── API pública ──────────────────────────────────────────────────────────
     def get_form_data(self) -> dict:
         client_id = self.client_search.get_client_id()
         prazo = self.input_prazo.date().toString("yyyy-MM-dd")
+        total_weight = self.item_table.get_total_weight()
         return {
-            "ped_number":       self.input_ped.text().strip() or "0",
+            "ped_number":       self.input_ped.text().strip(),
             "client_id":        client_id,
             "obra":             self.input_obra.text().strip() or None,
             "delivery_date":    prazo,
@@ -816,7 +857,7 @@ class RequisitionForm(QWidget):
             "entrega":          self.chk_entrega.isChecked(),
             "phone":            self.input_fone.text().strip() or None,
             "delivery_address": self.input_address.text().strip() or None,
-            "weight":           0.0,
+            "weight":           total_weight,
             "items":            self.item_table.get_items(),
             "obs":              self.input_obs.toPlainText().strip() or None,
         }
@@ -851,6 +892,7 @@ class RequisitionForm(QWidget):
         # Canvas — armazena JSON; será carregado no dialog ao abrir
         canvas_data = data.get("canvas")
         self._canvas_json = (canvas_data or {}).get("json_data") or "{}"
+        self._update_canvas_preview()
 
     def reset(self):
         """Limpa o formulário para nova requisição."""
@@ -868,4 +910,4 @@ class RequisitionForm(QWidget):
         self.lbl_ped_num.setText("#000000")
         self.item_table.set_items([])
         self._canvas_json = "{}"
-        self.lbl_peso_header.setText("0,00")
+        self._update_canvas_preview()

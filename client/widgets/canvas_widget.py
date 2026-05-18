@@ -39,6 +39,80 @@ class Tool(Enum):
     IMAGE    = "image"
 
 
+def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
+    t = d.get("type")
+    pen_d = d.get("pen", {})
+    pen = QPen(QColor(pen_d.get("color", "#000000")), pen_d.get("width", 2))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+
+    if t == "line":
+        item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
+        item.setPen(pen)
+        return item
+
+    if t == "rect":
+        item = QGraphicsRectItem(d["x"], d["y"], d["w"], d["h"])
+        item.setPen(pen)
+        return item
+
+    if t == "ellipse":
+        item = QGraphicsEllipseItem(d["x"], d["y"], d["w"], d["h"])
+        item.setPen(pen)
+        return item
+
+    if t == "path":
+        path = QPainterPath()
+        points = d.get("points", [])
+        if points:
+            path.moveTo(QPointF(points[0][0], points[0][1]))
+            for pt in points[1:]:
+                path.lineTo(QPointF(pt[0], pt[1]))
+        item = QGraphicsPathItem(path)
+        item.setPen(pen)
+        return item
+
+    if t == "text":
+        item = QGraphicsTextItem(d.get("text", ""))
+        item.setPos(QPointF(d["x"], d["y"]))
+        item.setDefaultTextColor(QColor(d.get("color", "#000000")))
+        font = QFont("Segoe UI", d.get("font_size", 12))
+        item.setFont(font)
+        return item
+
+    if t == "image":
+        path = d.get("path", "")
+        if path and os.path.exists(path):
+            pix = QPixmap(path)
+            item = QGraphicsPixmapItem(pix)
+            item.setPos(QPointF(d["x"], d["y"]))
+            item.setData(0, {"type": "image", "path": path})
+            return item
+
+    return None
+
+
+def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False) -> dict:
+    scene.clear()
+    try:
+        obj = json.loads(data)
+    except (json.JSONDecodeError, TypeError):
+        return {"items": 0, "pdf": ""}
+
+    count = 0
+    for item_data in obj.get("items", []):
+        item = build_canvas_item_from_dict(item_data)
+        if item:
+            if selectable:
+                item.setFlags(
+                    QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                    QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+                )
+            scene.addItem(item)
+            count += 1
+
+    return {"items": count, "pdf": obj.get("pdf", "")}
+
+
 # ── Cena personalizada ────────────────────────────────────────────────────────
 class DrawingScene(QGraphicsScene):
     def __init__(self, canvas_widget):
@@ -486,13 +560,7 @@ class DrawingCanvas(QWidget):
         if self._attached_pdf:
             self.pdf_label.setText(os.path.basename(self._attached_pdf))
             self.pdf_panel.setVisible(True)
-
-        for d in obj.get("items", []):
-            item = self._item_from_dict(d)
-            if item:
-                item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
-                              QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
-                self.scene.addItem(item)
+        load_canvas_scene(self.scene, data, selectable=True)
 
     def _item_to_dict(self, item: QGraphicsItem) -> dict | None:
         pen_data = lambda p: {"color": p.color().name(), "width": p.width()}
@@ -539,52 +607,45 @@ class DrawingCanvas(QWidget):
         return None
 
     def _item_from_dict(self, d: dict) -> QGraphicsItem | None:
-        t = d.get("type")
-        pen_d = d.get("pen", {})
-        pen = QPen(QColor(pen_d.get("color", "#000000")), pen_d.get("width", 2))
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        return build_canvas_item_from_dict(d)
 
-        if t == "line":
-            item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
-            item.setPen(pen)
-            return item
 
-        if t == "rect":
-            item = QGraphicsRectItem(d["x"], d["y"], d["w"], d["h"])
-            item.setPen(pen)
-            return item
+class CanvasPreview(QGraphicsView):
+    def __init__(self, scale: float = 1.0, parent=None):
+        scene = QGraphicsScene(parent)
+        super().__init__(scene, parent)
+        self.scale_factor = scale
+        self._scene = scene
+        self._last_result = {"items": 0, "pdf": ""}
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setStyleSheet(
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px; background:#fff;"
+        )
+        self.setMinimumHeight(max(220, int(260 * scale)))
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setInteractive(False)
 
-        if t == "ellipse":
-            item = QGraphicsEllipseItem(d["x"], d["y"], d["w"], d["h"])
-            item.setPen(pen)
-            return item
+    @property
+    def last_result(self) -> dict:
+        return self._last_result
 
-        if t == "path":
-            path = QPainterPath()
-            points = d.get("points", [])
-            if points:
-                path.moveTo(QPointF(points[0][0], points[0][1]))
-                for pt in points[1:]:
-                    path.lineTo(QPointF(pt[0], pt[1]))
-            item = QGraphicsPathItem(path)
-            item.setPen(pen)
-            return item
+    def set_json(self, data: str):
+        self._last_result = load_canvas_scene(self._scene, data, selectable=False)
+        if self._last_result["items"] == 0:
+            placeholder = self._scene.addText("Sem desenho salvo")
+            placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
+            font = QFont("Segoe UI", max(9, int(10 * self.scale_factor)))
+            placeholder.setFont(font)
+            placeholder.setPos(20, 20)
+        self._fit_scene()
 
-        if t == "text":
-            item = QGraphicsTextItem(d.get("text", ""))
-            item.setPos(QPointF(d["x"], d["y"]))
-            item.setDefaultTextColor(QColor(d.get("color", "#000000")))
-            font = QFont("Segoe UI", d.get("font_size", 12))
-            item.setFont(font)
-            return item
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_scene()
 
-        if t == "image":
-            path = d.get("path", "")
-            if path and os.path.exists(path):
-                pix = QPixmap(path)
-                item = QGraphicsPixmapItem(pix)
-                item.setPos(QPointF(d["x"], d["y"]))
-                item.setData(0, {"type": "image", "path": path})
-                return item
-
-        return None
+    def _fit_scene(self):
+        rect = self._scene.itemsBoundingRect()
+        if rect.isNull():
+            rect = QRectF(0, 0, 100, 80)
+        self.fitInView(rect.adjusted(-10, -10, 10, 10), Qt.AspectRatioMode.KeepAspectRatio)
