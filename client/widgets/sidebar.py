@@ -15,6 +15,9 @@ NAV_ITEMS = [
     ("dashboard", "📊", "DASHBOARD"),
     ("producao", "🏭", "PRODUÇÃO"),
     ("historico", "🕘", "HISTÓRICO / BUSCA"),
+]
+
+BOTTOM_NAV_ITEMS = [
     ("config", "⚙️", "CONFIGURAÇÕES"),
 ]
 
@@ -66,6 +69,14 @@ class Sidebar(QWidget):
             layout.addWidget(btn)
 
         layout.addStretch()
+        layout.addWidget(self._separator())
+
+        for key, icon, label in BOTTOM_NAV_ITEMS:
+            btn = self._make_btn(icon, label, nav_key=key)
+            self._nav_btns[key] = btn
+            btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
+            layout.addWidget(btn)
+
         layout.addWidget(self._separator())
 
         self.user_label = QLabel(f"👤 USUÁRIO: {session.user_name}")
