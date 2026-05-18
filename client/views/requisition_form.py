@@ -433,6 +433,16 @@ class RequisitionForm(QWidget):
         save_row = QHBoxLayout()
         save_row.addStretch()
 
+        btn_calc = QPushButton("🧮 CALCULADORA DE PESO")
+        btn_calc.setFixedHeight(max(42, int(48 * s)))
+        btn_calc.setMinimumWidth(max(200, int(230 * s)))
+        btn_calc.setStyleSheet(theme.secondary_btn_style(s))
+        btn_calc.clicked.connect(self._open_weight_calculator)
+        save_row.addWidget(btn_calc)
+        self.btn_calc = btn_calc
+
+        save_row.addSpacing(max(8, int(10 * s)))
+
         btn_production = QPushButton("ENVIAR PARA PRODUÇÃO")
         btn_production.setFixedHeight(max(42, int(48 * s)))
         btn_production.setMinimumWidth(max(220, int(250 * s)))
@@ -912,6 +922,133 @@ class RequisitionForm(QWidget):
         }
         canvas_json = (req.get("canvas") or {}).get("json_data") or "{}"
         return generate_pdf(req, client, req.get("obs") or "", folder, canvas_json)
+
+    # ── Calculadora de Peso ───────────────────────────────────────────────────
+    def _open_weight_calculator(self):
+        s = self.scale
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Calculadora de Peso")
+        dlg.setModal(True)
+        dlg.setMinimumWidth(max(340, int(380 * s)))
+
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; }}"
+            f"QLabel {{ color:{theme.TEXT_DARK}; border:none; }}"
+            f"QLineEdit {{ {theme.input_style(s)} }}"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(max(20, int(24 * s)), max(20, int(24 * s)),
+                                   max(20, int(24 * s)), max(20, int(24 * s)))
+        layout.setSpacing(max(10, int(12 * s)))
+
+        # Título
+        lbl_title = QLabel("⚖️  Calculadora de Peso")
+        lbl_title.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
+        )
+        layout.addWidget(lbl_title)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color:{theme.BORDER_COLOR};")
+        layout.addWidget(sep)
+
+        # Campos de entrada
+        grid = QGridLayout()
+        grid.setSpacing(max(8, int(10 * s)))
+        grid.setColumnStretch(1, 1)
+
+        fs = max(9, int(10 * s))
+        lbl_style = f"font-size:{fs}pt; font-weight:bold; color:{theme.TEXT_MEDIUM};"
+
+        def _lbl(text):
+            l = QLabel(text)
+            l.setStyleSheet(lbl_style)
+            return l
+
+        def _input(placeholder="", default=""):
+            inp = QLineEdit()
+            inp.setPlaceholderText(placeholder)
+            inp.setText(default)
+            inp.setFixedHeight(max(30, int(36 * s)))
+            validator = QRegularExpressionValidator(
+                QRegularExpression(r"[0-9]*\.?[0-9]*")
+            )
+            inp.setValidator(validator)
+            return inp
+
+        inp_qnt   = _input("ex: 10", "")
+        inp_comp  = _input("mm", "")
+        inp_larg  = _input("mm", "")
+        inp_chapa = _input("mm", "")
+        inp_var   = _input("constante", "7.865")
+
+        grid.addWidget(_lbl("QNT:"),          0, 0)
+        grid.addWidget(inp_qnt,               0, 1)
+        grid.addWidget(_lbl("COMP (mm):"),    1, 0)
+        grid.addWidget(inp_comp,              1, 1)
+        grid.addWidget(_lbl("LARG. TOTAL (mm):"), 2, 0)
+        grid.addWidget(inp_larg,              2, 1)
+        grid.addWidget(_lbl("CHAPA (mm):"),   3, 0)
+        grid.addWidget(inp_chapa,             3, 1)
+        grid.addWidget(_lbl("VARIÁVEL:"),     4, 0)
+        grid.addWidget(inp_var,               4, 1)
+        layout.addLayout(grid)
+
+        # Separador resultado
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet(f"color:{theme.BORDER_COLOR};")
+        layout.addWidget(sep2)
+
+        # Label de resultado
+        lbl_result = QLabel("PESO = —")
+        lbl_result.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_result.setStyleSheet(
+            f"color:{theme.PRIMARY}; font-size:{max(14, int(16 * s))}pt;"
+            f"font-weight:bold; padding:{max(8, int(10 * s))}px;"
+            f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:6px;"
+        )
+        layout.addWidget(lbl_result)
+
+        lbl_hint = QLabel("Resultado apenas para consulta — não salvo na requisição.")
+        lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_hint.setWordWrap(True)
+        lbl_hint.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt; font-style:italic;"
+        )
+        layout.addWidget(lbl_hint)
+
+        # Botão fechar
+        btn_fechar = QPushButton("Fechar")
+        btn_fechar.setFixedHeight(max(34, int(40 * s)))
+        btn_fechar.setStyleSheet(theme.secondary_btn_style(s))
+        btn_fechar.clicked.connect(dlg.accept)
+        layout.addWidget(btn_fechar, alignment=Qt.AlignmentFlag.AlignRight)
+
+        # Lógica de cálculo — recalcula a cada digitação
+        def _recalculate():
+            try:
+                qnt   = float(inp_qnt.text().replace(",", ".") or "0")
+                comp  = float(inp_comp.text().replace(",", ".") or "0")
+                larg  = float(inp_larg.text().replace(",", ".") or "0")
+                chapa = float(inp_chapa.text().replace(",", ".") or "0")
+                var   = float(inp_var.text().replace(",", ".") or "7.865")
+                peso  = (qnt * comp * larg * chapa * var) / 1_000_000
+                txt   = f"{peso:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                lbl_result.setText(f"PESO = {txt} kg")
+            except (ValueError, ZeroDivisionError):
+                lbl_result.setText("PESO = —")
+
+        inp_qnt.textChanged.connect(_recalculate)
+        inp_comp.textChanged.connect(_recalculate)
+        inp_larg.textChanged.connect(_recalculate)
+        inp_chapa.textChanged.connect(_recalculate)
+        inp_var.textChanged.connect(_recalculate)
+
+        dlg.exec()
 
     def _send_to_production(self):
         if not self.req_id:
