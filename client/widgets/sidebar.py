@@ -1,8 +1,8 @@
 import os
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QFrame
-from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ..core import theme
 from ..core.session import session
@@ -11,14 +11,14 @@ from ..core.session import session
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
 
 NAV_ITEMS = [
-    ("nova", "📝", "NOVA REQUISIÇÃO"),
-    ("dashboard", "📊", "DASHBOARD"),
-    ("producao", "🏭", "PRODUÇÃO"),
-    ("historico", "🕘", "HISTÓRICO / BUSCA"),
+    ("nova", "\U0001F4DD", "NOVA REQUISI\u00c7\u00c3O"),
+    ("dashboard", "\U0001F4CA", "PAINEL GERENCIAL"),
+    ("producao", "\U0001F3ED", "PRODU\u00c7\u00c3O"),
+    ("historico", "\U0001F558", "HIST\u00d3RICO / BUSCA"),
 ]
 
 BOTTOM_NAV_ITEMS = [
-    ("config", "⚙️", "CONFIGURAÇÕES"),
+    ("config", "\u2699\ufe0f", "CONFIGURA\u00c7\u00d5ES"),
 ]
 
 
@@ -79,14 +79,14 @@ class Sidebar(QWidget):
 
         layout.addWidget(self._separator())
 
-        self.user_label = QLabel(f"👤 USUÁRIO: {session.user_name}")
+        self.user_label = QLabel(f"\U0001F464 USU\u00c1RIO: {session.user_name}")
         self.user_label.setStyleSheet(
             f"color:#94A3B8; font-size:{max(8, int(9 * self.scale))}pt; padding:8px 16px;"
         )
         self.user_label.setWordWrap(True)
         layout.addWidget(self.user_label)
 
-        btn_sair = self._make_btn("🚪", "SAIR")
+        btn_sair = self._make_btn("\U0001F6AA", "SAIR")
         btn_sair.clicked.connect(self.logout_clicked.emit)
         layout.addWidget(btn_sair)
         layout.addSpacing(8)
@@ -132,7 +132,7 @@ class Sidebar(QWidget):
             btn.setChecked(nav_key == key)
 
     def refresh_user(self):
-        self.user_label.setText(f"👤 USUÁRIO: {session.user_name}")
+        self.user_label.setText(f"\U0001F464 USU\u00c1RIO: {session.user_name}")
 
     def set_actions_visible(self, visible: bool):
         pass

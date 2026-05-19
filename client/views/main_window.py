@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
             dash_btn = self.sidebar._nav_btns.get("dashboard")
             if dash_btn:
                 dash_btn.setEnabled(False)
-                dash_btn.setToolTip("Acesso restrito a gerentes")
+                dash_btn.setToolTip("Acesso restrito a gerentes e administradores")
 
     def _setup_statusbar(self):
         bar = self.statusBar()
@@ -121,7 +121,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "O Dashboard é restrito a gerentes e administradores.",
+                "O Painel Gerencial é restrito a gerentes e administradores.",
             )
             self._highlight_current_page()
             return

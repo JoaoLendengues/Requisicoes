@@ -2,18 +2,26 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
-from datetime import datetime
+from collections import Counter
+from datetime import datetime, timedelta
 from ..database import get_db
 from ..models.client import Client
 from ..models.requisition import (
     Requisition, RequisitionItem, CanvasData, StatusHistory, RequisitionStatus,
 )
 from ..models.user import User, Role
+from ..schemas.dashboard import (
+    DashboardReceiptAlertItem,
+    DashboardRecentRequisitionItem,
+    DashboardStatsResponse,
+    DashboardVendorItem,
+    ManagementDashboardResponse,
+)
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse,
     StatusUpdate, CanvasUpdate,
 )
-from ..dependencies import get_current_user, require_creator
+from ..dependencies import get_current_user, require_creator, require_manager_or_admin
 
 router = APIRouter(prefix="/requisitions", tags=["Requisições"])
 
@@ -134,6 +142,187 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         return
 
 
+def _sorted_status_history(req: Requisition) -> list[StatusHistory]:
+    history = list(req.status_history or [])
+    return sorted(history, key=lambda entry: (entry.changed_at or datetime.min, entry.id or 0))
+
+
+def _production_events(req: Requisition) -> list[dict]:
+    events: list[dict] = []
+    for entry in _sorted_status_history(req):
+        parsed = _parse_production_note(entry.note)
+        if not parsed:
+            continue
+        events.append(
+            {
+                "action": parsed["action"],
+                "target": parsed["target"],
+                "reason": parsed["reason"],
+                "changed_at": entry.changed_at,
+            }
+        )
+    return events
+
+
+def _current_production_destination(req: Requisition) -> str:
+    for event in reversed(_production_events(req)):
+        target = (event.get("target") or "").strip()
+        if target:
+            return target
+    return ""
+
+
+def _is_open_requisition(req: Requisition) -> bool:
+    if req.status == RequisitionStatus.CANCELADA:
+        return False
+
+    events = _production_events(req)
+    if not events:
+        return True
+    return events[-1]["action"] != _PROD_FINISHED
+
+
+def _latest_production_event(req: Requisition, action: str) -> dict | None:
+    for event in reversed(_production_events(req)):
+        if event["action"] == action:
+            return event
+    return None
+
+
+def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardResponse:
+    now = datetime.utcnow()
+    today = now.date()
+    one_hour_ago = now - timedelta(hours=1)
+
+    top_vendors_counter: Counter[str] = Counter()
+    receipt_alerts: list[DashboardReceiptAlertItem] = []
+    recent_requisitions: list[DashboardRecentRequisitionItem] = []
+    completion_durations: list[int] = []
+
+    pedidos_em_producao = 0
+    pedidos_em_atraso = 0
+    pedidos_finalizados_hoje = 0
+    producao_pinheiro_industria = 0
+    producao_ar = 0
+    requisicoes_feitas_no_dia = 0
+
+    for req in reqs:
+        vendor_name = (req.vendor_name or "").strip() or "Sem vendedor"
+        top_vendors_counter[vendor_name] += 1
+
+        destination = _current_production_destination(req)
+        is_active_production = req.status in (
+            RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+            RequisitionStatus.EM_PRODUCAO,
+        )
+
+        if req.status == RequisitionStatus.EM_PRODUCAO:
+            pedidos_em_producao += 1
+
+        if is_active_production and destination == "Pinheiro Indústria":
+            producao_pinheiro_industria += 1
+        if is_active_production and destination == "A&R":
+            producao_ar += 1
+
+        if req.created_at and req.created_at.date() == today:
+            requisicoes_feitas_no_dia += 1
+
+        if (
+            req.delivery_date
+            and req.delivery_date < today
+            and _is_open_requisition(req)
+        ):
+            pedidos_em_atraso += 1
+
+        latest_send_event = _latest_production_event(req, _PROD_SEND)
+        if (
+            req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO
+            and latest_send_event
+            and latest_send_event["changed_at"]
+            and latest_send_event["changed_at"] <= one_hour_ago
+        ):
+            waiting_minutes = max(
+                0,
+                int((now - latest_send_event["changed_at"]).total_seconds() // 60),
+            )
+            receipt_alerts.append(
+                DashboardReceiptAlertItem(
+                    id=req.id,
+                    ped_number=req.ped_number,
+                    client_name=req.client_name,
+                    destination=latest_send_event["target"] or destination or "-",
+                    sent_at=latest_send_event["changed_at"],
+                    waiting_minutes=waiting_minutes,
+                )
+            )
+
+        received_at: datetime | None = None
+        for event in _production_events(req):
+            action = event["action"]
+            changed_at = event["changed_at"]
+            if changed_at is None:
+                continue
+
+            if action == _PROD_RECEIVED:
+                received_at = changed_at
+                continue
+
+            if action == _PROD_FINISHED:
+                if received_at is not None:
+                    completion_durations.append(
+                        max(0, int((changed_at - received_at).total_seconds()))
+                    )
+                    received_at = None
+                if changed_at.date() == today:
+                    pedidos_finalizados_hoje += 1
+                continue
+
+            if action in (_PROD_SEND, _PROD_CANCELED):
+                received_at = None
+
+        recent_requisitions.append(
+            DashboardRecentRequisitionItem(
+                id=req.id,
+                ped_number=req.ped_number,
+                client_name=req.client_name,
+                vendor_name=req.vendor_name,
+                status=req.status,
+                emission_date=req.emission_date,
+                delivery_date=req.delivery_date,
+                destination=destination or None,
+            )
+        )
+
+    top_vendors = [
+        DashboardVendorItem(vendor_name=name, requisition_count=count)
+        for name, count in top_vendors_counter.most_common(8)
+    ]
+
+    receipt_alerts.sort(key=lambda item: item.waiting_minutes, reverse=True)
+    recent_requisitions.sort(key=lambda item: item.emission_date, reverse=True)
+
+    average_seconds = None
+    if completion_durations:
+        average_seconds = int(sum(completion_durations) / len(completion_durations))
+
+    return ManagementDashboardResponse(
+        generated_at=now,
+        stats=DashboardStatsResponse(
+            pedidos_em_producao=pedidos_em_producao,
+            pedidos_em_atraso=pedidos_em_atraso,
+            pedidos_finalizados_hoje=pedidos_finalizados_hoje,
+            producao_pinheiro_industria=producao_pinheiro_industria,
+            producao_ar=producao_ar,
+            requisicoes_feitas_no_dia=requisicoes_feitas_no_dia,
+            pedidos_sem_confirmacao_1h=len(receipt_alerts),
+            tempo_medio_finalizacao_segundos=average_seconds,
+        ),
+        top_vendors=top_vendors,
+        receipt_alerts=receipt_alerts[:10],
+        recent_requisitions=recent_requisitions[:12],
+    )
+
+
 @router.get("/", response_model=List[RequisitionResponse])
 def list_requisitions(
     req_status: Optional[RequisitionStatus] = Query(None, alias="status"),
@@ -167,6 +356,20 @@ def list_requisitions(
         q = q.filter(Requisition.vendor_id == current_user.id)
 
     return q.order_by(Requisition.created_at.desc()).offset(skip).limit(limit).all()
+
+
+@router.get("/dashboard/summary", response_model=ManagementDashboardResponse)
+def get_management_dashboard(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_manager_or_admin),
+):
+    reqs = (
+        db.query(Requisition)
+        .options(*_LOAD_OPTS)
+        .order_by(Requisition.created_at.desc())
+        .all()
+    )
+    return _build_management_dashboard(reqs)
 
 
 @router.post("/", response_model=RequisitionResponse, status_code=status.HTTP_201_CREATED)

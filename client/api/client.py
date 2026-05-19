@@ -121,6 +121,11 @@ def list_requisitions(status: str = "", search: str = "",
         return _check(client.get("/requisitions/", params=params))
 
 
+def get_management_dashboard() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/dashboard/summary"))
+
+
 def get_requisition(req_id: int) -> dict:
     with _cli() as client:
         return _check(client.get(f"/requisitions/{req_id}"))
