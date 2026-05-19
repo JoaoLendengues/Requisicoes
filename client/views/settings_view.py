@@ -85,16 +85,30 @@ class SettingsView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
+        self.setObjectName("settingsView")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            f"QWidget#settingsView {{ background:{theme.PRIMARY_LIGHT}; }}"
+        )
 
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border:none; background:transparent; }")
+        scroll.setStyleSheet(
+            f"QScrollArea {{ border:none; background:{theme.PRIMARY_LIGHT}; }}"
+        )
+        scroll.viewport().setStyleSheet(
+            f"background:{theme.PRIMARY_LIGHT}; border:none;"
+        )
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.addWidget(scroll)
 
         container = QWidget()
-        container.setStyleSheet(f"background:{theme.CONTENT_BG};")
+        container.setObjectName("settingsContainer")
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        container.setStyleSheet(
+            f"QWidget#settingsContainer {{ background:{theme.PRIMARY_LIGHT}; }}"
+        )
         scroll.setWidget(container)
 
         outer = QVBoxLayout(container)
