@@ -12,7 +12,7 @@ class StatusBadge(QLabel):
 
     def set_status(self, status: str):
         self._status = status
-        color = STATUS_COLORS.get(status, "#6B7280")
+        color = STATUS_COLORS.get(status, "#6B778C")
         label = STATUS_LABELS.get(status, status.upper())
         fs = max(8, int(10 * self.scale))
         self.setText(label.upper())

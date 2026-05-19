@@ -986,7 +986,7 @@ class RequisitionForm(QWidget):
         inp_var.setReadOnly(True)
         inp_var.setStyleSheet(
             inp_var.styleSheet() +
-            f"background:{theme.TABLE_HEADER_BG}; color:#94A3B8;"
+            f"background:{theme.SURFACE_SOFT}; color:{theme.TEXT_MEDIUM};"
         )
 
         grid.addWidget(_lbl("QNT:"),          0, 0)
@@ -1014,7 +1014,7 @@ class RequisitionForm(QWidget):
             f"color:{theme.PRIMARY}; font-size:{max(14, int(16 * s))}pt;"
             f"font-weight:bold; padding:{max(8, int(10 * s))}px;"
             f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR};"
-            f"border-radius:6px;"
+            f"border-radius:8px;"
         )
         layout.addWidget(lbl_result)
 

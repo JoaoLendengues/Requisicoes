@@ -8,7 +8,7 @@ from ..core import theme
 from ..core.session import session
 
 
-LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_sidebar.png")
 
 NAV_ITEMS = [
     ("nova", "\U0001F4DD", "NOVA REQUISI\u00c7\u00c3O"),
@@ -50,7 +50,7 @@ class Sidebar(QWidget):
         logo_label = QLabel()
         pix = QPixmap(LOGO_PATH)
         if not pix.isNull():
-            width = max(140, int(160 * self.scale))
+            width = max(152, int(176 * self.scale))
             pix = pix.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
             logo_label.setPixmap(pix)
         else:

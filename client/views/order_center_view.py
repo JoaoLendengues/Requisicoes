@@ -474,10 +474,10 @@ class OrderCenterView(QWidget):
                     status = str(row_data.get("status") or "")
                     badge = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    color = theme.STATUS_COLORS.get(status, "#64748B")
+                    color = theme.STATUS_COLORS.get(status, theme.TEXT_MEDIUM)
                     badge.setStyleSheet(
-                        f"background:{color}; color:#fff; border-radius:5px;"
-                        f"font-weight:bold; padding:3px 8px; font-size:{max(7, int(8 * self.scale))}pt;"
+                        f"background:{color}; color:{theme.TEXT_WHITE}; border-radius:8px;"
+                        f"font-weight:600; padding:3px 8px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
                     table.setCellWidget(row, col, badge)
                 else:

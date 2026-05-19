@@ -512,11 +512,11 @@ class DashboardView(QWidget):
                 if col == 4:
                     status = str(row.get("status") or "")
                     label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
-                    color = theme.STATUS_COLORS.get(status, "#64748B")
+                    color = theme.STATUS_COLORS.get(status, theme.TEXT_MEDIUM)
                     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     label.setStyleSheet(
-                        f"background:{color}; color:#fff; border-radius:5px;"
-                        f"font-weight:bold; padding:3px 8px; font-size:{max(7, int(8 * self.scale))}pt;"
+                        f"background:{color}; color:{theme.TEXT_WHITE}; border-radius:8px;"
+                        f"font-weight:600; padding:3px 8px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
                     table.setCellWidget(line, col, label)
                 else:

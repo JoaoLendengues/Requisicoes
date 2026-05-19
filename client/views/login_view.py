@@ -21,7 +21,7 @@ from ..core import theme
 from ..core.resolution import res
 from ..core.session import session
 
-LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_login.png")
 
 
 class LoginWorker(QObject):
@@ -242,7 +242,7 @@ class LoginView(QWidget):
         logo_label = QLabel()
         pix = QPixmap(LOGO_PATH)
         if not pix.isNull():
-            width = max(160, int(200 * self.scale))
+            width = max(180, int(228 * self.scale))
             pix = pix.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
             logo_label.setPixmap(pix)
         else:

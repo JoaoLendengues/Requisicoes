@@ -119,7 +119,7 @@ class ItemTable(QWidget):
             | Qt.ItemFlag.ItemIsEditable
         )
         item.setBackground(QColor(theme.TABLE_HEADER_BG))
-        item.setForeground(QColor("#ffffff"))
+        item.setForeground(QColor(theme.TEXT_WHITE))
         font = item.font()
         font.setBold(True)
         item.setFont(font)

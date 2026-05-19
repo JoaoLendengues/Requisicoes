@@ -159,12 +159,12 @@ class HistoryView(QWidget):
             for col, val in enumerate(vals):
                 if col == 5:   # Status — badge colorido
                     lbl = QLabel(theme.STATUS_LABELS.get(val, val))
-                    color = theme.STATUS_COLORS.get(val, "#6B7280")
+                    color = theme.STATUS_COLORS.get(val, theme.TEXT_MEDIUM)
                     lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     lbl.setStyleSheet(
-                        f"background:{color}; color:#fff; border-radius:4px;"
-                        f"font-weight:bold; font-size:{max(8,int(9*self.scale))}pt;"
-                        f"padding:2px 6px;"
+                        f"background:{color}; color:{theme.TEXT_WHITE}; border-radius:8px;"
+                        f"font-weight:600; font-size:{max(8,int(9*self.scale))}pt;"
+                        f"padding:3px 8px;"
                     )
                     self.table.setCellWidget(row, col, lbl)
                 else:
