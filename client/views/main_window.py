@@ -12,15 +12,19 @@ from ..widgets.sidebar import Sidebar
 from .requisition_form import RequisitionForm, _run_in_thread
 from .history_view import HistoryView
 from .dashboard_view import DashboardView
+from .order_center_view import OrderCenterView
 from .production_view import ProductionView
 from .settings_view import SettingsView
+from .user_center_view import UserCenterView
 
 
 PAGE_FORM = 0
 PAGE_HISTORY = 1
 PAGE_DASHBOARD = 2
-PAGE_PRODUCTION = 3
-PAGE_SETTINGS = 4
+PAGE_ORDER_CENTER = 3
+PAGE_PRODUCTION = 4
+PAGE_USER_CENTER = 5
+PAGE_SETTINGS = 6
 
 
 class MainWindow(QMainWindow):
@@ -63,16 +67,21 @@ class MainWindow(QMainWindow):
         self.form_view = RequisitionForm(self.scale)
         self.history_view = HistoryView(self.scale)
         self.dashboard_view = DashboardView(self.scale)
+        self.order_center_view = OrderCenterView(self.scale)
         self.production_view = ProductionView(self.scale)
+        self.user_center_view = UserCenterView(self.scale)
         self.settings_view = SettingsView(self.scale)
 
         self.stack.addWidget(self.form_view)
         self.stack.addWidget(self.history_view)
         self.stack.addWidget(self.dashboard_view)
+        self.stack.addWidget(self.order_center_view)
         self.stack.addWidget(self.production_view)
+        self.stack.addWidget(self.user_center_view)
         self.stack.addWidget(self.settings_view)
 
         self.history_view.open_requisition.connect(self._open_requisition)
+        self.order_center_view.open_requisition.connect(self._open_requisition)
         self.production_view.open_requisition.connect(self._open_requisition)
         self.form_view.save_requested.connect(self._save_requisition)
 
@@ -81,6 +90,18 @@ class MainWindow(QMainWindow):
             if dash_btn:
                 dash_btn.setEnabled(False)
                 dash_btn.setToolTip("Acesso restrito a gerentes e administradores")
+
+        if not session.can_access_order_center:
+            orders_btn = self.sidebar._nav_btns.get("pedidos")
+            if orders_btn:
+                orders_btn.setEnabled(False)
+                orders_btn.setToolTip("Acesso restrito a administradores, gerentes e producao")
+
+        if not session.can_manage_users:
+            users_btn = self.sidebar._nav_btns.get("usuarios")
+            if users_btn:
+                users_btn.setEnabled(False)
+                users_btn.setToolTip("Acesso restrito a administradores")
 
     def _setup_statusbar(self):
         bar = self.statusBar()
@@ -100,7 +121,9 @@ class MainWindow(QMainWindow):
             "nova": PAGE_FORM,
             "historico": PAGE_HISTORY,
             "dashboard": PAGE_DASHBOARD,
+            "pedidos": PAGE_ORDER_CENTER,
             "producao": PAGE_PRODUCTION,
+            "usuarios": PAGE_USER_CENTER,
             "config": PAGE_SETTINGS,
         }
         page = mapping.get(key, PAGE_FORM)
@@ -126,8 +149,30 @@ class MainWindow(QMainWindow):
             self._highlight_current_page()
             return
 
+        if page == PAGE_ORDER_CENTER and session.can_access_order_center:
+            self.order_center_view.refresh()
+        elif page == PAGE_ORDER_CENTER:
+            QMessageBox.warning(
+                self,
+                "Acesso negado",
+                "A Central de Pedidos e restrita a administradores, gerentes e producao.",
+            )
+            self._highlight_current_page()
+            return
+
         if page == PAGE_PRODUCTION:
             self.production_view.refresh()
+
+        if page == PAGE_USER_CENTER and session.can_manage_users:
+            self.user_center_view.refresh()
+        elif page == PAGE_USER_CENTER:
+            QMessageBox.warning(
+                self,
+                "Acesso negado",
+                "A Central de Usuarios e restrita a administradores.",
+            )
+            self._highlight_current_page()
+            return
 
         self.stack.setCurrentIndex(page)
 
@@ -149,7 +194,9 @@ class MainWindow(QMainWindow):
             PAGE_FORM: "nova",
             PAGE_HISTORY: "historico",
             PAGE_DASHBOARD: "dashboard",
+            PAGE_ORDER_CENTER: "pedidos",
             PAGE_PRODUCTION: "producao",
+            PAGE_USER_CENTER: "usuarios",
             PAGE_SETTINGS: "config",
         }
         self.sidebar._highlight(mapping.get(self.stack.currentIndex(), "nova"))

@@ -12,6 +12,8 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    if not plain or not hashed:
+        return False
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
@@ -25,10 +27,14 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def authenticate_user(db: Session, code: str, password: str) -> Optional[User]:
-    user = db.query(User).filter(User.code == code, User.is_active == True).first()
+    user = get_active_user_by_code(db, code)
     if not user or not verify_password(password, user.hashed_password):
         return None
     return user
+
+
+def get_active_user_by_code(db: Session, code: str) -> Optional[User]:
+    return db.query(User).filter(User.code == code, User.is_active == True).first()
 
 
 def decode_token(token: str) -> Optional[dict]:

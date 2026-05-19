@@ -41,6 +41,14 @@ class UserSession:
         return self.role in ("admin", "gerente")
 
     @property
+    def can_access_order_center(self) -> bool:
+        return self.role in ("admin", "gerente", "producao")
+
+    @property
+    def can_manage_users(self) -> bool:
+        return self.role == "admin"
+
+    @property
     def can_create(self) -> bool:
         return self.role in ("admin", "vendedor", "gerente")
 

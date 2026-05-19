@@ -42,6 +42,11 @@ def login(code: str, password: str) -> dict:
         return _check(client.post("/auth/login", json={"code": code, "password": password}))
 
 
+def first_access(code: str, password: str) -> dict:
+    with _cli() as client:
+        return _check(client.post("/auth/first-access", json={"code": code, "password": password}))
+
+
 def get_me() -> dict:
     with _cli() as client:
         return _check(client.get("/auth/me"))
@@ -55,6 +60,11 @@ def list_users() -> list:
 def create_user(data: dict) -> dict:
     with _cli() as client:
         return _check(client.post("/users/", json=data))
+
+
+def bulk_import_users(items: list) -> dict:
+    with _cli() as client:
+        return _check(client.post("/users/bulk-import", json=items, timeout=120))
 
 
 def update_user(user_id: int, data: dict) -> dict:
@@ -124,6 +134,11 @@ def list_requisitions(status: str = "", search: str = "",
 def get_management_dashboard() -> dict:
     with _cli() as client:
         return _check(client.get("/requisitions/dashboard/summary"))
+
+
+def get_order_center() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/order-center/summary"))
 
 
 def get_requisition(req_id: int) -> dict:

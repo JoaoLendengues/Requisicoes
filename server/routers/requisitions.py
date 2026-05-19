@@ -17,11 +17,21 @@ from ..schemas.dashboard import (
     DashboardVendorItem,
     ManagementDashboardResponse,
 )
+from ..schemas.order_center import (
+    OrderCenterItemResponse,
+    OrderCenterResponse,
+    OrderCenterStatsResponse,
+)
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse,
     StatusUpdate, CanvasUpdate,
 )
-from ..dependencies import get_current_user, require_creator, require_manager_or_admin
+from ..dependencies import (
+    get_current_user,
+    require_creator,
+    require_manager_or_admin,
+    require_order_center_access,
+)
 
 router = APIRouter(prefix="/requisitions", tags=["Requisições"])
 
@@ -187,6 +197,182 @@ def _latest_production_event(req: Requisition, action: str) -> dict | None:
         if event["action"] == action:
             return event
     return None
+
+
+def _latest_status_changed_at(req: Requisition, status_value: str) -> datetime | None:
+    target_status = getattr(status_value, "value", status_value)
+    for entry in reversed(_sorted_status_history(req)):
+        if str(entry.new_status) == str(target_status):
+            return entry.changed_at
+    return None
+
+
+def _latest_finished_cycle(req: Requisition) -> dict | None:
+    received_at: datetime | None = None
+    received_target: str | None = None
+    latest_cycle: dict | None = None
+
+    for event in _production_events(req):
+        changed_at = event["changed_at"]
+        if changed_at is None:
+            continue
+
+        action = event["action"]
+        if action == _PROD_RECEIVED:
+            received_at = changed_at
+            received_target = event["target"] or None
+            continue
+
+        if action == _PROD_FINISHED:
+            if received_at is not None:
+                latest_cycle = {
+                    "received_at": received_at,
+                    "finished_at": changed_at,
+                    "target": received_target,
+                    "production_time_seconds": max(
+                        0, int((changed_at - received_at).total_seconds())
+                    ),
+                }
+            received_at = None
+            received_target = None
+            continue
+
+        if action in (_PROD_SEND, _PROD_CANCELED):
+            received_at = None
+            received_target = None
+
+    return latest_cycle
+
+
+def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
+    now = datetime.utcnow()
+    today = now.date()
+
+    waiting_rows: list[OrderCenterItemResponse] = []
+    production_rows: list[OrderCenterItemResponse] = []
+    finished_rows: list[OrderCenterItemResponse] = []
+    canceled_rows: list[OrderCenterItemResponse] = []
+    delayed_rows: list[OrderCenterItemResponse] = []
+    production_durations: list[int] = []
+
+    for req in reqs:
+        destination = _current_production_destination(req) or None
+        events = _production_events(req)
+
+        if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+            sent_event = _latest_production_event(req, _PROD_SEND)
+            waiting_minutes = None
+            if sent_event and sent_event["changed_at"]:
+                waiting_minutes = max(
+                    0,
+                    int((now - sent_event["changed_at"]).total_seconds() // 60),
+                )
+            waiting_rows.append(
+                OrderCenterItemResponse(
+                    id=req.id,
+                    ped_number=req.ped_number,
+                    client_name=req.client_name,
+                    vendor_name=req.vendor_name,
+                    status=req.status,
+                    emission_date=req.emission_date,
+                    delivery_date=req.delivery_date,
+                    destination=destination,
+                    waiting_minutes=waiting_minutes,
+                )
+            )
+
+        if req.status == RequisitionStatus.EM_PRODUCAO:
+            received_event = _latest_production_event(req, _PROD_RECEIVED)
+            production_rows.append(
+                OrderCenterItemResponse(
+                    id=req.id,
+                    ped_number=req.ped_number,
+                    client_name=req.client_name,
+                    vendor_name=req.vendor_name,
+                    status=req.status,
+                    emission_date=req.emission_date,
+                    delivery_date=req.delivery_date,
+                    destination=destination,
+                    received_at=received_event["changed_at"] if received_event else None,
+                )
+            )
+
+        latest_finished = _latest_finished_cycle(req)
+        latest_event = events[-1] if events else None
+        if latest_finished:
+            production_durations.append(latest_finished["production_time_seconds"])
+        if latest_event and latest_event["action"] == _PROD_FINISHED and latest_finished:
+            finished_rows.append(
+                OrderCenterItemResponse(
+                    id=req.id,
+                    ped_number=req.ped_number,
+                    client_name=req.client_name,
+                    vendor_name=req.vendor_name,
+                    status="finalizado",
+                    emission_date=req.emission_date,
+                    delivery_date=req.delivery_date,
+                    destination=latest_finished["target"] or destination,
+                    received_at=latest_finished["received_at"],
+                    finished_at=latest_finished["finished_at"],
+                    production_time_seconds=latest_finished["production_time_seconds"],
+                )
+            )
+
+        if req.status == RequisitionStatus.CANCELADA:
+            canceled_rows.append(
+                OrderCenterItemResponse(
+                    id=req.id,
+                    ped_number=req.ped_number,
+                    client_name=req.client_name,
+                    vendor_name=req.vendor_name,
+                    status=req.status,
+                    emission_date=req.emission_date,
+                    delivery_date=req.delivery_date,
+                    canceled_at=_latest_status_changed_at(req, RequisitionStatus.CANCELADA),
+                )
+            )
+
+        if req.delivery_date and req.delivery_date < today and _is_open_requisition(req):
+            delayed_rows.append(
+                OrderCenterItemResponse(
+                    id=req.id,
+                    ped_number=req.ped_number,
+                    client_name=req.client_name,
+                    vendor_name=req.vendor_name,
+                    status=req.status,
+                    emission_date=req.emission_date,
+                    delivery_date=req.delivery_date,
+                    destination=destination,
+                    delay_days=max(0, (today - req.delivery_date).days),
+                )
+            )
+
+    waiting_rows.sort(key=lambda item: item.waiting_minutes or 0, reverse=True)
+    production_rows.sort(key=lambda item: item.received_at or datetime.min, reverse=True)
+    finished_rows.sort(key=lambda item: item.finished_at or datetime.min, reverse=True)
+    canceled_rows.sort(key=lambda item: item.canceled_at or datetime.min, reverse=True)
+    delayed_rows.sort(key=lambda item: item.delay_days or 0, reverse=True)
+
+    average_seconds = None
+    if production_durations:
+        average_seconds = int(sum(production_durations) / len(production_durations))
+
+    return OrderCenterResponse(
+        generated_at=now,
+        stats=OrderCenterStatsResponse(
+            pedidos_aguardando_recebimento=len(waiting_rows),
+            pedidos_em_producao=len(production_rows),
+            pedidos_finalizados=len(finished_rows),
+            pedidos_cancelados=len(canceled_rows),
+            pedidos_atrasados=len(delayed_rows),
+            tempo_medio_producao_segundos=average_seconds,
+        ),
+        aguardando_recebimento=waiting_rows[:100],
+        em_producao=production_rows[:100],
+        finalizados=finished_rows[:100],
+        cancelados=canceled_rows[:100],
+        atrasados=delayed_rows[:100],
+    )
 
 
 def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardResponse:
@@ -370,6 +556,20 @@ def get_management_dashboard(
         .all()
     )
     return _build_management_dashboard(reqs)
+
+
+@router.get("/order-center/summary", response_model=OrderCenterResponse)
+def get_order_center(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_order_center_access),
+):
+    reqs = (
+        db.query(Requisition)
+        .options(*_LOAD_OPTS)
+        .order_by(Requisition.created_at.desc())
+        .all()
+    )
+    return _build_order_center(reqs)
 
 
 @router.post("/", response_model=RequisitionResponse, status_code=status.HTTP_201_CREATED)

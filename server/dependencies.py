@@ -42,6 +42,15 @@ def require_manager_or_admin(current_user: User = Depends(get_current_user)) -> 
     return current_user
 
 
+def require_order_center_access(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in (Role.ADMIN, Role.GERENTE, Role.PRODUCAO):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso restrito a administradores, gerentes e producao",
+        )
+    return current_user
+
+
 def require_creator(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role not in (Role.ADMIN, Role.VENDEDOR, Role.GERENTE):
         raise HTTPException(

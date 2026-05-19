@@ -13,8 +13,10 @@ LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
 NAV_ITEMS = [
     ("nova", "\U0001F4DD", "NOVA REQUISI\u00c7\u00c3O"),
     ("dashboard", "\U0001F4CA", "PAINEL GERENCIAL"),
+    ("pedidos", "\U0001F4E6", "CENTRAL DE PEDIDOS"),
     ("producao", "\U0001F3ED", "PRODU\u00c7\u00c3O"),
     ("historico", "\U0001F558", "HIST\u00d3RICO / BUSCA"),
+    ("usuarios", "\U0001F465", "CENTRAL DE USU\u00c1RIOS"),
 ]
 
 BOTTOM_NAV_ITEMS = [
