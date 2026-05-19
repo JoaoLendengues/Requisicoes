@@ -64,7 +64,7 @@ def create_user(data: dict) -> dict:
 
 def bulk_import_users(items: list) -> dict:
     with _cli() as client:
-        return _check(client.post("/users/bulk-import", json=items, timeout=120))
+        return _check(client.post("/users/import/bulk", json=items, timeout=120))
 
 
 def update_user(user_id: int, data: dict) -> dict:
@@ -102,7 +102,7 @@ def update_client(client_id: int, data: dict) -> dict:
 
 def bulk_import_clients(items: list) -> dict:
     with _cli() as client:
-        return _check(client.post("/clients/bulk-import", json=items, timeout=120))
+        return _check(client.post("/clients/import/bulk", json=items, timeout=120))
 
 
 def list_products(search: str = "", code: str = "", limit: int = 30) -> list:
@@ -117,7 +117,7 @@ def list_products(search: str = "", code: str = "", limit: int = 30) -> list:
 
 def bulk_import_products(items: list) -> dict:
     with _cli() as client:
-        return _check(client.post("/products/bulk-import", json=items, timeout=120))
+        return _check(client.post("/products/import/bulk", json=items, timeout=120))
 
 
 def list_requisitions(status: str = "", search: str = "",

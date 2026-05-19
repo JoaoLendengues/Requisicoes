@@ -97,6 +97,7 @@ def update_client(
     return client
 
 
+@router.post("/import/bulk", response_model=BulkImportResult)
 @router.post("/bulk-import", response_model=BulkImportResult)
 def bulk_import_clients(
     items: List[ClientBulkItem],

@@ -143,7 +143,17 @@ def import_users(path: str, on_progress=None) -> ImportResult:
         result.skipped += server_result.get("skipped", 0)
         result.errors.extend(server_result.get("errors", []))
     except api.APIError as exc:
-        if exc.status_code == 403:
+        if exc.status_code == 405:
+            result.errors.append(
+                "O servidor atual ainda nao reconheceu a importacao em lote de usuarios. "
+                "Reinicie o servidor e tente novamente."
+            )
+        elif exc.status_code == 404:
+            result.errors.append(
+                "A rota de importacao de usuarios nao foi encontrada no servidor atual. "
+                "Reinicie o servidor e tente novamente."
+            )
+        elif exc.status_code == 403:
             result.errors.append(
                 "Seu usuario nao tem permissao para importar usuarios."
             )
