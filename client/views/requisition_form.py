@@ -361,7 +361,12 @@ class CanvasDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Editor de Desenho")
         self.setModal(True)
-        self.setStyleSheet(f"background:{theme.CONTENT_BG};")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            f"QDialog {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background-color:transparent; }}"
+        )
 
         # Tamanho: 90% da tela disponível
         from PySide6.QtWidgets import QApplication
@@ -952,13 +957,15 @@ class RequisitionForm(QWidget):
         dlg.setWindowTitle("Calculadora de Peso")
         dlg.setModal(True)
         dlg.setMinimumWidth(max(340, int(380 * s)))
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         dlg.setStyleSheet(
             f"QDialog {{"
-            f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"  background-color:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
             f"  border-radius:8px;"
             f"}}"
-            f"QLabel {{ color:{theme.TEXT_DARK}; background:transparent; border:none; }}"
+            f"QDialog QWidget {{ background-color:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ color:{theme.TEXT_DARK}; background-color:transparent; border:none; }}"
         )
 
         layout = QVBoxLayout(dlg)
@@ -1011,7 +1018,7 @@ class RequisitionForm(QWidget):
         inp_var.setReadOnly(True)
         inp_var.setStyleSheet(
             inp_var.styleSheet() +
-            f"background:{theme.SURFACE_SOFT}; color:{theme.TEXT_MEDIUM};"
+            f"background-color:{theme.SURFACE_SOFT}; color:{theme.TEXT_MEDIUM};"
         )
 
         grid.addWidget(_lbl("QNT:"),          0, 0)
@@ -1038,7 +1045,7 @@ class RequisitionForm(QWidget):
         lbl_result.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(14, int(16 * s))}pt;"
             f"font-weight:bold; padding:{max(8, int(10 * s))}px;"
-            f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"background-color:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR};"
             f"border-radius:8px;"
         )
         layout.addWidget(lbl_result)

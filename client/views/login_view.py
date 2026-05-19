@@ -134,12 +134,14 @@ class FirstAccessDialog(QDialog):
         self.scale = scale
         self.setWindowTitle("Primeiro acesso")
         self.setModal(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             f"QDialog {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  background-color:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
             f"}}"
-            f"QLabel {{ background:transparent; }}"
+            f"QDialog QWidget {{ background-color:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background-color:transparent; }}"
         )
         self._setup_ui(code)
 
@@ -194,7 +196,7 @@ class FirstAccessDialog(QDialog):
         self.error_label.hide()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
-            f"color:{theme.DANGER}; background:#FDEEEF; border:1px solid #F4C7CC; border-radius:8px; padding:8px;"
+            f"color:{theme.DANGER}; background-color:#FDEEEF; border:1px solid #F4C7CC; border-radius:8px; padding:8px;"
         )
         layout.addWidget(self.error_label)
 

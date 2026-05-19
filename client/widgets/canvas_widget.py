@@ -996,7 +996,12 @@ class DrawingCanvas(QWidget):
         self.changed.emit()
 
     def _pick_color(self):
-        color = QColorDialog.getColor(QColor(self.color), self, "Escolha a cor")
+        color = QColorDialog.getColor(
+            QColor(self.color),
+            self,
+            "Escolha a cor",
+            options=QColorDialog.ColorDialogOption.DontUseNativeDialog,
+        )
         if color.isValid():
             self.color = color.name()
             self.btn_color.setStyleSheet(
