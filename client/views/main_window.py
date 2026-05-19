@@ -57,7 +57,8 @@ class MainWindow(QMainWindow):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet(f"color:{theme.BORDER_COLOR};")
+        sep.setFixedWidth(1)
+        sep.setStyleSheet(f"background:{theme.SIDEBAR_BG}; color:{theme.SIDEBAR_BG}; border:none;")
         root.addWidget(sep)
 
         self.stack = QStackedWidget()

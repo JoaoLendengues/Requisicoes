@@ -33,19 +33,30 @@ class Sidebar(QWidget):
         self.scale = scale
         self._nav_btns: dict[str, QPushButton] = {}
         self._active = "nova"
+        self.setObjectName("SidebarColumn")
         self._setup_ui()
         self.setFixedWidth(max(212, int(236 * scale)))
 
     def _setup_ui(self):
-        self.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
+        self.setStyleSheet(
+            f"QWidget#SidebarColumn {{ background:{theme.SIDEBAR_BG}; }}"
+            f"QWidget#SidebarPanel {{ background:{theme.SIDEBAR_BG}; }}"
+            f"QWidget#SidebarPanel QLabel {{ background:transparent; }}"
+        )
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 10, 0, 10)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+
+        panel = QFrame()
+        panel.setObjectName("SidebarPanel")
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(0, 0, 0, 0)
+        panel_layout.setSpacing(0)
 
         logo_container = QWidget()
         logo_container.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
         logo_layout = QVBoxLayout(logo_container)
-        logo_layout.setContentsMargins(16, 20, 16, 16)
+        logo_layout.setContentsMargins(16, 20, 16, 18)
 
         logo_label = QLabel()
         pix = QPixmap(LOGO_PATH)
@@ -56,42 +67,44 @@ class Sidebar(QWidget):
         else:
             logo_label.setText("PINHEIRO FERRAGENS")
             logo_label.setStyleSheet(
-                f"color:#fff; font-size:{max(11, int(13 * self.scale))}pt; font-weight:bold;"
+                f"color:{theme.TEXT_WHITE}; font-size:{max(11, int(13 * self.scale))}pt; font-weight:bold;"
             )
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_layout.addWidget(logo_label)
-        layout.addWidget(logo_container)
+        panel_layout.addWidget(logo_container)
 
-        layout.addWidget(self._separator())
+        panel_layout.addWidget(self._separator())
 
         for key, icon, label in NAV_ITEMS:
             btn = self._make_btn(icon, label, nav_key=key)
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
-            layout.addWidget(btn)
+            panel_layout.addWidget(btn)
 
-        layout.addStretch()
-        layout.addWidget(self._separator())
+        panel_layout.addStretch()
+        panel_layout.addWidget(self._separator())
 
         for key, icon, label in BOTTOM_NAV_ITEMS:
             btn = self._make_btn(icon, label, nav_key=key)
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
-            layout.addWidget(btn)
+            panel_layout.addWidget(btn)
 
-        layout.addWidget(self._separator())
+        panel_layout.addWidget(self._separator())
 
         self.user_label = QLabel(f"\U0001F464 USU\u00c1RIO: {session.user_name}")
         self.user_label.setStyleSheet(
             f"color:rgba(255,255,255,0.78); font-size:{max(8, int(9 * self.scale))}pt; padding:10px 18px;"
         )
         self.user_label.setWordWrap(True)
-        layout.addWidget(self.user_label)
+        panel_layout.addWidget(self.user_label)
 
         btn_sair = self._make_btn("\U0001F6AA", "SAIR")
         btn_sair.clicked.connect(self.logout_clicked.emit)
-        layout.addWidget(btn_sair)
-        layout.addSpacing(8)
+        panel_layout.addWidget(btn_sair)
+        panel_layout.addSpacing(12)
+
+        layout.addWidget(panel)
 
         self._highlight(self._active)
 
