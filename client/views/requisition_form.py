@@ -99,6 +99,22 @@ def _build_production_note(action: str, destination: str) -> str:
     return f"{PROD_NOTE_PREFIX}|{action}|{destination}"
 
 
+def _format_phone_text(raw: str) -> str:
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())[:11]
+    if not digits:
+        return ""
+    if len(digits) <= 2:
+        return f"({digits}"
+    formatted = f"({digits[:2]})"
+    if len(digits) >= 3:
+        formatted += f" {digits[2]}"
+    if len(digits) >= 4:
+        formatted += f" {digits[3:7]}"
+    if len(digits) >= 8:
+        formatted += f"-{digits[7:11]}"
+    return formatted
+
+
 # ── Card helper ───────────────────────────────────────────────────────────────
 def _make_card(parent=None) -> QFrame:
     card = QFrame(parent)
@@ -661,6 +677,8 @@ class RequisitionForm(QWidget):
         self.input_fone.setPlaceholderText("(61) 9 9999-9999")
         self.input_fone.setFixedHeight(max(30,int(36*s)))
         self.input_fone.setStyleSheet(theme.input_style(s))
+        self.input_fone.setMaxLength(16)
+        self.input_fone.textEdited.connect(self._on_phone_edited)
         layout.addWidget(self.input_fone, 3, 0)
 
         # Endereço
@@ -1142,13 +1160,25 @@ class RequisitionForm(QWidget):
         """Preenche Fone e Endereço automaticamente ao selecionar um cliente."""
         if not client:
             return
-        self.input_fone.setText(client.get("phone") or "")
+        self._set_phone_text(client.get("phone") or "")
         addr_parts = [
             client.get("address") or "",
             client.get("city") or "",
             client.get("state") or "",
         ]
         self.input_address.setText(", ".join(p for p in addr_parts if p))
+
+    def _on_phone_edited(self, text: str):
+        self._set_phone_text(text)
+
+    def _set_phone_text(self, raw: str):
+        formatted = _format_phone_text(raw)
+        if self.input_fone.text() == formatted:
+            return
+        self.input_fone.blockSignals(True)
+        self.input_fone.setText(formatted)
+        self.input_fone.setCursorPosition(len(formatted))
+        self.input_fone.blockSignals(False)
 
     # ── Eventos ───────────────────────────────────────────────────────────────
     def _lookup_product_by_code(self, row: int, code: str):
@@ -1262,7 +1292,7 @@ class RequisitionForm(QWidget):
         self.req_id = data.get("id")
         self.input_ped.setText(str(data.get("ped_number") or ""))
         self.input_obra.setText(data.get("obra") or "")
-        self.input_fone.setText(data.get("phone") or "")
+        self._set_phone_text(data.get("phone") or "")
         self.input_address.setText(data.get("delivery_address") or "")
 
         delivery = data.get("delivery_date")
