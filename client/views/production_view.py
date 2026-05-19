@@ -507,7 +507,7 @@ class ProductionView(QWidget):
         thread, worker = self._run_action(
             api.update_status,
             req["id"],
-            "em_andamento",
+            "em_producao",
             _build_production_note(PROD_FINISHED, destination),
             success_message=f"Produção finalizada em {destination}.",
         )
