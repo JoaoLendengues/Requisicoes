@@ -43,13 +43,6 @@ Adicionar botão para encaminhar a requisição para a produção, com seleção
 
 ---
 
-### 9. Grade Quadriculada no Editor de Desenho
-Adicionar fundo quadriculado (grid) na área do canvas do Editor de Desenho como referência visual.
-
-- As linhas do grid **não aparecem** no PDF, impressão ou arquivo exportado — são apenas visuais.
-- O grid deve ser desenhado via `drawBackground()` da `QGraphicsScene`, garantindo que não integra os itens serializados.
-- Espaçamento sugerido: 20px entre linhas (ajustável).
-
 ---
 
 ### 2. Mais Opções de Personalização (Configurações)
@@ -78,3 +71,10 @@ Pensar e implementar novas opções na tela de Configurações. Sugestões inici
 | 2026-05-16 | Retirada × Entrega mutuamente exclusivos (já estava implementado) |
 | 2026-05-16 | QR Code com WhatsApp do vendedor exibido na tela de Nova Requisição |
 | 2026-05-18 | Salvamento bloqueado sem número de PED válido |
+| 2026-05-19 | Grade quadriculada no canvas (visual only, drawBackground) |
+| 2026-05-19 | Pan por botão do meio e Space+drag no canvas |
+| 2026-05-19 | Borracha, linhas pontilhadas/tracejadas no canvas |
+| 2026-05-19 | Rotação por grau via toolbar + persistência JSON |
+| 2026-05-19 | Alça de rotação livre (arrastar círculo ↻ azul acima do item) |
+| 2026-05-19 | Edição inline de texto (duplo clique) |
+| 2026-05-19 | Tamanho da fonte ao vivo em textos já colocados (spin_font sincronizado) |
