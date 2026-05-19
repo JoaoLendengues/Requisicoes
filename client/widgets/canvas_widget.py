@@ -23,8 +23,8 @@ from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsLineItem, QGraphicsRectItem,
     QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsTextItem,
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
-    QPushButton, QLabel, QColorDialog, QSpinBox, QSizePolicy,
-    QFrame,
+    QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
+    QSizePolicy, QFrame, QComboBox,
 )
 from ..core import theme
 
@@ -32,6 +32,7 @@ from ..core import theme
 class Tool(Enum):
     SELECT   = "select"
     PEN      = "pen"
+    ERASER   = "eraser"
     LINE     = "line"
     RECT     = "rect"
     ELLIPSE  = "ellipse"
@@ -39,11 +40,22 @@ class Tool(Enum):
     IMAGE    = "image"
 
 
+# Mapeamento estilo de linha ↔ string JSON
+_STYLE_TO_STR = {
+    Qt.PenStyle.SolidLine:   "solid",
+    Qt.PenStyle.DashLine:    "dash",
+    Qt.PenStyle.DotLine:     "dot",
+    Qt.PenStyle.DashDotLine: "dashdot",
+}
+_STR_TO_STYLE = {v: k for k, v in _STYLE_TO_STR.items()}
+
+
 def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
     t = d.get("type")
     pen_d = d.get("pen", {})
     pen = QPen(QColor(pen_d.get("color", "#000000")), pen_d.get("width", 2))
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setStyle(_STR_TO_STYLE.get(pen_d.get("style", "solid"), Qt.PenStyle.SolidLine))
 
     if t == "line":
         item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
@@ -87,6 +99,9 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
             item.setPos(QPointF(d["x"], d["y"]))
             item.setData(0, {"type": "image", "path": path})
             return item
+
+    if item and d.get("rotation"):
+        item.setRotation(d["rotation"])
 
     return None
 
@@ -158,7 +173,19 @@ class DrawingScene(QGraphicsScene):
         p = QPen(QColor(self.cw.color), self.cw.pen_width)
         p.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setStyle(self.cw.pen_style)
         return p
+
+    def _erase_at(self, pos: QPointF):
+        """Remove todos os itens desenhados na posição dada."""
+        for item in self.items(pos):
+            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem,
+                                  QGraphicsEllipseItem, QGraphicsPathItem,
+                                  QGraphicsTextItem, QGraphicsPixmapItem)):
+                self.removeItem(item)
+                if item in self.cw._undo_stack:
+                    self.cw._undo_stack.remove(item)
+                self.cw.changed.emit()
 
     def _constrain(self, start: QPointF, end: QPointF) -> QPointF:
         """Restringe a 0°/45°/90° quando Shift está pressionado."""
@@ -179,13 +206,17 @@ class DrawingScene(QGraphicsScene):
             super().mousePressEvent(event)
             return
 
+        if tool == Tool.ERASER:
+            self._erase_at(pos)
+            return
+
         if tool == Tool.TEXT:
             text, ok = QInputDialog.getText(self.cw, "Texto", "Digite o texto:")
             if ok and text:
                 item = QGraphicsTextItem(text)
                 item.setPos(pos)
                 item.setDefaultTextColor(QColor(self.cw.color))
-                font = QFont(theme.FONT_PRIMARY, self.cw.pen_width * 4)
+                font = QFont(theme.FONT_PRIMARY, self.cw.font_size)
                 item.setFont(font)
                 item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                               QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
@@ -217,6 +248,11 @@ class DrawingScene(QGraphicsScene):
     def mouseMoveEvent(self, event):
         tool = self.cw.tool
         pos  = event.scenePos()
+
+        if tool == Tool.ERASER and event.buttons() & Qt.MouseButton.LeftButton:
+            self._erase_at(pos)
+            return
+
         if self._start is None:
             super().mouseMoveEvent(event)
             return
@@ -379,6 +415,8 @@ class DrawingCanvas(QWidget):
         self.tool       = Tool.SELECT
         self.color      = "#000000"
         self.pen_width  = 2
+        self.pen_style  = Qt.PenStyle.SolidLine
+        self.font_size  = 12
         self._undo_stack: list[QGraphicsItem] = []
         self._redo_stack: list[QGraphicsItem] = []
         self._attached_pdf: str = ""
@@ -398,112 +436,167 @@ class DrawingCanvas(QWidget):
         layout.addWidget(title)
         title.setText("🎨 DESENHO / REFERÊNCIA")
 
-        # ── Toolbar ──────────────────────────────────────────────────────────
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(4)
+        s  = self.scale
+        fh = max(24, int(28 * s))   # altura padrão dos botões
+        fs = max(8, int(9 * s))     # fonte padrão
+        lbl_style = f"color:{theme.TEXT_MEDIUM}; font-size:{fs}pt;"
+
+        def _lbl(txt):
+            l = QLabel(txt)
+            l.setStyleSheet(lbl_style)
+            return l
+
+        # ── Linha 1: Ferramentas + Cor + Estilo + Fonte ───────────────────────
+        row1 = QHBoxLayout()
+        row1.setSpacing(4)
         self._tool_btns: dict[Tool, QPushButton] = {}
 
         tools = [
-            (Tool.SELECT,  "↖ Selec.", "S"),
-            (Tool.PEN,     "Caneta", "P"),
-            (Tool.LINE,    "╱ Linha",  "L"),
-            (Tool.RECT,    "▭ Ret.",   "R"),
-            (Tool.ELLIPSE, "○ Elipse", "E"),
-            (Tool.TEXT,    "T Texto",  "T"),
+            (Tool.SELECT,  "🖱️ Selec.",   "S"),
+            (Tool.PEN,     "✏️ Caneta",   "P"),
+            (Tool.ERASER,  "🧹 Borracha", "X"),
+            (Tool.LINE,    "📏 Linha",    "L"),
+            (Tool.RECT,    "⬛ Ret.",     "R"),
+            (Tool.ELLIPSE, "⭕ Elipse",   "E"),
+            (Tool.TEXT,    "T Texto",     "T"),
         ]
         for t, label, key in tools:
             btn = QPushButton(f"{label} [{key}]")
             btn.setCheckable(True)
-            btn.setFixedHeight(max(24, int(28 * self.scale)))
+            btn.setFixedHeight(fh)
             btn.clicked.connect(lambda checked, tool=t: self._set_tool(tool))
             btn.setStyleSheet(self._tool_btn_style())
             self._tool_btns[t] = btn
-            toolbar.addWidget(btn)
+            row1.addWidget(btn)
 
-        toolbar.addSpacing(8)
-        self._tool_btns[Tool.SELECT].setText("🖱️ Selec. [S]")
-        self._tool_btns[Tool.PEN].setText("✏️ Caneta [P]")
-        self._tool_btns[Tool.LINE].setText("📏 Linha [L]")
-        self._tool_btns[Tool.RECT].setText("⬛ Ret. [R]")
-        self._tool_btns[Tool.ELLIPSE].setText("⭕ Elipse [E]")
-        self._tool_btns[Tool.TEXT].setText("T Texto [T]")
+        row1.addSpacing(8)
 
         # Cor
-        self.btn_color = QPushButton("")
-        self.btn_color.setFixedSize(max(24, int(28 * self.scale)),
-                                    max(24, int(28 * self.scale)))
+        self.btn_color = QPushButton("🎨")
+        self.btn_color.setFixedSize(fh, fh)
         self.btn_color.setStyleSheet(
-            f"background:{self.color}; border-radius:8px; border:1px solid {theme.BORDER_COLOR};"
+            f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
+            f"font-size:{fs}pt;"
         )
         self.btn_color.clicked.connect(self._pick_color)
-        toolbar.addWidget(self.btn_color)
+        row1.addWidget(self.btn_color)
+
+        row1.addSpacing(8)
 
         # Espessura
-        lbl_esp = QLabel("Esp:")
-        lbl_esp.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(9*self.scale))}pt;")
-        lbl_esp.setText("📐 Esp.:")
+        row1.addWidget(_lbl("Esp.:"))
         self.spin_width = QSpinBox()
         self.spin_width.setRange(1, 20)
         self.spin_width.setValue(self.pen_width)
-        self.spin_width.setFixedWidth(max(40, int(50 * self.scale)))
-        self.spin_width.setFixedHeight(max(24, int(28 * self.scale)))
+        self.spin_width.setFixedWidth(max(44, int(52 * s)))
+        self.spin_width.setFixedHeight(fh)
         self.spin_width.valueChanged.connect(lambda v: setattr(self, "pen_width", v))
-        toolbar.addWidget(lbl_esp)
-        toolbar.addWidget(self.spin_width)
+        row1.addWidget(self.spin_width)
 
-        toolbar.addSpacing(8)
-        # Undo / Redo
-        btn_undo = QPushButton("↩ Undo")
-        btn_undo.setFixedHeight(max(24, int(28 * self.scale)))
+        row1.addSpacing(8)
+
+        # Estilo de linha
+        row1.addWidget(_lbl("Linha:"))
+        self.combo_style = QComboBox()
+        self.combo_style.setFixedHeight(fh)
+        self.combo_style.setFixedWidth(max(110, int(130 * s)))
+        self.combo_style.addItem("─── Sólida",    Qt.PenStyle.SolidLine)
+        self.combo_style.addItem("- - Tracejada", Qt.PenStyle.DashLine)
+        self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
+        self.combo_style.addItem("-·- Misto",     Qt.PenStyle.DashDotLine)
+        self.combo_style.currentIndexChanged.connect(
+            lambda i: setattr(self, "pen_style",
+                               self.combo_style.itemData(i))
+        )
+        row1.addWidget(self.combo_style)
+
+        row1.addSpacing(8)
+
+        # Tamanho da fonte
+        row1.addWidget(_lbl("Fonte:"))
+        self.spin_font = QSpinBox()
+        self.spin_font.setRange(6, 96)
+        self.spin_font.setValue(self.font_size)
+        self.spin_font.setSuffix(" pt")
+        self.spin_font.setFixedWidth(max(58, int(68 * s)))
+        self.spin_font.setFixedHeight(fh)
+        self.spin_font.valueChanged.connect(lambda v: setattr(self, "font_size", v))
+        row1.addWidget(self.spin_font)
+
+        row1.addStretch()
+        layout.addLayout(row1)
+
+        # ── Linha 2: Ações ────────────────────────────────────────────────────
+        row2 = QHBoxLayout()
+        row2.setSpacing(4)
+
+        btn_undo = QPushButton("↩️ Desfazer")
+        btn_undo.setFixedHeight(fh)
         btn_undo.clicked.connect(self._undo)
         btn_undo.setStyleSheet(self._tool_btn_style())
 
-        btn_redo = QPushButton("↪ Redo")
-        btn_redo.setFixedHeight(max(24, int(28 * self.scale)))
+        btn_redo = QPushButton("↪️ Refazer")
+        btn_redo.setFixedHeight(fh)
         btn_redo.clicked.connect(self._redo)
         btn_redo.setStyleSheet(self._tool_btn_style())
 
-        toolbar.addWidget(btn_undo)
-        toolbar.addWidget(btn_redo)
-        btn_undo.setText("↩️ Desfazer")
-        btn_redo.setText("↪️ Refazer")
+        row2.addWidget(btn_undo)
+        row2.addWidget(btn_redo)
+        row2.addSpacing(8)
 
-        toolbar.addSpacing(8)
-        # Imagem e PDF
-        btn_img = QPushButton("Imagem")
-        btn_img.setFixedHeight(max(24, int(28 * self.scale)))
+        # Rotação
+        row2.addWidget(_lbl("↻ Girar:"))
+        self.spin_rotate = QDoubleSpinBox()
+        self.spin_rotate.setRange(-360, 360)
+        self.spin_rotate.setValue(45)
+        self.spin_rotate.setSingleStep(15)
+        self.spin_rotate.setSuffix("°")
+        self.spin_rotate.setFixedWidth(max(68, int(80 * s)))
+        self.spin_rotate.setFixedHeight(fh)
+        row2.addWidget(self.spin_rotate)
+
+        btn_rotate = QPushButton("Aplicar")
+        btn_rotate.setFixedHeight(fh)
+        btn_rotate.clicked.connect(self._rotate_selected)
+        btn_rotate.setStyleSheet(self._tool_btn_style())
+        row2.addWidget(btn_rotate)
+
+        row2.addSpacing(8)
+
+        btn_img = QPushButton("🖼️ Imagem")
+        btn_img.setFixedHeight(fh)
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
 
-        btn_pdf = QPushButton("PDF")
-        btn_pdf.setFixedHeight(max(24, int(28 * self.scale)))
+        btn_pdf = QPushButton("📎 PDF")
+        btn_pdf.setFixedHeight(fh)
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
 
-        btn_clear = QPushButton("Limpar")
-        btn_clear.setFixedHeight(max(24, int(28 * self.scale)))
+        btn_clear = QPushButton("🗑️ Limpar")
+        btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
         btn_clear.setStyleSheet(
-            f"QPushButton {{ background:#FDEEEF; color:{theme.DANGER}; border:1px solid #F4C7CC;"
-            f"border-radius:8px; padding:2px 8px; font-size:{max(8, int(9*self.scale))}pt; font-weight:600; }}"
+            f"QPushButton {{ background:#FDEEEF; color:{theme.DANGER};"
+            f"border:1px solid #F4C7CC; border-radius:8px; padding:2px 8px;"
+            f"font-size:{fs}pt; font-weight:600; }}"
             f"QPushButton:hover {{ background:#FBE1E4; }}"
         )
-        toolbar.addWidget(btn_img)
-        toolbar.addWidget(btn_pdf)
-        toolbar.addWidget(btn_clear)
-        btn_img.setText("🖼️ Imagem")
-        btn_pdf.setText("📎 PDF")
-        btn_clear.setText("🗑️ Limpar")
-        toolbar.addStretch()
-        layout.addLayout(toolbar)
+        row2.addWidget(btn_img)
+        row2.addWidget(btn_pdf)
+        row2.addWidget(btn_clear)
+        row2.addStretch()
+        layout.addLayout(row2)
 
         # ── Dica de teclado ──────────────────────────────────────────────────
-        hint = QLabel("Shift = traço reto  |  Del = apagar seleção  |  Scroll = zoom")
+        hint = QLabel(
+            "✨ Shift = traço reto  |  Del = apagar seleção  |  "
+            "Scroll = zoom  |  Botão do meio / Space+arrastar = mover tela"
+        )
         hint.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*self.scale))}pt; font-style:italic;"
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
-        hint.setText("✨ Shift = traço reto  |  Del = apagar seleção  |  Scroll = zoom  |  Botão do meio / Space+arrastar = mover tela")
 
         # ── Cena + View ──────────────────────────────────────────────────────
         self.scene = DrawingScene(self)
@@ -560,6 +653,7 @@ class DrawingCanvas(QWidget):
         shortcuts = {
             Qt.Key.Key_S: Tool.SELECT,
             Qt.Key.Key_P: Tool.PEN,
+            Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
             Qt.Key.Key_R: Tool.RECT,
             Qt.Key.Key_E: Tool.ELLIPSE,
@@ -588,8 +682,20 @@ class DrawingCanvas(QWidget):
             btn.setChecked(t == tool)
         if tool == Tool.SELECT:
             self.view.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+            self.view.setCursor(Qt.CursorShape.ArrowCursor)
+        elif tool == Tool.ERASER:
+            self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
+            self.view.setCursor(Qt.CursorShape.CrossCursor)
         else:
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
+            self.view.setCursor(Qt.CursorShape.CrossCursor)
+
+    def _rotate_selected(self):
+        """Rotaciona todos os itens selecionados pelo ângulo definido no spin."""
+        angle = self.spin_rotate.value()
+        for item in self.scene.selectedItems():
+            item.setRotation(item.rotation() + angle)
+        self.changed.emit()
 
     def _pick_color(self):
         color = QColorDialog.getColor(QColor(self.color), self, "Escolha a cor")
@@ -705,25 +811,31 @@ class DrawingCanvas(QWidget):
         load_canvas_scene(self.scene, data, selectable=True)
 
     def _item_to_dict(self, item: QGraphicsItem) -> dict | None:
-        pen_data = lambda p: {"color": p.color().name(), "width": p.width()}
+        pen_data = lambda p: {
+            "color": p.color().name(),
+            "width": p.width(),
+            "style": _STYLE_TO_STR.get(p.style(), "solid"),
+        }
+
+        rot = item.rotation()   # 0.0 quando não rotacionado
 
         if isinstance(item, QGraphicsLineItem):
             ln = item.line()
             return {"type": "line",
                     "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
-                    "pen": pen_data(item.pen())}
+                    "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsRectItem):
             r = item.rect()
             return {"type": "rect",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
-                    "pen": pen_data(item.pen())}
+                    "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsEllipseItem):
             r = item.rect()
             return {"type": "ellipse",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
-                    "pen": pen_data(item.pen())}
+                    "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsPathItem):
             path = item.path()
@@ -731,20 +843,22 @@ class DrawingCanvas(QWidget):
             for i in range(path.elementCount()):
                 el = path.elementAt(i)
                 points.append([el.x, el.y])
-            return {"type": "path", "points": points, "pen": pen_data(item.pen())}
+            return {"type": "path", "points": points,
+                    "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsTextItem):
             return {"type": "text",
                     "x": item.pos().x(), "y": item.pos().y(),
                     "text": item.toPlainText(),
                     "color": item.defaultTextColor().name(),
-                    "font_size": item.font().pointSize()}
+                    "font_size": item.font().pointSize(),
+                    "rotation": rot}
 
         if isinstance(item, QGraphicsPixmapItem):
             meta = item.data(0) or {}
             return {"type": "image",
                     "x": item.pos().x(), "y": item.pos().y(),
-                    "path": meta.get("path", "")}
+                    "path": meta.get("path", ""), "rotation": rot}
 
         return None
 
