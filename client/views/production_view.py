@@ -1,10 +1,9 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QGraphicsDropShadowEffect, QMessageBox, QInputDialog,
+    QMessageBox, QInputDialog,
 )
 from PySide6.QtCore import Qt, QThread, QObject, Signal
-from PySide6.QtGui import QColor
 
 from ..api import client as api
 from ..core.session import session
@@ -65,14 +64,22 @@ class UiCallback(QObject):
 def _make_card(scale: float) -> QFrame:
     card = QFrame()
     card.setStyleSheet(
-        f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        f"background:{theme.CARD_BG}; border:none; border-radius:8px;"
     )
-    shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(12)
-    shadow.setOffset(0, 2)
-    shadow.setColor(QColor(0, 0, 0, 12))
-    card.setGraphicsEffect(shadow)
     return card
+
+
+def _flat_secondary_btn_style(scale: float) -> str:
+    fs = max(9, int(11 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
+        f"  border:none; outline:none; border-radius:8px;"
+        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
+        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+    )
 
 
 def _build_production_note(action: str, destination: str, reason: str = "") -> str:
@@ -130,7 +137,7 @@ class ProductionView(QWidget):
 
         title = QLabel("🏭 PRODUÇÃO")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(14, int(17 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(14, int(17 * s))}pt; font-weight:bold;"
         )
         subtitle = QLabel(
             "Acompanhe por destino o que aguarda recebimento e o que já está em produção."
@@ -146,7 +153,7 @@ class ProductionView(QWidget):
 
         btn_refresh = QPushButton("🔄 ATUALIZAR")
         btn_refresh.setFixedHeight(max(32, int(36 * s)))
-        btn_refresh.setStyleSheet(theme.secondary_btn_style(s))
+        btn_refresh.setStyleSheet(_flat_secondary_btn_style(s))
         btn_refresh.clicked.connect(self.refresh)
         header.addWidget(btn_refresh)
         layout.addLayout(header)
@@ -161,7 +168,7 @@ class ProductionView(QWidget):
 
             lbl_title = QLabel(f"🔖 {destination}")
             lbl_title.setStyleSheet(
-                f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
+                f"color:{theme.PRIMARY}; font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
             )
             lbl_value = QLabel("0")
             lbl_value.setStyleSheet(
@@ -204,7 +211,7 @@ class ProductionView(QWidget):
 
         title = QLabel(f"🏭 {destination}")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
         )
         layout.addWidget(title)
 
@@ -224,7 +231,7 @@ class ProductionView(QWidget):
         s = self.scale
         card = QFrame()
         card.setStyleSheet(
-            f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+            f"background:{theme.INPUT_BG}; border:none; border-radius:8px;"
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(10, int(12 * s)), max(10, int(12 * s)),
@@ -243,7 +250,7 @@ class ProductionView(QWidget):
         title_row = QHBoxLayout()
         title = QLabel(title_text)
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:bold;"
         )
         count = QLabel("0")
         count.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -272,7 +279,7 @@ class ProductionView(QWidget):
         for btn in (btn_open, btn_primary, btn_cancel):
             btn.setFixedHeight(max(28, int(32 * s)))
 
-        btn_open.setStyleSheet(theme.secondary_btn_style(s))
+        btn_open.setStyleSheet(_flat_secondary_btn_style(s))
         btn_primary.setStyleSheet(theme.primary_btn_style(s))
         btn_cancel.setStyleSheet(theme.danger_btn_style(s))
 
@@ -294,12 +301,15 @@ class ProductionView(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setAlternatingRowColors(True)
+        table.setFrameShape(QFrame.Shape.NoFrame)
+        table.setShowGrid(False)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(9, int(10 * s))}pt;"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  gridline-color:transparent; font-size:{max(9, int(10 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
             f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:8px;"

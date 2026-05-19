@@ -3,14 +3,12 @@
 import os
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
-    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -46,14 +44,22 @@ ROLE_LABELS["entrega"] = "INDUSTRIA"
 def _make_card(scale: float) -> QFrame:
     card = QFrame()
     card.setStyleSheet(
-        f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        f"background:{theme.CARD_BG}; border:none; border-radius:8px;"
     )
-    shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(14)
-    shadow.setOffset(0, 2)
-    shadow.setColor(QColor(0, 0, 0, 12))
-    card.setGraphicsEffect(shadow)
     return card
+
+
+def _flat_secondary_btn_style(scale: float) -> str:
+    fs = max(9, int(11 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
+        f"  border:none; outline:none; border-radius:8px;"
+        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
+        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+    )
 
 
 class ActionWorker(QObject):
@@ -129,7 +135,7 @@ class UserCenterView(QWidget):
         title_col = QVBoxLayout()
         title = QLabel("CENTRAL DE USUARIOS")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
         )
         subtitle = QLabel(
             "Importe usuarios, ajuste niveis de acesso e mantenha senhas e cadastros em dia."
@@ -144,7 +150,7 @@ class UserCenterView(QWidget):
 
         self.refresh_btn = QPushButton("ATUALIZAR")
         self.refresh_btn.setFixedHeight(max(32, int(36 * s)))
-        self.refresh_btn.setStyleSheet(theme.secondary_btn_style(s))
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.refresh_btn.clicked.connect(self.refresh)
         header.addWidget(self.refresh_btn)
         root.addLayout(header)
@@ -179,7 +185,7 @@ class UserCenterView(QWidget):
 
         title = QLabel("IMPORTACAO DE USUARIOS")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
         helper = QLabel(
             "Arquivo esperado: usuarios.ods na pasta base, com colunas Codigo, Nome, Contato e Setor."
@@ -199,7 +205,7 @@ class UserCenterView(QWidget):
 
         browse = QPushButton("...")
         browse.setFixedSize(max(30, int(36 * s)), max(30, int(36 * s)))
-        browse.setStyleSheet(theme.secondary_btn_style(s))
+        browse.setStyleSheet(_flat_secondary_btn_style(s))
         browse.clicked.connect(self._browse_import_file)
         row.addWidget(browse)
 
@@ -213,7 +219,7 @@ class UserCenterView(QWidget):
         self.import_progress = QProgressBar()
         self.import_progress.setVisible(False)
         self.import_progress.setStyleSheet(
-            f"QProgressBar {{ border:1px solid {theme.BORDER_COLOR}; border-radius:4px;"
+            f"QProgressBar {{ border:none; border-radius:4px;"
             f"background:{theme.INPUT_BG}; text-align:center; font-size:{max(8, int(9 * s))}pt; }}"
             f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
         )
@@ -224,7 +230,7 @@ class UserCenterView(QWidget):
         self.import_log.setMaximumHeight(max(100, int(120 * s)))
         self.import_log.hide()
         self.import_log.setStyleSheet(
-            f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+            f"background:{theme.INPUT_BG}; border:none; border-radius:6px;"
             f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK};"
         )
         layout.addWidget(self.import_log)
@@ -241,7 +247,7 @@ class UserCenterView(QWidget):
         header = QHBoxLayout()
         title = QLabel("LISTA DE USUARIOS")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
         header.addWidget(title)
         header.addStretch()
@@ -255,7 +261,7 @@ class UserCenterView(QWidget):
 
         new_btn = QPushButton("NOVO")
         new_btn.setFixedHeight(max(30, int(34 * s)))
-        new_btn.setStyleSheet(theme.secondary_btn_style(s))
+        new_btn.setStyleSheet(_flat_secondary_btn_style(s))
         new_btn.clicked.connect(self._prepare_new_user)
         header.addWidget(new_btn)
         layout.addLayout(header)
@@ -268,6 +274,9 @@ class UserCenterView(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setAlternatingRowColors(True)
+        self.table.setFrameShape(QFrame.Shape.NoFrame)
+        self.table.setShowGrid(False)
+        self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.table.doubleClicked.connect(self._load_selected_user)
         self.table.itemSelectionChanged.connect(self._load_current_selection)
         header_widget = self.table.horizontalHeader()
@@ -277,8 +286,8 @@ class UserCenterView(QWidget):
             header_widget.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(8, int(9 * s))}pt;"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
             f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:7px;"
@@ -300,7 +309,7 @@ class UserCenterView(QWidget):
 
         title = QLabel("CADASTRO INDIVIDUAL")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
         helper = QLabel(
             "Deixe a senha em branco para criar o usuario em primeiro acesso. No cadastro existente, so preencha a senha se quiser altera-la."
@@ -372,7 +381,7 @@ class UserCenterView(QWidget):
 
         clear_btn = QPushButton("LIMPAR")
         clear_btn.setFixedHeight(max(32, int(38 * s)))
-        clear_btn.setStyleSheet(theme.secondary_btn_style(s))
+        clear_btn.setStyleSheet(_flat_secondary_btn_style(s))
         clear_btn.clicked.connect(self._prepare_new_user)
         actions.addWidget(clear_btn)
         layout.addLayout(actions)
@@ -391,7 +400,7 @@ class UserCenterView(QWidget):
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text.upper())
         label.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * self.scale))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(7, int(8 * self.scale))}pt; font-weight:bold;"
         )
         return label
 

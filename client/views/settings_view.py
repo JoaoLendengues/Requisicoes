@@ -3,11 +3,10 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QSlider, QFrame,
-    QGraphicsDropShadowEffect, QMessageBox, QProgressBar, QTextEdit,
+    QMessageBox, QProgressBar, QTextEdit,
     QFileDialog,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
-from PySide6.QtGui import QColor
 
 from ..core import theme
 from ..core.resolution import res
@@ -17,7 +16,7 @@ from ..api import client as api
 def _section(title: str, scale: float) -> QLabel:
     lbl = QLabel(title)
     lbl.setStyleSheet(
-        f"color:{theme.TEXT_DARK}; font-size:{max(11,int(13*scale))}pt;"
+        f"color:{theme.PRIMARY}; font-size:{max(11,int(13*scale))}pt;"
         f"font-weight:bold; padding-top:8px;"
     )
     return lbl
@@ -29,6 +28,19 @@ def _separator() -> QFrame:
     sep.setFixedHeight(4)
     sep.setStyleSheet("background:transparent; border:none;")
     return sep
+
+
+def _flat_secondary_btn_style(scale: float) -> str:
+    fs = max(9, int(11 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
+        f"  border:none; outline:none; border-radius:8px;"
+        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
+        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+    )
 
 
 class ImportWorker(QObject):
@@ -92,19 +104,14 @@ class SettingsView(QWidget):
 
         title = QLabel("⚙️ CONFIGURAÇÕES")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
         )
         outer.addWidget(title)
 
         card = QFrame()
         card.setStyleSheet(
-            f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+            f"background:{theme.CARD_BG}; border:none; border-radius:8px;"
         )
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(12)
-        shadow.setOffset(0, 2)
-        shadow.setColor(QColor(0, 0, 0, 12))
-        card.setGraphicsEffect(shadow)
 
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(16,int(24*s)), max(16,int(20*s)),
@@ -126,7 +133,7 @@ class SettingsView(QWidget):
 
         self.btn_test = QPushButton("Testar conexão")
         self.btn_test.setFixedHeight(max(30,int(36*s)))
-        self.btn_test.setStyleSheet(theme.secondary_btn_style(s))
+        self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_test.clicked.connect(self._test_connection)
         grid.addWidget(self.btn_test, 0, 2)
 
@@ -187,7 +194,7 @@ class SettingsView(QWidget):
 
         btn_browse_pdf = QPushButton("...")
         btn_browse_pdf.setFixedSize(max(30, int(36 * s)), max(30, int(36 * s)))
-        btn_browse_pdf.setStyleSheet(theme.secondary_btn_style(s))
+        btn_browse_pdf.setStyleSheet(_flat_secondary_btn_style(s))
         btn_browse_pdf.setToolTip("Selecionar pasta...")
         btn_browse_pdf.clicked.connect(self._browse_pdf_folder)
         pdf_row.addWidget(btn_browse_pdf)
@@ -246,7 +253,7 @@ class SettingsView(QWidget):
 
         btn_browse = QPushButton("...")
         btn_browse.setFixedSize(max(30,int(36*s)), max(30,int(36*s)))
-        btn_browse.setStyleSheet(theme.secondary_btn_style(s))
+        btn_browse.setStyleSheet(_flat_secondary_btn_style(s))
         btn_browse.setToolTip("Navegar...")
         btn_browse.clicked.connect(lambda: self._browse_import_path(kind))
         path_row.addWidget(btn_browse)
@@ -263,7 +270,7 @@ class SettingsView(QWidget):
         progress_bar.setFixedHeight(max(18,int(22*s)))
         progress_bar.setVisible(False)
         progress_bar.setStyleSheet(
-            f"QProgressBar {{ border:1px solid {theme.BORDER_COLOR}; border-radius:4px;"
+            f"QProgressBar {{ border:none; border-radius:4px;"
             f"background:{theme.INPUT_BG}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
             f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
         )
@@ -275,7 +282,7 @@ class SettingsView(QWidget):
         txt_log.setMaximumHeight(max(100,int(120*s)))
         txt_log.setVisible(False)
         txt_log.setStyleSheet(
-            f"background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+            f"background:{theme.INPUT_BG}; border:none; border-radius:6px;"
             f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:4px;"
         )
         layout.addWidget(txt_log)

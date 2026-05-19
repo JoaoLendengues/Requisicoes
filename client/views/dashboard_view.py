@@ -3,11 +3,9 @@
 from datetime import datetime
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
-    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -26,16 +24,23 @@ from ..core import theme
 
 def _make_shadow_card(scale: float, background: str, border_color: str | None = None) -> QFrame:
     card = QFrame()
-    border = border_color or background
     card.setStyleSheet(
-        f"background:{background}; border:1px solid {border}; border-radius:8px;"
+        f"background:{background}; border:none; border-radius:8px;"
     )
-    shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(14)
-    shadow.setOffset(0, 2)
-    shadow.setColor(QColor(0, 0, 0, 12))
-    card.setGraphicsEffect(shadow)
     return card
+
+
+def _flat_secondary_btn_style(scale: float) -> str:
+    fs = max(9, int(11 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
+        f"  border:none; outline:none; border-radius:8px;"
+        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
+        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+    )
 
 
 def _parse_datetime(value: object) -> datetime | None:
@@ -152,7 +157,7 @@ class DashboardView(QWidget):
         title_col = QVBoxLayout()
         title = QLabel("PAINEL GERENCIAL")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
         )
         subtitle = QLabel(
             "Acompanhe producao, prazos e alertas em uma unica tela."
@@ -174,7 +179,7 @@ class DashboardView(QWidget):
         )
         self.refresh_btn = QPushButton("ATUALIZAR")
         self.refresh_btn.setFixedHeight(max(32, int(36 * s)))
-        self.refresh_btn.setStyleSheet(theme.secondary_btn_style(s))
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.refresh_btn.clicked.connect(self.refresh)
         header_right.addWidget(self.updated_label)
         header_right.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignRight)
@@ -187,7 +192,7 @@ class DashboardView(QWidget):
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
             f"background:rgba(239, 68, 68, 0.12); color:{theme.DANGER};"
-            f"border:1px solid rgba(239, 68, 68, 0.4); border-radius:8px;"
+            f"border:none; border-radius:8px;"
             f"padding:10px 12px; font-size:{max(8, int(9 * s))}pt;"
         )
         root.addWidget(self.error_label)
@@ -305,7 +310,7 @@ class DashboardView(QWidget):
 
         title_label = QLabel(title)
         title_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
 
         subtitle_label = QLabel(subtitle)
@@ -329,6 +334,8 @@ class DashboardView(QWidget):
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.setAlternatingRowColors(True)
         table.setWordWrap(False)
+        table.setFrameShape(QFrame.Shape.NoFrame)
+        table.setShowGrid(False)
 
         header = table.horizontalHeader()
         for index in range(len(headers)):
@@ -341,8 +348,8 @@ class DashboardView(QWidget):
 
         table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(8, int(9 * s))}pt;"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
             f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:7px;"

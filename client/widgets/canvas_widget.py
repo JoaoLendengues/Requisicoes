@@ -577,7 +577,7 @@ class DrawingCanvas(QWidget):
         title = QLabel("DESENHO / REFERÊNCIA")
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{fs}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
         )
         layout.addWidget(title)
         title.setText("🎨 DESENHO / REFERÊNCIA")

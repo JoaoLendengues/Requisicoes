@@ -5,11 +5,9 @@ import webbrowser
 from datetime import datetime
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
-    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -33,14 +31,22 @@ from .requisition_form import _run_in_thread
 def _make_card(scale: float, background: str = None) -> QFrame:
     card = QFrame()
     card.setStyleSheet(
-        f"background:{background or theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        f"background:{background or theme.CARD_BG}; border:none; border-radius:8px;"
     )
-    shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(14)
-    shadow.setOffset(0, 2)
-    shadow.setColor(QColor(0, 0, 0, 12))
-    card.setGraphicsEffect(shadow)
     return card
+
+
+def _flat_secondary_btn_style(scale: float) -> str:
+    fs = max(9, int(11 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
+        f"  border:none; outline:none; border-radius:8px;"
+        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
+        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+    )
 
 
 def _parse_datetime(value: object) -> datetime | None:
@@ -161,7 +167,7 @@ class OrderCenterView(QWidget):
 
         title = QLabel("CENTRAL DE PEDIDOS")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
         )
         subtitle = QLabel(
             "Acompanhe pedidos por etapa, atrasos e finalizacoes em uma tela unica."
@@ -182,7 +188,7 @@ class OrderCenterView(QWidget):
         )
         self.refresh_btn = QPushButton("ATUALIZAR")
         self.refresh_btn.setFixedHeight(max(32, int(36 * s)))
-        self.refresh_btn.setStyleSheet(theme.secondary_btn_style(s))
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.refresh_btn.clicked.connect(self.refresh)
         right_col.addWidget(self.updated_label)
         right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignRight)
@@ -194,7 +200,7 @@ class OrderCenterView(QWidget):
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
             f"background:rgba(239, 68, 68, 0.12); color:{theme.DANGER};"
-            f"border:1px solid rgba(239, 68, 68, 0.4); border-radius:8px;"
+            f"border:none; border-radius:8px;"
             f"padding:10px 12px; font-size:{max(8, int(9 * s))}pt;"
         )
         root.addWidget(self.error_label)
@@ -272,14 +278,14 @@ class OrderCenterView(QWidget):
         title_row = QHBoxLayout()
         title = QLabel(title_text.upper())
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
         title_row.addWidget(title)
         title_row.addStretch()
 
         btn_open = QPushButton("ABRIR PEDIDO")
         btn_open.setFixedHeight(max(28, int(32 * s)))
-        btn_open.setStyleSheet(theme.secondary_btn_style(s))
+        btn_open.setStyleSheet(_flat_secondary_btn_style(s))
         btn_open.clicked.connect(lambda: self._open_selected(key))
         title_row.addWidget(btn_open)
 
@@ -328,6 +334,9 @@ class OrderCenterView(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setAlternatingRowColors(True)
+        table.setFrameShape(QFrame.Shape.NoFrame)
+        table.setShowGrid(False)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.doubleClicked.connect(lambda index, section=key: self._open_row(section, index.row()))
 
         header = table.horizontalHeader()
@@ -342,8 +351,8 @@ class OrderCenterView(QWidget):
         s = self.scale
         table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(8, int(9 * s))}pt;"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
             f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:7px;"
