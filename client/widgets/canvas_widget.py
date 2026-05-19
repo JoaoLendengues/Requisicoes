@@ -13,7 +13,7 @@ import math
 import os
 from enum import Enum
 
-from PySide6.QtCore import Qt, QPointF, QRectF, Signal
+from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QEvent
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPen, QBrush,
     QPixmap, QKeySequence, QAction, QCursor,
@@ -278,33 +278,50 @@ class DrawingScene(QGraphicsScene):
 
 # ── View com pan por botão do meio + Space+arraste ───────────────────────────
 class DrawingView(QGraphicsView):
-    """QGraphicsView com zoom por scroll e pan por botão do meio ou Space+drag."""
+    """
+    QGraphicsView com zoom por scroll e pan por botão do meio ou Space+drag.
+
+    Os eventos de mouse chegam primeiro no viewport (widget filho interno do
+    QGraphicsView), não na view em si. Por isso usamos um event filter
+    instalado diretamente no viewport — é a única forma confiável de
+    interceptar esses eventos antes do Qt repassar para a cena.
+    """
 
     def __init__(self, scene: QGraphicsScene, parent=None):
         super().__init__(scene, parent)
-        self._panning   = False
-        self._pan_start = None
+        self._panning    = False
+        self._pan_start  = None
         self._space_held = False
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        # Instala filtro no viewport — eventos chegam aqui antes de qualquer
+        # processamento interno do QGraphicsView
+        self.viewport().installEventFilter(self)
 
-    # ── Zoom ─────────────────────────────────────────────────────────────────
-    def wheelEvent(self, event):
-        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-        self.scale(factor, factor)
+    # ── Event filter no viewport ──────────────────────────────────────────────
+    def eventFilter(self, obj, event):
+        if obj is not self.viewport():
+            return super().eventFilter(obj, event)
 
-    # ── Pan — botão do meio ──────────────────────────────────────────────────
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.MiddleButton:
-            self._start_pan(event.position().toPoint())
-            return
-        if event.button() == Qt.MouseButton.LeftButton and self._space_held:
-            self._start_pan(event.position().toPoint())
-            return
-        super().mousePressEvent(event)
+        t = event.type()
 
-    def mouseMoveEvent(self, event):
-        if self._panning and self._pan_start is not None:
+        # ── Zoom por scroll ───────────────────────────────────────────────────
+        if t == QEvent.Type.Wheel:
+            factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
+            self.scale(factor, factor)
+            return True   # consome — não rola a cena como scroll normal
+
+        # ── Início do pan ─────────────────────────────────────────────────────
+        if t == QEvent.Type.MouseButtonPress:
+            mid        = event.button() == Qt.MouseButton.MiddleButton
+            space_left = (event.button() == Qt.MouseButton.LeftButton
+                          and self._space_held)
+            if mid or space_left:
+                self._start_pan(event.position().toPoint())
+                return True   # consome — não chega na cena
+
+        # ── Arraste do pan ────────────────────────────────────────────────────
+        if t == QEvent.Type.MouseMove and self._panning:
             delta = event.position().toPoint() - self._pan_start
             self._pan_start = event.position().toPoint()
             self.horizontalScrollBar().setValue(
@@ -313,18 +330,18 @@ class DrawingView(QGraphicsView):
             self.verticalScrollBar().setValue(
                 self.verticalScrollBar().value() - delta.y()
             )
-            return
-        super().mouseMoveEvent(event)
+            return True
 
-    def mouseReleaseEvent(self, event):
-        if self._panning and event.button() in (
-            Qt.MouseButton.MiddleButton, Qt.MouseButton.LeftButton
-        ):
-            self._stop_pan()
-            return
-        super().mouseReleaseEvent(event)
+        # ── Fim do pan ────────────────────────────────────────────────────────
+        if t == QEvent.Type.MouseButtonRelease and self._panning:
+            if event.button() in (Qt.MouseButton.MiddleButton,
+                                   Qt.MouseButton.LeftButton):
+                self._stop_pan()
+                return True
 
-    # ── Pan — Space + arrastar ────────────────────────────────────────────────
+        return super().eventFilter(obj, event)
+
+    # ── Space + arrastar (teclas captadas na view, não no viewport) ───────────
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._space_held = True
@@ -347,7 +364,8 @@ class DrawingView(QGraphicsView):
     def _stop_pan(self):
         self._panning   = False
         self._pan_start = None
-        cursor = Qt.CursorShape.OpenHandCursor if self._space_held else Qt.CursorShape.ArrowCursor
+        cursor = (Qt.CursorShape.OpenHandCursor if self._space_held
+                  else Qt.CursorShape.ArrowCursor)
         self.setCursor(cursor)
 
 
