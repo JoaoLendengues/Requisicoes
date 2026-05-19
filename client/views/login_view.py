@@ -97,7 +97,11 @@ class FirstAccessDialog(QDialog):
         self.setWindowTitle("Primeiro acesso")
         self.setModal(True)
         self.setStyleSheet(
-            f"background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; border:1px solid {theme.BORDER_COLOR};"
+            f"QDialog {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+            f"}}"
+            f"QLabel {{ background:transparent; }}"
         )
         self._setup_ui(code)
 

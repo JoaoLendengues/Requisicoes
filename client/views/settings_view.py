@@ -25,8 +25,9 @@ def _section(title: str, scale: float) -> QLabel:
 
 def _separator() -> QFrame:
     sep = QFrame()
-    sep.setFrameShape(QFrame.Shape.HLine)
-    sep.setStyleSheet(f"color:{theme.BORDER_COLOR};")
+    sep.setFrameShape(QFrame.Shape.NoFrame)
+    sep.setFixedHeight(4)
+    sep.setStyleSheet("background:transparent; border:none;")
     return sep
 
 
@@ -360,14 +361,21 @@ class SettingsView(QWidget):
             else "Selecionar planilha de produtos"
         )
         path, _ = QFileDialog.getOpenFileName(
-            self, title, "", "Planilhas (*.ods *.xlsx *.xlsm *.xls)"
+            self,
+            title,
+            "",
+            "Planilhas (*.ods *.xlsx *.xlsm *.xls)",
+            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if path:
             self._import_ui[kind]["input"].setText(path)
 
     def _browse_pdf_folder(self):
         folder = QFileDialog.getExistingDirectory(
-            self, "Selecionar pasta para PDFs", ""
+            self,
+            "Selecionar pasta para PDFs",
+            "",
+            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if folder:
             self.input_pdf_folder.setText(folder)

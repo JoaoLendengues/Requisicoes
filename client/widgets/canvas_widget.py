@@ -150,7 +150,7 @@ class DrawingScene(QGraphicsScene):
             return
 
         if tool == Tool.TEXT:
-            text, ok = QInputDialog.getText(None, "Texto", "Digite o texto:")
+            text, ok = QInputDialog.getText(self.cw, "Texto", "Digite o texto:")
             if ok and text:
                 item = QGraphicsTextItem(text)
                 item.setPos(pos)
@@ -500,8 +500,11 @@ class DrawingCanvas(QWidget):
     # ── Imagem ───────────────────────────────────────────────────────────────
     def _insert_image(self, pos: QPointF = None):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Selecionar imagem", "",
-            "Imagens (*.png *.jpg *.jpeg *.bmp *.gif *.webp)"
+            self,
+            "Selecionar imagem",
+            "",
+            "Imagens (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
+            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if not path:
             return
@@ -524,7 +527,13 @@ class DrawingCanvas(QWidget):
 
     # ── PDF ──────────────────────────────────────────────────────────────────
     def _attach_pdf(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Selecionar PDF", "", "PDF (*.pdf)")
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Selecionar PDF",
+            "",
+            "PDF (*.pdf)",
+            options=QFileDialog.Option.DontUseNativeDialog,
+        )
         if path:
             self._attached_pdf = path
             self.pdf_label.setText(os.path.basename(path))

@@ -932,9 +932,11 @@ class RequisitionForm(QWidget):
         dlg.setMinimumWidth(max(340, int(380 * s)))
 
         dlg.setStyleSheet(
-            f"QDialog {{ background:{theme.CARD_BG}; }}"
-            f"QLabel {{ color:{theme.TEXT_DARK}; border:none; }}"
-            f"QLineEdit {{ {theme.input_style(s)} }}"
+            f"QDialog {{"
+            f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"  border-radius:8px;"
+            f"}}"
+            f"QLabel {{ color:{theme.TEXT_DARK}; background:transparent; border:none; }}"
         )
 
         layout = QVBoxLayout(dlg)
@@ -972,6 +974,7 @@ class RequisitionForm(QWidget):
             inp.setPlaceholderText(placeholder)
             inp.setText(default)
             inp.setFixedHeight(max(30, int(36 * s)))
+            inp.setStyleSheet(theme.input_style(s))
             validator = QRegularExpressionValidator(
                 QRegularExpression(r"[0-9]*\.?[0-9]*")
             )

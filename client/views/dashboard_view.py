@@ -347,7 +347,6 @@ class DashboardView(QWidget):
             f"QHeaderView::section {{"
             f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:7px;"
             f"  font-weight:bold; font-size:{max(7, int(8 * s))}pt; border:none;"
-            f"  border-right:1px solid {theme.TABLE_BORDER};"
             f"}}"
             f"QTableWidget::item {{ padding:4px; }}"
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"

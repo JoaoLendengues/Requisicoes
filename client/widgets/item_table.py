@@ -70,8 +70,9 @@ class ItemTable(QWidget):
             f"QHeaderView::section {{"
             f"  background:{theme.TABLE_HEADER_BG}; color:#fff;"
             f"  padding:6px; font-weight:bold; font-size:{max(8, int(9 * self.scale))}pt;"
-            f"  border:none; border-right:1px solid {theme.TABLE_BORDER};"
+            f"  border:none;"
             f"}}"
+            f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
         )
 
@@ -118,8 +119,6 @@ class ItemTable(QWidget):
             | Qt.ItemFlag.ItemIsSelectable
             | Qt.ItemFlag.ItemIsEditable
         )
-        item.setBackground(QColor(theme.TABLE_HEADER_BG))
-        item.setForeground(QColor(theme.TEXT_WHITE))
         font = item.font()
         font.setBold(True)
         item.setFont(font)
