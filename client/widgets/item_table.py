@@ -64,13 +64,13 @@ class ItemTable(QWidget):
         )
         self.table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
             f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(8, int(10 * self.scale))}pt;"
             f"}}"
             f"QHeaderView::section {{"
             f"  background:{theme.TABLE_HEADER_BG}; color:#fff;"
             f"  padding:6px; font-weight:bold; font-size:{max(8, int(9 * self.scale))}pt;"
-            f"  border:none; border-right:1px solid #2d3f63;"
+            f"  border:none; border-right:1px solid {theme.TABLE_BORDER};"
             f"}}"
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
         )

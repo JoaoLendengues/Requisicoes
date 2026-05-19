@@ -75,7 +75,7 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item = QGraphicsTextItem(d.get("text", ""))
         item.setPos(QPointF(d["x"], d["y"]))
         item.setDefaultTextColor(QColor(d.get("color", "#000000")))
-        font = QFont("Segoe UI", d.get("font_size", 12))
+        font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
         item.setFont(font)
         return item
 
@@ -155,7 +155,7 @@ class DrawingScene(QGraphicsScene):
                 item = QGraphicsTextItem(text)
                 item.setPos(pos)
                 item.setDefaultTextColor(QColor(self.cw.color))
-                font = QFont("Segoe UI", self.cw.pen_width * 4)
+                font = QFont(theme.FONT_PRIMARY, self.cw.pen_width * 4)
                 item.setFont(font)
                 item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                               QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
@@ -310,7 +310,7 @@ class DrawingCanvas(QWidget):
         self.btn_color.setFixedSize(max(24, int(28 * self.scale)),
                                     max(24, int(28 * self.scale)))
         self.btn_color.setStyleSheet(
-            f"background:{self.color}; border-radius:4px; border:1px solid #ccc;"
+            f"background:{self.color}; border-radius:8px; border:1px solid {theme.BORDER_COLOR};"
         )
         self.btn_color.clicked.connect(self._pick_color)
         toolbar.addWidget(self.btn_color)
@@ -361,9 +361,9 @@ class DrawingCanvas(QWidget):
         btn_clear.setFixedHeight(max(24, int(28 * self.scale)))
         btn_clear.clicked.connect(self._clear)
         btn_clear.setStyleSheet(
-            f"QPushButton {{ background:#FEF2F2; color:{theme.DANGER}; border:1px solid #fca5a5;"
-            f"border-radius:4px; padding:2px 8px; font-size:{max(8, int(9*self.scale))}pt; }}"
-            f"QPushButton:hover {{ background:#fee2e2; }}"
+            f"QPushButton {{ background:#FDEEEF; color:{theme.DANGER}; border:1px solid #F4C7CC;"
+            f"border-radius:8px; padding:2px 8px; font-size:{max(8, int(9*self.scale))}pt; font-weight:600; }}"
+            f"QPushButton:hover {{ background:#FBE1E4; }}"
         )
         toolbar.addWidget(btn_img)
         toolbar.addWidget(btn_pdf)
@@ -388,7 +388,7 @@ class DrawingCanvas(QWidget):
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.view.setStyleSheet(
-            f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px; background:#fff;"
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
         self.view.setMinimumHeight(max(250, int(300 * self.scale)))
         self.view.wheelEvent = self._zoom_event
@@ -397,7 +397,7 @@ class DrawingCanvas(QWidget):
         # ── Painel de PDF ────────────────────────────────────────────────────
         self.pdf_panel = QFrame()
         self.pdf_panel.setStyleSheet(
-            f"background:#F0F9FF; border:1px solid #BAE6FD; border-radius:6px;"
+            f"background:{theme.SELECTION_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
         )
         pdf_layout = QHBoxLayout(self.pdf_panel)
         pdf_layout.setContentsMargins(10, 6, 10, 6)
@@ -428,10 +428,10 @@ class DrawingCanvas(QWidget):
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
         return (
-            f"QPushButton {{ background:#F1F5F9; border:1px solid {theme.BORDER_COLOR};"
-            f"border-radius:4px; padding:2px 8px; font-size:{fs}pt; color:{theme.TEXT_DARK}; }}"
+            f"QPushButton {{ background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:8px; padding:2px 8px; font-size:{fs}pt; color:{theme.TEXT_DARK}; font-weight:600; }}"
             f"QPushButton:checked {{ background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY}; }}"
-            f"QPushButton:hover:!checked {{ background:#E2E8F0; }}"
+            f"QPushButton:hover:!checked {{ background:{theme.SELECTION_BG}; border-color:{theme.PRIMARY_LIGHT}; }}"
         )
 
     def _setup_shortcuts(self):
@@ -474,7 +474,7 @@ class DrawingCanvas(QWidget):
         if color.isValid():
             self.color = color.name()
             self.btn_color.setStyleSheet(
-                f"background:{self.color}; border-radius:4px; border:1px solid #ccc;"
+                f"background:{self.color}; border-radius:8px; border:1px solid {theme.BORDER_COLOR};"
             )
 
     # ── Undo / Redo ──────────────────────────────────────────────────────────
@@ -635,7 +635,7 @@ class CanvasPreview(QGraphicsView):
         self._last_result = {"items": 0, "pdf": ""}
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setStyleSheet(
-            f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px; background:#fff;"
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
         self.setMinimumHeight(max(220, int(260 * scale)))
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -651,7 +651,7 @@ class CanvasPreview(QGraphicsView):
         if self._last_result["items"] == 0:
             placeholder = self._scene.addText("Sem desenho salvo")
             placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
-            font = QFont("Segoe UI", max(9, int(10 * self.scale_factor)))
+            font = QFont(theme.FONT_PRIMARY, max(9, int(10 * self.scale_factor)))
             placeholder.setFont(font)
             placeholder.setPos(20, 20)
             placeholder.setPlainText("🖼️ Nenhum desenho salvo")

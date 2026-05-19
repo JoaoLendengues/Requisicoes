@@ -46,12 +46,12 @@ ROLE_LABELS["entrega"] = "INDUSTRIA"
 def _make_card(scale: float) -> QFrame:
     card = QFrame()
     card.setStyleSheet(
-        f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
+        f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
     )
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(14)
-    shadow.setOffset(0, 3)
-    shadow.setColor(QColor(0, 0, 0, 26))
+    shadow.setOffset(0, 2)
+    shadow.setColor(QColor(0, 0, 0, 12))
     card.setGraphicsEffect(shadow)
     return card
 

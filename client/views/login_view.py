@@ -96,7 +96,9 @@ class FirstAccessDialog(QDialog):
         self.scale = scale
         self.setWindowTitle("Primeiro acesso")
         self.setModal(True)
-        self.setStyleSheet(f"background:{theme.CARD_BG}; color:{theme.TEXT_DARK};")
+        self.setStyleSheet(
+            f"background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; border:1px solid {theme.BORDER_COLOR};"
+        )
         self._setup_ui(code)
 
     def _setup_ui(self, code: str):
@@ -150,7 +152,7 @@ class FirstAccessDialog(QDialog):
         self.error_label.hide()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
-            f"color:{theme.DANGER}; background:#3b0f0f; border-radius:6px; padding:6px;"
+            f"color:{theme.DANGER}; background:#FDEEEF; border:1px solid #F4C7CC; border-radius:8px; padding:8px;"
         )
         layout.addWidget(self.error_label)
 
@@ -211,7 +213,7 @@ class LoginView(QWidget):
         self.setStyleSheet(
             "background: qlineargradient("
             "x1:0, y1:0, x2:1, y2:1,"
-            "stop:0 #0f1e3d, stop:1 #1B2B4B);"
+            "stop:0 #F5F7FA, stop:0.58 #FFFFFF, stop:1 #EAF1FF);"
         )
 
         outer = QVBoxLayout(self)
@@ -219,11 +221,13 @@ class LoginView(QWidget):
 
         card = QFrame()
         card.setFixedWidth(max(340, int(410 * self.scale)))
-        card.setStyleSheet("background:#fff; border-radius:16px; padding:8px;")
+        card.setStyleSheet(
+            f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px; padding:8px;"
+        )
         shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(40)
-        shadow.setOffset(0, 8)
-        shadow.setColor(QColor(0, 0, 0, 80))
+        shadow.setBlurRadius(24)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QColor(0, 0, 0, 18))
         card.setGraphicsEffect(shadow)
 
         card_layout = QVBoxLayout(card)
@@ -252,7 +256,7 @@ class LoginView(QWidget):
         title = QLabel("Sistema de Requisicoes")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(10, int(12 * self.scale))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(10, int(12 * self.scale))}pt;"
         )
         card_layout.addWidget(title)
         card_layout.addSpacing(max(4, int(8 * self.scale)))
@@ -290,8 +294,9 @@ class LoginView(QWidget):
         self.btn_show.setCheckable(True)
         self.btn_show.setStyleSheet(
             f"QPushButton {{ background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR};"
-            f"border-radius:5px; color:{theme.TEXT_MEDIUM}; }}"
-            f"QPushButton:checked {{ background:{theme.SIDEBAR_ACTIVE}; color:#fff; }}"
+            f"border-radius:8px; color:{theme.TEXT_MEDIUM}; font-weight:600; }}"
+            f"QPushButton:hover {{ background:{theme.SELECTION_BG}; border-color:{theme.PRIMARY_LIGHT}; }}"
+            f"QPushButton:checked {{ background:{theme.SIDEBAR_ACTIVE}; color:#fff; border-color:{theme.SIDEBAR_ACTIVE}; }}"
         )
         self.btn_show.toggled.connect(
             lambda checked: self.input_pass.setEchoMode(
@@ -306,8 +311,8 @@ class LoginView(QWidget):
         self.error_label.setWordWrap(True)
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.error_label.setStyleSheet(
-            f"color:{theme.DANGER}; font-size:{max(8, int(10 * self.scale))}pt; background:#3b0f0f;"
-            f"border-radius:6px; padding:6px;"
+            f"color:{theme.DANGER}; font-size:{max(8, int(10 * self.scale))}pt; background:#FDEEEF;"
+            f"border:1px solid #F4C7CC; border-radius:8px; padding:8px;"
         )
         self.error_label.hide()
         card_layout.addWidget(self.error_label)
@@ -336,7 +341,7 @@ class LoginView(QWidget):
         footer = QLabel("pinheiroferragens.com.br")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer.setStyleSheet(
-            f"color:{theme.TEXT_LABEL}; font-size:{max(7, int(9 * self.scale))}pt; margin-top:16px;"
+            f"color:{theme.PRIMARY}; font-size:{max(7, int(9 * self.scale))}pt; margin-top:18px; font-weight:600;"
         )
         outer.addWidget(footer)
 

@@ -33,12 +33,12 @@ from .requisition_form import _run_in_thread
 def _make_card(scale: float, background: str = None) -> QFrame:
     card = QFrame()
     card.setStyleSheet(
-        f"background:{background or theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
+        f"background:{background or theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
     )
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(14)
-    shadow.setOffset(0, 3)
-    shadow.setColor(QColor(0, 0, 0, 26))
+    shadow.setOffset(0, 2)
+    shadow.setColor(QColor(0, 0, 0, 12))
     card.setGraphicsEffect(shadow)
     return card
 
@@ -216,12 +216,12 @@ class OrderCenterView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_aguardando_recebimento", "#EAB308", "PEDIDOS AGUARDANDO RECEBIMENTO"),
-            ("pedidos_em_producao", "#F59E0B", "PEDIDOS EM PRODUCAO"),
+            ("pedidos_aguardando_recebimento", theme.WARNING, "PEDIDOS AGUARDANDO RECEBIMENTO"),
+            ("pedidos_em_producao", theme.PRIMARY_HOVER, "PEDIDOS EM PRODUCAO"),
             ("pedidos_finalizados", theme.SUCCESS, "PEDIDOS FINALIZADOS"),
             ("pedidos_cancelados", theme.DANGER, "PEDIDOS CANCELADOS"),
-            ("pedidos_atrasados", "#F97316", "PEDIDOS ATRASADOS"),
-            ("tempo_medio_producao_segundos", theme.SIDEBAR_ACTIVE, "TEMPO MEDIO DE PRODUCAO"),
+            ("pedidos_atrasados", theme.DANGER, "PEDIDOS ATRASADOS"),
+            ("tempo_medio_producao_segundos", theme.SIDEBAR_BG, "TEMPO MEDIO DE PRODUCAO"),
         ]
         for index, (key, color, title_text) in enumerate(card_defs):
             metrics.addWidget(self._build_metric_card(color, title_text, key), index // 3, index % 3)

@@ -65,12 +65,12 @@ class UiCallback(QObject):
 def _make_card(scale: float) -> QFrame:
     card = QFrame()
     card.setStyleSheet(
-        f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
+        f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
     )
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(12)
     shadow.setOffset(0, 2)
-    shadow.setColor(QColor(0, 0, 0, 20))
+    shadow.setColor(QColor(0, 0, 0, 12))
     card.setGraphicsEffect(shadow)
     return card
 

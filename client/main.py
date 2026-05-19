@@ -29,6 +29,7 @@ def main():
     )
 
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     app.setApplicationName("Requisições — Ferragens Pinheiro")
     app.setOrganizationName("Pinheiro Ferragens")
 
@@ -36,10 +37,14 @@ def main():
     res.init(app)
 
     # Fonte padrão adaptada à escala
-    font = QFont("Segoe UI", res.font(10))
+    font = QFont(theme.FONT_PRIMARY, res.font(10))
+    if not font.exactMatch():
+        font = QFont(theme.FONT_FALLBACK, res.font(10))
+    if not font.exactMatch():
+        font = QFont("Segoe UI", res.font(10))
     app.setFont(font)
 
-    # Estilo global (dark mode)
+    # Estilo global
     app.setStyleSheet(theme.global_style())
 
     main_window: MainWindow | None = None

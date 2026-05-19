@@ -28,12 +28,12 @@ def _make_shadow_card(scale: float, background: str, border_color: str | None = 
     card = QFrame()
     border = border_color or background
     card.setStyleSheet(
-        f"background:{background}; border:1px solid {border}; border-radius:12px;"
+        f"background:{background}; border:1px solid {border}; border-radius:8px;"
     )
     shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(16)
-    shadow.setOffset(0, 3)
-    shadow.setColor(QColor(0, 0, 0, 30))
+    shadow.setBlurRadius(14)
+    shadow.setOffset(0, 2)
+    shadow.setColor(QColor(0, 0, 0, 12))
     card.setGraphicsEffect(shadow)
     return card
 
@@ -210,14 +210,14 @@ class DashboardView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_em_producao", theme.STATUS_COLORS["em_producao"], "PEDIDOS EM PRODUCAO", "Requisicoes recebidas pela producao."),
+            ("pedidos_em_producao", theme.PRIMARY_HOVER, "PEDIDOS EM PRODUCAO", "Requisicoes recebidas pela producao."),
             ("pedidos_em_atraso", theme.DANGER, "PEDIDOS EM ATRASO", "Pedidos abertos com prazo vencido."),
             ("pedidos_finalizados_hoje", theme.SUCCESS, "PEDIDOS FINALIZADOS HOJE", "Finalizacoes registradas no dia."),
             ("requisicoes_feitas_no_dia", theme.PRIMARY, "REQUISICOES FEITAS NO DIA", "Novas requisicoes criadas hoje."),
-            ("producao_pinheiro_industria", "#0EA5E9", "PRODUCAO DA PINHEIRO INDUSTRIA", "Fila ativa enviada para esse destino."),
-            ("producao_ar", "#14B8A6", "PRODUCAO DA A&R", "Fila ativa enviada para esse destino."),
-            ("pedidos_sem_confirmacao_1h", "#F97316", "SEM CONFIRMACAO DE RECEBIMENTO", "Aguardando retorno ha mais de 1 hora."),
-            ("tempo_medio_finalizacao_segundos", theme.SIDEBAR_ACTIVE, "TEMPO MEDIO DE FINALIZACAO", "Media entre recebimento e finalizacao."),
+            ("producao_pinheiro_industria", theme.PRIMARY_LIGHT, "PRODUCAO DA PINHEIRO INDUSTRIA", "Fila ativa enviada para esse destino."),
+            ("producao_ar", theme.PRIMARY_HOVER, "PRODUCAO DA A&R", "Fila ativa enviada para esse destino."),
+            ("pedidos_sem_confirmacao_1h", theme.WARNING, "SEM CONFIRMACAO DE RECEBIMENTO", "Aguardando retorno ha mais de 1 hora."),
+            ("tempo_medio_finalizacao_segundos", theme.SIDEBAR_BG, "TEMPO MEDIO DE FINALIZACAO", "Media entre recebimento e finalizacao."),
         ]
 
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):

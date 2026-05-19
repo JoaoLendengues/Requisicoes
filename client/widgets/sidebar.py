@@ -34,12 +34,12 @@ class Sidebar(QWidget):
         self._nav_btns: dict[str, QPushButton] = {}
         self._active = "nova"
         self._setup_ui()
-        self.setFixedWidth(max(200, int(220 * scale)))
+        self.setFixedWidth(max(212, int(236 * scale)))
 
     def _setup_ui(self):
         self.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 10, 0, 10)
         layout.setSpacing(0)
 
         logo_container = QWidget()
@@ -83,7 +83,7 @@ class Sidebar(QWidget):
 
         self.user_label = QLabel(f"\U0001F464 USU\u00c1RIO: {session.user_name}")
         self.user_label.setStyleSheet(
-            f"color:#94A3B8; font-size:{max(8, int(9 * self.scale))}pt; padding:8px 16px;"
+            f"color:rgba(255,255,255,0.78); font-size:{max(8, int(9 * self.scale))}pt; padding:10px 18px;"
         )
         self.user_label.setWordWrap(True)
         layout.addWidget(self.user_label)
@@ -103,16 +103,16 @@ class Sidebar(QWidget):
         btn.setFixedHeight(height)
         btn.setStyleSheet(
             f"QPushButton {{"
-            f"  background:transparent; color:#CBD5E1;"
-            f"  text-align:left; padding-left:12px; border:none;"
-            f"  font-size:{font_size}pt; border-left:3px solid transparent;"
+            f"  background:transparent; color:rgba(255,255,255,0.88);"
+            f"  text-align:left; padding-left:14px; border:1px solid transparent;"
+            f"  margin:4px 12px; border-radius:8px; font-size:{font_size}pt; font-weight:600;"
             f"}}"
             f"QPushButton:hover {{"
-            f"  background:{theme.SIDEBAR_HOVER}; color:#fff;"
+            f"  background:rgba(45, 127, 249, 0.16); color:#fff; border-color:rgba(255,255,255,0.08);"
             f"}}"
             f"QPushButton:checked {{"
             f"  background:{theme.SIDEBAR_ACTIVE}; color:#fff;"
-            f"  border-left:3px solid {theme.SIDEBAR_INDICATOR};"
+            f"  border:1px solid {theme.SIDEBAR_INDICATOR};"
             f"}}"
         )
         return btn
@@ -120,7 +120,7 @@ class Sidebar(QWidget):
     def _separator(self) -> QFrame:
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color:#2d3f63; margin:0 12px;")
+        sep.setStyleSheet("color:rgba(255,255,255,0.12); margin:6px 12px;")
         sep.setFixedHeight(1)
         return sep
 

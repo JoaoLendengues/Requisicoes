@@ -124,7 +124,7 @@ class MainWindow(QMainWindow):
     def _setup_statusbar(self):
         bar = self.statusBar()
         bar.setStyleSheet(
-            f"background:{theme.SIDEBAR_BG}; color:{theme.TEXT_LIGHT};"
+            f"background:{theme.FOOTER_BG}; color:{theme.TEXT_WHITE};"
             f"font-size:{max(8, int(9 * self.scale))}pt; padding:0 12px;"
         )
         bar.showMessage(

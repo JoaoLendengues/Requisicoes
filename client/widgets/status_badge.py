@@ -17,7 +17,7 @@ class StatusBadge(QLabel):
         fs = max(8, int(10 * self.scale))
         self.setText(label.upper())
         self.setStyleSheet(
-            f"background:{color}; color:#fff; border-radius:5px;"
-            f"padding:4px 12px; font-size:{fs}pt; font-weight:bold;"
+            f"background:{color}; color:#fff; border-radius:8px;"
+            f"padding:4px 12px; font-size:{fs}pt; font-weight:600;"
         )
         self.setFixedHeight(max(24, int(28 * self.scale)))

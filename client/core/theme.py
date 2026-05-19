@@ -1,56 +1,60 @@
-# ── Paleta — Dark Mode ────────────────────────────────────────────────────────
-SIDEBAR_BG        = "#0B1120"   # quase preto azulado
-SIDEBAR_HOVER     = "#161E30"
-SIDEBAR_ACTIVE    = "#1D4ED8"   # azul royal
-SIDEBAR_INDICATOR = "#60A5FA"   # azul claro
+FONT_PRIMARY = "Poppins"
+FONT_FALLBACK = "Inter"
 
-CONTENT_BG        = "#0F172A"   # fundo principal (slate-900)
-CARD_BG           = "#1E293B"   # cards / painéis (slate-800)
-INPUT_BG          = "#0F172A"   # fundo dos campos
+SIDEBAR_BG = "#002C6D"
+SIDEBAR_HOVER = "#003B8F"
+SIDEBAR_ACTIVE = "#0057D8"
+SIDEBAR_INDICATOR = "#2D7FF9"
+FOOTER_BG = "#002C6D"
 
-PRIMARY           = "#3B82F6"   # azul-500 (mais brilhante no dark)
-PRIMARY_HOVER     = "#2563EB"
+CONTENT_BG = "#F5F7FA"
+CARD_BG = "#FFFFFF"
+INPUT_BG = "#FFFFFF"
+SURFACE_SOFT = "#F8FBFF"
 
-BORDER_COLOR      = "#334155"   # slate-700
-TABLE_HEADER_BG   = "#0B1120"
-TABLE_ALT_ROW     = "#243044"
-TABLE_BORDER      = "#2A3F6F"
-SELECTION_BG      = "#1E3A6E"   # linha selecionada em tabelas
+PRIMARY = "#003B8F"
+PRIMARY_HOVER = "#0057D8"
+PRIMARY_LIGHT = "#2D7FF9"
 
-TEXT_DARK         = "#F1F5F9"   # texto principal (quase branco)
-TEXT_MEDIUM       = "#CBD5E1"   # texto secundário
-TEXT_LIGHT        = "#94A3B8"   # texto auxiliar / placeholders
-TEXT_LABEL        = "#64748B"   # labels menores
-TEXT_WHITE        = "#FFFFFF"
+BORDER_COLOR = "#D9E1EC"
+TABLE_HEADER_BG = "#003B8F"
+TABLE_ALT_ROW = "#F8FAFD"
+TABLE_BORDER = "#D9E1EC"
+SELECTION_BG = "#DCE9FF"
 
-DANGER            = "#EF4444"
-SUCCESS           = "#22C55E"
+TEXT_DARK = "#1E2A3A"
+TEXT_MEDIUM = "#6B778C"
+TEXT_LIGHT = "#7A8798"
+TEXT_LABEL = "#94A0B2"
+TEXT_WHITE = "#FFFFFF"
 
-# ── Status ────────────────────────────────────────────────────────────────────
+DANGER = "#D64545"
+SUCCESS = "#2DBE4E"
+WARNING = "#F3A01B"
+
 STATUS_COLORS = {
-    "em_andamento": "#2563EB",
-    "aguardando_recebimento": "#EAB308",
-    "em_producao":  "#F59E0B",
-    "cancelada":    "#EF4444",
+    "em_andamento": PRIMARY_LIGHT,
+    "aguardando_recebimento": WARNING,
+    "em_producao": PRIMARY_HOVER,
+    "cancelada": DANGER,
 }
 
 STATUS_LABELS = {
     "em_andamento": "Em Andamento",
     "aguardando_recebimento": "Aguardando Recebimento",
-    "em_producao":  "Em Produção",
-    "cancelada":    "Cancelada",
+    "em_producao": "Em Producao",
+    "cancelada": "Cancelada",
 }
 
 
 def status_style(status: str) -> str:
-    color = STATUS_COLORS.get(status, "#6B7280")
+    color = STATUS_COLORS.get(status, TEXT_MEDIUM)
     return (
-        f"background:{color}; color:#fff; border-radius:4px; "
-        f"padding:3px 10px; font-weight:bold;"
+        f"background:{color}; color:{TEXT_WHITE}; border-radius:8px; "
+        f"padding:4px 12px; font-weight:600;"
     )
 
 
-# ── Stylesheets ───────────────────────────────────────────────────────────────
 def card_style() -> str:
     return (
         f"background:{CARD_BG}; border:1px solid {BORDER_COLOR}; "
@@ -62,20 +66,23 @@ def input_style(scale: float = 1.0) -> str:
     fs = max(9, int(11 * scale))
     return (
         f"QLineEdit, QComboBox, QDateEdit, QTextEdit, QSpinBox, QDoubleSpinBox {{"
-        f"  background:{INPUT_BG}; border:1px solid {BORDER_COLOR}; border-radius:5px;"
-        f"  padding:5px 8px; font-size:{fs}pt; color:{TEXT_DARK};"
+        f"  background:{INPUT_BG}; border:1px solid {BORDER_COLOR}; border-radius:8px;"
+        f"  padding:7px 10px; font-size:{fs}pt; color:{TEXT_DARK};"
+        f"  selection-background-color:{SELECTION_BG}; selection-color:{TEXT_DARK};"
         f"}}"
-        f"QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTextEdit:focus {{"
-        f"  border:1px solid {PRIMARY};"
+        f"QLineEdit, QTextEdit {{"
+        f"  placeholder-text-color:{TEXT_LABEL};"
         f"}}"
-        f"QComboBox::drop-down {{ border:none; }}"
-        f"QComboBox QAbstractItemView {{"
+        f"QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTextEdit:focus, "
+        f"QSpinBox:focus, QDoubleSpinBox:focus {{"
+        f"  border:1px solid {PRIMARY_LIGHT};"
+        f"}}"
+        f"QComboBox::drop-down, QDateEdit::drop-down {{"
+        f"  border:none; width:24px;"
+        f"}}"
+        f"QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{"
         f"  background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"
-        f"  selection-background-color:{PRIMARY};"
-        f"}}"
-        f"QDateEdit::drop-down {{ border:none; }}"
-        f"QDateEdit QAbstractItemView {{"
-        f"  background:{CARD_BG}; color:{TEXT_DARK};"
+        f"  selection-background-color:{SELECTION_BG}; selection-color:{TEXT_DARK};"
         f"}}"
     )
 
@@ -84,12 +91,12 @@ def primary_btn_style(scale: float = 1.0) -> str:
     fs = max(9, int(11 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{PRIMARY}; color:#fff; border:none; border-radius:6px;"
-        f"  padding:8px 18px; font-size:{fs}pt; font-weight:bold;"
+        f"  background:{PRIMARY}; color:{TEXT_WHITE}; border:none; border-radius:8px;"
+        f"  padding:8px 18px; font-size:{fs}pt; font-weight:600;"
         f"}}"
         f"QPushButton:hover {{ background:{PRIMARY_HOVER}; }}"
-        f"QPushButton:pressed {{ background:#1a40c0; }}"
-        f"QPushButton:disabled {{ background:#2d4070; color:#64748b; }}"
+        f"QPushButton:pressed {{ background:{SIDEBAR_BG}; }}"
+        f"QPushButton:disabled {{ background:#AAB8CE; color:#EEF2F8; }}"
     )
 
 
@@ -97,10 +104,11 @@ def secondary_btn_style(scale: float = 1.0) -> str:
     fs = max(9, int(11 * scale))
     return (
         f"QPushButton {{"
-        f"  background:transparent; color:{PRIMARY}; border:1px solid {PRIMARY};"
-        f"  border-radius:6px; padding:7px 16px; font-size:{fs}pt; font-weight:bold;"
+        f"  background:{CARD_BG}; color:{PRIMARY}; border:1px solid {BORDER_COLOR};"
+        f"  border-radius:8px; padding:7px 16px; font-size:{fs}pt; font-weight:600;"
         f"}}"
-        f"QPushButton:hover {{ background:#1e3a5f; }}"
+        f"QPushButton:hover {{ background:{SELECTION_BG}; border-color:{PRIMARY_LIGHT}; }}"
+        f"QPushButton:pressed {{ background:#CFE0FF; }}"
     )
 
 
@@ -108,37 +116,96 @@ def danger_btn_style(scale: float = 1.0) -> str:
     fs = max(9, int(11 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{DANGER}; color:#fff; border:none; border-radius:6px;"
-        f"  padding:8px 18px; font-size:{fs}pt; font-weight:bold;"
+        f"  background:{DANGER}; color:{TEXT_WHITE}; border:none; border-radius:8px;"
+        f"  padding:8px 18px; font-size:{fs}pt; font-weight:600;"
         f"}}"
-        f"QPushButton:hover {{ background:#dc2626; }}"
+        f"QPushButton:hover {{ background:#BF3636; }}"
+        f"QPushButton:pressed {{ background:#A92F2F; }}"
     )
 
 
 def global_style() -> str:
-    """Stylesheet global aplicado no QApplication."""
     return (
-        f"QMainWindow, QWidget {{ background:{CONTENT_BG}; color:{TEXT_DARK}; }}"
-        f"QToolTip {{ background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"
-        f"  padding:4px 8px; }}"
-        # Scrollbars
-        f"QScrollBar:vertical {{ width:8px; background:{CONTENT_BG}; border-radius:4px; }}"
-        f"QScrollBar::handle:vertical {{ background:{BORDER_COLOR}; border-radius:4px; min-height:30px; }}"
-        f"QScrollBar::handle:vertical:hover {{ background:{TEXT_LABEL}; }}"
+        f"QMainWindow, QDialog {{"
+        f"  background:{CONTENT_BG}; color:{TEXT_DARK};"
+        f"  font-family:'{FONT_PRIMARY}', '{FONT_FALLBACK}', 'Segoe UI';"
+        f"}}"
+        f"QWidget {{"
+        f"  color:{TEXT_DARK};"
+        f"  font-family:'{FONT_PRIMARY}', '{FONT_FALLBACK}', 'Segoe UI';"
+        f"}}"
+        f"QLabel {{ background:transparent; }}"
+        f"QFrame {{ color:{TEXT_DARK}; }}"
+        f"QToolTip {{"
+        f"  background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"
+        f"  padding:6px 10px; border-radius:8px;"
+        f"}}"
+        f"QAbstractItemView {{"
+        f"  outline:none; alternate-background-color:{TABLE_ALT_ROW};"
+        f"  selection-background-color:{SELECTION_BG}; selection-color:{TEXT_DARK};"
+        f"}}"
+        f"QHeaderView::section {{"
+        f"  background:{TABLE_HEADER_BG}; color:{TEXT_WHITE}; padding:8px 10px;"
+        f"  border:none; border-right:1px solid {TABLE_BORDER}; font-weight:600;"
+        f"}}"
+        f"QTableCornerButton::section {{"
+        f"  background:{TABLE_HEADER_BG}; border:none; border-right:1px solid {TABLE_BORDER};"
+        f"  border-bottom:1px solid {TABLE_BORDER};"
+        f"}}"
+        f"QTabBar::tab {{"
+        f"  background:{CARD_BG}; color:{TEXT_MEDIUM}; border:1px solid {BORDER_COLOR};"
+        f"  padding:8px 14px; margin-right:4px; border-top-left-radius:8px; border-top-right-radius:8px;"
+        f"}}"
+        f"QTabBar::tab:selected {{ background:{PRIMARY}; color:{TEXT_WHITE}; border-color:{PRIMARY}; }}"
+        f"QScrollBar:vertical {{ width:10px; background:transparent; margin:2px; }}"
+        f"QScrollBar::handle:vertical {{"
+        f"  background:{BORDER_COLOR}; border-radius:5px; min-height:36px;"
+        f"}}"
+        f"QScrollBar::handle:vertical:hover {{ background:{PRIMARY_LIGHT}; }}"
         f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
-        f"QScrollBar:horizontal {{ height:8px; background:{CONTENT_BG}; border-radius:4px; }}"
-        f"QScrollBar::handle:horizontal {{ background:{BORDER_COLOR}; border-radius:4px; }}"
-        f"QScrollBar::handle:horizontal:hover {{ background:{TEXT_LABEL}; }}"
+        f"QScrollBar:horizontal {{ height:10px; background:transparent; margin:2px; }}"
+        f"QScrollBar::handle:horizontal {{ background:{BORDER_COLOR}; border-radius:5px; }}"
+        f"QScrollBar::handle:horizontal:hover {{ background:{PRIMARY_LIGHT}; }}"
         f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
-        # Menu / calendário do QDateEdit
         f"QCalendarWidget QWidget {{ background:{CARD_BG}; color:{TEXT_DARK}; }}"
-        f"QCalendarWidget QAbstractItemView:enabled {{ background:{CARD_BG}; color:{TEXT_DARK};"
-        f"  selection-background-color:{PRIMARY}; selection-color:#fff; }}"
-        f"QCalendarWidget QToolButton {{ background:{SIDEBAR_BG}; color:{TEXT_DARK}; }}"
-        f"QCalendarWidget #qt_calendar_navigationbar {{ background:{SIDEBAR_BG}; }}"
-        f"QMessageBox {{ background:{CARD_BG}; }}"
-        f"QMessageBox QLabel {{ color:{TEXT_DARK}; }}"
-        f"QMessageBox QPushButton {{ background:{PRIMARY}; color:#fff; border:none;"
-        f"  border-radius:5px; padding:6px 16px; min-width:70px; }}"
+        f"QCalendarWidget QAbstractItemView:enabled {{"
+        f"  background:{CARD_BG}; color:{TEXT_DARK};"
+        f"  selection-background-color:{PRIMARY}; selection-color:{TEXT_WHITE};"
+        f"}}"
+        f"QCalendarWidget QToolButton {{"
+        f"  background:{CARD_BG}; color:{TEXT_DARK}; border:none; padding:6px; border-radius:8px;"
+        f"}}"
+        f"QCalendarWidget QToolButton:hover {{ background:{SELECTION_BG}; }}"
+        f"QCalendarWidget #qt_calendar_navigationbar {{"
+        f"  background:{SURFACE_SOFT}; border-bottom:1px solid {BORDER_COLOR};"
+        f"}}"
+        f"QMessageBox {{ background:{CONTENT_BG}; }}"
+        f"QMessageBox QLabel {{ background:transparent; color:{TEXT_DARK}; }}"
+        f"QMessageBox QPushButton {{"
+        f"  background:{PRIMARY}; color:{TEXT_WHITE}; border:none;"
+        f"  border-radius:8px; padding:7px 16px; min-width:84px; font-weight:600;"
+        f"}}"
         f"QMessageBox QPushButton:hover {{ background:{PRIMARY_HOVER}; }}"
+        f"QCheckBox {{ spacing:8px; }}"
+        f"QCheckBox::indicator {{"
+        f"  width:16px; height:16px; border-radius:4px; border:1px solid {BORDER_COLOR};"
+        f"  background:{CARD_BG};"
+        f"}}"
+        f"QCheckBox::indicator:checked {{"
+        f"  background:{PRIMARY}; border:1px solid {PRIMARY};"
+        f"}}"
+        f"QSlider::groove:horizontal {{"
+        f"  height:6px; background:{BORDER_COLOR}; border-radius:3px;"
+        f"}}"
+        f"QSlider::handle:horizontal {{"
+        f"  background:{PRIMARY}; width:16px; margin:-6px 0; border-radius:8px;"
+        f"}}"
+        f"QSlider::sub-page:horizontal {{ background:{PRIMARY_LIGHT}; border-radius:3px; }}"
+        f"QMenu {{"
+        f"  background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"
+        f"  border-radius:8px; padding:6px;"
+        f"}}"
+        f"QMenu::item {{ padding:8px 12px; border-radius:6px; }}"
+        f"QMenu::item:selected {{ background:{SELECTION_BG}; color:{TEXT_DARK}; }}"
+        f"QStatusBar {{ background:{FOOTER_BG}; color:{TEXT_WHITE}; }}"
     )
