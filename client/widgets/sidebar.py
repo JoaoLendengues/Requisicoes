@@ -111,14 +111,14 @@ class Sidebar(QWidget):
     def _make_btn(self, icon: str, label: str, nav_key: str = "") -> QPushButton:
         btn = QPushButton(f"  {icon}  {label}")
         btn.setCheckable(bool(nav_key))
-        height = max(38, int(44 * self.scale))
-        font_size = max(8, int(10 * self.scale))
+        height = max(40, int(48 * self.scale))
+        font_size = max(9, int(11 * self.scale))
         btn.setFixedHeight(height)
         btn.setStyleSheet(
             f"QPushButton {{"
             f"  background:transparent; color:rgba(255,255,255,0.88);"
-            f"  text-align:left; padding-left:14px; border:1px solid transparent;"
-            f"  margin:4px 12px; border-radius:8px; font-size:{font_size}pt; font-weight:600;"
+            f"  text-align:left; padding-left:16px; border:1px solid transparent;"
+            f"  margin:4px 12px; border-radius:8px; font-size:{font_size}pt; font-weight:700;"
             f"}}"
             f"QPushButton:hover {{"
             f"  background:rgba(45, 127, 249, 0.16); color:#fff; border-color:rgba(255,255,255,0.08);"
