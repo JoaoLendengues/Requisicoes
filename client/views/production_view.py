@@ -7,11 +7,12 @@ from PySide6.QtCore import Qt, QThread, QObject, Signal
 from PySide6.QtGui import QColor
 
 from ..api import client as api
+from ..core.session import session
 from ..core import theme
 
 
 COLS = ["PED", "CLIENTE", "OBRA", "DATA"]
-DESTINATIONS = ("A&R", "Pinheiro Indústria")
+ALL_DESTINATIONS = ("A&R", "Pinheiro Indústria")
 WAITING_STAGE = "waiting"
 PRODUCTION_STAGE = "production"
 
@@ -80,13 +81,23 @@ def _build_production_note(action: str, destination: str, reason: str = "") -> s
     return f"{PROD_NOTE_PREFIX}|{action}|{destination}"
 
 
+def _normalize_destination(destination: str) -> str:
+    text = (destination or "").strip()
+    folded = text.casefold()
+    if folded == "a&r":
+        return "A&R"
+    if folded in ("pinheiro indústria".casefold(), "pinheiro industria".casefold()):
+        return "Pinheiro Indústria"
+    return text
+
+
 def _parse_production_note(note: str) -> dict | None:
     parts = (note or "").split("|", 3)
     if len(parts) < 3 or parts[0] != PROD_NOTE_PREFIX:
         return None
     return {
         "action": parts[1].strip(),
-        "destination": parts[2].strip(),
+        "destination": _normalize_destination(parts[2]),
         "reason": parts[3].strip() if len(parts) > 3 else "",
     }
 
@@ -97,10 +108,11 @@ class ProductionView(QWidget):
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
+        self.destinations = session.visible_production_destinations
         self._threads: list[tuple[QThread, QObject]] = []
         self._rows_by_destination: dict[str, dict[str, list[dict]]] = {
             destination: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
-            for destination in DESTINATIONS
+            for destination in self.destinations
         }
         self._cards: dict[str, dict[str, dict]] = {}
         self._count_labels: dict[str, QLabel] = {}
@@ -141,7 +153,7 @@ class ProductionView(QWidget):
 
         counts = QGridLayout()
         counts.setSpacing(max(8, int(10 * s)))
-        for index, destination in enumerate(DESTINATIONS):
+        for index, destination in enumerate(self.destinations):
             card = _make_card(s)
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(max(12, int(14 * s)), max(10, int(12 * s)),
@@ -170,7 +182,7 @@ class ProductionView(QWidget):
 
         columns_row = QHBoxLayout()
         columns_row.setSpacing(max(10, int(12 * s)))
-        for destination in DESTINATIONS:
+        for destination in self.destinations:
             columns_row.addWidget(self._build_destination_column(destination), 1)
         layout.addLayout(columns_row, 1)
 
@@ -343,7 +355,7 @@ class ProductionView(QWidget):
     def _populate(self, payload: object):
         grouped = {
             destination: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
-            for destination in DESTINATIONS
+            for destination in self.destinations
         }
 
         if isinstance(payload, list):
@@ -379,7 +391,7 @@ class ProductionView(QWidget):
 
         self._rows_by_destination = grouped
 
-        for destination in DESTINATIONS:
+        for destination in self.destinations:
             waiting_rows = grouped[destination][WAITING_STAGE]
             production_rows = grouped[destination][PRODUCTION_STAGE]
             self._count_labels[destination].setText(str(len(waiting_rows) + len(production_rows)))
@@ -417,10 +429,11 @@ class ProductionView(QWidget):
 
             note = (entry.get("note") or "").strip()
             parsed = _parse_production_note(note)
-            if parsed and parsed["destination"] in DESTINATIONS:
+            if parsed and parsed["destination"] in ALL_DESTINATIONS:
                 return parsed["destination"]
-            if note in DESTINATIONS:
-                return note
+            normalized_note = _normalize_destination(note)
+            if normalized_note in ALL_DESTINATIONS:
+                return normalized_note
 
         return ""
 

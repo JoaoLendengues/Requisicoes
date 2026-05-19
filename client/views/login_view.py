@@ -27,6 +27,7 @@ LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
 class LoginWorker(QObject):
     success = Signal(dict)
     error = Signal(str)
+    first_access_required = Signal(str)
     finished = Signal()
 
     def __init__(self, code: str, password: str):
@@ -38,7 +39,11 @@ class LoginWorker(QObject):
         try:
             self.success.emit(api.login(self.code, self.password))
         except api.APIError as exc:
-            self.error.emit(exc.detail)
+            detail = str(exc.detail)
+            if exc.status_code == 403 and "Primeiro acesso pendente" in detail:
+                self.first_access_required.emit(self.code)
+            else:
+                self.error.emit(detail)
         except Exception as exc:
             self.error.emit(f"Sem conexao com o servidor.\n{exc}")
         finally:
@@ -62,6 +67,25 @@ class FirstAccessWorker(QObject):
             self.error.emit(exc.detail)
         except Exception as exc:
             self.error.emit(f"Sem conexao com o servidor.\n{exc}")
+        finally:
+            self.finished.emit()
+
+
+class FirstAccessStatusWorker(QObject):
+    pending = Signal(str)
+    finished = Signal()
+
+    def __init__(self, code: str):
+        super().__init__()
+        self.code = code
+
+    def run(self):
+        try:
+            result = api.get_first_access_status(self.code)
+            if bool(result.get("first_access_required")):
+                self.pending.emit(self.code)
+        except Exception:
+            pass
         finally:
             self.finished.emit()
 
@@ -113,6 +137,9 @@ class FirstAccessDialog(QDialog):
         self.input_confirm.setEchoMode(QLineEdit.EchoMode.Password)
         self.input_confirm.setStyleSheet(theme.input_style(s))
         self.input_confirm.setFixedHeight(max(34, int(40 * s)))
+        self.input_code.returnPressed.connect(self._validate_and_accept)
+        self.input_password.returnPressed.connect(self._validate_and_accept)
+        self.input_confirm.returnPressed.connect(self._validate_and_accept)
 
         form.addRow("Codigo", self.input_code)
         form.addRow("Nova senha", self.input_password)
@@ -152,7 +179,7 @@ class FirstAccessDialog(QDialog):
         if len(password) < 6:
             self._show_error("A senha precisa ter pelo menos 6 caracteres.")
             return
-        if password != confirm:
+        if password.casefold() != confirm.casefold():
             self._show_error("A confirmacao da senha nao confere.")
             return
 
@@ -175,6 +202,9 @@ class LoginView(QWidget):
         self.scale = res.scale
         self._thread: QThread | None = None
         self._worker: QObject | None = None
+        self._status_threads: list[tuple[QThread, QObject]] = []
+        self._auto_prompted_codes: set[str] = set()
+        self._pending_first_access_code: str | None = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -238,6 +268,7 @@ class LoginView(QWidget):
         self.input_code.setFixedHeight(max(36, int(42 * self.scale)))
         self.input_code.setStyleSheet(theme.input_style(self.scale))
         self.input_code.returnPressed.connect(self._do_login)
+        self.input_code.editingFinished.connect(self._check_first_access_for_code)
         card_layout.addWidget(self.input_code)
 
         lbl_pass = QLabel("Senha")
@@ -317,8 +348,8 @@ class LoginView(QWidget):
             return
         self._start_worker(LoginWorker(code, password), "Aguarde...")
 
-    def _open_first_access_dialog(self):
-        dialog = FirstAccessDialog(self.scale, self.input_code.text().strip(), self)
+    def _open_first_access_dialog(self, code: str | None = None):
+        dialog = FirstAccessDialog(self.scale, code or self.input_code.text().strip(), self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
@@ -327,6 +358,26 @@ class LoginView(QWidget):
         self.input_pass.clear()
         self._start_worker(FirstAccessWorker(code, password), "Preparando acesso...")
 
+    def _check_first_access_for_code(self):
+        code = self.input_code.text().strip()
+        if not code or code in self._auto_prompted_codes:
+            return
+
+        worker = FirstAccessStatusWorker(code)
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.pending.connect(self._on_first_access_required)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_status_thread(t, w))
+        thread.start()
+        self._status_threads.append((thread, worker))
+
+    def _cleanup_status_thread(self, thread: QThread, worker: QObject):
+        self._status_threads = [pair for pair in self._status_threads if pair != (thread, worker)]
+
     def _start_worker(self, worker: QObject, button_text: str):
         self._worker = worker
         self._thread = QThread()
@@ -334,6 +385,8 @@ class LoginView(QWidget):
         self._thread.started.connect(worker.run)
         worker.success.connect(self._on_success)
         worker.error.connect(self._on_error)
+        if isinstance(worker, LoginWorker):
+            worker.first_access_required.connect(self._on_first_access_required_from_login)
         worker.finished.connect(self._thread.quit)
         worker.finished.connect(self._restore_buttons)
         worker.finished.connect(worker.deleteLater)
@@ -352,10 +405,28 @@ class LoginView(QWidget):
     def _on_error(self, message: str):
         self._show_error(message)
 
+    def _on_first_access_required(self, code: str):
+        code = (code or "").strip()
+        if not code or code in self._auto_prompted_codes:
+            return
+        self._auto_prompted_codes.add(code)
+        self._open_first_access_dialog(code)
+
+    def _on_first_access_required_from_login(self, code: str):
+        code = (code or "").strip()
+        if not code:
+            return
+        self._auto_prompted_codes.add(code)
+        self._pending_first_access_code = code
+
     def _restore_buttons(self):
         self.btn_login.setEnabled(True)
         self.btn_first_access.setEnabled(True)
         self.btn_login.setText("ENTRAR")
+        if self._pending_first_access_code:
+            code = self._pending_first_access_code
+            self._pending_first_access_code = None
+            self._open_first_access_dialog(code)
 
     def _show_error(self, message: str):
         self.error_label.setText(message)

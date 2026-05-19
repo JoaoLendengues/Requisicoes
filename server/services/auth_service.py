@@ -7,14 +7,23 @@ from ..models.user import User
 from ..config import settings
 
 
+def _normalize_password(password: str) -> str:
+    return str(password or "").strip().casefold()
+
+
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    normalized = _normalize_password(password)
+    return bcrypt.hashpw(normalized.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     if not plain or not hashed:
         return False
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+    normalized = _normalize_password(plain)
+    return (
+        bcrypt.checkpw(normalized.encode(), hashed.encode())
+        or bcrypt.checkpw(str(plain).encode(), hashed.encode())
+    )
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

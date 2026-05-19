@@ -36,9 +36,11 @@ ROLE_OPTIONS = [
     ("ADMINISTRADOR", "admin"),
     ("GERENTE", "gerente"),
     ("PRODUCAO", "producao"),
+    ("INDUSTRIA", "industria"),
     ("VENDEDOR", "vendedor"),
 ]
 ROLE_LABELS = {value: label for label, value in ROLE_OPTIONS}
+ROLE_LABELS["entrega"] = "INDUSTRIA"
 
 
 def _make_card(scale: float) -> QFrame:
@@ -558,7 +560,7 @@ class UserCenterView(QWidget):
         self.input_name.clear()
         self.input_contact.clear()
         self.input_sector.clear()
-        self.combo_role.setCurrentIndex(3)
+        self.combo_role.setCurrentIndex(max(0, self.combo_role.findData("vendedor")))
         self.input_password.clear()
         self.input_password_confirm.clear()
         self.check_active.setChecked(True)
@@ -584,6 +586,8 @@ class UserCenterView(QWidget):
         self.input_contact.setText(str(user.get("whatsapp") or ""))
         self.input_sector.setText(str(user.get("sector") or ""))
         role = str(user.get("role") or "vendedor")
+        if role == "entrega":
+            role = "industria"
         idx = max(0, self.combo_role.findData(role))
         self.combo_role.setCurrentIndex(idx)
         self.input_password.clear()

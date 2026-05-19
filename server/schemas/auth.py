@@ -11,6 +11,11 @@ class FirstAccessRequest(BaseModel):
     password: str
 
 
+class FirstAccessStatusResponse(BaseModel):
+    code: str
+    first_access_required: bool
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

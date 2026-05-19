@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from collections import Counter
 from datetime import datetime, timedelta
+import unicodedata
 from ..database import get_db
 from ..models.client import Client
 from ..models.requisition import (
@@ -48,6 +49,40 @@ _PROD_SEND = "ENVIADA"
 _PROD_RECEIVED = "RECEBIDA"
 _PROD_FINISHED = "FINALIZADA"
 _PROD_CANCELED = "CANCELADA"
+_DESTINATION_AR = "A&R"
+_DESTINATION_PINHEIRO = "Pinheiro Indústria"
+
+
+def _normalize_text(value: object) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    ascii_text = normalized.encode("ascii", "ignore").decode()
+    return ascii_text.strip().casefold()
+
+
+def _canonical_destination(value: object) -> str:
+    key = _normalize_text(value)
+    if key == _normalize_text(_DESTINATION_AR):
+        return _DESTINATION_AR
+    if key == _normalize_text(_DESTINATION_PINHEIRO):
+        return _DESTINATION_PINHEIRO
+    return str(value or "").strip()
+
+
+def _role_key(role: Role | str) -> str:
+    return getattr(role, "value", role)
+
+
+def _is_industry_role(role: Role | str) -> bool:
+    return _role_key(role) in (Role.INDUSTRIA.value, Role.ENTREGA.value)
+
+
+def _destination_for_role(role: Role | str) -> str | None:
+    key = _role_key(role)
+    if key == Role.PRODUCAO.value:
+        return _DESTINATION_AR
+    if _is_industry_role(key):
+        return _DESTINATION_PINHEIRO
+    return None
 
 
 def _get_or_404(db: Session, req_id: int) -> Requisition:
@@ -71,7 +106,7 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
 
     data = {
         "action": parts[1].strip(),
-        "target": parts[2].strip(),
+        "target": _canonical_destination(parts[2]),
         "reason": "",
     }
     if len(parts) > 3:
@@ -176,10 +211,44 @@ def _production_events(req: Requisition) -> list[dict]:
 
 def _current_production_destination(req: Requisition) -> str:
     for event in reversed(_production_events(req)):
-        target = (event.get("target") or "").strip()
+        target = _canonical_destination(event.get("target"))
         if target:
             return target
     return ""
+
+
+def _can_view_requisition(req: Requisition, current_user: User) -> bool:
+    role = _role_key(current_user.role)
+    if role in (Role.ADMIN.value, Role.GERENTE.value):
+        return True
+    if role == Role.VENDEDOR.value:
+        return req.vendor_id == current_user.id
+
+    destination = _destination_for_role(role)
+    if destination:
+        return _current_production_destination(req) == destination
+
+    return False
+
+
+def _filter_requisitions_for_user(
+    reqs: list[Requisition], current_user: User
+) -> list[Requisition]:
+    return [req for req in reqs if _can_view_requisition(req, current_user)]
+
+
+def _can_edit_requisition(req: Requisition, current_user: User) -> bool:
+    role = _role_key(current_user.role)
+    if role in (Role.ADMIN.value, Role.GERENTE.value):
+        return True
+    if req.vendor_id == current_user.id:
+        return True
+
+    destination = _destination_for_role(role)
+    if destination:
+        return _current_production_destination(req) == destination
+
+    return False
 
 
 def _is_open_requisition(req: Requisition) -> bool:
@@ -405,9 +474,9 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
         if req.status == RequisitionStatus.EM_PRODUCAO:
             pedidos_em_producao += 1
 
-        if is_active_production and destination == "Pinheiro Indústria":
+        if is_active_production and destination == _DESTINATION_PINHEIRO:
             producao_pinheiro_industria += 1
-        if is_active_production and destination == "A&R":
+        if is_active_production and destination == _DESTINATION_AR:
             producao_ar += 1
 
         if req.created_at and req.created_at.date() == today:
@@ -538,10 +607,9 @@ def list_requisitions(
         ))
 
     # Vendedor e gerente só veem as próprias requisições
-    if current_user.role in (Role.VENDEDOR, Role.GERENTE):
-        q = q.filter(Requisition.vendor_id == current_user.id)
-
-    return q.order_by(Requisition.created_at.desc()).offset(skip).limit(limit).all()
+    reqs = q.order_by(Requisition.created_at.desc()).all()
+    visible = _filter_requisitions_for_user(reqs, current_user)
+    return visible[skip:skip + limit]
 
 
 @router.get("/dashboard/summary", response_model=ManagementDashboardResponse)
@@ -561,7 +629,7 @@ def get_management_dashboard(
 @router.get("/order-center/summary", response_model=OrderCenterResponse)
 def get_order_center(
     db: Session = Depends(get_db),
-    _: User = Depends(require_order_center_access),
+    current_user: User = Depends(require_order_center_access),
 ):
     reqs = (
         db.query(Requisition)
@@ -569,7 +637,7 @@ def get_order_center(
         .order_by(Requisition.created_at.desc())
         .all()
     )
-    return _build_order_center(reqs)
+    return _build_order_center(_filter_requisitions_for_user(reqs, current_user))
 
 
 @router.post("/", response_model=RequisitionResponse, status_code=status.HTTP_201_CREATED)
@@ -603,9 +671,14 @@ def create_requisition(
 
 @router.get("/{req_id}", response_model=RequisitionResponse)
 def get_requisition(
-    req_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)
+    req_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return _get_or_404(db, req_id)
+    req = _get_or_404(db, req_id)
+    if not _can_view_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para visualizar esta requisicao")
+    return req
 
 
 @router.patch("/{req_id}", response_model=RequisitionResponse)
@@ -613,9 +686,11 @@ def update_requisition(
     req_id: int,
     data: RequisitionUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_creator),
+    current_user: User = Depends(require_creator),
 ):
     req = _get_or_404(db, req_id)
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
     _ensure_editable(req)
 
     for k, v in data.model_dump(exclude_unset=True, exclude={"items", "weight"}).items():
@@ -643,6 +718,8 @@ def update_status(
     current_user: User = Depends(get_current_user),
 ):
     req = _get_or_404(db, req_id)
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
     old_status = req.status
     req.status = data.status
     _apply_production_transition(req, data)
@@ -663,9 +740,11 @@ def update_canvas(
     req_id: int,
     data: CanvasUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_creator),
+    current_user: User = Depends(require_creator),
 ):
     req = _get_or_404(db, req_id)
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
     _ensure_editable(req)
     if req.canvas:
         req.canvas.json_data = data.json_data
@@ -680,9 +759,11 @@ def attach_nf(
     req_id: int,
     nf_path: str,
     db: Session = Depends(get_db),
-    _=Depends(require_creator),
+    current_user: User = Depends(require_creator),
 ):
     req = _get_or_404(db, req_id)
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
     _ensure_editable(req)
     req.nf_attachment = nf_path
     db.commit()
@@ -696,6 +777,8 @@ def cancel_requisition(
     current_user: User = Depends(get_current_user),
 ):
     req = _get_or_404(db, req_id)
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para cancelar esta requisicao")
     old_status = req.status
     req.status = RequisitionStatus.CANCELADA
     db.add(StatusHistory(

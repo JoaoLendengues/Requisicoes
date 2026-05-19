@@ -19,6 +19,7 @@ def _migrate():
         "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",
         "UPDATE users SET must_change_password = 0 WHERE must_change_password IS NULL",
+        "UPDATE users SET role = 'industria' WHERE role = 'entrega'",
         "UPDATE requisitions SET status = 'em_andamento' WHERE UPPER(status) IN "
         "('RASCUNHO','EMITIDA','RECEBIDA_PRODUCAO','PRONTA','EM_ROTA','AGUARDANDO_RETIRADA','CONCLUIDA')",
         "UPDATE requisitions SET status = 'em_producao' WHERE UPPER(status) = 'EM_FABRICACAO'",

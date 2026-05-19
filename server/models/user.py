@@ -10,6 +10,7 @@ class Role(str, enum.Enum):
     VENDEDOR = "vendedor"
     GERENTE = "gerente"
     PRODUCAO = "producao"
+    INDUSTRIA = "industria"
     ENTREGA = "entrega"
 
 
