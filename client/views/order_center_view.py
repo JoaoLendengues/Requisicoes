@@ -161,7 +161,7 @@ class OrderCenterView(QWidget):
 
         title = QLabel("CENTRAL DE PEDIDOS")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
         )
         subtitle = QLabel(
             "Acompanhe pedidos por etapa, atrasos e finalizacoes em uma tela unica."
@@ -272,7 +272,7 @@ class OrderCenterView(QWidget):
         title_row = QHBoxLayout()
         title = QLabel(title_text.upper())
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
         title_row.addWidget(title)
         title_row.addStretch()

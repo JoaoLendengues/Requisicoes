@@ -130,7 +130,7 @@ class ProductionView(QWidget):
 
         title = QLabel("🏭 PRODUÇÃO")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(14, int(17 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(14, int(17 * s))}pt; font-weight:bold;"
         )
         subtitle = QLabel(
             "Acompanhe por destino o que aguarda recebimento e o que já está em produção."
@@ -161,7 +161,7 @@ class ProductionView(QWidget):
 
             lbl_title = QLabel(f"🔖 {destination}")
             lbl_title.setStyleSheet(
-                f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
+                f"color:{theme.PRIMARY}; font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
             )
             lbl_value = QLabel("0")
             lbl_value.setStyleSheet(
@@ -204,7 +204,7 @@ class ProductionView(QWidget):
 
         title = QLabel(f"🏭 {destination}")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
         )
         layout.addWidget(title)
 
@@ -243,7 +243,7 @@ class ProductionView(QWidget):
         title_row = QHBoxLayout()
         title = QLabel(title_text)
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:bold;"
         )
         count = QLabel("0")
         count.setAlignment(Qt.AlignmentFlag.AlignCenter)

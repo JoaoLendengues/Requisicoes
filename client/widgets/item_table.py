@@ -50,7 +50,7 @@ class ItemTable(QWidget):
         title = QLabel("ITENS DA REQUISIÇÃO")
         fs_title = max(9, int(11 * self.scale))
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{fs_title}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{fs_title}pt; font-weight:bold;"
         )
         layout.addWidget(title)
 

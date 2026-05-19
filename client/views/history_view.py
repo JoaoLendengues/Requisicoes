@@ -62,7 +62,7 @@ class HistoryView(QWidget):
         # Título
         title = QLabel("🕘 HISTÓRICO / BUSCA DE REQUISIÇÕES")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(12,int(15*s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(12,int(15*s))}pt; font-weight:bold;"
         )
         layout.addWidget(title)
 

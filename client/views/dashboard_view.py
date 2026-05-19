@@ -152,7 +152,7 @@ class DashboardView(QWidget):
         title_col = QVBoxLayout()
         title = QLabel("PAINEL GERENCIAL")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
         )
         subtitle = QLabel(
             "Acompanhe producao, prazos e alertas em uma unica tela."
@@ -305,7 +305,7 @@ class DashboardView(QWidget):
 
         title_label = QLabel(title)
         title_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
 
         subtitle_label = QLabel(subtitle)

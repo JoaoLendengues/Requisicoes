@@ -114,7 +114,7 @@ class FirstAccessDialog(QDialog):
 
         title = QLabel("PRIMEIRO ACESSO")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(12, int(14 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(12, int(14 * s))}pt; font-weight:bold;"
         )
         helper = QLabel(
             "Informe seu codigo e cadastre uma senha para entrar no sistema."
@@ -260,7 +260,7 @@ class LoginView(QWidget):
         title = QLabel("Sistema de Requisicoes")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(10, int(12 * self.scale))}pt;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:600;"
         )
         card_layout.addWidget(title)
         card_layout.addSpacing(max(4, int(8 * self.scale)))

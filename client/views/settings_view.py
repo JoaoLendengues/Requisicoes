@@ -17,7 +17,7 @@ from ..api import client as api
 def _section(title: str, scale: float) -> QLabel:
     lbl = QLabel(title)
     lbl.setStyleSheet(
-        f"color:{theme.TEXT_DARK}; font-size:{max(11,int(13*scale))}pt;"
+        f"color:{theme.PRIMARY}; font-size:{max(11,int(13*scale))}pt;"
         f"font-weight:bold; padding-top:8px;"
     )
     return lbl
@@ -92,7 +92,7 @@ class SettingsView(QWidget):
 
         title = QLabel("⚙️ CONFIGURAÇÕES")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
         )
         outer.addWidget(title)
 

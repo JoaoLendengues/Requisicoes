@@ -129,7 +129,7 @@ class UserCenterView(QWidget):
         title_col = QVBoxLayout()
         title = QLabel("CENTRAL DE USUARIOS")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
         )
         subtitle = QLabel(
             "Importe usuarios, ajuste niveis de acesso e mantenha senhas e cadastros em dia."
@@ -179,7 +179,7 @@ class UserCenterView(QWidget):
 
         title = QLabel("IMPORTACAO DE USUARIOS")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
         helper = QLabel(
             "Arquivo esperado: usuarios.ods na pasta base, com colunas Codigo, Nome, Contato e Setor."
@@ -241,7 +241,7 @@ class UserCenterView(QWidget):
         header = QHBoxLayout()
         title = QLabel("LISTA DE USUARIOS")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
         header.addWidget(title)
         header.addStretch()
@@ -300,7 +300,7 @@ class UserCenterView(QWidget):
 
         title = QLabel("CADASTRO INDIVIDUAL")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
         )
         helper = QLabel(
             "Deixe a senha em branco para criar o usuario em primeiro acesso. No cadastro existente, so preencha a senha se quiser altera-la."
@@ -391,7 +391,7 @@ class UserCenterView(QWidget):
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text.upper())
         label.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * self.scale))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(7, int(8 * self.scale))}pt; font-weight:bold;"
         )
         return label
 

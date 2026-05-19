@@ -117,7 +117,7 @@ def _make_card(parent=None) -> QFrame:
 def _field_label(text: str, scale: float) -> QLabel:
     lbl = QLabel(text)
     lbl.setStyleSheet(
-        f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*scale))}pt; "
+        f"color:{theme.PRIMARY}; font-size:{max(7, int(8*scale))}pt; "
         f"font-weight:bold; text-transform:uppercase; border:none;"
     )
     return lbl
@@ -516,7 +516,7 @@ class RequisitionForm(QWidget):
         title_col.setSpacing(0)
         lbl_req = QLabel("REQUISIÇÃO")
         lbl_req.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8,int(9*s))}pt; font-weight:bold; border:none;"
+            f"color:{theme.PRIMARY}; font-size:{max(10,int(12*s))}pt; font-weight:700; border:none;"
         )
         self.lbl_ped_num = QLabel("#000000")
         self.lbl_ped_num.setStyleSheet(
@@ -703,7 +703,7 @@ class RequisitionForm(QWidget):
 
         lbl_preview = QLabel("EDITOR DE DESENHO")
         lbl_preview.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11*s))}pt; font-weight:bold; border:none;"
+            f"color:{theme.PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:bold; border:none;"
         )
         preview_layout.addWidget(lbl_preview)
         lbl_preview.setText("🎨 EDITOR DE DESENHO")
@@ -947,7 +947,7 @@ class RequisitionForm(QWidget):
         # Título
         lbl_title = QLabel("⚖️  Calculadora de Peso")
         lbl_title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
         )
         layout.addWidget(lbl_title)
 
