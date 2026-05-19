@@ -100,6 +100,11 @@ class ImportWorker(QObject):
             self.finished.emit()
 
 
+class UiCallback(QObject):
+    result = Signal(object)
+    error = Signal(str)
+
+
 class UserCenterView(QWidget):
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -396,18 +401,24 @@ class UserCenterView(QWidget):
     def _run_action(self, fn, *args, on_result=None, success_message: str = ""):
         worker = ActionWorker(fn, *args)
         thread = QThread()
+        cb = UiCallback()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
+        worker.result.connect(cb.result)
+        worker.error.connect(cb.error)
         if on_result:
-            worker.result.connect(on_result)
+            cb.result.connect(on_result)
         if success_message:
-            worker.result.connect(lambda _: QMessageBox.information(self, "Central de usuarios", success_message))
-        worker.error.connect(lambda msg: QMessageBox.critical(self, "Central de usuarios", msg))
+            cb.result.connect(
+                lambda _: QMessageBox.information(self, "Central de usuarios", success_message)
+            )
+        cb.error.connect(lambda msg: QMessageBox.critical(self, "Central de usuarios", msg))
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
         thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
         thread.finished.connect(lambda: self.refresh_btn.setEnabled(True))
+        worker._cb = cb
         thread.start()
         self._threads.append((thread, worker))
 
