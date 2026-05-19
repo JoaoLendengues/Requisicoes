@@ -145,6 +145,9 @@ class DrawingScene(QGraphicsScene):
         self._ft_rotate_start: float = 0.0
         self._ft_start_rotations: list = []
 
+        # Snap to endpoints
+        self._snap_point: QPointF | None = None
+
         self.selectionChanged.connect(self._on_selection_changed)
 
     # ── Grade de fundo (visual only — não serializada) ───────────────────────
@@ -153,6 +156,8 @@ class DrawingScene(QGraphicsScene):
     # Tamanho dos handles do bounding box do Free Transform
     FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
     FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
+    # Snap to endpoints
+    SNAP_RADIUS    = 12    # raio de detecção em px de tela (constante com zoom)
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
@@ -240,6 +245,48 @@ class DrawingScene(QGraphicsScene):
         self.update()
         self.cw.changed.emit()
 
+    # ── Snap to endpoints ─────────────────────────────────────────────────────
+    def _collect_snap_points(self) -> list:
+        """Retorna todos os endpoints de itens existentes em coordenadas de cena."""
+        points = []
+        for item in self.items():
+            if isinstance(item, QGraphicsLineItem):
+                ln = item.line()
+                points.append(item.mapToScene(ln.p1()))
+                points.append(item.mapToScene(ln.p2()))
+            elif isinstance(item, QGraphicsRectItem):
+                r = item.rect()
+                for c in [r.topLeft(), r.topRight(), r.bottomLeft(), r.bottomRight()]:
+                    points.append(item.mapToScene(c))
+            elif isinstance(item, QGraphicsPathItem):
+                path = item.path()
+                if path.elementCount() > 0:
+                    e0 = path.elementAt(0)
+                    en = path.elementAt(path.elementCount() - 1)
+                    points.append(item.mapToScene(QPointF(e0.x, e0.y)))
+                    points.append(item.mapToScene(QPointF(en.x, en.y)))
+        return points
+
+    def _find_snap(self, scene_pos: QPointF) -> QPointF | None:
+        """
+        Retorna o endpoint mais próximo de scene_pos se estiver dentro de
+        SNAP_RADIUS pixels de tela. Usa distância de viewport para que o
+        raio seja constante independente do zoom.
+        """
+        view = self._view()
+        if not view:
+            return None
+        vp_pos = QPointF(view.mapFromScene(scene_pos))
+        best_pt = None
+        best_dist = self.SNAP_RADIUS
+        for pt in self._collect_snap_points():
+            vp_pt = QPointF(view.mapFromScene(pt))
+            d = math.hypot(vp_pos.x() - vp_pt.x(), vp_pos.y() - vp_pt.y())
+            if d < best_dist:
+                best_dist = d
+                best_pt = pt
+        return best_pt
+
     def _on_selection_changed(self):
         """Sincroniza spin_font; remove edição inline de textos deselecionados."""
         selected = set(self.selectedItems())
@@ -293,6 +340,22 @@ class DrawingScene(QGraphicsScene):
         painter.drawLine(QPointF(cx, cy - 8), QPointF(cx, cy + 8))
 
         painter.restore()
+
+        # ── Indicador de snap (círculo laranja no ponto de conexão) ──────────
+        if self._snap_point is not None:
+            view = self._view()
+            if view:
+                painter.save()
+                painter.resetTransform()
+                vp = view.mapFromScene(self._snap_point)
+                r = 8
+                painter.setPen(QPen(QColor("#FF6B35"), 2))
+                painter.setBrush(QBrush(QColor(255, 107, 53, 50)))
+                painter.drawEllipse(QPointF(vp), r, r)
+                painter.setPen(QPen(QColor("#FF6B35"), 1.5))
+                painter.drawLine(QPointF(vp.x() - r, vp.y()), QPointF(vp.x() + r, vp.y()))
+                painter.drawLine(QPointF(vp.x(), vp.y() - r), QPointF(vp.x(), vp.y() + r))
+                painter.restore()
 
     def _pen(self) -> QPen:
         p = QPen(QColor(self.cw.color), self.cw.pen_width)
@@ -384,7 +447,14 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._path_item)
 
         elif tool == Tool.LINE:
-            self._preview_item = self.addLine(pos.x(), pos.y(), pos.x(), pos.y(), self._pen())
+            # Snap no ponto de início
+            snap = self._find_snap(pos)
+            if snap:
+                self._start = snap
+            self._preview_item = self.addLine(
+                self._start.x(), self._start.y(),
+                self._start.x(), self._start.y(), self._pen()
+            )
 
         elif tool == Tool.RECT:
             self._preview_item = self.addRect(QRectF(pos, pos), self._pen())
@@ -414,6 +484,10 @@ class DrawingScene(QGraphicsScene):
             return
 
         if self._start is None:
+            # Limpa indicador se o mouse saiu sem estar desenhando
+            if self._snap_point is not None:
+                self._snap_point = None
+                self.update()
             super().mouseMoveEvent(event)
             return
 
@@ -424,9 +498,16 @@ class DrawingScene(QGraphicsScene):
             self._path_item.setPath(self._painter_path)
 
         elif tool == Tool.LINE and self._preview_item:
-            end = self._constrain(self._start, pos) if shift else pos
+            snap = self._find_snap(pos)
+            if snap:
+                end = snap
+                self._snap_point = snap
+            else:
+                end = self._constrain(self._start, pos) if shift else pos
+                self._snap_point = None
             self._preview_item.setLine(self._start.x(), self._start.y(),
                                        end.x(), end.y())
+            self.update()   # atualiza o indicador de snap
 
         elif tool == Tool.RECT and self._preview_item:
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
@@ -460,10 +541,18 @@ class DrawingScene(QGraphicsScene):
             self._painter_path = None
 
         elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE) and self._preview_item:
-            if tool == Tool.LINE and shift:
-                end = self._constrain(self._start, pos)
+            if tool == Tool.LINE:
+                snap = self._find_snap(pos)
+                if snap:
+                    end = snap
+                elif shift:
+                    end = self._constrain(self._start, pos)
+                else:
+                    end = pos
                 self._preview_item.setLine(self._start.x(), self._start.y(),
                                            end.x(), end.y())
+                self._snap_point = None
+                self.update()
             item = self._preview_item
             item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                           QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
