@@ -12,15 +12,19 @@ from ..widgets.sidebar import Sidebar
 from .requisition_form import RequisitionForm, _run_in_thread
 from .history_view import HistoryView
 from .dashboard_view import DashboardView
+from .order_center_view import OrderCenterView
 from .production_view import ProductionView
 from .settings_view import SettingsView
+from .user_center_view import UserCenterView
 
 
 PAGE_FORM = 0
 PAGE_HISTORY = 1
 PAGE_DASHBOARD = 2
-PAGE_PRODUCTION = 3
-PAGE_SETTINGS = 4
+PAGE_ORDER_CENTER = 3
+PAGE_PRODUCTION = 4
+PAGE_USER_CENTER = 5
+PAGE_SETTINGS = 6
 
 
 class MainWindow(QMainWindow):
@@ -63,24 +67,59 @@ class MainWindow(QMainWindow):
         self.form_view = RequisitionForm(self.scale)
         self.history_view = HistoryView(self.scale)
         self.dashboard_view = DashboardView(self.scale)
+        self.order_center_view = OrderCenterView(self.scale)
         self.production_view = ProductionView(self.scale)
+        self.user_center_view = UserCenterView(self.scale)
         self.settings_view = SettingsView(self.scale)
 
         self.stack.addWidget(self.form_view)
         self.stack.addWidget(self.history_view)
         self.stack.addWidget(self.dashboard_view)
+        self.stack.addWidget(self.order_center_view)
         self.stack.addWidget(self.production_view)
+        self.stack.addWidget(self.user_center_view)
         self.stack.addWidget(self.settings_view)
 
-        self.history_view.open_requisition.connect(self._open_requisition)
-        self.production_view.open_requisition.connect(self._open_requisition)
+        self.history_view.open_requisition.connect(
+            lambda req_id: self._open_requisition(req_id, "history")
+        )
+        self.order_center_view.open_requisition.connect(
+            lambda req_id: self._open_requisition(req_id, "order_center")
+        )
+        self.production_view.open_requisition.connect(
+            lambda req_id: self._open_requisition(req_id, "production")
+        )
         self.form_view.save_requested.connect(self._save_requisition)
 
-        if not session.is_manager_or_admin:
+        if not session.can_access_dashboard:
             dash_btn = self.sidebar._nav_btns.get("dashboard")
             if dash_btn:
                 dash_btn.setEnabled(False)
-                dash_btn.setToolTip("Acesso restrito a gerentes")
+                dash_btn.setToolTip("Acesso restrito a gerentes e administradores")
+
+        if not session.can_access_order_center:
+            orders_btn = self.sidebar._nav_btns.get("pedidos")
+            if orders_btn:
+                orders_btn.setEnabled(False)
+                orders_btn.setToolTip("Acesso restrito a administradores, gerentes e vendedores")
+
+        if not session.can_access_production:
+            production_btn = self.sidebar._nav_btns.get("producao")
+            if production_btn:
+                production_btn.setEnabled(False)
+                production_btn.setToolTip("Acesso restrito a administradores, producao e industria")
+
+        if not session.can_manage_users:
+            users_btn = self.sidebar._nav_btns.get("usuarios")
+            if users_btn:
+                users_btn.setEnabled(False)
+                users_btn.setToolTip("Acesso restrito a administradores")
+
+        if not session.can_access_settings:
+            settings_btn = self.sidebar._nav_btns.get("config")
+            if settings_btn:
+                settings_btn.setEnabled(False)
+                settings_btn.setToolTip("Acesso restrito a administradores")
 
     def _setup_statusbar(self):
         bar = self.statusBar()
@@ -100,7 +139,9 @@ class MainWindow(QMainWindow):
             "nova": PAGE_FORM,
             "historico": PAGE_HISTORY,
             "dashboard": PAGE_DASHBOARD,
+            "pedidos": PAGE_ORDER_CENTER,
             "producao": PAGE_PRODUCTION,
+            "usuarios": PAGE_USER_CENTER,
             "config": PAGE_SETTINGS,
         }
         page = mapping.get(key, PAGE_FORM)
@@ -115,19 +156,58 @@ class MainWindow(QMainWindow):
         if page == PAGE_HISTORY:
             self.history_view.refresh()
 
-        if page == PAGE_DASHBOARD and session.is_manager_or_admin:
+        if page == PAGE_DASHBOARD and session.can_access_dashboard:
             self.dashboard_view.refresh()
         elif page == PAGE_DASHBOARD:
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "O Dashboard é restrito a gerentes e administradores.",
+                "O Painel Gerencial é restrito a gerentes e administradores.",
             )
             self._highlight_current_page()
             return
 
-        if page == PAGE_PRODUCTION:
+        if page == PAGE_ORDER_CENTER and session.can_access_order_center:
+            self.order_center_view.refresh()
+        elif page == PAGE_ORDER_CENTER:
+            QMessageBox.warning(
+                self,
+                "Acesso negado",
+                "A Central de Pedidos e restrita a administradores, gerentes e vendedores.",
+            )
+            self._highlight_current_page()
+            return
+
+        if page == PAGE_PRODUCTION and session.can_access_production:
             self.production_view.refresh()
+        elif page == PAGE_PRODUCTION:
+            QMessageBox.warning(
+                self,
+                "Acesso negado",
+                "A tela de Producao e restrita a administradores, producao e industria.",
+            )
+            self._highlight_current_page()
+            return
+
+        if page == PAGE_USER_CENTER and session.can_manage_users:
+            self.user_center_view.refresh()
+        elif page == PAGE_USER_CENTER:
+            QMessageBox.warning(
+                self,
+                "Acesso negado",
+                "A Central de Usuarios e restrita a administradores.",
+            )
+            self._highlight_current_page()
+            return
+
+        if page == PAGE_SETTINGS and not session.can_access_settings:
+            QMessageBox.warning(
+                self,
+                "Acesso negado",
+                "As configuracoes sao restritas a administradores.",
+            )
+            self._highlight_current_page()
+            return
 
         self.stack.setCurrentIndex(page)
 
@@ -149,7 +229,9 @@ class MainWindow(QMainWindow):
             PAGE_FORM: "nova",
             PAGE_HISTORY: "historico",
             PAGE_DASHBOARD: "dashboard",
+            PAGE_ORDER_CENTER: "pedidos",
             PAGE_PRODUCTION: "producao",
+            PAGE_USER_CENTER: "usuarios",
             PAGE_SETTINGS: "config",
         }
         self.sidebar._highlight(mapping.get(self.stack.currentIndex(), "nova"))
@@ -251,17 +333,20 @@ class MainWindow(QMainWindow):
     def _on_save_error(self, msg: str):
         QMessageBox.critical(self, "Erro ao salvar", msg)
 
-    def _open_requisition(self, req_id: int):
+    def _open_requisition(self, req_id: int, source: str = "history"):
         thread, worker = _run_in_thread(
             api.get_requisition,
             req_id,
-            on_result=self._load_req_into_form,
+            on_result=lambda data, current_source=source: self._load_req_into_form(data, current_source),
             on_error=lambda msg: QMessageBox.critical(self, "Erro", msg),
         )
         self._threads.append((thread, worker))
 
-    def _load_req_into_form(self, data: dict):
-        self.form_view.load_requisition(data)
+    def _load_req_into_form(self, data: dict, source: str = "history"):
+        self.form_view.load_requisition(
+            data,
+            read_only=session.should_open_requisition_read_only(source),
+        )
         self.stack.setCurrentIndex(PAGE_FORM)
         self.sidebar._highlight("nova")
 

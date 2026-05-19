@@ -1,21 +1,25 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from sqlalchemy import text
-from .database import engine, Base
-from .models import user, client, product, requisition  # garante registro dos modelos no SQLAlchemy
-from .routers import auth, users, clients, products, requisitions
+
+from .database import Base, engine
+from .models import client, product, requisition, user  # garante registro dos modelos no SQLAlchemy
+from .routers import auth, clients, products, requisitions, users
 from .seed import seed_admin
 
 
 def _migrate():
-    """Aplica migrações de colunas adicionadas após criação inicial do banco."""
+    """Aplica migracoes de colunas adicionadas apos criacao inicial do banco."""
     stmts = [
+        "ALTER TABLE users ADD COLUMN sector TEXT",
+        "ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0",
         "ALTER TABLE requisitions ADD COLUMN obs TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",
-        # Migração de status — cobre tanto valores minúsculos quanto nomes em maiúsculo
+        "UPDATE users SET must_change_password = 0 WHERE must_change_password IS NULL",
+        "UPDATE users SET role = 'industria' WHERE role = 'entrega'",
         "UPDATE requisitions SET status = 'em_andamento' WHERE UPPER(status) IN "
         "('RASCUNHO','EMITIDA','RECEBIDA_PRODUCAO','PRONTA','EM_ROTA','AGUARDANDO_RETIRADA','CONCLUIDA')",
         "UPDATE requisitions SET status = 'em_producao' WHERE UPPER(status) = 'EM_FABRICACAO'",
@@ -23,11 +27,11 @@ def _migrate():
         "WHERE status = 'em_producao' AND finalized_at IS NULL",
     ]
     with engine.begin() as conn:
-        for s in stmts:
+        for stmt in stmts:
             try:
-                conn.execute(text(s))
+                conn.execute(text(stmt))
             except Exception:
-                pass   # coluna já existe
+                pass
 
 
 @asynccontextmanager
@@ -39,15 +43,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Ferragens Pinheiro — API de Requisições",
+    title="Ferragens Pinheiro - API de Requisicoes",
     version="1.0.0",
-    description="API REST para gestão de requisições de obras. Compatível com clientes Java via endpoints padrão.",
+    description="API REST para gestao de requisicoes de obras.",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],       # restringir em produção
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -10,6 +10,7 @@ class Role(str, enum.Enum):
     VENDEDOR = "vendedor"
     GERENTE = "gerente"
     PRODUCAO = "producao"
+    INDUSTRIA = "industria"
     ENTREGA = "entrega"
 
 
@@ -23,6 +24,8 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255))
     role: Mapped[Role] = mapped_column(SAEnum(Role), default=Role.VENDEDOR)
     whatsapp: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    sector: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

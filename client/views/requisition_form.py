@@ -1253,7 +1253,7 @@ class RequisitionForm(QWidget):
             "obs":              self.input_obs.toPlainText().strip() or None,
         }
 
-    def load_requisition(self, data: dict):
+    def load_requisition(self, data: dict, read_only: bool = False):
         """Popula o formulário com dados de uma requisição existente."""
         self._set_form_locked(False)
         self.req_id = data.get("id")
@@ -1286,7 +1286,12 @@ class RequisitionForm(QWidget):
         self._canvas_json = (canvas_data or {}).get("json_data") or "{}"
         self._update_canvas_preview()
 
-        if data.get("finalized_at"):
+        if read_only:
+            self._set_form_locked(
+                True,
+                "Requisicao aberta em modo somente leitura para este perfil.",
+            )
+        elif data.get("finalized_at"):
             self._set_form_locked(
                 True,
                 "🏭 Produção recebida ou finalizada. Esta requisição não pode mais ser editada.",

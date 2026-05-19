@@ -42,6 +42,16 @@ def login(code: str, password: str) -> dict:
         return _check(client.post("/auth/login", json={"code": code, "password": password}))
 
 
+def first_access(code: str, password: str) -> dict:
+    with _cli() as client:
+        return _check(client.post("/auth/first-access", json={"code": code, "password": password}))
+
+
+def get_first_access_status(code: str) -> dict:
+    with _cli() as client:
+        return _check(client.get("/auth/first-access-status", params={"code": code}))
+
+
 def get_me() -> dict:
     with _cli() as client:
         return _check(client.get("/auth/me"))
@@ -55,6 +65,11 @@ def list_users() -> list:
 def create_user(data: dict) -> dict:
     with _cli() as client:
         return _check(client.post("/users/", json=data))
+
+
+def bulk_import_users(items: list) -> dict:
+    with _cli() as client:
+        return _check(client.post("/users/import/bulk", json=items, timeout=120))
 
 
 def update_user(user_id: int, data: dict) -> dict:
@@ -92,7 +107,7 @@ def update_client(client_id: int, data: dict) -> dict:
 
 def bulk_import_clients(items: list) -> dict:
     with _cli() as client:
-        return _check(client.post("/clients/bulk-import", json=items, timeout=120))
+        return _check(client.post("/clients/import/bulk", json=items, timeout=120))
 
 
 def list_products(search: str = "", code: str = "", limit: int = 30) -> list:
@@ -107,7 +122,7 @@ def list_products(search: str = "", code: str = "", limit: int = 30) -> list:
 
 def bulk_import_products(items: list) -> dict:
     with _cli() as client:
-        return _check(client.post("/products/bulk-import", json=items, timeout=120))
+        return _check(client.post("/products/import/bulk", json=items, timeout=120))
 
 
 def list_requisitions(status: str = "", search: str = "",
@@ -119,6 +134,16 @@ def list_requisitions(status: str = "", search: str = "",
         if search:
             params["search"] = search
         return _check(client.get("/requisitions/", params=params))
+
+
+def get_management_dashboard() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/dashboard/summary"))
+
+
+def get_order_center() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/order-center/summary"))
 
 
 def get_requisition(req_id: int) -> dict:

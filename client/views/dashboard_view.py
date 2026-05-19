@@ -1,195 +1,532 @@
-"""Dashboard — acesso restrito a gerente e admin."""
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QFrame, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QGraphicsDropShadowEffect,
-)
-from PySide6.QtCore import Qt, QThread, QObject, Signal
-from PySide6.QtGui import QColor
+"""Painel gerencial com indicadores operacionais e alertas."""
 
-from ..core import theme
-from ..core.resolution import res
+from datetime import datetime
+
+from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
 from ..api import client as api
+from ..core import theme
+
+
+def _make_shadow_card(scale: float, background: str, border_color: str | None = None) -> QFrame:
+    card = QFrame()
+    border = border_color or background
+    card.setStyleSheet(
+        f"background:{background}; border:1px solid {border}; border-radius:12px;"
+    )
+    shadow = QGraphicsDropShadowEffect()
+    shadow.setBlurRadius(16)
+    shadow.setOffset(0, 3)
+    shadow.setColor(QColor(0, 0, 0, 30))
+    card.setGraphicsEffect(shadow)
+    return card
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _format_datetime(value: object) -> str:
+    parsed = _parse_datetime(value)
+    if parsed is None:
+        return "-"
+    return parsed.strftime("%d/%m/%Y %H:%M")
+
+
+def _format_date(value: object) -> str:
+    if not value:
+        return "-"
+    text = str(value).strip()
+    if not text:
+        return "-"
+    if "T" in text:
+        return _format_datetime(text)[:10]
+    try:
+        parsed = datetime.fromisoformat(text)
+        return parsed.strftime("%d/%m/%Y")
+    except ValueError:
+        return text[:10]
+
+
+def _format_duration(seconds: object) -> str:
+    if seconds in (None, "", "-"):
+        return "-"
+    try:
+        total_seconds = max(0, int(seconds))
+    except (TypeError, ValueError):
+        return "-"
+
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+
+    minutes, _ = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    return " ".join(parts[:2]) or "0m"
+
+
+def _format_waiting_minutes(minutes: object) -> str:
+    try:
+        total_minutes = max(0, int(minutes))
+    except (TypeError, ValueError):
+        return "-"
+
+    if total_minutes < 60:
+        return f"{total_minutes} min"
+
+    hours, remaining_minutes = divmod(total_minutes, 60)
+    if hours < 24:
+        return f"{hours}h {remaining_minutes:02d}m"
+
+    days, remaining_hours = divmod(hours, 24)
+    return f"{days}d {remaining_hours:02d}h"
 
 
 class DashWorker(QObject):
-    result   = Signal(list)
-    error    = Signal(str)
+    result = Signal(object)
+    error = Signal(str)
     finished = Signal()
 
     def run(self):
         try:
-            self.result.emit(api.list_requisitions(limit=200))
-        except Exception as e:
-            self.error.emit(str(e))
+            self.result.emit(api.get_management_dashboard())
+        except api.APIError as exc:
+            self.error.emit(exc.detail)
+        except Exception as exc:
+            self.error.emit(str(exc))
         finally:
             self.finished.emit()
-
-
-def _card(color: str, title: str, value: str, scale: float) -> QFrame:
-    card = QFrame()
-    shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(12)
-    shadow.setOffset(0, 3)
-    shadow.setColor(QColor(0, 0, 0, 25))
-    card.setGraphicsEffect(shadow)
-    card.setStyleSheet(
-        f"background:{color}; border-radius:10px;"
-    )
-    layout = QVBoxLayout(card)
-    layout.setContentsMargins(max(14,int(18*scale)), max(12,int(16*scale)),
-                               max(14,int(18*scale)), max(12,int(16*scale)))
-
-    lbl_title = QLabel(title.upper())
-    lbl_title.setStyleSheet(
-        f"color:rgba(255,255,255,0.85); font-size:{max(8,int(9*scale))}pt;"
-        f"font-weight:bold; border:none; background:transparent;"
-    )
-    lbl_val = QLabel(value)
-    lbl_val.setStyleSheet(
-        f"color:#fff; font-size:{max(20,int(26*scale))}pt;"
-        f"font-weight:bold; border:none; background:transparent;"
-    )
-    layout.addWidget(lbl_title)
-    layout.addWidget(lbl_val)
-    return card
 
 
 class DashboardView(QWidget):
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
-        self._threads: list = []
+        self._threads: list[tuple[QThread, QObject]] = []
+        self._metric_labels: dict[str, QLabel] = {}
         self._setup_ui()
         self.refresh()
 
     def _setup_ui(self):
         s = self.scale
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(max(12,int(16*s)), max(12,int(16*s)),
-                                   max(12,int(16*s)), max(12,int(16*s)))
-        layout.setSpacing(max(12,int(16*s)))
+        root = QVBoxLayout(self)
+        root.setContentsMargins(max(12, int(16 * s)), max(12, int(16 * s)),
+                                max(12, int(16 * s)), max(12, int(16 * s)))
+        root.setSpacing(max(10, int(12 * s)))
 
-        title = QLabel("📊 DASHBOARD")
+        header = QHBoxLayout()
+        header.setSpacing(max(8, int(10 * s)))
+
+        title_col = QVBoxLayout()
+        title = QLabel("PAINEL GERENCIAL")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
         )
-        layout.addWidget(title)
+        subtitle = QLabel(
+            "Acompanhe producao, prazos e alertas em uma unica tela."
+        )
+        subtitle.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+        )
+        subtitle.setWordWrap(True)
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        header.addLayout(title_col, 1)
 
-        # Cards de contagem
-        self.cards_layout = QGridLayout()
-        self.cards_layout.setSpacing(max(10,int(12*s)))
-        layout.addLayout(self.cards_layout)
+        header_right = QVBoxLayout()
+        header_right.setSpacing(max(4, int(6 * s)))
+        self.updated_label = QLabel("Atualizando dados...")
+        self.updated_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.updated_label.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+        )
+        self.refresh_btn = QPushButton("ATUALIZAR")
+        self.refresh_btn.setFixedHeight(max(32, int(36 * s)))
+        self.refresh_btn.setStyleSheet(theme.secondary_btn_style(s))
+        self.refresh_btn.clicked.connect(self.refresh)
+        header_right.addWidget(self.updated_label)
+        header_right.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignRight)
+        header.addLayout(header_right)
 
-        self._stat_cards: dict[str, QLabel] = {}
+        root.addLayout(header)
+
+        self.error_label = QLabel("")
+        self.error_label.hide()
+        self.error_label.setWordWrap(True)
+        self.error_label.setStyleSheet(
+            f"background:rgba(239, 68, 68, 0.12); color:{theme.DANGER};"
+            f"border:1px solid rgba(239, 68, 68, 0.4); border-radius:8px;"
+            f"padding:10px 12px; font-size:{max(8, int(9 * s))}pt;"
+        )
+        root.addWidget(self.error_label)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        root.addWidget(scroll, 1)
+
+        content = QWidget()
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(max(12, int(14 * s)))
+
+        metrics = QGridLayout()
+        metrics.setHorizontalSpacing(max(10, int(12 * s)))
+        metrics.setVerticalSpacing(max(10, int(12 * s)))
+        layout.addLayout(metrics)
+
         card_defs = [
-            ("total",         theme.PRIMARY,                       "Total de Requisições"),
-            ("em_andamento",  theme.STATUS_COLORS["em_andamento"], "Em Andamento"),
-            ("aguardando_recebimento", theme.STATUS_COLORS["aguardando_recebimento"], "Aguardando Recebimento"),
-            ("em_producao",   theme.STATUS_COLORS["em_producao"],  "Em Produção"),
-            ("cancelada",     theme.STATUS_COLORS["cancelada"],    "Canceladas"),
+            ("pedidos_em_producao", theme.STATUS_COLORS["em_producao"], "PEDIDOS EM PRODUCAO", "Requisicoes recebidas pela producao."),
+            ("pedidos_em_atraso", theme.DANGER, "PEDIDOS EM ATRASO", "Pedidos abertos com prazo vencido."),
+            ("pedidos_finalizados_hoje", theme.SUCCESS, "PEDIDOS FINALIZADOS HOJE", "Finalizacoes registradas no dia."),
+            ("requisicoes_feitas_no_dia", theme.PRIMARY, "REQUISICOES FEITAS NO DIA", "Novas requisicoes criadas hoje."),
+            ("producao_pinheiro_industria", "#0EA5E9", "PRODUCAO DA PINHEIRO INDUSTRIA", "Fila ativa enviada para esse destino."),
+            ("producao_ar", "#14B8A6", "PRODUCAO DA A&R", "Fila ativa enviada para esse destino."),
+            ("pedidos_sem_confirmacao_1h", "#F97316", "SEM CONFIRMACAO DE RECEBIMENTO", "Aguardando retorno ha mais de 1 hora."),
+            ("tempo_medio_finalizacao_segundos", theme.SIDEBAR_ACTIVE, "TEMPO MEDIO DE FINALIZACAO", "Media entre recebimento e finalizacao."),
         ]
 
-        for i, (key, color, label) in enumerate(card_defs):
-            card = QFrame()
-            shadow = QGraphicsDropShadowEffect()
-            shadow.setBlurRadius(12)
-            shadow.setOffset(0, 3)
-            shadow.setColor(QColor(0, 0, 0, 25))
-            card.setGraphicsEffect(shadow)
-            card.setStyleSheet(f"background:{color}; border-radius:10px;")
-            cl = QVBoxLayout(card)
-            cl.setContentsMargins(max(14,int(18*s)), max(12,int(16*s)),
-                                   max(14,int(18*s)), max(12,int(16*s)))
-            lbl_t = QLabel(label.upper())
-            lbl_t.setStyleSheet(
-                f"color:rgba(255,255,255,0.85); font-size:{max(7,int(9*s))}pt;"
-                f"font-weight:bold; border:none; background:transparent;"
+        for index, (key, color, title_text, helper_text) in enumerate(card_defs):
+            row = index // 4
+            col = index % 4
+            metrics.addWidget(
+                self._build_metric_card(color, title_text, helper_text, key),
+                row,
+                col,
             )
-            lbl_v = QLabel("—")
-            lbl_v.setStyleSheet(
-                f"color:#fff; font-size:{max(18,int(24*s))}pt;"
-                f"font-weight:bold; border:none; background:transparent;"
-            )
-            cl.addWidget(lbl_t)
-            cl.addWidget(lbl_v)
-            self._stat_cards[key] = lbl_v
-            self.cards_layout.addWidget(card, 0, i)   # 4 cards numa linha só
 
-        # Tabela de requisições recentes
-        lbl_rec = QLabel("🧾 Requisições Recentes")
-        lbl_rec.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(11,int(13*s))}pt; font-weight:bold;"
+        secondary_row = QHBoxLayout()
+        secondary_row.setSpacing(max(10, int(12 * s)))
+        secondary_row.addWidget(
+            self._build_section_card(
+                "VENDEDORES QUE MAIS FAZEM REQUISICAO",
+                "Ranking geral por volume de requisicoes.",
+                self._build_top_vendors_table(),
+            ),
+            1,
         )
-        layout.addWidget(lbl_rec)
+        secondary_row.addWidget(
+            self._build_section_card(
+                "PEDIDOS SEM CONFIRMACAO DE RECEBIMENTO",
+                "Pedidos aguardando retorno da producao por mais de 1 hora.",
+                self._build_alerts_table(),
+            ),
+            1,
+        )
+        layout.addLayout(secondary_row)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["PED", "CLIENTE", "DATA", "STATUS"])
-        self.table.verticalHeader().setVisible(False)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table.setStyleSheet(
-            f"QTableWidget {{ border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-            f"font-size:{max(9,int(10*s))}pt; }}"
-            f"QHeaderView::section {{ background:{theme.TABLE_HEADER_BG}; color:#fff;"
-            f"padding:6px; font-weight:bold; border:none; border-right:1px solid {theme.TABLE_BORDER}; }}"
+        layout.addWidget(
+            self._build_section_card(
+                "ULTIMAS REQUISICOES",
+                "Visao rapida das requisicoes mais recentes do sistema.",
+                self._build_recent_table(),
+            )
+        )
+        layout.addStretch()
+
+    def _build_metric_card(self, color: str, title: str, helper_text: str, key: str) -> QFrame:
+        s = self.scale
+        card = _make_shadow_card(s, color)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(max(14, int(18 * s)), max(12, int(16 * s)),
+                                  max(14, int(18 * s)), max(12, int(16 * s)))
+        layout.setSpacing(max(4, int(6 * s)))
+
+        title_label = QLabel(title)
+        title_label.setWordWrap(True)
+        title_label.setStyleSheet(
+            f"color:rgba(255,255,255,0.88); font-size:{max(7, int(9 * s))}pt;"
+            f"font-weight:bold; background:transparent; border:none;"
+        )
+
+        value_label = QLabel("-")
+        value_label.setStyleSheet(
+            f"color:#fff; font-size:{max(18, int(23 * s))}pt;"
+            f"font-weight:bold; background:transparent; border:none;"
+        )
+        value_label.setWordWrap(True)
+
+        helper_label = QLabel(helper_text)
+        helper_label.setWordWrap(True)
+        helper_label.setStyleSheet(
+            f"color:rgba(255,255,255,0.78); font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; border:none;"
+        )
+
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        layout.addWidget(helper_label)
+        layout.addStretch()
+
+        self._metric_labels[key] = value_label
+        return card
+
+    def _build_section_card(self, title: str, subtitle: str, body: QWidget) -> QFrame:
+        s = self.scale
+        card = _make_shadow_card(s, theme.CARD_BG, theme.BORDER_COLOR)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(max(14, int(16 * s)), max(12, int(14 * s)),
+                                  max(14, int(16 * s)), max(12, int(14 * s)))
+        layout.setSpacing(max(8, int(10 * s)))
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+        )
+
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setWordWrap(True)
+        subtitle_label.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
+        )
+
+        layout.addWidget(title_label)
+        layout.addWidget(subtitle_label)
+        layout.addWidget(body, 1)
+        return card
+
+    def _create_table(self, headers: list[str], stretch_columns: set[int]) -> QTableWidget:
+        s = self.scale
+        table = QTableWidget(0, len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.setAlternatingRowColors(True)
+        table.setWordWrap(False)
+
+        header = table.horizontalHeader()
+        for index in range(len(headers)):
+            mode = (
+                QHeaderView.ResizeMode.Stretch
+                if index in stretch_columns
+                else QHeaderView.ResizeMode.ResizeToContents
+            )
+            header.setSectionResizeMode(index, mode)
+
+        table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:7px;"
+            f"  font-weight:bold; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"  border-right:1px solid {theme.TABLE_BORDER};"
+            f"}}"
+            f"QTableWidget::item {{ padding:4px; }}"
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
         )
-        layout.addWidget(self.table)
+        return table
+
+    def _build_top_vendors_table(self) -> QTableWidget:
+        self.top_vendors_table = self._create_table(
+            ["#", "VENDEDOR", "REQUISICOES"],
+            {1},
+        )
+        self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
+        return self.top_vendors_table
+
+    def _build_alerts_table(self) -> QTableWidget:
+        self.alerts_table = self._create_table(
+            ["PED", "CLIENTE", "DESTINO", "AGUARDANDO"],
+            {1},
+        )
+        self.alerts_table.setMinimumHeight(max(220, int(250 * self.scale)))
+        return self.alerts_table
+
+    def _build_recent_table(self) -> QTableWidget:
+        self.recent_table = self._create_table(
+            ["PED", "CLIENTE", "VENDEDOR", "EMISSAO", "STATUS", "DESTINO"],
+            {1, 2},
+        )
+        self.recent_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        return self.recent_table
 
     def refresh(self):
+        self._set_loading(True)
+        self.error_label.hide()
+
         worker = DashWorker()
         thread = QThread()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.result.connect(self._populate)
+        worker.error.connect(self._show_error)
         worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        thread.finished.connect(lambda: self._set_loading(False))
         thread.start()
         self._threads.append((thread, worker))
 
-    def _populate(self, reqs: list):
-        # Contagens
-        counts: dict[str, int] = {}
-        for r in reqs:
-            s = r.get("status", "")
-            counts[s] = counts.get(s, 0) + 1
+    def _cleanup_thread(self, thread: QThread, worker: QObject):
+        self._threads = [pair for pair in self._threads if pair != (thread, worker)]
 
-        self._stat_cards["total"].setText(str(len(reqs)))
-        for key, lbl in self._stat_cards.items():
-            if key != "total":
-                lbl.setText(str(counts.get(key, 0)))
+    def _set_loading(self, loading: bool):
+        self.refresh_btn.setEnabled(not loading)
+        if loading:
+            self.updated_label.setText("Atualizando dados...")
 
-        # Tabela — 20 mais recentes
-        self.table.setRowCount(0)
-        for req in reqs[:20]:
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-            client_code = (req.get("client_code") or "").strip()
-            client_name = (req.get("client_name") or "").strip()
-            client_label = client_name or "—"
-            if client_code and client_name:
-                client_label = f"{client_code} - {client_name}"
-            elif client_code:
-                client_label = client_code
+    def _show_error(self, message: str):
+        self.error_label.setText(f"Nao foi possivel carregar o painel.\n\n{message}")
+        self.error_label.show()
 
-            vals = [
-                req.get("ped_number", ""),
-                client_label,
-                str(req.get("emission_date", ""))[:10],
-                req.get("status", ""),
+    def _populate(self, payload: object):
+        if not isinstance(payload, dict):
+            self._show_error("Resposta invalida do servidor.")
+            return
+
+        stats = payload.get("stats") or {}
+        if not isinstance(stats, dict):
+            stats = {}
+
+        for key, label in self._metric_labels.items():
+            value = stats.get(key)
+            if key == "tempo_medio_finalizacao_segundos":
+                label.setText(_format_duration(value))
+            else:
+                label.setText(str(value if value is not None else 0))
+
+        self.updated_label.setText(
+            f"Atualizado em {_format_datetime(payload.get('generated_at'))}"
+        )
+
+        self._fill_top_vendors_table(payload.get("top_vendors") or [])
+        self._fill_alerts_table(payload.get("receipt_alerts") or [])
+        self._fill_recent_table(payload.get("recent_requisitions") or [])
+
+    def _fill_top_vendors_table(self, rows: object):
+        table = self.top_vendors_table
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, "Nenhum vendedor encontrado.")
+            return
+
+        for index, row in enumerate(items, start=1):
+            if not isinstance(row, dict):
+                continue
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(index),
+                str(row.get("vendor_name") or "-"),
+                str(row.get("requisition_count") or 0),
             ]
-            for col, val in enumerate(vals):
-                if col == 3:
-                    lbl = QLabel(theme.STATUS_LABELS.get(val, val))
-                    color = theme.STATUS_COLORS.get(val, "#6B7280")
-                    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    lbl.setStyleSheet(
-                        f"background:{color}; color:#fff; border-radius:4px;"
-                        f"font-weight:bold; padding:2px 6px; font-size:{max(8,int(9*self.scale))}pt;"
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(line, col, item)
+
+    def _fill_alerts_table(self, rows: object):
+        table = self.alerts_table
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, "Nenhum pedido aguardando confirmacao ha mais de 1 hora.")
+            return
+
+        for row in items:
+            if not isinstance(row, dict):
+                continue
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(row.get("ped_number") or "-"),
+                str(row.get("client_name") or "-"),
+                str(row.get("destination") or "-"),
+                _format_waiting_minutes(row.get("waiting_minutes")),
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(line, col, item)
+
+    def _fill_recent_table(self, rows: object):
+        table = self.recent_table
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, "Nenhuma requisicao recente encontrada.")
+            return
+
+        for row in items:
+            if not isinstance(row, dict):
+                continue
+
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(row.get("ped_number") or "-"),
+                str(row.get("client_name") or "-"),
+                str(row.get("vendor_name") or "-"),
+                _format_date(row.get("emission_date")),
+                str(row.get("status") or "-"),
+                str(row.get("destination") or "-"),
+            ]
+
+            for col, value in enumerate(values):
+                if col == 4:
+                    status = str(row.get("status") or "")
+                    label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
+                    color = theme.STATUS_COLORS.get(status, "#64748B")
+                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    label.setStyleSheet(
+                        f"background:{color}; color:#fff; border-radius:5px;"
+                        f"font-weight:bold; padding:3px 8px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
-                    self.table.setCellWidget(row, col, lbl)
+                    table.setCellWidget(line, col, label)
                 else:
-                    item = QTableWidgetItem(str(val))
+                    item = QTableWidgetItem(value)
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.table.setItem(row, col, item)
+                    table.setItem(line, col, item)
+
+    def _set_empty_message(self, table: QTableWidget, message: str):
+        table.setRowCount(1)
+        table.setSpan(0, 0, 1, table.columnCount())
+        item = QTableWidgetItem(message)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        table.setItem(0, 0, item)

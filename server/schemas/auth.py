@@ -6,6 +6,16 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class FirstAccessRequest(BaseModel):
+    code: str
+    password: str
+
+
+class FirstAccessStatusResponse(BaseModel):
+    code: str
+    first_access_required: bool
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
