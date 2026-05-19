@@ -721,13 +721,15 @@ def update_status(
     if not _can_edit_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
     old_status = req.status
-    req.status = data.status
-    _apply_production_transition(req, data)
+    if _parse_production_note(data.note):
+        _apply_production_transition(req, data)
+    else:
+        req.status = data.status
 
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=old_status,
-        new_status=data.status,
+        new_status=req.status,
         changed_by_id=current_user.id,
         note=data.note,
     ))
