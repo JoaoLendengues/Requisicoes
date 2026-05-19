@@ -16,7 +16,7 @@ from enum import Enum
 from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QEvent
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPen, QBrush,
-    QPixmap, QKeySequence, QAction, QCursor,
+    QPixmap, QKeySequence, QAction, QCursor, QTransform,
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QToolBar, QGraphicsScene,
@@ -56,23 +56,23 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
     pen = QPen(QColor(pen_d.get("color", "#000000")), pen_d.get("width", 2))
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setStyle(_STR_TO_STYLE.get(pen_d.get("style", "solid"), Qt.PenStyle.SolidLine))
+    rot = d.get("rotation", 0.0)
+
+    item = None
 
     if t == "line":
         item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
         item.setPen(pen)
-        return item
 
-    if t == "rect":
+    elif t == "rect":
         item = QGraphicsRectItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
-        return item
 
-    if t == "ellipse":
+    elif t == "ellipse":
         item = QGraphicsEllipseItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
-        return item
 
-    if t == "path":
+    elif t == "path":
         path = QPainterPath()
         points = d.get("points", [])
         if points:
@@ -81,29 +81,26 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
                 path.lineTo(QPointF(pt[0], pt[1]))
         item = QGraphicsPathItem(path)
         item.setPen(pen)
-        return item
 
-    if t == "text":
+    elif t == "text":
         item = QGraphicsTextItem(d.get("text", ""))
         item.setPos(QPointF(d["x"], d["y"]))
         item.setDefaultTextColor(QColor(d.get("color", "#000000")))
         font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
         item.setFont(font)
-        return item
 
-    if t == "image":
+    elif t == "image":
         path = d.get("path", "")
         if path and os.path.exists(path):
             pix = QPixmap(path)
             item = QGraphicsPixmapItem(pix)
             item.setPos(QPointF(d["x"], d["y"]))
             item.setData(0, {"type": "image", "path": path})
-            return item
 
-    if item and d.get("rotation"):
-        item.setRotation(d["rotation"])
+    if item is not None and rot:
+        item.setRotation(rot)
 
-    return None
+    return item
 
 
 def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False) -> dict:
@@ -138,10 +135,18 @@ class DrawingScene(QGraphicsScene):
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
+        # Estado da alça de rotação livre
+        self._rotating_item: QGraphicsItem | None = None
+        self._rotate_start_angle: float = 0.0
+        self._rotate_start_rotation: float = 0.0
+        self.selectionChanged.connect(self._on_selection_changed)
 
     # ── Grade de fundo (visual only — não serializada) ───────────────────────
     GRID_MINOR = 20          # espaçamento da grade fina (px)
     GRID_MAJOR = 100         # espaçamento da grade grossa (a cada 5 linhas)
+    HANDLE_R   = 8           # raio da alça de rotação (px tela)
+    HANDLE_OFF = 28          # distância acima do item (px tela)
+    HANDLE_HIT = 14          # raio de clique da alça (px tela)
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
@@ -168,6 +173,100 @@ class DrawingScene(QGraphicsScene):
             painter.setPen(pen_major if (y % self.GRID_MAJOR == 0) else pen_minor)
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
             y += step
+
+    # ── Alça de rotação livre ─────────────────────────────────────────────────
+    def _view(self):
+        """Retorna a primeira view associada à cena."""
+        views = self.views()
+        return views[0] if views else None
+
+    def _handle_screen_pos(self, item: QGraphicsItem) -> QPointF:
+        """Posição da alça de rotação em coordenadas de viewport (px fixos)."""
+        view = self._view()
+        if view is None:
+            return QPointF()
+        br = item.boundingRect()
+        top_center = item.mapToScene(QPointF(br.center().x(), br.top()))
+        vp = view.mapFromScene(top_center)
+        return QPointF(vp.x(), vp.y() - self.HANDLE_OFF)
+
+    def _rotation_item_at(self, pos_scene: QPointF) -> QGraphicsItem | None:
+        """Retorna o item selecionado cuja alça de rotação cobre pos_scene."""
+        if self.cw.tool != Tool.SELECT:
+            return None
+        view = self._view()
+        if view is None:
+            return None
+        vp = QPointF(view.mapFromScene(pos_scene))
+        for item in self.selectedItems():
+            hp = self._handle_screen_pos(item)
+            if math.hypot(vp.x() - hp.x(), vp.y() - hp.y()) <= self.HANDLE_HIT:
+                return item
+        return None
+
+    def _on_selection_changed(self):
+        """Sincroniza spin_font; remove edição inline de textos deselecionados."""
+        selected = set(self.selectedItems())
+        # Remove modo de edição inline de textos que saíram da seleção
+        for item in self.items():
+            if isinstance(item, QGraphicsTextItem) and item not in selected:
+                item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        # Sincroniza tamanho da fonte com o primeiro texto selecionado
+        for item in selected:
+            if isinstance(item, QGraphicsTextItem):
+                size = item.font().pointSize()
+                if size > 0:
+                    self.cw.spin_font.blockSignals(True)
+                    self.cw.spin_font.setValue(size)
+                    self.cw.spin_font.blockSignals(False)
+                return
+
+    def drawForeground(self, painter: QPainter, rect: QRectF):
+        """Desenha alças de rotação sobre os itens selecionados (coords de tela)."""
+        super().drawForeground(painter, rect)
+        if self.cw.tool != Tool.SELECT:
+            return
+        selected = self.selectedItems()
+        if not selected:
+            return
+        view = self._view()
+        if view is None:
+            return
+
+        painter.save()
+        painter.resetTransform()   # agora em coords de viewport (px fixos, sem zoom)
+
+        r = self.HANDLE_R
+        for item in selected:
+            br = item.boundingRect()
+            top_center = item.mapToScene(QPointF(br.center().x(), br.top()))
+            anchor = QPointF(view.mapFromScene(top_center))
+            hp = QPointF(anchor.x(), anchor.y() - self.HANDLE_OFF)
+
+            # Braço tracejado do item até a alça
+            arm_pen = QPen(QColor("#2D7FF9"), 1.5, Qt.PenStyle.DashLine)
+            painter.setPen(arm_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawLine(anchor, hp)
+
+            # Círculo azul
+            painter.setPen(QPen(QColor("#1A5FC8"), 1.5))
+            painter.setBrush(QBrush(QColor(45, 127, 249, 200)))
+            painter.drawEllipse(hp, r, r)
+
+            # Símbolo ↻ no centro
+            painter.setPen(QPen(QColor("#ffffff")))
+            icon_font = QFont()
+            icon_font.setPointSize(7)
+            icon_font.setBold(True)
+            painter.setFont(icon_font)
+            painter.drawText(
+                QRectF(hp.x() - r, hp.y() - r, r * 2, r * 2),
+                Qt.AlignmentFlag.AlignCenter,
+                "↻",
+            )
+
+        painter.restore()
 
     def _pen(self) -> QPen:
         p = QPen(QColor(self.cw.color), self.cw.pen_width)
@@ -201,6 +300,19 @@ class DrawingScene(QGraphicsScene):
     def mousePressEvent(self, event):
         tool = self.cw.tool
         pos  = event.scenePos()
+
+        # Verificar alça de rotação antes de qualquer outra lógica (SELECT)
+        if tool == Tool.SELECT and event.button() == Qt.MouseButton.LeftButton:
+            hit = self._rotation_item_at(pos)
+            if hit:
+                self._rotating_item = hit
+                center = hit.mapToScene(hit.boundingRect().center())
+                self._rotate_start_angle = math.atan2(
+                    pos.y() - center.y(), pos.x() - center.x()
+                )
+                self._rotate_start_rotation = hit.rotation()
+                event.accept()
+                return
 
         if tool == Tool.SELECT:
             super().mousePressEvent(event)
@@ -249,6 +361,18 @@ class DrawingScene(QGraphicsScene):
         tool = self.cw.tool
         pos  = event.scenePos()
 
+        # Arrastar alça → rotação livre
+        if self._rotating_item is not None:
+            center = self._rotating_item.mapToScene(
+                self._rotating_item.boundingRect().center()
+            )
+            angle = math.atan2(pos.y() - center.y(), pos.x() - center.x())
+            delta = math.degrees(angle - self._rotate_start_angle)
+            self._rotating_item.setRotation(self._rotate_start_rotation + delta)
+            self.update()
+            event.accept()
+            return
+
         if tool == Tool.ERASER and event.buttons() & Qt.MouseButton.LeftButton:
             self._erase_at(pos)
             return
@@ -275,6 +399,14 @@ class DrawingScene(QGraphicsScene):
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
 
     def mouseReleaseEvent(self, event):
+        # Finalizar rotação livre
+        if self._rotating_item is not None:
+            self._rotating_item = None
+            self.cw.changed.emit()
+            self.update()
+            event.accept()
+            return
+
         tool = self.cw.tool
         pos  = event.scenePos()
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
@@ -310,6 +442,20 @@ class DrawingScene(QGraphicsScene):
                 self.removeItem(item)
         else:
             super().keyPressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        """Duplo clique em texto → ativa edição inline."""
+        if (self.cw.tool == Tool.SELECT
+                and event.button() == Qt.MouseButton.LeftButton):
+            item = self.itemAt(event.scenePos(), QTransform())
+            if isinstance(item, QGraphicsTextItem):
+                item.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextEditorInteraction
+                )
+                item.setFocus()
+                event.accept()
+                return
+        super().mouseDoubleClickEvent(event)
 
 
 # ── View com pan por botão do meio + Space+arraste ───────────────────────────
@@ -520,7 +666,7 @@ class DrawingCanvas(QWidget):
         self.spin_font.setSuffix(" pt")
         self.spin_font.setFixedWidth(max(58, int(68 * s)))
         self.spin_font.setFixedHeight(fh)
-        self.spin_font.valueChanged.connect(lambda v: setattr(self, "font_size", v))
+        self.spin_font.valueChanged.connect(self._on_font_size_changed)
         row1.addWidget(self.spin_font)
 
         row1.addStretch()
@@ -591,7 +737,8 @@ class DrawingCanvas(QWidget):
         # ── Dica de teclado ──────────────────────────────────────────────────
         hint = QLabel(
             "✨ Shift = traço reto  |  Del = apagar seleção  |  "
-            "Scroll = zoom  |  Botão do meio / Space+arrastar = mover tela"
+            "Scroll = zoom  |  Botão do meio / Space+drag = mover  |  "
+            "Selecionar → alça ↻ azul = girar livremente  |  2× clique = editar texto"
         )
         hint.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
@@ -695,6 +842,18 @@ class DrawingCanvas(QWidget):
         angle = self.spin_rotate.value()
         for item in self.scene.selectedItems():
             item.setRotation(item.rotation() + angle)
+        self.changed.emit()
+
+    def _on_font_size_changed(self, v: int):
+        """Atualiza font_size e aplica nos textos selecionados em tempo real."""
+        self.font_size = v
+        if not hasattr(self, "scene"):
+            return
+        for item in self.scene.selectedItems():
+            if isinstance(item, QGraphicsTextItem):
+                f = item.font()
+                f.setPointSize(v)
+                item.setFont(f)
         self.changed.emit()
 
     def _pick_color(self):
