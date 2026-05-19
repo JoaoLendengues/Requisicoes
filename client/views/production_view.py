@@ -127,10 +127,11 @@ class ProductionView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
+        page_bg = "#7CAFFC"
         self.setObjectName("productionView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
-            f"QWidget#productionView {{ background:{theme.PRIMARY_LIGHT}; }}"
+            f"QWidget#productionView {{ background:{page_bg}; }}"
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(max(12, int(16 * s)), max(12, int(16 * s)),

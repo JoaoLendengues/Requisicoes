@@ -146,10 +146,11 @@ class DashboardView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
+        page_bg = "#7CAFFC"
         self.setObjectName("dashboardView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
-            f"QWidget#dashboardView {{ background:{theme.PRIMARY_LIGHT}; }}"
+            f"QWidget#dashboardView {{ background:{page_bg}; }}"
         )
         root = QVBoxLayout(self)
         root.setContentsMargins(max(12, int(16 * s)), max(12, int(16 * s)),
@@ -206,10 +207,10 @@ class DashboardView(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet(
-            f"QScrollArea {{ border:none; background:{theme.PRIMARY_LIGHT}; }}"
+            f"QScrollArea {{ border:none; background:{page_bg}; }}"
         )
         scroll.viewport().setStyleSheet(
-            f"background:{theme.PRIMARY_LIGHT}; border:none;"
+            f"background:{page_bg}; border:none;"
         )
         root.addWidget(scroll, 1)
 
@@ -217,7 +218,7 @@ class DashboardView(QWidget):
         content.setObjectName("dashboardContent")
         content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         content.setStyleSheet(
-            f"QWidget#dashboardContent {{ background:{theme.PRIMARY_LIGHT}; }}"
+            f"QWidget#dashboardContent {{ background:{page_bg}; }}"
         )
         scroll.setWidget(content)
 
