@@ -29,7 +29,7 @@ def main():
     )
 
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
+    app.setStyle("Windows")
     app.setApplicationName("Requisições — Ferragens Pinheiro")
     app.setOrganizationName("Pinheiro Ferragens")
 
