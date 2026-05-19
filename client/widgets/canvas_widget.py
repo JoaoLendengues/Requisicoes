@@ -5,6 +5,7 @@ Canvas de desenho técnico com suporte a:
 - Inserção de imagem (PNG, JPG, BMP)
 - Referência de arquivo PDF (exibe nome, abre externamente)
 - Undo / Redo (Ctrl+Z / Ctrl+Y)
+- Ctrl+T: Free Transform (bounding box + arrastar cantos para girar)
 - Delete para apagar seleção
 - Serialização completa para JSON (salvo no banco)
 """
@@ -129,32 +130,35 @@ def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False
 class DrawingScene(QGraphicsScene):
     def __init__(self, canvas_widget):
         super().__init__()
-        self.cw = canvas_widget          # referência ao widget pai
+        self.cw = canvas_widget
         self._start: QPointF | None = None
         self._preview_item: QGraphicsItem | None = None
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
-        # Estado da alça de rotação livre
-        self._rotating_item: QGraphicsItem | None = None
-        self._rotate_start_angle: float = 0.0
-        self._rotate_start_rotation: float = 0.0
+
+        # Estado do Free Transform (Ctrl+T)
+        self._ft_active: bool = False
+        self._ft_items: list = []
+        self._ft_is_rotating: bool = False
+        self._ft_rotate_pivot: QPointF | None = None
+        self._ft_rotate_start: float = 0.0
+        self._ft_start_rotations: list = []
+
         self.selectionChanged.connect(self._on_selection_changed)
 
     # ── Grade de fundo (visual only — não serializada) ───────────────────────
-    GRID_MINOR = 20          # espaçamento da grade fina (px)
-    GRID_MAJOR = 100         # espaçamento da grade grossa (a cada 5 linhas)
-    HANDLE_R   = 8           # raio da alça de rotação (px tela)
-    HANDLE_OFF = 28          # distância acima do item (px tela)
-    HANDLE_HIT = 14          # raio de clique da alça (px tela)
+    GRID_MINOR = 20
+    GRID_MAJOR = 100
+    # Tamanho dos handles do bounding box do Free Transform
+    FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
+    FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
 
-        # Linhas menores
         pen_minor = QPen(QColor("#E0E8F4"), 0.7)
-        pen_minor.setCosmetic(True)          # não escala com zoom
-        # Linhas maiores (a cada 5 células)
+        pen_minor.setCosmetic(True)
         pen_major = QPen(QColor("#B8CCE8"), 1.2)
         pen_major.setCosmetic(True)
 
@@ -174,44 +178,74 @@ class DrawingScene(QGraphicsScene):
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
             y += step
 
-    # ── Alça de rotação livre ─────────────────────────────────────────────────
+    # ── Free Transform ────────────────────────────────────────────────────────
     def _view(self):
-        """Retorna a primeira view associada à cena."""
         views = self.views()
         return views[0] if views else None
 
-    def _handle_screen_pos(self, item: QGraphicsItem) -> QPointF:
-        """Posição da alça de rotação em coordenadas de viewport (px fixos)."""
+    def _ft_bounding_rect_vp(self) -> QRectF:
+        """Bounding rect combinado de _ft_items em coordenadas de viewport."""
         view = self._view()
-        if view is None:
-            return QPointF()
-        br = item.boundingRect()
-        top_center = item.mapToScene(QPointF(br.center().x(), br.top()))
-        vp = view.mapFromScene(top_center)
-        return QPointF(vp.x(), vp.y() - self.HANDLE_OFF)
+        if not view or not self._ft_items:
+            return QRectF()
+        combined = QRectF()
+        for item in self._ft_items:
+            sr = item.mapToScene(item.boundingRect()).boundingRect()
+            combined = sr if combined.isNull() else combined.united(sr)
+        tl = view.mapFromScene(combined.topLeft())
+        br = view.mapFromScene(combined.bottomRight())
+        return QRectF(tl, br).normalized()
 
-    def _rotation_item_at(self, pos_scene: QPointF) -> QGraphicsItem | None:
-        """Retorna o item selecionado cuja alça de rotação cobre pos_scene."""
+    def _in_rotation_zone_vp(self, vp_pos: QPointF) -> bool:
+        """True se vp_pos está na zona de rotação (perto de um canto, fora do rect)."""
+        vp_rect = self._ft_bounding_rect_vp()
+        if vp_rect.isNull():
+            return False
+        inner = vp_rect.adjusted(
+            -self.FT_HANDLE_SIZE, -self.FT_HANDLE_SIZE,
+             self.FT_HANDLE_SIZE,  self.FT_HANDLE_SIZE
+        )
+        corners = [vp_rect.topLeft(), vp_rect.topRight(),
+                   vp_rect.bottomLeft(), vp_rect.bottomRight()]
+        for c in corners:
+            dist = math.hypot(vp_pos.x() - c.x(), vp_pos.y() - c.y())
+            if dist <= self.FT_CORNER_ZONE and not inner.contains(vp_pos):
+                return True
+        return False
+
+    def _enter_ft(self):
+        """Ativa o Free Transform (Ctrl+T) para os itens selecionados."""
+        if self._ft_active:
+            self._exit_ft()
+            return
+        items = self.selectedItems()
+        if not items:
+            return
         if self.cw.tool != Tool.SELECT:
-            return None
-        view = self._view()
-        if view is None:
-            return None
-        vp = QPointF(view.mapFromScene(pos_scene))
-        for item in self.selectedItems():
-            hp = self._handle_screen_pos(item)
-            if math.hypot(vp.x() - hp.x(), vp.y() - hp.y()) <= self.HANDLE_HIT:
-                return item
-        return None
+            self.cw._set_tool(Tool.SELECT)
+        self._ft_items = list(items)
+        # Pivot de rotação = centro do bounding rect de cada item
+        for item in self._ft_items:
+            item.setTransformOriginPoint(item.boundingRect().center())
+        self._ft_active = True
+        self._ft_is_rotating = False
+        self.update()
+
+    def _exit_ft(self):
+        """Sai do Free Transform."""
+        self._ft_active = False
+        self._ft_items = []
+        self._ft_is_rotating = False
+        self._ft_rotate_pivot = None
+        self.update()
+        self.cw.changed.emit()
 
     def _on_selection_changed(self):
         """Sincroniza spin_font; remove edição inline de textos deselecionados."""
         selected = set(self.selectedItems())
-        # Remove modo de edição inline de textos que saíram da seleção
         for item in self.items():
             if isinstance(item, QGraphicsTextItem) and item not in selected:
                 item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        # Sincroniza tamanho da fonte com o primeiro texto selecionado
         for item in selected:
             if isinstance(item, QGraphicsTextItem):
                 size = item.font().pointSize()
@@ -222,49 +256,41 @@ class DrawingScene(QGraphicsScene):
                 return
 
     def drawForeground(self, painter: QPainter, rect: QRectF):
-        """Desenha alças de rotação sobre os itens selecionados (coords de tela)."""
+        """Desenha o bounding box do Free Transform quando ativo."""
         super().drawForeground(painter, rect)
-        if self.cw.tool != Tool.SELECT:
-            return
-        selected = self.selectedItems()
-        if not selected:
+        if not self._ft_active or not self._ft_items:
             return
         view = self._view()
         if view is None:
             return
 
         painter.save()
-        painter.resetTransform()   # agora em coords de viewport (px fixos, sem zoom)
+        painter.resetTransform()   # coords de viewport (px fixos)
 
-        r = self.HANDLE_R
-        for item in selected:
-            br = item.boundingRect()
-            top_center = item.mapToScene(QPointF(br.center().x(), br.top()))
-            anchor = QPointF(view.mapFromScene(top_center))
-            hp = QPointF(anchor.x(), anchor.y() - self.HANDLE_OFF)
+        vp_rect = self._ft_bounding_rect_vp()
+        if vp_rect.isNull():
+            painter.restore()
+            return
 
-            # Braço tracejado do item até a alça
-            arm_pen = QPen(QColor("#2D7FF9"), 1.5, Qt.PenStyle.DashLine)
-            painter.setPen(arm_pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawLine(anchor, hp)
+        vr = vp_rect.adjusted(-2, -2, 2, 2)
 
-            # Círculo azul
-            painter.setPen(QPen(QColor("#1A5FC8"), 1.5))
-            painter.setBrush(QBrush(QColor(45, 127, 249, 200)))
-            painter.drawEllipse(hp, r, r)
+        # Bounding box
+        painter.setPen(QPen(QColor("#1A73E8"), 1.5))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(vr)
 
-            # Símbolo ↻ no centro
-            painter.setPen(QPen(QColor("#ffffff")))
-            icon_font = QFont()
-            icon_font.setPointSize(7)
-            icon_font.setBold(True)
-            painter.setFont(icon_font)
-            painter.drawText(
-                QRectF(hp.x() - r, hp.y() - r, r * 2, r * 2),
-                Qt.AlignmentFlag.AlignCenter,
-                "↻",
-            )
+        # Handles nos 4 cantos (quadradinhos brancos com borda azul)
+        hs = self.FT_HANDLE_SIZE
+        painter.setPen(QPen(QColor("#1A73E8"), 1.5))
+        painter.setBrush(QBrush(QColor("#ffffff")))
+        for c in [vr.topLeft(), vr.topRight(), vr.bottomLeft(), vr.bottomRight()]:
+            painter.drawRect(QRectF(c.x() - hs, c.y() - hs, hs * 2, hs * 2))
+
+        # Cruz central
+        cx, cy = vr.center().x(), vr.center().y()
+        painter.setPen(QPen(QColor("#1A73E8"), 1))
+        painter.drawLine(QPointF(cx - 8, cy), QPointF(cx + 8, cy))
+        painter.drawLine(QPointF(cx, cy - 8), QPointF(cx, cy + 8))
 
         painter.restore()
 
@@ -276,7 +302,6 @@ class DrawingScene(QGraphicsScene):
         return p
 
     def _erase_at(self, pos: QPointF):
-        """Remove todos os itens desenhados na posição dada."""
         for item in self.items(pos):
             if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem,
                                   QGraphicsEllipseItem, QGraphicsPathItem,
@@ -287,7 +312,6 @@ class DrawingScene(QGraphicsScene):
                 self.cw.changed.emit()
 
     def _constrain(self, start: QPointF, end: QPointF) -> QPointF:
-        """Restringe a 0°/45°/90° quando Shift está pressionado."""
         dx = end.x() - start.x()
         dy = end.y() - start.y()
         angle = math.degrees(math.atan2(dy, dx))
@@ -301,18 +325,29 @@ class DrawingScene(QGraphicsScene):
         tool = self.cw.tool
         pos  = event.scenePos()
 
-        # Verificar alça de rotação antes de qualquer outra lógica (SELECT)
-        if tool == Tool.SELECT and event.button() == Qt.MouseButton.LeftButton:
-            hit = self._rotation_item_at(pos)
-            if hit:
-                self._rotating_item = hit
-                center = hit.mapToScene(hit.boundingRect().center())
-                self._rotate_start_angle = math.atan2(
-                    pos.y() - center.y(), pos.x() - center.x()
-                )
-                self._rotate_start_rotation = hit.rotation()
-                event.accept()
-                return
+        # Free Transform ativo: verificar zona de rotação nos cantos
+        if self._ft_active and event.button() == Qt.MouseButton.LeftButton:
+            view = self._view()
+            if view:
+                vp_pos = QPointF(view.mapFromScene(pos))
+                if self._in_rotation_zone_vp(vp_pos):
+                    # Calcular pivot (centro do bounding box em scene coords)
+                    vp_rect = self._ft_bounding_rect_vp()
+                    pivot_vp = vp_rect.center()
+                    self._ft_rotate_pivot = view.mapToScene(pivot_vp.toPoint())
+                    self._ft_rotate_start = math.atan2(
+                        pos.y() - self._ft_rotate_pivot.y(),
+                        pos.x() - self._ft_rotate_pivot.x(),
+                    )
+                    self._ft_start_rotations = [item.rotation() for item in self._ft_items]
+                    self._ft_is_rotating = True
+                    event.accept()
+                    return
+                # Clique fora da área do bounding box → sair do ft
+                outer = self._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20)
+                if not outer.contains(vp_pos):
+                    self._exit_ft()
+                    # não retorna — deixa a seleção normal acontecer
 
         if tool == Tool.SELECT:
             super().mousePressEvent(event)
@@ -361,14 +396,15 @@ class DrawingScene(QGraphicsScene):
         tool = self.cw.tool
         pos  = event.scenePos()
 
-        # Arrastar alça → rotação livre
-        if self._rotating_item is not None:
-            center = self._rotating_item.mapToScene(
-                self._rotating_item.boundingRect().center()
+        # Free Transform: rotação fluida
+        if self._ft_is_rotating and self._ft_rotate_pivot is not None:
+            angle = math.atan2(
+                pos.y() - self._ft_rotate_pivot.y(),
+                pos.x() - self._ft_rotate_pivot.x(),
             )
-            angle = math.atan2(pos.y() - center.y(), pos.x() - center.x())
-            delta = math.degrees(angle - self._rotate_start_angle)
-            self._rotating_item.setRotation(self._rotate_start_rotation + delta)
+            delta = math.degrees(angle - self._ft_rotate_start)
+            for item, start_rot in zip(self._ft_items, self._ft_start_rotations):
+                item.setRotation(start_rot + delta)
             self.update()
             event.accept()
             return
@@ -399,10 +435,10 @@ class DrawingScene(QGraphicsScene):
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
 
     def mouseReleaseEvent(self, event):
-        # Finalizar rotação livre
-        if self._rotating_item is not None:
-            self._rotating_item = None
-            self.cw.changed.emit()
+        # Free Transform: fim da rotação (mantém ft ativo para mais ajustes)
+        if self._ft_is_rotating:
+            self._ft_is_rotating = False
+            self._ft_rotate_pivot = None
             self.update()
             event.accept()
             return
@@ -437,6 +473,12 @@ class DrawingScene(QGraphicsScene):
         self._start = None
 
     def keyPressEvent(self, event):
+        # Enter ou Escape confirmam/saem do Free Transform
+        if self._ft_active:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Escape):
+                self._exit_ft()
+                event.accept()
+                return
         if event.key() == Qt.Key.Key_Delete:
             for item in self.selectedItems():
                 self.removeItem(item)
@@ -462,11 +504,7 @@ class DrawingScene(QGraphicsScene):
 class DrawingView(QGraphicsView):
     """
     QGraphicsView com zoom por scroll e pan por botão do meio ou Space+drag.
-
-    Os eventos de mouse chegam primeiro no viewport (widget filho interno do
-    QGraphicsView), não na view em si. Por isso usamos um event filter
-    instalado diretamente no viewport — é a única forma confiável de
-    interceptar esses eventos antes do Qt repassar para a cena.
+    Também gerencia o cursor de rotação quando Free Transform está ativo.
     """
 
     def __init__(self, scene: QGraphicsScene, parent=None):
@@ -476,9 +514,9 @@ class DrawingView(QGraphicsView):
         self._space_held = False
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        # Instala filtro no viewport — eventos chegam aqui antes de qualquer
-        # processamento interno do QGraphicsView
-        self.viewport().installEventFilter(self)
+        vp = self.viewport()
+        vp.installEventFilter(self)
+        vp.setMouseTracking(True)   # receber MouseMove sem botão pressionado
 
     # ── Event filter no viewport ──────────────────────────────────────────────
     def eventFilter(self, obj, event):
@@ -491,7 +529,7 @@ class DrawingView(QGraphicsView):
         if t == QEvent.Type.Wheel:
             factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
             self.scale(factor, factor)
-            return True   # consome — não rola a cena como scroll normal
+            return True
 
         # ── Início do pan ─────────────────────────────────────────────────────
         if t == QEvent.Type.MouseButtonPress:
@@ -500,7 +538,7 @@ class DrawingView(QGraphicsView):
                           and self._space_held)
             if mid or space_left:
                 self._start_pan(event.position().toPoint())
-                return True   # consome — não chega na cena
+                return True
 
         # ── Arraste do pan ────────────────────────────────────────────────────
         if t == QEvent.Type.MouseMove and self._panning:
@@ -521,9 +559,21 @@ class DrawingView(QGraphicsView):
                 self._stop_pan()
                 return True
 
+        # ── Cursor de rotação no Free Transform (hover sem botão) ─────────────
+        if t == QEvent.Type.MouseMove and not self._panning:
+            sc = self.scene()
+            if hasattr(sc, "_ft_active") and sc._ft_active:
+                vp_pos = event.position()
+                if sc._in_rotation_zone_vp(vp_pos):
+                    self.viewport().setCursor(Qt.CursorShape.SizeBDiagCursor)
+                elif sc._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20).contains(vp_pos):
+                    self.viewport().setCursor(Qt.CursorShape.SizeAllCursor)
+                else:
+                    self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+
         return super().eventFilter(obj, event)
 
-    # ── Space + arrastar (teclas captadas na view, não no viewport) ───────────
+    # ── Space + arrastar ──────────────────────────────────────────────────────
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._space_held = True
@@ -553,7 +603,7 @@ class DrawingView(QGraphicsView):
 
 # ── Widget principal ──────────────────────────────────────────────────────────
 class DrawingCanvas(QWidget):
-    changed = Signal()     # emitido quando o canvas é modificado
+    changed = Signal()
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -574,17 +624,16 @@ class DrawingCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        title = QLabel("DESENHO / REFERÊNCIA")
+        title = QLabel("🎨 DESENHO / REFERÊNCIA")
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
         )
         layout.addWidget(title)
-        title.setText("🎨 DESENHO / REFERÊNCIA")
 
         s  = self.scale
-        fh = max(24, int(28 * s))   # altura padrão dos botões
-        fs = max(8, int(9 * s))     # fonte padrão
+        fh = max(24, int(28 * s))
+        fs = max(8, int(9 * s))
         lbl_style = f"color:{theme.TEXT_MEDIUM}; font-size:{fs}pt;"
 
         def _lbl(txt):
@@ -646,13 +695,12 @@ class DrawingCanvas(QWidget):
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
         self.combo_style.setFixedWidth(max(110, int(130 * s)))
-        self.combo_style.addItem("─── Sólida",    Qt.PenStyle.SolidLine)
-        self.combo_style.addItem("- - Tracejada", Qt.PenStyle.DashLine)
+        self.combo_style.addItem("─── Sólida",     Qt.PenStyle.SolidLine)
+        self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
         self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
-        self.combo_style.addItem("-·- Misto",     Qt.PenStyle.DashDotLine)
+        self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
         self.combo_style.currentIndexChanged.connect(
-            lambda i: setattr(self, "pen_style",
-                               self.combo_style.itemData(i))
+            lambda i: setattr(self, "pen_style", self.combo_style.itemData(i))
         )
         row1.addWidget(self.combo_style)
 
@@ -690,7 +738,7 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_redo)
         row2.addSpacing(8)
 
-        # Rotação
+        # Rotação via toolbar (mantida para precisão numérica)
         row2.addWidget(_lbl("↻ Girar:"))
         self.spin_rotate = QDoubleSpinBox()
         self.spin_rotate.setRange(-360, 360)
@@ -736,9 +784,10 @@ class DrawingCanvas(QWidget):
 
         # ── Dica de teclado ──────────────────────────────────────────────────
         hint = QLabel(
-            "✨ Shift = traço reto  |  Del = apagar seleção  |  "
-            "Scroll = zoom  |  Botão do meio / Space+drag = mover  |  "
-            "Selecionar → alça ↻ azul = girar livremente  |  2× clique = editar texto"
+            "✨ Shift = traço reto  |  Del = apagar  |  Scroll = zoom  |  "
+            "Botão do meio / Space+drag = mover  |  "
+            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
+            "Enter / Esc = confirmar  |  2× clique = editar texto"
         )
         hint.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
@@ -763,13 +812,11 @@ class DrawingCanvas(QWidget):
         )
         pdf_layout = QHBoxLayout(self.pdf_panel)
         pdf_layout.setContentsMargins(10, 6, 10, 6)
-        self.pdf_label = QLabel("Nenhum arquivo anexado")
+        self.pdf_label = QLabel("Nenhum PDF anexado")
         self.pdf_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
-        self.pdf_label.setText("Nenhum PDF anexado")
-        btn_open_pdf = QPushButton("Abrir")
+        btn_open_pdf = QPushButton("📂 Abrir")
         btn_open_pdf.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_pdf.clicked.connect(self._open_pdf)
-        btn_open_pdf.setText("📂 Abrir")
         btn_rm_pdf = QPushButton("X")
         btn_rm_pdf.setFixedWidth(28)
         btn_rm_pdf.setStyleSheet(theme.danger_btn_style(self.scale))
@@ -781,10 +828,7 @@ class DrawingCanvas(QWidget):
         self.pdf_panel.setVisible(False)
         layout.addWidget(self.pdf_panel)
 
-        # Selecionar ferramenta inicial
         self._set_tool(Tool.SELECT)
-
-        # Atalhos de teclado
         self._setup_shortcuts()
 
     def _tool_btn_style(self) -> str:
@@ -822,6 +866,12 @@ class DrawingCanvas(QWidget):
         redo_action.triggered.connect(self._redo)
         self.addAction(redo_action)
 
+        # Ctrl+T — Free Transform (estilo Photoshop)
+        ft_action = QAction(self)
+        ft_action.setShortcut(QKeySequence("Ctrl+T"))
+        ft_action.triggered.connect(self.scene._enter_ft)
+        self.addAction(ft_action)
+
     # ── Ferramentas ──────────────────────────────────────────────────────────
     def _set_tool(self, tool: Tool):
         self.tool = tool
@@ -838,14 +888,14 @@ class DrawingCanvas(QWidget):
             self.view.setCursor(Qt.CursorShape.CrossCursor)
 
     def _rotate_selected(self):
-        """Rotaciona todos os itens selecionados pelo ângulo definido no spin."""
+        """Rotaciona os itens selecionados pelo ângulo do spin (precisão numérica)."""
         angle = self.spin_rotate.value()
         for item in self.scene.selectedItems():
+            item.setTransformOriginPoint(item.boundingRect().center())
             item.setRotation(item.rotation() + angle)
         self.changed.emit()
 
     def _on_font_size_changed(self, v: int):
-        """Atualiza font_size e aplica nos textos selecionados em tempo real."""
         self.font_size = v
         if not hasattr(self, "scene"):
             return
@@ -898,7 +948,6 @@ class DrawingCanvas(QWidget):
         pixmap = QPixmap(path)
         if pixmap.isNull():
             return
-        # Limita tamanho ao canvas
         max_w = min(600, self.view.width() - 40)
         if pixmap.width() > max_w:
             pixmap = pixmap.scaledToWidth(max_w, Qt.TransformationMode.SmoothTransformation)
@@ -976,7 +1025,7 @@ class DrawingCanvas(QWidget):
             "style": _STYLE_TO_STR.get(p.style(), "solid"),
         }
 
-        rot = item.rotation()   # 0.0 quando não rotacionado
+        rot = item.rotation()
 
         if isinstance(item, QGraphicsLineItem):
             ln = item.line()
@@ -1048,12 +1097,11 @@ class CanvasPreview(QGraphicsView):
     def set_json(self, data: str):
         self._last_result = load_canvas_scene(self._scene, data, selectable=False)
         if self._last_result["items"] == 0:
-            placeholder = self._scene.addText("Sem desenho salvo")
+            placeholder = self._scene.addText("🖼️ Nenhum desenho salvo")
             placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
             font = QFont(theme.FONT_PRIMARY, max(9, int(10 * self.scale_factor)))
             placeholder.setFont(font)
             placeholder.setPos(20, 20)
-            placeholder.setPlainText("🖼️ Nenhum desenho salvo")
         self._fit_scene()
 
     def resizeEvent(self, event):
