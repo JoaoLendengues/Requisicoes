@@ -115,6 +115,10 @@ def _format_phone_text(raw: str) -> str:
     return formatted
 
 
+def _emphasized_btn_style(base_style: str) -> str:
+    return base_style + "QPushButton { font-weight:700; }"
+
+
 # ── Card helper ───────────────────────────────────────────────────────────────
 def _make_card(parent=None) -> QFrame:
     card = QFrame(parent)
@@ -452,7 +456,7 @@ class RequisitionForm(QWidget):
         btn_calc = QPushButton("🧮 CALCULADORA DE PESO")
         btn_calc.setFixedHeight(max(42, int(48 * s)))
         btn_calc.setMinimumWidth(max(200, int(230 * s)))
-        btn_calc.setStyleSheet(theme.secondary_btn_style(s))
+        btn_calc.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         btn_calc.clicked.connect(self._open_weight_calculator)
         save_row.addWidget(btn_calc)
         self.btn_calc = btn_calc
@@ -462,7 +466,7 @@ class RequisitionForm(QWidget):
         btn_production = QPushButton("ENVIAR PARA PRODUÇÃO")
         btn_production.setFixedHeight(max(42, int(48 * s)))
         btn_production.setMinimumWidth(max(220, int(250 * s)))
-        btn_production.setStyleSheet(theme.secondary_btn_style(s))
+        btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         btn_production.clicked.connect(self._send_to_production)
         save_row.addWidget(btn_production)
         self.btn_production = btn_production
@@ -473,7 +477,7 @@ class RequisitionForm(QWidget):
         btn_whatsapp = QPushButton("ENVIAR WHATSAPP")
         btn_whatsapp.setFixedHeight(max(42, int(48 * s)))
         btn_whatsapp.setMinimumWidth(max(180, int(210 * s)))
-        btn_whatsapp.setStyleSheet(theme.secondary_btn_style(s))
+        btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         btn_whatsapp.clicked.connect(self._send_whatsapp_client)
         save_row.addWidget(btn_whatsapp)
         self.btn_whatsapp = btn_whatsapp
@@ -484,7 +488,7 @@ class RequisitionForm(QWidget):
         btn_save = QPushButton("SALVAR REQUISIÇÃO")
         btn_save.setFixedHeight(max(42, int(48 * s)))
         btn_save.setMinimumWidth(max(220, int(260 * s)))
-        btn_save.setStyleSheet(theme.primary_btn_style(s))
+        btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))
         btn_save.clicked.connect(self.save_requested.emit)
         save_row.addWidget(btn_save)
         self.btn_save = btn_save
