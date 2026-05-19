@@ -1,12 +1,11 @@
 import os
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -22,6 +21,45 @@ from ..core.resolution import res
 from ..core.session import session
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_login.png")
+
+
+def _login_input_style(scale: float) -> str:
+    fs = max(9, int(11 * scale))
+    return (
+        f"QLineEdit {{"
+        f"  background:{theme.SURFACE_SOFT}; color:{theme.TEXT_DARK};"
+        f"  border:none; outline:none; border-radius:8px;"
+        f"  padding:8px 12px; font-size:{fs}pt;"
+        f"  selection-background-color:{theme.SELECTION_BG}; selection-color:{theme.TEXT_DARK};"
+        f"}}"
+        f"QLineEdit:focus {{ border:none; outline:none; }}"
+    )
+
+
+def _login_secondary_btn_style(scale: float) -> str:
+    fs = max(9, int(11 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
+        f"  border:none; outline:none; border-radius:8px;"
+        f"  padding:8px 16px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
+        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+    )
+
+
+def _login_toggle_btn_style(scale: float) -> str:
+    fs = max(8, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
+        f"  border:none; outline:none; border-radius:8px;"
+        f"  font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
+        f"QPushButton:checked {{ background:{theme.PRIMARY_HOVER}; color:{theme.TEXT_WHITE}; }}"
+    )
 
 
 class LoginWorker(QObject):
@@ -215,9 +253,7 @@ class LoginView(QWidget):
 
     def _setup_ui(self):
         self.setStyleSheet(
-            "background: qlineargradient("
-            "x1:0, y1:0, x2:1, y2:1,"
-            "stop:0 #F5F7FA, stop:0.58 #FFFFFF, stop:1 #EAF1FF);"
+            f"background:{theme.PRIMARY};"
         )
 
         outer = QVBoxLayout(self)
@@ -226,13 +262,8 @@ class LoginView(QWidget):
         card = QFrame()
         card.setFixedWidth(max(340, int(410 * self.scale)))
         card.setStyleSheet(
-            f"background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px; padding:8px;"
+            f"background:{theme.CARD_BG}; border:none; outline:none; border-radius:8px; padding:8px;"
         )
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(24)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QColor(0, 0, 0, 18))
-        card.setGraphicsEffect(shadow)
 
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(
@@ -265,23 +296,23 @@ class LoginView(QWidget):
         card_layout.addWidget(title)
         card_layout.addSpacing(max(4, int(8 * self.scale)))
 
-        lbl_code = QLabel("Codigo de acesso")
+        lbl_code = QLabel("CODIGO DE ACESSO")
         lbl_code.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:700;"
         )
         card_layout.addWidget(lbl_code)
 
         self.input_code = QLineEdit()
         self.input_code.setPlaceholderText("Ex: 1")
         self.input_code.setFixedHeight(max(36, int(42 * self.scale)))
-        self.input_code.setStyleSheet(theme.input_style(self.scale))
+        self.input_code.setStyleSheet(_login_input_style(self.scale))
         self.input_code.returnPressed.connect(self._do_login)
         self.input_code.editingFinished.connect(self._check_first_access_for_code)
         card_layout.addWidget(self.input_code)
 
-        lbl_pass = QLabel("Senha")
+        lbl_pass = QLabel("SENHA")
         lbl_pass.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:bold;"
+            f"color:{theme.PRIMARY}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:700;"
         )
         card_layout.addWidget(lbl_pass)
 
@@ -290,18 +321,13 @@ class LoginView(QWidget):
         self.input_pass.setPlaceholderText("••••••••")
         self.input_pass.setEchoMode(QLineEdit.EchoMode.Password)
         self.input_pass.setFixedHeight(max(36, int(42 * self.scale)))
-        self.input_pass.setStyleSheet(theme.input_style(self.scale))
+        self.input_pass.setStyleSheet(_login_input_style(self.scale))
         self.input_pass.returnPressed.connect(self._do_login)
 
         self.btn_show = QPushButton("VER")
         self.btn_show.setFixedSize(max(52, int(60 * self.scale)), max(36, int(42 * self.scale)))
         self.btn_show.setCheckable(True)
-        self.btn_show.setStyleSheet(
-            f"QPushButton {{ background:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR};"
-            f"border-radius:8px; color:{theme.TEXT_MEDIUM}; font-weight:600; }}"
-            f"QPushButton:hover {{ background:{theme.SELECTION_BG}; border-color:{theme.PRIMARY_LIGHT}; }}"
-            f"QPushButton:checked {{ background:{theme.SIDEBAR_ACTIVE}; color:#fff; border-color:{theme.SIDEBAR_ACTIVE}; }}"
-        )
+        self.btn_show.setStyleSheet(_login_toggle_btn_style(self.scale))
         self.btn_show.toggled.connect(
             lambda checked: self.input_pass.setEchoMode(
                 QLineEdit.EchoMode.Normal if checked else QLineEdit.EchoMode.Password
@@ -316,7 +342,7 @@ class LoginView(QWidget):
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.error_label.setStyleSheet(
             f"color:{theme.DANGER}; font-size:{max(8, int(10 * self.scale))}pt; background:#FDEEEF;"
-            f"border:1px solid #F4C7CC; border-radius:8px; padding:8px;"
+            f"border:none; border-radius:8px; padding:8px;"
         )
         self.error_label.hide()
         card_layout.addWidget(self.error_label)
@@ -329,7 +355,7 @@ class LoginView(QWidget):
 
         self.btn_first_access = QPushButton("PRIMEIRO ACESSO")
         self.btn_first_access.setFixedHeight(max(36, int(42 * self.scale)))
-        self.btn_first_access.setStyleSheet(theme.secondary_btn_style(self.scale))
+        self.btn_first_access.setStyleSheet(_login_secondary_btn_style(self.scale))
         self.btn_first_access.clicked.connect(self._open_first_access_dialog)
         card_layout.addWidget(self.btn_first_access)
 
@@ -345,7 +371,7 @@ class LoginView(QWidget):
         footer = QLabel("pinheiroferragens.com.br")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(7, int(9 * self.scale))}pt; margin-top:18px; font-weight:600;"
+            f"color:{theme.TEXT_WHITE}; font-size:{max(7, int(9 * self.scale))}pt; margin-top:18px; font-weight:600;"
         )
         outer.addWidget(footer)
 
