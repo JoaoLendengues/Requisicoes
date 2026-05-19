@@ -146,7 +146,7 @@ class DashboardView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = "#7CAFFC"
+        page_bg = "#B3D1FF"
         self.setObjectName("dashboardView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
