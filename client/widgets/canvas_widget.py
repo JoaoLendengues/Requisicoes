@@ -16,7 +16,7 @@ from enum import Enum
 from PySide6.QtCore import Qt, QPointF, QRectF, Signal
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPen, QBrush,
-    QPixmap, QKeySequence, QAction,
+    QPixmap, QKeySequence, QAction, QCursor,
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QToolBar, QGraphicsScene,
@@ -123,6 +123,36 @@ class DrawingScene(QGraphicsScene):
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
+
+    # ── Grade de fundo (visual only — não serializada) ───────────────────────
+    GRID_MINOR = 20          # espaçamento da grade fina (px)
+    GRID_MAJOR = 100         # espaçamento da grade grossa (a cada 5 linhas)
+
+    def drawBackground(self, painter: QPainter, rect: QRectF):
+        super().drawBackground(painter, rect)
+
+        # Linhas menores
+        pen_minor = QPen(QColor("#E0E8F4"), 0.7)
+        pen_minor.setCosmetic(True)          # não escala com zoom
+        # Linhas maiores (a cada 5 células)
+        pen_major = QPen(QColor("#B8CCE8"), 1.2)
+        pen_major.setCosmetic(True)
+
+        step = self.GRID_MINOR
+        left  = int(rect.left())  - (int(rect.left())  % step)
+        top   = int(rect.top())   - (int(rect.top())   % step)
+
+        x = left
+        while x <= rect.right():
+            painter.setPen(pen_major if (x % self.GRID_MAJOR == 0) else pen_minor)
+            painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
+            x += step
+
+        y = top
+        while y <= rect.bottom():
+            painter.setPen(pen_major if (y % self.GRID_MAJOR == 0) else pen_minor)
+            painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
+            y += step
 
     def _pen(self) -> QPen:
         p = QPen(QColor(self.cw.color), self.cw.pen_width)
@@ -244,6 +274,81 @@ class DrawingScene(QGraphicsScene):
                 self.removeItem(item)
         else:
             super().keyPressEvent(event)
+
+
+# ── View com pan por botão do meio + Space+arraste ───────────────────────────
+class DrawingView(QGraphicsView):
+    """QGraphicsView com zoom por scroll e pan por botão do meio ou Space+drag."""
+
+    def __init__(self, scene: QGraphicsScene, parent=None):
+        super().__init__(scene, parent)
+        self._panning   = False
+        self._pan_start = None
+        self._space_held = False
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+
+    # ── Zoom ─────────────────────────────────────────────────────────────────
+    def wheelEvent(self, event):
+        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
+        self.scale(factor, factor)
+
+    # ── Pan — botão do meio ──────────────────────────────────────────────────
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._start_pan(event.position().toPoint())
+            return
+        if event.button() == Qt.MouseButton.LeftButton and self._space_held:
+            self._start_pan(event.position().toPoint())
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._panning and self._pan_start is not None:
+            delta = event.position().toPoint() - self._pan_start
+            self._pan_start = event.position().toPoint()
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - delta.x()
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - delta.y()
+            )
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._panning and event.button() in (
+            Qt.MouseButton.MiddleButton, Qt.MouseButton.LeftButton
+        ):
+            self._stop_pan()
+            return
+        super().mouseReleaseEvent(event)
+
+    # ── Pan — Space + arrastar ────────────────────────────────────────────────
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
+            self._space_held = True
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+        super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
+            self._space_held = False
+            if not self._panning:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+        super().keyReleaseEvent(event)
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+    def _start_pan(self, pos):
+        self._panning   = True
+        self._pan_start = pos
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def _stop_pan(self):
+        self._panning   = False
+        self._pan_start = None
+        cursor = Qt.CursorShape.OpenHandCursor if self._space_held else Qt.CursorShape.ArrowCursor
+        self.setCursor(cursor)
 
 
 # ── Widget principal ──────────────────────────────────────────────────────────
@@ -380,18 +485,17 @@ class DrawingCanvas(QWidget):
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*self.scale))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
-        hint.setText("✨ Shift = traço reto  |  Del = apagar seleção  |  Scroll = zoom")
+        hint.setText("✨ Shift = traço reto  |  Del = apagar seleção  |  Scroll = zoom  |  Botão do meio / Space+arrastar = mover tela")
 
         # ── Cena + View ──────────────────────────────────────────────────────
         self.scene = DrawingScene(self)
-        self.view  = QGraphicsView(self.scene)
+        self.view  = DrawingView(self.scene)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.view.setStyleSheet(
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
         self.view.setMinimumHeight(max(250, int(300 * self.scale)))
-        self.view.wheelEvent = self._zoom_event
         layout.addWidget(self.view)
 
         # ── Painel de PDF ────────────────────────────────────────────────────
@@ -549,11 +653,6 @@ class DrawingCanvas(QWidget):
         self._attached_pdf = ""
         self.pdf_panel.setVisible(False)
         self.changed.emit()
-
-    # ── Zoom ─────────────────────────────────────────────────────────────────
-    def _zoom_event(self, event):
-        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-        self.view.scale(factor, factor)
 
     # ── Limpar ───────────────────────────────────────────────────────────────
     def _clear(self):
