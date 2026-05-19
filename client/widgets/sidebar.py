@@ -8,6 +8,63 @@ from ..core import theme
 from ..core.session import session
 
 
+class _BellButton(QWidget):
+    """Sininho com badge de contagem de não lidas."""
+
+    clicked = Signal()
+
+    def __init__(self, scale: float, parent=None):
+        super().__init__(parent)
+        self._scale = scale
+        self._count = 0
+        self._setup()
+
+    def _setup(self):
+        from PySide6.QtWidgets import QHBoxLayout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        height = max(38, int(44 * self._scale))
+        font_size = max(8, int(10 * self._scale))
+
+        self._btn = QPushButton("  🔔  NOTIFICAÇÕES")
+        self._btn.setFixedHeight(height)
+        self._btn.setStyleSheet(
+            f"QPushButton {{"
+            f"  background:transparent; color:#CBD5E1;"
+            f"  text-align:left; padding-left:12px; border:none;"
+            f"  font-size:{font_size}pt; border-left:3px solid transparent;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f"  background:{theme.SIDEBAR_HOVER}; color:#fff;"
+            f"}}"
+        )
+        self._btn.clicked.connect(self.clicked.emit)
+        layout.addWidget(self._btn, 1)
+
+        self._badge = QLabel("")
+        self._badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._badge.setFixedSize(20, 20)
+        self._badge.setStyleSheet(
+            "background: #EF4444; color: #fff; border-radius: 10px;"
+            "font-size: 8pt; font-weight: bold;"
+        )
+        self._badge.hide()
+        layout.addWidget(self._badge)
+        layout.addSpacing(12)
+
+        self.setFixedHeight(height)
+
+    def set_count(self, count: int):
+        self._count = count
+        if count > 0:
+            self._badge.setText(str(min(count, 99)))
+            self._badge.show()
+        else:
+            self._badge.hide()
+
+
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
 
 NAV_ITEMS = [
@@ -25,6 +82,7 @@ BOTTOM_NAV_ITEMS = [
 class Sidebar(QWidget):
     nav_clicked = Signal(str)
     logout_clicked = Signal()
+    bell_clicked = Signal()
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -76,6 +134,12 @@ class Sidebar(QWidget):
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
             layout.addWidget(btn)
+
+        layout.addWidget(self._separator())
+
+        self._bell = _BellButton(self.scale)
+        self._bell.clicked.connect(self.bell_clicked.emit)
+        layout.addWidget(self._bell)
 
         layout.addWidget(self._separator())
 
@@ -133,6 +197,9 @@ class Sidebar(QWidget):
 
     def refresh_user(self):
         self.user_label.setText(f"👤 USUÁRIO: {session.user_name}")
+
+    def set_notification_count(self, count: int):
+        self._bell.set_count(count)
 
     def set_actions_visible(self, visible: bool):
         pass

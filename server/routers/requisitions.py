@@ -232,6 +232,42 @@ def update_requisition(
     return _get_or_404(db, req_id)
 
 
+def _build_notifications(
+    db: Session,
+    req: Requisition,
+    old_status: RequisitionStatus,
+    new_status: RequisitionStatus,
+    note: str | None,
+) -> list:
+    from ..services.notification_service import build_production_sent, build_vendor_event
+
+    prod = _parse_production_note(note)
+    notifs = []
+
+    if prod:
+        action = prod["action"]
+        if action == _PROD_SEND:
+            notifs.extend(build_production_sent(db, req, prod["target"]))
+        elif action == _PROD_RECEIVED:
+            n = build_vendor_event(db, req, "em_producao")
+            if n:
+                notifs.append(n)
+        elif action == _PROD_FINISHED:
+            n = build_vendor_event(db, req, "finalizada")
+            if n:
+                notifs.append(n)
+        elif action == _PROD_CANCELED:
+            n = build_vendor_event(db, req, "prod_cancelada", prod.get("reason", ""))
+            if n:
+                notifs.append(n)
+    elif new_status == RequisitionStatus.CANCELADA:
+        n = build_vendor_event(db, req, "cancelada")
+        if n:
+            notifs.append(n)
+
+    return notifs
+
+
 @router.patch("/{req_id}/status", response_model=RequisitionResponse)
 def update_status(
     req_id: int,
@@ -243,15 +279,22 @@ def update_status(
     old_status = req.status
     req.status = data.status
     _apply_production_transition(req, data)
+    new_status = req.status
 
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=old_status,
-        new_status=data.status,
+        new_status=new_status,
         changed_by_id=current_user.id,
         note=data.note,
     ))
+
+    notifications = _build_notifications(db, req, old_status, new_status, data.note)
     db.commit()
+
+    from ..services.notification_service import push_all
+    push_all(notifications)
+
     return _get_or_404(db, req_id)
 
 
@@ -292,6 +335,8 @@ def cancel_requisition(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from ..services.notification_service import build_vendor_event, push_all
+
     req = _get_or_404(db, req_id)
     old_status = req.status
     req.status = RequisitionStatus.CANCELADA
@@ -301,4 +346,13 @@ def cancel_requisition(
         new_status=RequisitionStatus.CANCELADA,
         changed_by_id=current_user.id,
     ))
+
+    # Notifica o vendedor somente se quem cancelou não é ele mesmo
+    notifs = []
+    if req.vendor_id != current_user.id:
+        n = build_vendor_event(db, req, "cancelada")
+        if n:
+            notifs.append(n)
+
     db.commit()
+    push_all(notifs)
