@@ -123,6 +123,9 @@ class HistoryView(QWidget):
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
             f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
         )
+        self.table.viewport().setStyleSheet(
+            f"background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        )
         layout.addWidget(self.table)
 
         # Dica

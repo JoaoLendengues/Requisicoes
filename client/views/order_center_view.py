@@ -617,6 +617,11 @@ class OrderCenterView(QWidget):
             f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; color:{DASH_TEXT}; }}"
             f"QTableWidget::item:selected {{ background:{_rgba(DASH_PRIMARY, 18)}; color:{DASH_TEXT}; }}"
         )
+        # Force the viewport widget itself to white — without this the system palette
+        # (or the parent widget's background) bleeds through on Windows.
+        table.viewport().setStyleSheet(
+            f"background:{DASH_SURFACE}; color:{DASH_TEXT};"
+        )
         table.setMinimumHeight(max(220, int(240 * s)))
         return table
 
