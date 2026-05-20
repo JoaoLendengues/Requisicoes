@@ -29,6 +29,7 @@ def _build_token(user: User) -> Token:
         user_name=user.name,
         user_code=user.code,
         role=user.role,
+        whatsapp=user.whatsapp or "",
     )
 
 

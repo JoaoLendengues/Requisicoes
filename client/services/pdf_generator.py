@@ -235,9 +235,9 @@ def _draw_header(
 
     # ── proporções da faixa do cabeçalho
     sep_gap   = 6
-    logo_w    = w * 0.245          # logo maior
-    contact_w = w * 0.185
-    ped_w     = w * 0.165          # PED box menor
+    logo_w    = w * 0.29           # logo bem maior
+    contact_w = w * 0.175
+    ped_w     = w * 0.115          # PED box compacto
     title_w   = w - logo_w - contact_w - ped_w - sep_gap * 2 - 10
 
     # --- Logo (esquerda) -----------------------------------------------------
@@ -614,46 +614,50 @@ def _draw_footer(
     obs: str,
     vendor_phone: str = "--",
 ) -> None:
-    """Rodapé:  [OBSERVAÇÃO]  /  [QR code]  [ASSINATURA DO CLIENTE: ____]"""
+    """Rodapé lado a lado: [OBSERVAÇÃO] | [ASSINATURA DO CLIENTE: ____] [QR CODE]"""
 
-    right_x = x + w * 0.45   # bloco ocupa a metade direita
-    right_w = w - (right_x - x)
+    qr_sz    = h - 8                      # QR quadrado com margem
+    qr_label = "Contato do Vendedor"
+    gap      = 8
 
-    gap   = 6
-    obs_h = max(26, (h - gap) * 0.40)
-    sig_h = h - obs_h - gap
+    # ── Proporções horizontais ────────────────────────────────────────────────
+    obs_w   = w * 0.43                    # caixa de observação
+    qr_col  = qr_sz + gap + 4            # coluna do QR (à direita)
+    sig_w   = w - obs_w - gap - qr_col   # área da assinatura (meio)
 
-    # ── Observação (em cima) ──────────────────────────────────────────────────
-    obs_y = y + sig_h + gap
-    _box(pdf, right_x, obs_y, right_w, obs_h, radius=6, fill=C_WHITE, stroke=C_BORDER)
-    lbl = "OBSERVAÇÃO:"
+    # ── OBSERVAÇÃO (esquerda) ──────────────────────────────────────────────────
+    _box(pdf, x, y, obs_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
+    lbl   = "OBSERVAÇÃO:"
     lbl_w = pdfmetrics.stringWidth(lbl, "Helvetica-Bold", 8) + 10
-    _txt(pdf, lbl, right_x + 8, obs_y + obs_h / 2 - 4, 8, C_TEXT, bold=True)
-    _txt(pdf, _safe(obs, ""), right_x + lbl_w, obs_y + obs_h / 2 - 4, 8.5,
-         C_TEXT_SOFT, max_w=right_w - lbl_w - 10)
+    _txt(pdf, lbl, x + 8, y + h / 2 - 4, 8, C_TEXT, bold=True)
+    _txt(pdf, _safe(obs, ""), x + lbl_w, y + h / 2 - 4, 8.5,
+         C_TEXT_SOFT, max_w=obs_w - lbl_w - 10)
 
-    # ── Assinatura + QR (embaixo) ─────────────────────────────────────────────
-    sig_y  = y
-    qr_sz  = sig_h - 4          # QR ocupa quase toda a altura da linha
+    # ── ASSINATURA (centro) ───────────────────────────────────────────────────
+    sig_x   = x + obs_w + gap
+    sig_mid = y + h / 2
+    sig_lbl = "ASSINATURA DO CLIENTE:"
+    _txt(pdf, sig_lbl, sig_x + 4, sig_mid + 3, 7.5, C_TEXT_SOFT, bold=False)
+    lbl_offset = pdfmetrics.stringWidth(sig_lbl, "Helvetica", 7.5) + 10
+    _line(pdf, sig_x + 4 + lbl_offset, sig_mid,
+          sig_x + sig_w, sig_mid, C_TEXT, lw=0.8)
 
-    # QR code — WhatsApp do vendedor
+    # ── QR CODE (direita) com rótulo ──────────────────────────────────────────
+    qr_x   = sig_x + sig_w + gap
     digits = "".join(c for c in vendor_phone if c.isdigit())
     wa_url = f"https://wa.me/55{digits}" if digits else "https://wa.me/"
     qr_bytes = _make_qr_bytes(wa_url)
     if qr_bytes:
         pdf.drawImage(
             ImageReader(io.BytesIO(qr_bytes)),
-            right_x + 2, sig_y + 2, width=qr_sz, height=qr_sz,
+            qr_x, y + 3, width=qr_sz, height=qr_sz,
             preserveAspectRatio=True, mask="auto",
         )
 
-    # Linha de assinatura
-    after_qr = right_x + qr_sz + 8
-    sig_lbl  = "ASSINATURA DO CLIENTE:"
-    sig_mid  = sig_y + sig_h / 2
-    _txt(pdf, sig_lbl, after_qr, sig_mid + 2, 8, C_TEXT, bold=False)
-    line_x = after_qr + pdfmetrics.stringWidth(sig_lbl, "Helvetica", 8) + 6
-    _line(pdf, line_x, sig_mid, right_x + right_w, sig_mid, C_TEXT, lw=0.8)
+    # rótulo "Contato do Vendedor" centralizado abaixo do QR
+    _txt(pdf, qr_label,
+         qr_x + qr_sz / 2, y - 1, 6, C_TEXT_SOFT,
+         align="center")
 
 
 # ── Canvas → PNG ─────────────────────────────────────────────────────────────
@@ -812,7 +816,15 @@ def generate_pdf(
     pdf.rect(0, 0, pw, ph, fill=1, stroke=0)
 
     vendor_name  = _safe(req.get("vendor_name"), _session.user_name or "--")
-    vendor_phone = _format_phone(_session.whatsapp or req.get("vendor_whatsapp") or "", "--")
+    # Telefone do vendedor: prioridade → session (usuário logado) → dados do req
+    _vendor_raw = (
+        _session.whatsapp
+        or (req.get("vendor") or {}).get("whatsapp")
+        or req.get("vendor_whatsapp")
+        or req.get("vendor_phone")
+        or ""
+    )
+    vendor_phone = _format_phone(_vendor_raw, "--")
     items_list   = req.get("items") or []
     if not isinstance(items_list, list):
         items_list = []

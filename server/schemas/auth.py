@@ -23,3 +23,4 @@ class Token(BaseModel):
     user_name: str
     user_code: str
     role: str
+    whatsapp: str | None = None
