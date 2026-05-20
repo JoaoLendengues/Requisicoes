@@ -56,6 +56,16 @@ def _rgba(color: str, alpha: int) -> str:
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 
+def _tint(color: str, alpha: int = 40) -> str:
+    """Cor sólida equivalente a rgba(color, alpha) sobre fundo branco."""
+    c = QColor(color)
+    a = alpha / 255.0
+    r = round(c.red() * a + 255 * (1 - a))
+    g = round(c.green() * a + 255 * (1 - a))
+    b = round(c.blue() * a + 255 * (1 - a))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
@@ -737,15 +747,10 @@ class DashboardView(QWidget):
                     label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     label.setStyleSheet(
-                        f"background:{_rgba(color, 30)}; color:{color}; border-radius:999px;"
+                        f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
                         f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
-                    container = QWidget()
-                    container.setStyleSheet(f"background:{DASH_SURFACE};")
-                    cl = QHBoxLayout(container)
-                    cl.setContentsMargins(6, 2, 6, 2)
-                    cl.addWidget(label)
-                    table.setCellWidget(line, col, container)
+                    table.setCellWidget(line, col, label)
                 else:
                     item = QTableWidgetItem(value)
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
