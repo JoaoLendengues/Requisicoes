@@ -3,9 +3,10 @@
 import os
 import webbrowser
 from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -42,6 +43,16 @@ DASH_TEXT = "#0F172A"
 DASH_MUTED = "#64748B"
 DASH_BORDER = "#E2E8F0"
 DASH_ROW_ALT = "#F8FBFF"
+
+_ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
+_METRIC_ICON_FILES = {
+    "pedidos_aguardando_recebimento": "aguardando_recebimento.png",
+    "pedidos_em_producao": "pedidos_em_producao.png",
+    "pedidos_finalizados": "pedidos_concluidos.png",
+    "pedidos_cancelados": "pedidos_cancelados.png",
+    "pedidos_atrasados": "pedidos_atrasados.png",
+    "tempo_medio_producao_segundos": "tempo_medio_producao.png",
+}
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -83,6 +94,14 @@ def _make_card(
     )
     _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
+
+
+def _metric_icon_path(key: str) -> Path | None:
+    filename = _METRIC_ICON_FILES.get(key)
+    if not filename:
+        return None
+    path = _ICON_DIR / filename
+    return path if path.exists() else None
 
 
 def _flat_secondary_btn_style(scale: float) -> str:
@@ -407,13 +426,45 @@ class OrderCenterView(QWidget):
             f"background:{color}; border:none; border-radius:{max(2, int(3 * s))}px;"
         )
 
-        layout.addWidget(value)
+        header_row = QHBoxLayout()
+        header_row.setSpacing(max(10, int(12 * s)))
+        header_row.addWidget(value, 1, Qt.AlignmentFlag.AlignTop)
+
+        icon_label = self._build_metric_icon_label(key)
+        if icon_label is not None:
+            header_row.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+
+        layout.addLayout(header_row)
         layout.addWidget(title)
         layout.addWidget(helper)
         layout.addStretch()
         layout.addWidget(accent_line)
         self._metric_labels[key] = value
         return card
+
+    def _build_metric_icon_label(self, key: str) -> QLabel | None:
+        icon_path = _metric_icon_path(key)
+        if icon_path is None:
+            return None
+
+        pixmap = QPixmap(str(icon_path))
+        if pixmap.isNull():
+            return None
+
+        size = max(52, int(62 * self.scale))
+        label = QLabel()
+        label.setFixedSize(size, size)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("background:transparent; border:none;")
+        label.setPixmap(
+            pixmap.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        return label
 
     def _build_section(self, title_text: str, key: str, pdf_action: bool = False) -> QFrame:
         s = self.scale
