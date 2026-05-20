@@ -863,11 +863,17 @@ class UserCenterView(QWidget):
             payload["password"] = password.strip()
 
         self._pending_code = code
+        def _after_save(_):
+            if self._selected_user_id == session.user_id:
+                session.user_name = name
+                session.user_code = code
+                session.whatsapp = contact
+            self.refresh()
         if self._selected_user_id is None:
             self._run_action(
                 api.create_user,
                 payload,
-                on_result=lambda _: self.refresh(),
+                on_result=_after_save,
                 success_message="Usuario salvo com sucesso.",
             )
         else:
@@ -875,7 +881,7 @@ class UserCenterView(QWidget):
                 api.update_user,
                 self._selected_user_id,
                 payload,
-                on_result=lambda _: self.refresh(),
+                on_result=_after_save,
                 success_message="Cadastro atualizado com sucesso.",
             )
 
