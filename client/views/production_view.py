@@ -50,6 +50,11 @@ _DESTINATION_CARD_META = {
 }
 
 
+def _rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
+
+
 def _parse_datetime(value: object) -> datetime | None:
     if isinstance(value, datetime):
         return value
