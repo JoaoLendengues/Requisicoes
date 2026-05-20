@@ -314,21 +314,21 @@ class DashboardView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_em_producao", DASH_PRIMARY, "PR", "Pedidos em Producao", "Requisicoes recebidas pela producao."),
-            ("pedidos_em_atraso", DASH_DANGER, "AT", "Pedidos em Atraso", "Pedidos abertos com prazo vencido."),
-            ("pedidos_finalizados_hoje", DASH_SUCCESS, "OK", "Finalizados Hoje", "Finalizacoes registradas no dia."),
-            ("requisicoes_feitas_no_dia", DASH_SECONDARY, "RQ", "Requisicoes do Dia", "Novas requisicoes criadas hoje."),
-            ("producao_pinheiro_industria", DASH_PRIMARY, "PI", "Producao Pinheiro Industria", "Fila ativa enviada para esse destino."),
-            ("producao_ar", DASH_SECONDARY, "AR", "Producao da A&R", "Fila ativa enviada para esse destino."),
-            ("pedidos_sem_confirmacao_1h", DASH_WARNING, "SC", "Sem Confirmacao", "Aguardando retorno ha mais de 1 hora."),
-            ("tempo_medio_finalizacao_segundos", DASH_SLATE, "TM", "Tempo Medio de Finalizacao", "Media entre recebimento e finalizacao."),
+            ("pedidos_em_producao", DASH_PRIMARY, "Pedidos em Producao", "Requisicoes recebidas pela producao."),
+            ("pedidos_em_atraso", DASH_DANGER, "Pedidos em Atraso", "Pedidos abertos com prazo vencido."),
+            ("pedidos_finalizados_hoje", DASH_SUCCESS, "Finalizados Hoje", "Finalizacoes registradas no dia."),
+            ("requisicoes_feitas_no_dia", DASH_SECONDARY, "Requisicoes do Dia", "Novas requisicoes criadas hoje."),
+            ("producao_pinheiro_industria", DASH_PRIMARY, "Producao Pinheiro Industria", "Fila ativa enviada para esse destino."),
+            ("producao_ar", DASH_SECONDARY, "Producao da A&R", "Fila ativa enviada para esse destino."),
+            ("pedidos_sem_confirmacao_1h", DASH_WARNING, "Sem Confirmacao", "Aguardando retorno ha mais de 1 hora."),
+            ("tempo_medio_finalizacao_segundos", DASH_SLATE, "Tempo Medio de Finalizacao", "Media entre recebimento e finalizacao."),
         ]
 
-        for index, (key, color, icon_text, title_text, helper_text) in enumerate(card_defs):
+        for index, (key, color, title_text, helper_text) in enumerate(card_defs):
             row = index // 4
             col = index % 4
             metrics.addWidget(
-                self._build_metric_card(color, icon_text, title_text, helper_text, key),
+                self._build_metric_card(color, title_text, helper_text, key),
                 row,
                 col,
             )
@@ -368,7 +368,6 @@ class DashboardView(QWidget):
     def _build_metric_card(
         self,
         color: str,
-        icon_text: str,
         title: str,
         helper_text: str,
         key: str,
@@ -385,18 +384,6 @@ class DashboardView(QWidget):
         layout.setContentsMargins(max(16, int(20 * s)), max(15, int(18 * s)),
                                   max(16, int(20 * s)), max(14, int(18 * s)))
         layout.setSpacing(max(6, int(8 * s)))
-
-        top_row = QHBoxLayout()
-        icon_label = QLabel(icon_text)
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_label.setFixedSize(max(36, int(44 * s)), max(36, int(44 * s)))
-        icon_label.setStyleSheet(
-            f"background:{_rgba(color, 28)}; color:{color};"
-            f"border-radius:{max(12, int(14 * s))}px;"
-            f"font-size:{max(8, int(10 * s))}pt; font-weight:800;"
-        )
-        top_row.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignLeft)
-        top_row.addStretch()
 
         value_label = QLabel("-")
         value_label.setStyleSheet(
@@ -425,7 +412,6 @@ class DashboardView(QWidget):
             f"background:{color}; border:none; border-radius:{max(2, int(3 * s))}px;"
         )
 
-        layout.addLayout(top_row)
         layout.addWidget(value_label)
         layout.addWidget(title_label)
         layout.addWidget(helper_label)

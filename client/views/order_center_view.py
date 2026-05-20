@@ -337,16 +337,16 @@ class OrderCenterView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_aguardando_recebimento", DASH_WARNING, "AR", "Aguardando Recebimento", "Pedidos pendentes de confirmacao da producao."),
-            ("pedidos_em_producao", DASH_PRIMARY, "PR", "Pedidos em Producao", "Ordens que ja entraram na esteira produtiva."),
-            ("pedidos_finalizados", DASH_SUCCESS, "OK", "Pedidos Finalizados", "Pedidos concluidos e prontos para consulta."),
-            ("pedidos_cancelados", DASH_DANGER, "CX", "Pedidos Cancelados", "Cancelamentos registrados na operacao."),
-            ("pedidos_atrasados", DASH_DANGER, "AT", "Pedidos Atrasados", "Pedidos com prazo vencido e ainda abertos."),
-            ("tempo_medio_producao_segundos", DASH_SLATE, "TM", "Tempo Medio de Producao", "Indicador medio de conclusao da producao."),
+            ("pedidos_aguardando_recebimento", DASH_WARNING, "Aguardando Recebimento", "Pedidos pendentes de confirmacao da producao."),
+            ("pedidos_em_producao", DASH_PRIMARY, "Pedidos em Producao", "Ordens que ja entraram na esteira produtiva."),
+            ("pedidos_finalizados", DASH_SUCCESS, "Pedidos Finalizados", "Pedidos concluidos e prontos para consulta."),
+            ("pedidos_cancelados", DASH_DANGER, "Pedidos Cancelados", "Cancelamentos registrados na operacao."),
+            ("pedidos_atrasados", DASH_DANGER, "Pedidos Atrasados", "Pedidos com prazo vencido e ainda abertos."),
+            ("tempo_medio_producao_segundos", DASH_SLATE, "Tempo Medio de Producao", "Indicador medio de conclusao da producao."),
         ]
-        for index, (key, color, icon_text, title_text, helper_text) in enumerate(card_defs):
+        for index, (key, color, title_text, helper_text) in enumerate(card_defs):
             metrics.addWidget(
-                self._build_metric_card(color, icon_text, title_text, helper_text, key),
+                self._build_metric_card(color, title_text, helper_text, key),
                 index // 3,
                 index % 3,
             )
@@ -367,7 +367,6 @@ class OrderCenterView(QWidget):
     def _build_metric_card(
         self,
         color: str,
-        icon_text: str,
         title_text: str,
         helper_text: str,
         key: str,
@@ -384,18 +383,6 @@ class OrderCenterView(QWidget):
         layout.setContentsMargins(max(16, int(20 * s)), max(15, int(18 * s)),
                                   max(16, int(20 * s)), max(14, int(18 * s)))
         layout.setSpacing(max(6, int(8 * s)))
-
-        top_row = QHBoxLayout()
-        icon_label = QLabel(icon_text)
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_label.setFixedSize(max(36, int(44 * s)), max(36, int(44 * s)))
-        icon_label.setStyleSheet(
-            f"background:{_rgba(color, 28)}; color:{color};"
-            f"border-radius:{max(12, int(14 * s))}px;"
-            f"font-size:{max(8, int(10 * s))}pt; font-weight:800;"
-        )
-        top_row.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignLeft)
-        top_row.addStretch()
 
         value = QLabel("-")
         value.setStyleSheet(
@@ -420,7 +407,6 @@ class OrderCenterView(QWidget):
             f"background:{color}; border:none; border-radius:{max(2, int(3 * s))}px;"
         )
 
-        layout.addLayout(top_row)
         layout.addWidget(value)
         layout.addWidget(title)
         layout.addWidget(helper)
