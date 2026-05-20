@@ -43,15 +43,17 @@ COMPANY_SITE     = "www.pinheiroferragens.com.br"
 COMPANY_LOCATION = "SIA E TAGUATINGA"
 ITEM_POSITIONS   = list("ABCDEFGHIJ")
 
-# Colunas da tabela
+# Colunas da tabela (9 colunas — soma = 1.00)
 TABLE_COLS = [
-    ("POSIÇÃO", 0.13),   # POSIÇÃO
-    ("QUANT.",             0.13),
-    ("COMP.",              0.15),
-    ("DESENV.",            0.15),
-    ("CHAPA",              0.15),
-    ("TIPO.",              0.15),
-    ("PESO",               0.14),
+    ("POS.",    0.06),
+    ("CÓDIGO",  0.11),
+    ("NOME",    0.20),
+    ("QUANT.",  0.08),
+    ("COMP.",   0.11),
+    ("DESENV.", 0.11),
+    ("CHAPA",   0.11),
+    ("TIPO.",   0.11),
+    ("PESO",    0.11),
 ]
 
 GAP = 6   # espaçamento padrão entre seções
@@ -251,7 +253,8 @@ def _draw_header(
         try:
             img = ImageReader(logo_path)
             iw, ih = img.getSize()
-            scale = min((logo_area_w - 10) / iw, (logo_area_h - 8) / ih)
+            # padding mínimo para logo maior
+            scale = min((logo_area_w - 4) / iw, (logo_area_h - 4) / ih)
             dw, dh = iw * scale, ih * scale
             dx = logo_area_x + (logo_area_w - dw) / 2
             dy = logo_area_y + (logo_area_h - dh) / 2
@@ -301,12 +304,10 @@ def _draw_header(
     vendor_cx = title_x + half_w * 0.37 + half_w
 
     # data
-    _small_dot(pdf, date_cx - 22, y + 30, icon_r, C_BRAND)
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
     _txt(pdf, "Data", date_cx, y + 18, 7, C_TEXT_SOFT, align="center")
 
     # vendedor
-    _small_dot(pdf, vendor_cx - 28, y + 30, icon_r, C_BRAND)
     _txt(pdf, vendor_name, vendor_cx, y + 30, 10, C_TEXT, bold=True,
          align="center", max_w=half_w + 10)
     _txt(pdf, "Vendedor", vendor_cx, y + 18, 7, C_TEXT_SOFT, align="center")
@@ -331,8 +332,8 @@ def _draw_header(
 
     _txt(pdf, _safe(ped, "0"),
          ped_x + ped_label_w + (ped_w - ped_label_w) / 2,
-         y + ped_h / 2 - 12,
-         30, C_RED, bold=False, align="center",
+         y + ped_h / 2 - 9,
+         20, C_RED, bold=True, align="center",
          max_w=ped_w - ped_label_w - 10)
 
 
@@ -352,13 +353,12 @@ def _draw_info_bar(
     nf_label      = os.path.basename(nf_raw) if nf_raw else "--"
 
     cells = [
-        ("⏰", "O.S Nº",         _safe(req.get("os_number"), "--"), 0.13, C_TEXT),
-        ("\U0001f4c5", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")),  0.17, C_TEXT),
-        ("\U0001f69a", "RETIRADA",         _fmt_yes_no(req.get("retirada")),     0.13, C_BRAND),
-        ("\U0001f69a", "ENTREGA",          _fmt_yes_no(req.get("entrega")),      0.13, C_BRAND),
-        ("\U0001f4c4", "NF:",              nf_label,                             0.13, C_TEXT),
+        ("\U0001f4c5", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")),  0.20, C_TEXT),
+        ("\U0001f69a", "RETIRADA",         _fmt_yes_no(req.get("retirada")),     0.15, C_BRAND),
+        ("\U0001f69a", "ENTREGA",          _fmt_yes_no(req.get("entrega")),      0.15, C_BRAND),
+        ("\U0001f4c4", "NF:",              nf_label,                             0.17, C_TEXT),
         ("\U0001f4f1", contact_phone,      "",                                   0.20, C_GREEN),
-        ("⚖",    "PESO:",             _fmt_kg(weight_val),                  0.11, C_TEXT),
+        ("⚖",         "PESO:",            _fmt_kg(weight_val),                  0.13, C_TEXT),
     ]
 
     cx = x
@@ -463,13 +463,15 @@ def _prepare_rows(items: list[dict]) -> list[dict]:
     for i, pos in enumerate(ITEM_POSITIONS):
         item = rows[i] or {}
         result.append({
-            "position": pos,
-            "quantity": _fmt_qty(item.get("quantity")),
-            "comp":     _safe(item.get("comp"), ""),
-            "desenv":   _safe(item.get("desenv"), ""),
-            "chapa":    _safe(item.get("chapa"), ""),
-            "tipo":     _safe(item.get("tipo"), ""),
-            "weight":   _fmt_optional_kg(item.get("weight")) if item else "",
+            "position":     pos,
+            "product_code": _safe(item.get("product_code"), ""),
+            "product_name": _safe(item.get("product_name"), ""),
+            "quantity":     _fmt_qty(item.get("quantity")),
+            "comp":         _safe(item.get("comp"), ""),
+            "desenv":       _safe(item.get("desenv"), ""),
+            "chapa":        _safe(item.get("chapa"), ""),
+            "tipo":         _safe(item.get("tipo"), ""),
+            "weight":       _fmt_optional_kg(item.get("weight")) if item else "",
         })
     return result
 
@@ -519,14 +521,25 @@ def _draw_items_table(
     for ri, row in enumerate(rows):
         base_y = y + h - header_h - (ri + 1) * row_h + row_h / 2 - 4
         values = [
-            row["position"], row["quantity"], row["comp"],
-            row["desenv"], row["chapa"], row["tipo"], row["weight"],
+            row["position"],
+            row["product_code"],
+            row["product_name"],
+            row["quantity"],
+            row["comp"],
+            row["desenv"],
+            row["chapa"],
+            row["tipo"],
+            row["weight"],
         ]
         for ci, val in enumerate(values):
             cx = edges[ci]
             cw = edges[ci + 1] - edges[ci]
-            _txt(pdf, val, cx + cw / 2, base_y, 8.5, C_TEXT,
-                 bold=(ci == 0), align="center", max_w=cw - 6)
+            # NOME alinhado à esquerda; demais centrado
+            align = "left" if ci == 2 else "center"
+            pad   = 4 if ci == 2 else 0
+            _txt(pdf, val, cx + pad + (cw - pad) / 2 if align == "center" else cx + pad + 2,
+                 base_y, 7.5, C_TEXT,
+                 bold=(ci == 0), align=align, max_w=cw - 6)
 
 
 def _draw_drawing_box(
