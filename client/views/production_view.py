@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -44,6 +45,29 @@ _DESTINATION_CARD_META = {
         "icon": "producao_pinheiro_industria.png",
     },
 }
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _format_datetime(value: object) -> str:
+    parsed = _parse_datetime(value)
+    if parsed is None:
+        return "-"
+    return parsed.strftime("%d/%m/%Y %H:%M")
+
+
+def _format_header_date(value: datetime | None = None) -> str:
+    current = value or datetime.now()
+    return current.strftime("%d/%m/%Y")
 
 
 class ProductionWorker(QObject):
@@ -197,11 +221,51 @@ class ProductionView(QWidget):
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
 
-        btn_refresh = QPushButton("ATUALIZAR")
-        btn_refresh.setFixedHeight(max(32, int(36 * s)))
-        btn_refresh.setStyleSheet(_flat_secondary_btn_style(s))
-        btn_refresh.clicked.connect(self.refresh)
-        header.addWidget(btn_refresh)
+        right_col = QHBoxLayout()
+        right_col.setSpacing(max(10, int(12 * s)))
+
+        info_card = QFrame()
+        info_card.setObjectName("productionInfoCard")
+        info_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        info_card.setStyleSheet(
+            f"QFrame#productionInfoCard {{"
+            f"  background:{PROD_CARD_SURFACE}; border:none;"
+            f"  border-radius:{max(16, int(18 * s))}px;"
+            f"}}"
+        )
+        _apply_shadow(info_card, blur=max(26, int(30 * s)), y_offset=max(4, int(5 * s)))
+
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
+                                       max(14, int(16 * s)), max(10, int(12 * s)))
+        info_layout.setSpacing(max(2, int(3 * s)))
+
+        date_hint = QLabel("DATA ATUAL")
+        date_hint.setStyleSheet(
+            f"color:{PROD_CARD_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent;"
+        )
+        self.date_label = QLabel(_format_header_date())
+        self.date_label.setStyleSheet(
+            f"color:{PROD_CARD_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
+            f"background:transparent;"
+        )
+        self.updated_label = QLabel("Atualizando dados...")
+        self.updated_label.setStyleSheet(
+            f"color:{PROD_CARD_MUTED}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+        )
+        self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        info_layout.addWidget(date_hint)
+        info_layout.addWidget(self.date_label)
+        info_layout.addWidget(self.updated_label)
+
+        self.refresh_btn = QPushButton("ATUALIZAR")
+        self.refresh_btn.setFixedHeight(max(38, int(44 * s)))
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.refresh_btn.clicked.connect(self.refresh)
+        right_col.addWidget(info_card)
+        right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
+        header.addLayout(right_col)
         layout.addLayout(header)
 
         counts = QGridLayout()
@@ -464,6 +528,7 @@ class ProductionView(QWidget):
         }
 
     def refresh(self):
+        self._set_loading(True)
         worker = ProductionWorker()
         thread = QThread()
         cb = UiCallback()
@@ -477,12 +542,20 @@ class ProductionView(QWidget):
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
         thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        thread.finished.connect(lambda: self._set_loading(False))
         worker._cb = cb
         thread.start()
         self._threads.append((thread, worker))
 
     def _cleanup_thread(self, thread: QThread, worker: QObject):
         self._threads = [pair for pair in self._threads if pair != (thread, worker)]
+
+    def _set_loading(self, loading: bool):
+        if hasattr(self, "refresh_btn"):
+            self.refresh_btn.setEnabled(not loading)
+        if loading:
+            self.updated_label.setText("Atualizando dados...")
+            self.date_label.setText(_format_header_date())
 
     def _on_refresh_result(self, payload: object):
         try:
@@ -491,6 +564,8 @@ class ProductionView(QWidget):
             self._show_error(f"Não foi possível carregar a aba de produção.\n\n{exc}")
 
     def _show_error(self, msg: str):
+        if hasattr(self, "updated_label"):
+            self.updated_label.setText("Falha ao atualizar")
         QMessageBox.critical(self, "Produção", msg)
 
     def _populate(self, payload: object):
@@ -538,6 +613,11 @@ class ProductionView(QWidget):
             self._count_labels[destination].setText(str(len(waiting_rows) + len(production_rows)))
             self._fill_stage_table(destination, WAITING_STAGE, waiting_rows)
             self._fill_stage_table(destination, PRODUCTION_STAGE, production_rows)
+
+        generated_at = _parse_datetime(payload.get("generated_at")) if isinstance(payload, dict) else None
+        current = generated_at or datetime.now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
     def _fill_stage_table(self, destination: str, stage: str, rows: list[dict]):
         panel = self._cards[destination][stage]
