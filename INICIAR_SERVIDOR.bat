@@ -8,6 +8,10 @@ echo   API rodando em http://0.0.0.0:5000
 echo  ============================================
 echo.
 cd /d "%~dp0"
-call .venv\Scripts\activate
-py run.py
-pause
+if exist "venv\Scripts\python.exe" (
+    "venv\Scripts\python.exe" run.py
+) else (
+    echo Ambiente virtual nao encontrado em "venv".
+    echo Crie ou restaure a pasta venv antes de iniciar o servidor.
+    pause
+)
