@@ -43,6 +43,9 @@ _METRIC_ICON_FILES = {
     "pedidos_em_producao": "pedidos_em_producao.png",
     "pedidos_em_atraso": "pedidos_atrasados.png",
     "pedidos_finalizados_hoje": "pedidos_concluidos.png",
+    "producao_pinheiro_industria": "producao_pinheiro_industria.png",
+    "producao_ar": "producao_ar.png",
+    "requisicoes_feitas_no_dia": "requisicoes_do_dia.png",
     "pedidos_sem_confirmacao_1h": "aguardando_recebimento.png",
     "tempo_medio_finalizacao_segundos": "tempo_medio_producao.png",
 }
