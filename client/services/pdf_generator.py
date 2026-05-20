@@ -116,24 +116,56 @@ def _register_pdf_fonts() -> None:
 def _fmt_qty(value: object) -> str:
     if value in (None, ""):
         return ""
-    try:
-        n = float(value)
-        return str(int(n)) if n == int(n) else f"{n:.2f}".replace(".", ",")
-    except (TypeError, ValueError):
-        return str(value)
+    parsed = _parse_number(value)
+    return str(value) if parsed is None else _fmt_number(parsed)
 
 
 def _fmt_kg(value: object) -> str:
     if value in (None, ""):
-        return "0,00"
-    try:
-        return f"{float(value):.2f}".replace(".", ",")
-    except (TypeError, ValueError):
-        return str(value)
+        return "0"
+    parsed = _parse_number(value)
+    return str(value) if parsed is None else _fmt_number(parsed)
 
 
 def _fmt_optional_kg(value: object) -> str:
     return "" if value in (None, "") else _fmt_kg(value)
+
+
+def _parse_number(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    cleaned = text.replace(" ", "")
+    if "," in cleaned and "." in cleaned:
+        if cleaned.rfind(",") > cleaned.rfind("."):
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+    elif "," in cleaned:
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+
+    try:
+        return float(cleaned)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmt_number(value: object, decimals: int = 2, strip_zero_decimals: bool = True) -> str:
+    parsed = _parse_number(value)
+    if parsed is None:
+        return str(value or "")
+
+    formatted = f"{parsed:,.{decimals}f}"
+    formatted = formatted.replace(",", "_").replace(".", ",").replace("_", ".")
+    if strip_zero_decimals and formatted.endswith(",00"):
+        return formatted[:-3]
+    return formatted
 
 
 def _fmt_date(value: object, fallback: str = "--") -> str:
@@ -494,8 +526,8 @@ def _prepare_rows(items: list[dict]) -> list[dict]:
             "product_code": _safe(item.get("product_code"), ""),
             "product_name": _safe(item.get("product_name"), ""),
             "quantity":     _fmt_qty(item.get("quantity")),
-            "comp":         _safe(item.get("comp"), ""),
-            "desenv":       _safe(item.get("desenv"), ""),
+            "comp":         _fmt_qty(item.get("comp")),
+            "desenv":       _fmt_qty(item.get("desenv")),
             "chapa":        _safe(item.get("chapa"), ""),
             "tipo":         _safe(item.get("tipo"), ""),
             "weight":       _fmt_optional_kg(item.get("weight")),
@@ -665,7 +697,7 @@ def _draw_footer(
 
     gap = 6
     obs_w = w * 0.29
-    qr_box_w = max(38, h * 1.05)
+    qr_box_w = max(20 * mm, h - 2)
     sig_w = w - obs_w - gap * 2 - qr_box_w
 
     _box(pdf, x, y, obs_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
@@ -678,13 +710,13 @@ def _draw_footer(
 
     sig_x = x + obs_w + gap
     _box(pdf, sig_x, y, sig_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
-    sig_line_y = y + h / 2 - 1
-    sig_text_y = y + h / 2 - 3
+    sig_line_y = y + 12
+    sig_text_y = y + h - 15
     sig_lbl = "ASSINATURA DO CLIENTE:"
-    _txt(pdf, sig_lbl, sig_x + 8, sig_text_y, 7.5, C_TEXT_SOFT, bold=False)
-    lbl_offset = pdfmetrics.stringWidth(sig_lbl, PDF_FONT_REGULAR, 7.5) + 14
-    _line(pdf, sig_x + lbl_offset, sig_line_y,
-          sig_x + sig_w - 8, sig_line_y, C_TEXT, lw=0.8)
+    _txt(pdf, sig_lbl, sig_x + sig_w / 2, sig_text_y, 7.5, C_TEXT_SOFT,
+         bold=False, align="center")
+    _line(pdf, sig_x + 12, sig_line_y,
+          sig_x + sig_w - 12, sig_line_y, C_TEXT, lw=0.8)
 
     qr_x = sig_x + sig_w + gap
     _box(pdf, qr_x, y, qr_box_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
@@ -1036,13 +1068,13 @@ def generate_pdf(
     top = cli_y - GAP
 
     canvas_result = _render_canvas(canvas_json)
-    footer_h = 28
+    footer_h = 60
     foot_y = my
     table_h = _items_table_height(items_list)
     table_y = top - table_h
     _draw_items_table(pdf, mx, table_y, cw, table_h, items_list)
 
-    draw_y = foot_y + footer_h + GAP
+    draw_y = foot_y + footer_h + 2
     draw_h = max(table_y - GAP - draw_y, 70)
     _draw_drawing_box(
         pdf,
