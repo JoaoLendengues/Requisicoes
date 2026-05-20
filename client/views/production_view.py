@@ -1,10 +1,12 @@
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
     QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QMessageBox, QInputDialog,
+    QMessageBox, QInputDialog, QGraphicsDropShadowEffect,
 )
 from PySide6.QtCore import Qt, QThread, QObject, Signal
-from PySide6.QtGui import QPalette, QColor
+from PySide6.QtGui import QPalette, QColor, QPixmap
 
 from ..api import client as api
 from ..core.session import session
@@ -20,6 +22,28 @@ PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_RECEIVED = "RECEBIDA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
+
+PROD_CARD_SURFACE = "#FFFFFF"
+PROD_CARD_PRIMARY = "#1E3A5F"
+PROD_CARD_SECONDARY = "#27496D"
+PROD_CARD_TEXT = "#0F172A"
+PROD_CARD_MUTED = "#64748B"
+
+_ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
+_DESTINATION_CARD_META = {
+    "A&R": {
+        "title": "Producao da A&R",
+        "helper": "Fila ativa enviada para esse destino.",
+        "accent": PROD_CARD_SECONDARY,
+        "icon": "producao_ar.png",
+    },
+    "Pinheiro Indústria": {
+        "title": "Producao Pinheiro Industria",
+        "helper": "Fila ativa enviada para esse destino.",
+        "accent": PROD_CARD_PRIMARY,
+        "icon": "producao_pinheiro_industria.png",
+    },
+}
 
 
 class ProductionWorker(QObject):
@@ -70,6 +94,16 @@ def _make_card(scale: float) -> QFrame:
     return card
 
 
+def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
+    shadow = QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur)
+    shadow.setOffset(0, y_offset)
+    color = QColor(PROD_CARD_TEXT)
+    color.setAlpha(alpha)
+    shadow.setColor(color)
+    widget.setGraphicsEffect(shadow)
+
+
 def _flat_secondary_btn_style(scale: float) -> str:
     fs = max(9, int(11 * scale))
     return (
@@ -97,6 +131,10 @@ def _normalize_destination(destination: str) -> str:
     if folded in ("pinheiro indústria".casefold(), "pinheiro industria".casefold()):
         return "Pinheiro Indústria"
     return text
+
+
+def _destination_card_meta(destination: str) -> dict | None:
+    return _DESTINATION_CARD_META.get(_normalize_destination(destination))
 
 
 def _parse_production_note(note: str) -> dict | None:
@@ -142,7 +180,7 @@ class ProductionView(QWidget):
         header = QHBoxLayout()
         title_col = QVBoxLayout()
 
-        title = QLabel("🏭 PRODUÇÃO")
+        title = QLabel("PRODUÇÃO")
         title.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(14, int(17 * s))}pt; font-weight:bold;"
         )
@@ -158,7 +196,7 @@ class ProductionView(QWidget):
         header.addLayout(title_col)
         header.addStretch()
 
-        btn_refresh = QPushButton("🔄 ATUALIZAR")
+        btn_refresh = QPushButton("ATUALIZAR")
         btn_refresh.setFixedHeight(max(32, int(36 * s)))
         btn_refresh.setStyleSheet(_flat_secondary_btn_style(s))
         btn_refresh.clicked.connect(self.refresh)
@@ -168,29 +206,8 @@ class ProductionView(QWidget):
         counts = QGridLayout()
         counts.setSpacing(max(8, int(10 * s)))
         for index, destination in enumerate(self.destinations):
-            card = _make_card(s)
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(max(12, int(14 * s)), max(10, int(12 * s)),
-                                           max(12, int(14 * s)), max(10, int(12 * s)))
-
-            lbl_title = QLabel(f"🔖 {destination}")
-            lbl_title.setStyleSheet(
-                f"color:{theme.PRIMARY}; font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
-            )
-            lbl_value = QLabel("0")
-            lbl_value.setStyleSheet(
-                f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:bold;"
-            )
-            lbl_hint = QLabel("Requisições ativas")
-            lbl_hint.setStyleSheet(
-                f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
-            )
-
-            card_layout.addWidget(lbl_title)
-            card_layout.addWidget(lbl_value)
-            card_layout.addWidget(lbl_hint)
-            self._count_labels[destination] = lbl_value
-            counts.addWidget(card, 0, index)
+            counts.setColumnStretch(index, 1)
+            counts.addWidget(self._build_destination_summary_card(destination), 0, index)
 
         layout.addLayout(counts)
 
@@ -216,7 +233,7 @@ class ProductionView(QWidget):
                                   max(12, int(14 * s)), max(12, int(14 * s)))
         layout.setSpacing(max(10, int(12 * s)))
 
-        title = QLabel(f"🏭 {destination}")
+        title = QLabel(_normalize_destination(destination))
         title.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
         )
@@ -234,6 +251,102 @@ class ProductionView(QWidget):
         layout.addWidget(production_panel["card"])
         return card
 
+    def _build_destination_summary_card(self, destination: str) -> QFrame:
+        s = self.scale
+        meta = _destination_card_meta(destination) or {}
+        title_text = meta.get("title") or _normalize_destination(destination)
+        helper_text = meta.get("helper") or "Requisicoes ativas neste destino."
+        accent_color = meta.get("accent") or PROD_CARD_PRIMARY
+
+        card = QFrame()
+        card.setObjectName("productionSummaryCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card.setStyleSheet(
+            f"QFrame#productionSummaryCard {{"
+            f"  background:{PROD_CARD_SURFACE}; border:none;"
+            f"  border-radius:{max(18, int(20 * s))}px;"
+            f"}}"
+        )
+        _apply_shadow(card, blur=max(26, int(30 * s)), y_offset=max(4, int(5 * s)))
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(max(16, int(20 * s)), max(15, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(6, int(8 * s)))
+
+        value_label = QLabel("0")
+        value_label.setStyleSheet(
+            f"color:{PROD_CARD_TEXT}; font-size:{max(20, int(26 * s))}pt;"
+            f"font-weight:800; background:transparent; border:none;"
+        )
+        value_label.setWordWrap(True)
+
+        title_label = QLabel(title_text)
+        title_label.setWordWrap(True)
+        title_label.setStyleSheet(
+            f"color:{PROD_CARD_PRIMARY}; font-size:{max(9, int(11 * s))}pt;"
+            f"font-weight:700; background:transparent; border:none;"
+        )
+
+        helper_label = QLabel(helper_text)
+        helper_label.setWordWrap(True)
+        helper_label.setStyleSheet(
+            f"color:{PROD_CARD_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; border:none;"
+        )
+
+        accent_line = QFrame()
+        accent_line.setFixedHeight(max(4, int(5 * s)))
+        accent_line.setStyleSheet(
+            f"background:{accent_color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+
+        header_row = QHBoxLayout()
+        header_row.setSpacing(max(10, int(12 * s)))
+        header_row.addWidget(value_label, 1, Qt.AlignmentFlag.AlignTop)
+
+        icon_label = self._build_destination_icon_label(destination)
+        if icon_label is not None:
+            header_row.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+
+        layout.addLayout(header_row)
+        layout.addWidget(title_label)
+        layout.addWidget(helper_label)
+        layout.addStretch()
+        layout.addWidget(accent_line)
+
+        self._count_labels[destination] = value_label
+        return card
+
+    def _build_destination_icon_label(self, destination: str) -> QLabel | None:
+        meta = _destination_card_meta(destination) or {}
+        filename = meta.get("icon")
+        if not filename:
+            return None
+
+        icon_path = _ICON_DIR / filename
+        if not icon_path.exists():
+            return None
+
+        pixmap = QPixmap(str(icon_path))
+        if pixmap.isNull():
+            return None
+
+        size = max(52, int(62 * self.scale))
+        label = QLabel()
+        label.setFixedSize(size, size)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("background:transparent; border:none;")
+        label.setPixmap(
+            pixmap.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        return label
+
     def _build_stage_panel(self, destination: str, stage: str) -> dict:
         s = self.scale
         card = QFrame()
@@ -246,13 +359,13 @@ class ProductionView(QWidget):
         layout.setSpacing(max(8, int(10 * s)))
 
         if stage == WAITING_STAGE:
-            title_text = "📥 Aguardando Recebimento"
+            title_text = "Aguardando Recebimento"
             subtitle_text = "Requisições enviadas para produção e ainda não recebidas."
-            primary_text = "✅ Confirmar Recebimento"
+            primary_text = "Confirmar Recebimento"
         else:
-            title_text = "🏗 Em Produção"
+            title_text = "Em Produção"
             subtitle_text = "Requisições já recebidas pela produção."
-            primary_text = "🏁 Finalizar"
+            primary_text = "Finalizar"
 
         title_row = QHBoxLayout()
         title = QLabel(title_text)
@@ -279,9 +392,9 @@ class ProductionView(QWidget):
         layout.addWidget(subtitle)
 
         actions = QHBoxLayout()
-        btn_open = QPushButton("📂 Abrir")
+        btn_open = QPushButton("Abrir")
         btn_primary = QPushButton(primary_text)
-        btn_cancel = QPushButton("❌ Cancelar")
+        btn_cancel = QPushButton("Cancelar")
 
         for btn in (btn_open, btn_primary, btn_cancel):
             btn.setFixedHeight(max(28, int(32 * s)))
