@@ -603,16 +603,19 @@ class OrderCenterView(QWidget):
         table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{DASH_SURFACE};"
-            f"  alternate-background-color:{DASH_ROW_ALT}; color:{DASH_SLATE};"
+            f"  alternate-background-color:{DASH_ROW_ALT}; color:{DASH_TEXT};"
             f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
             f"  background:{DASH_PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{DASH_SURFACE}; color:{DASH_TEXT};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(DASH_PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; color:{DASH_TEXT}; }}"
             f"QTableWidget::item:selected {{ background:{_rgba(DASH_PRIMARY, 18)}; color:{DASH_TEXT}; }}"
-            f"QTableWidget::item {{ padding:7px 6px; border-bottom:1px solid {_rgba(DASH_PRIMARY, 18)}; }}"
-            f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; }}"
         )
         table.setMinimumHeight(max(220, int(240 * s)))
         return table

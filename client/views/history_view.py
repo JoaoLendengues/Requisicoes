@@ -111,14 +111,17 @@ class HistoryView(QWidget):
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(9,int(10*s))}pt;"
+            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK};"
             f"}}"
             f"QHeaderView::section {{"
             f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:8px;"
             f"  font-weight:bold; font-size:{max(8,int(9*s))}pt; border:none;"
             f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
             f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
         )
         layout.addWidget(self.table)
 
