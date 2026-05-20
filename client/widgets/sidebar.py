@@ -110,6 +110,14 @@ class Sidebar(QWidget):
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(0)
 
+        # \u2500\u2500 Se\u00e7\u00e3o superior: logo + navega\u00e7\u00e3o principal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # Ocupa o espa\u00e7o dispon\u00edvel e empurra a se\u00e7\u00e3o inferior para baixo.
+        top = QWidget()
+        top.setObjectName("SidebarPanel")
+        top_layout = QVBoxLayout(top)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(0)
+
         logo_container = QWidget()
         logo_container.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
         logo_layout = QVBoxLayout(logo_container)
@@ -128,44 +136,55 @@ class Sidebar(QWidget):
             )
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_layout.addWidget(logo_label)
-        panel_layout.addWidget(logo_container)
-
-        panel_layout.addWidget(self._separator())
+        top_layout.addWidget(logo_container)
+        top_layout.addWidget(self._separator())
 
         for key, icon, label in NAV_ITEMS:
             btn = self._make_btn(icon, label, nav_key=key)
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
-            panel_layout.addWidget(btn)
+            top_layout.addWidget(btn)
 
-        panel_layout.addStretch()
-        panel_layout.addWidget(self._separator())
+        top_layout.addStretch()
+
+        # \u2500\u2500 Se\u00e7\u00e3o inferior: config + notifica\u00e7\u00f5es + usu\u00e1rio + sair \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # Fixada no rodap\u00e9 \u2014 sempre vis\u00edvel independente da resolu\u00e7\u00e3o/escala.
+        bottom = QWidget()
+        bottom.setObjectName("SidebarPanel")
+        bottom_layout = QVBoxLayout(bottom)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setSpacing(0)
+
+        bottom_layout.addWidget(self._separator())
 
         for key, icon, label in BOTTOM_NAV_ITEMS:
             btn = self._make_btn(icon, label, nav_key=key)
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
-            panel_layout.addWidget(btn)
+            bottom_layout.addWidget(btn)
 
-        panel_layout.addWidget(self._separator())
+        bottom_layout.addWidget(self._separator())
 
         self._bell = _BellButton(self.scale)
         self._bell.clicked.connect(self.bell_clicked.emit)
-        panel_layout.addWidget(self._bell)
+        bottom_layout.addWidget(self._bell)
 
-        panel_layout.addWidget(self._separator())
+        bottom_layout.addWidget(self._separator())
 
         self.user_label = QLabel(f"\U0001F464 USU\u00c1RIO: {session.user_name}")
         self.user_label.setStyleSheet(
             f"color:rgba(255,255,255,0.78); font-size:{max(8, int(9 * self.scale))}pt; padding:10px 18px;"
         )
         self.user_label.setWordWrap(True)
-        panel_layout.addWidget(self.user_label)
+        bottom_layout.addWidget(self.user_label)
 
         btn_sair = self._make_btn("\U0001F6AA", "SAIR")
         btn_sair.clicked.connect(self.logout_clicked.emit)
-        panel_layout.addWidget(btn_sair)
-        panel_layout.addSpacing(12)
+        bottom_layout.addWidget(btn_sair)
+        bottom_layout.addSpacing(12)
+
+        panel_layout.addWidget(top, 1)     # estica para preencher espa\u00e7o livre
+        panel_layout.addWidget(bottom, 0)  # sempre vis\u00edvel, tamanho fixo
 
         layout.addWidget(panel)
 
