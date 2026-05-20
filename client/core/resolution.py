@@ -22,16 +22,34 @@ class ResolutionManager:
         screen = app.primaryScreen()
         self._logical_dpi  = screen.logicalDotsPerInch()
         self._geo          = screen.availableGeometry()
-        self._auto_scale   = self._logical_dpi / 96.0
+        self._auto_scale   = self._calc_auto_scale()
         self._user_scale   = self._load_setting("font_scale")
         self._server_url   = self._load_setting("server_url") or "http://10.1.1.151:5000"
         self._maximized    = self._load_setting("maximized", True)
         self._ready = True
 
+    def _calc_auto_scale(self) -> float:
+        """Escala baseada em DPI, limitada pela altura disponível da tela.
+
+        Garante que todos os itens da sidebar caibam sem corte.
+        Sidebar precisa de ~179 px fixo + 9 botões × button_height(S),
+        onde button_height(S) = max(40, int(48 × S)).
+        """
+        dpi_scale = self._logical_dpi / 96.0
+        # Altura disponível descontando barra de tarefas + status bar (~64 px)
+        available_h = max(500, self._geo.height() - 64)
+        # S máximo para que 9 botões + partes fixas caibam
+        max_s = (available_h - 179) / (9 * 48)
+        return round(max(0.72, min(dpi_scale, max_s, 1.4)), 2)
+
     # ── Escala ──────────────────────────────────────────────────────────────
     @property
     def scale(self) -> float:
-        return float(self._user_scale) if self._user_scale else self._auto_scale
+        raw = float(self._user_scale) if self._user_scale else self._auto_scale
+        # Aplica o cap de altura mesmo para escala manual, evitando corte da sidebar
+        available_h = max(500, self._geo.height() - 64)
+        height_cap = max(0.72, (available_h - 179) / (9 * 48))
+        return min(raw, round(height_cap, 2))
 
     def font(self, base_pt: int) -> int:
         return max(8, round(base_pt * self.scale))
