@@ -178,23 +178,24 @@ class ProductionView(QWidget):
         layout.setSpacing(max(10, int(12 * s)))
 
         header = QHBoxLayout()
+        header.setSpacing(max(12, int(16 * s)))
         title_col = QVBoxLayout()
+        title_col.setSpacing(max(4, int(5 * s)))
 
-        title = QLabel("PRODUÇÃO")
+        title = QLabel("Produção")
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(14, int(17 * s))}pt; font-weight:bold;"
+            f"color:{PROD_CARD_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Acompanhe por destino o que aguarda recebimento e o que já está em produção."
+            "Acompanhamento operacional por destino, etapa e pendencias da producao."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+            f"color:{PROD_CARD_MUTED}; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
-        header.addLayout(title_col)
-        header.addStretch()
+        header.addLayout(title_col, 1)
 
         btn_refresh = QPushButton("ATUALIZAR")
         btn_refresh.setFixedHeight(max(32, int(36 * s)))
