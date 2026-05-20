@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView, QFrame,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPalette
 
 from ..core import theme
 from ..core.resolution import res
@@ -123,9 +123,13 @@ class HistoryView(QWidget):
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
             f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
         )
-        self.table.viewport().setStyleSheet(
-            f"background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-        )
+        pal = self.table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        self.table.setPalette(pal)
+        self.table.viewport().setAutoFillBackground(True)
         layout.addWidget(self.table)
 
         # Dica

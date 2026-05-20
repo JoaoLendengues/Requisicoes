@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QInputDialog,
 )
 from PySide6.QtCore import Qt, QThread, QObject, Signal
+from PySide6.QtGui import QPalette, QColor
 
 from ..api import client as api
 from ..core.session import session
@@ -327,9 +328,13 @@ class ProductionView(QWidget):
             f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
             f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
         )
-        table.viewport().setStyleSheet(
-            f"background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-        )
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        table.setPalette(pal)
+        table.viewport().setAutoFillBackground(True)
         table.doubleClicked.connect(
             lambda index, dest=destination, current_stage=stage: self._open_row(dest, current_stage, index.row())
         )

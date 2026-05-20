@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -617,11 +617,17 @@ class OrderCenterView(QWidget):
             f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; color:{DASH_TEXT}; }}"
             f"QTableWidget::item:selected {{ background:{_rgba(DASH_PRIMARY, 18)}; color:{DASH_TEXT}; }}"
         )
-        # Force the viewport widget itself to white — without this the system palette
-        # (or the parent widget's background) bleeds through on Windows.
-        table.viewport().setStyleSheet(
-            f"background:{DASH_SURFACE}; color:{DASH_TEXT};"
-        )
+        # Sobrescreve a paleta do sistema (Windows ignora QSS em QTableView items).
+        # QPalette.Base = fundo das células normais.
+        # QPalette.AlternateBase = fundo das linhas alternadas.
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(DASH_SURFACE))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(DASH_ROW_ALT))
+        pal.setColor(QPalette.ColorRole.Text, QColor(DASH_TEXT))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(DASH_TEXT))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(DASH_PRIMARY, 40)))
+        table.setPalette(pal)
+        table.viewport().setAutoFillBackground(True)
         table.setMinimumHeight(max(220, int(240 * s)))
         return table
 
