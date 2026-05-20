@@ -496,13 +496,13 @@ class DashboardView(QWidget):
 
         title_label = QLabel(title)
         title_label.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
         )
 
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
         subtitle_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+            f"font-size:{max(7, int(8 * s))}pt;"
         )
 
         layout.addWidget(accent)
@@ -573,7 +573,7 @@ class DashboardView(QWidget):
     def _build_recent_table(self) -> QTableWidget:
         self.recent_table = self._create_table(
             ["PED", "CLIENTE", "VENDEDOR", "EMISSAO", "STATUS", "DESTINO"],
-            {1, 2},
+            {2, 4},
         )
         self.recent_table.setMinimumHeight(max(260, int(300 * self.scale)))
         return self.recent_table
