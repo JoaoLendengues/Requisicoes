@@ -40,7 +40,6 @@ if HAS_REPORTLAB:
 COMPANY_PHONES = ("(61) 3354-8181", "(61) 3012-8181")
 COMPANY_SITE = "www.pinheiroferragens.com.br"
 COMPANY_LOCATION = "SIA E TAGUATINGA"
-TOP_PHONE_FALLBACK = "(61) 99932-5256"
 ITEM_POSITIONS = list("ABCDEFGHIJ")
 
 
@@ -67,6 +66,12 @@ def _fmt_kg(value: object) -> str:
         return f"{float(value):.2f}".replace(".", ",")
     except (TypeError, ValueError):
         return str(value)
+
+
+def _fmt_optional_kg(value: object) -> str:
+    if value in (None, ""):
+        return ""
+    return _fmt_kg(value)
 
 
 def _fmt_date(value: object, fallback: str = "-") -> str:
@@ -134,6 +139,26 @@ def _file_display_name(path: object, fallback: str = "-") -> str:
     if not text:
         return fallback
     return os.path.basename(text) or fallback
+
+
+def _coerce_float(value: object) -> float | None:
+    try:
+        if value in (None, ""):
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_total_weight(req: dict, items: list[dict]) -> float | None:
+    item_weights = [weight for weight in (_coerce_float((item or {}).get("weight")) for item in items) if weight is not None]
+    if item_weights:
+        return sum(item_weights)
+    return _coerce_float(req.get("weight"))
+
+
+def _resolve_phone(req: dict, client: dict | None, fallback: str = "-") -> str:
+    return _format_phone(req.get("phone") or (client or {}).get("phone"), fallback)
 
 
 def _draw_round_box(
@@ -332,7 +357,7 @@ def _prepare_item_rows(items: list[dict]) -> list[dict]:
                 "desenv": _safe_text(item.get("desenv"), ""),
                 "chapa": _safe_text(item.get("chapa"), ""),
                 "tipo": _safe_text(item.get("tipo"), ""),
-                "weight": _fmt_kg(item.get("weight")) if item else "",
+                "weight": _fmt_optional_kg(item.get("weight")) if item else "",
             }
         )
     return prepared
@@ -468,8 +493,18 @@ def _draw_signature_and_obs(pdf: pdfcanvas.Canvas, x: float, y: float, width: fl
     obs_h = 22
     _draw_round_box(pdf, obs_x, obs_y, obs_w, obs_h, radius=8, fill_color=C_CARD_BG, stroke_color=C_BORDER)
     _draw_text(pdf, "OBSERVACAO:", obs_x + 10, obs_y + obs_h / 2 - 4, 8.5, C_TEXT, bold=False, align="left")
-    observation = _safe_text(obs, "0")
-    _draw_text(pdf, observation, obs_x + obs_w - 10, obs_y + obs_h / 2 - 4, 8.5, C_TEXT_SOFT, bold=False, align="right", max_width=obs_w - 95)
+    observation = _safe_text(obs, "")
+    _draw_text(
+        pdf,
+        observation,
+        obs_x + 86,
+        obs_y + obs_h / 2 - 4,
+        8.5,
+        C_TEXT_SOFT,
+        bold=False,
+        align="left",
+        max_width=obs_w - 96,
+    )
 
 
 def _draw_second_page(pdf: pdfcanvas.Canvas, ped: str, canvas_result: tuple[bytes, int, int]) -> None:
@@ -629,6 +664,8 @@ def generate_pdf(req: dict, client: dict | None, obs: str, folder: str, canvas_j
     pdf.setFillColor(C_PAGE_BG)
     pdf.rect(0, 0, page_w, page_h, fill=1, stroke=0)
 
+    from ..core.session import session as _session
+
     client_data = client or {}
     current_top = page_h - margin_y
     gap_small = 6
@@ -647,7 +684,7 @@ def generate_pdf(req: dict, client: dict | None, obs: str, folder: str, canvas_j
     _draw_text(pdf, "REQUISICAO", title_x + middle_w / 2, header_y + header_h - 20, 27, C_BRAND, bold=True, align="center")
 
     emission_value = req.get("emission_date") or datetime.now().isoformat()
-    vendor_value = _safe_text(req.get("vendor_name"), "-")
+    vendor_value = _safe_text(req.get("vendor_name"), _session.user_name or "-")
     date_group_w = middle_w * 0.42
     vendor_group_w = middle_w * 0.58
     _draw_label_value(
@@ -681,14 +718,20 @@ def generate_pdf(req: dict, client: dict | None, obs: str, folder: str, canvas_j
     info_y = current_top - info_h
     _draw_round_box(pdf, margin_x, info_y, content_w, info_h, radius=10, fill_color=C_CARD_BG, stroke_color=C_BORDER)
 
+    items_list = req.get("items") or []
+    if not isinstance(items_list, list):
+        items_list = []
+    contact_phone = _resolve_phone(req, client_data, "-")
+    total_weight_value = _resolve_total_weight(req, items_list)
+
     info_cells = [
         ("O.S No", _safe_text(req.get("os_number"), "-"), 0.16, C_TEXT),
         ("Prazo de Entrega", _fmt_date(req.get("delivery_date")), 0.17, C_TEXT),
         ("Retirada", _fmt_yes_no(req.get("retirada")), 0.13, C_BRAND),
         ("Entrega", _fmt_yes_no(req.get("entrega")), 0.13, C_BRAND),
         ("NF", _file_display_name(req.get("nf_attachment")), 0.13, C_TEXT),
-        ("Contato", _format_phone(req.get("phone"), TOP_PHONE_FALLBACK), 0.17, C_GREEN if req.get("phone") else C_TEXT),
-        ("Peso", _fmt_kg(req.get("weight")), 0.11, C_TEXT),
+        ("Contato", contact_phone, 0.17, C_GREEN if contact_phone != "-" else C_TEXT),
+        ("Peso", _fmt_kg(total_weight_value), 0.11, C_TEXT),
     ]
     cursor_x = margin_x
     pdf.saveState()
@@ -722,7 +765,7 @@ def generate_pdf(req: dict, client: dict | None, obs: str, folder: str, canvas_j
 
     client_display = _safe_text(client_data.get("name") or req.get("client_name"), "0")
     obra_display = _safe_text(req.get("obra"), "0")
-    phone_display = _format_phone(req.get("phone") or client_data.get("phone"), "0")
+    phone_display = _resolve_phone(req, client_data, "0")
     address_display = _safe_text(req.get("delivery_address"), "0")
 
     _draw_label_value(pdf, margin_x, row_split_y, top_right_split_x - margin_x, client_h / 2, "Cliente", client_display, align="left", value_size=10)
@@ -739,9 +782,6 @@ def generate_pdf(req: dict, client: dict | None, obs: str, folder: str, canvas_j
     items_x = margin_x
     draw_x = items_x + items_w + 10
 
-    items_list = req.get("items") or []
-    if not isinstance(items_list, list):
-        items_list = []
     _draw_items_table(pdf, items_x, middle_y, items_w, middle_h, items_list)
 
     canvas_result = _render_canvas_to_png(canvas_json)
