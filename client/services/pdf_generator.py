@@ -61,15 +61,15 @@ _QT_FONT_READY   = False
 
 # Colunas da tabela (9 colunas — soma = 1.00)
 TABLE_COLS = [
-    ("POS.",    0.06),
-    ("CÓDIGO",  0.11),
-    ("NOME",    0.20),
-    ("QUANT.",  0.08),
-    ("COMP.",   0.11),
-    ("DESENV.", 0.11),
-    ("CHAPA",   0.11),
-    ("TIPO.",   0.11),
-    ("PESO",    0.11),
+    ("POS.",    0.05),
+    ("C?DIGO",  0.10),
+    ("NOME",    0.28),
+    ("QUANT.",  0.07),
+    ("COMP.",   0.10),
+    ("DESENV.", 0.10),
+    ("CHAPA",   0.09),
+    ("TIPO.",   0.10),
+    ("PESO",    0.10),
 ]
 
 GAP = 6   # espaçamento padrão entre seções
@@ -279,44 +279,39 @@ def _draw_header(
     ped: str,
     vendor_name: str,
 ) -> None:
-    """Cabeçalho completo: logo | contato || REQUISIÇÃO | data/vendedor || PED"""
+    """Cabe?alho completo: logo | contato | requisi??o | data/vendedor | PED"""
 
-    # ── proporções da faixa do cabeçalho
-    sep_gap   = 6
-    logo_w    = w * 0.29           # logo bem maior
-    contact_w = w * 0.175
-    ped_w     = w * 0.155          # PED box mais largo
-    title_w   = w - logo_w - contact_w - ped_w - sep_gap * 2 - 10
+    sep_gap = 6
+    logo_w = w * 0.27
+    contact_w = w * 0.17
+    ped_w = w * 0.19
+    title_w = w - logo_w - contact_w - ped_w - sep_gap * 2 - 10
 
-    # --- Logo (esquerda) -----------------------------------------------------
     logo_path = _resolve_logo_path()
     logo_area_x = x
     logo_area_y = y
     logo_area_w = logo_w
     logo_area_h = h
 
-    if os.path.exists(logo_path):
+    if _path_exists(logo_path):
         try:
             img = ImageReader(logo_path)
             iw, ih = img.getSize()
-            # padding mínimo para logo maior
-            scale = min((logo_area_w - 4) / iw, (logo_area_h - 4) / ih)
+            scale = min((logo_area_w - 2) / iw, (logo_area_h - 2) / ih)
             dw, dh = iw * scale, ih * scale
-            dx = logo_area_x + (logo_area_w - dw) / 2
+            dx = logo_area_x + 2
             dy = logo_area_y + (logo_area_h - dh) / 2
             pdf.drawImage(img, dx, dy, width=dw, height=dh, mask="auto")
         except Exception:
-            _txt(pdf, "PINHEIRO FERRAGENS", logo_area_x + logo_area_w / 2,
-                 logo_area_y + logo_area_h / 2, 10, C_BRAND, bold=True, align="center")
+            _txt(pdf, "PINHEIRO FERRAGENS", logo_area_x + 4,
+                 logo_area_y + logo_area_h / 2 - 4, 10, C_BRAND, bold=True)
     else:
-        _txt(pdf, "PINHEIRO FERRAGENS", logo_area_x + logo_area_w / 2,
-             logo_area_y + logo_area_h / 2, 10, C_BRAND, bold=True, align="center")
+        _txt(pdf, "PINHEIRO FERRAGENS", logo_area_x + 4,
+             logo_area_y + logo_area_h / 2 - 4, 10, C_BRAND, bold=True)
 
-    # separador logo | contato
     sep_x = x + logo_w + sep_gap
     _line(pdf, sep_x, y + 6, sep_x, y + h - 6, C_BORDER, lw=1.0)
 
-    # --- Informações de contato -----------------------------------------------
     contact_x = sep_x + sep_gap + 2
     icon_r = 2.8
     line_h = 15
@@ -333,52 +328,38 @@ def _draw_header(
              max_w=contact_w - 18)
         ty -= line_h
 
-    # separador contato | título
-    sep2_x = contact_x + contact_w
-    # separador removido a pedido do layout
-
-    # --- Título + data + vendedor ---------------------------------------------
     title_x = contact_x + contact_w + 8
     tx_center = title_x + title_w / 2
-
-    _txt(pdf, "REQUISIÇÃO", tx_center, y + h - 28, 26,
+    _txt(pdf, "REQUISI??O", tx_center, y + h - 28, 26,
          C_BRAND, bold=True, align="center")
 
     emission = _fmt_date(req.get("emission_date"), datetime.now().strftime("%d/%m/%Y"))
-    date_cx = title_x + title_w * 0.25
-    vendor_cx = title_x + title_w * 0.75
-
-    # data
+    date_cx = title_x + title_w * 0.26
+    vendor_cx = title_x + title_w * 0.74
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
     _txt(pdf, "Data", date_cx, y + 18, 7, C_TEXT_SOFT, align="center")
-
-    # vendedor
     _txt(pdf, vendor_name, vendor_cx, y + 30, 10, C_TEXT, bold=True,
-         align="center", max_w=title_w * 0.42)
+         align="center", max_w=title_w * 0.40)
     _txt(pdf, "Vendedor", vendor_cx, y + 18, 7, C_TEXT_SOFT, align="center")
 
-    # --- PED box (direita) ---------------------------------------------------
     ped_x = title_x + title_w + 6
-    ped_h = h
-    ped_label_w = ped_w * 0.38
+    ped_h = h * 0.68
+    ped_y = y + (h - ped_h) / 2
+    ped_label_w = ped_w * 0.34
+    _box(pdf, ped_x, ped_y, ped_w, ped_h, radius=8, fill=C_WHITE, stroke=C_BORDER)
 
-    # fundo geral
-    _box(pdf, ped_x, y, ped_w, ped_h, radius=8, fill=C_WHITE, stroke=C_BORDER)
-
-    # fundo do rótulo "PED:"
     pdf.saveState()
     pdf.setFillColor(C_BRAND)
-    pdf.roundRect(ped_x, y, ped_label_w, ped_h, 8, fill=1, stroke=0)
-    pdf.rect(ped_x + ped_label_w - 8, y, 8, ped_h, fill=1, stroke=0)
+    pdf.roundRect(ped_x, ped_y, ped_label_w, ped_h, 8, fill=1, stroke=0)
+    pdf.rect(ped_x + ped_label_w - 8, ped_y, 8, ped_h, fill=1, stroke=0)
     pdf.restoreState()
 
-    _txt(pdf, "PED:", ped_x + ped_label_w / 2, y + ped_h / 2 - 9,
-         14, C_WHITE, bold=True, align="center")
-
+    _txt(pdf, "PED:", ped_x + ped_label_w / 2, ped_y + ped_h / 2 - 6,
+         12.5, C_WHITE, bold=True, align="center")
     _txt(pdf, _safe(ped, "0"),
          ped_x + ped_label_w + (ped_w - ped_label_w) / 2,
-         y + ped_h / 2 - 9,
-         20, C_RED, bold=True, align="center",
+         ped_y + ped_h / 2 - 7,
+         17.5, C_RED, bold=True, align="center",
          max_w=ped_w - ped_label_w - 10)
 
 
@@ -674,53 +655,46 @@ def _draw_footer(
     obs: str,
     vendor_phone: str = "--",
 ) -> None:
-    """Rodapé lado a lado: [OBSERVAÇÃO] | [ASSINATURA DO CLIENTE: ____] [QR CODE]"""
+    """Rodap? em tr?s caixas: observa??o, assinatura e QR code."""
 
-    qr_sz    = h - 8                      # QR quadrado com margem
-    qr_label = ""
-    gap      = 8
+    gap = 6
+    obs_w = w * 0.29
+    qr_box_w = max(38, h * 1.05)
+    sig_w = w - obs_w - gap * 2 - qr_box_w
 
-    # ── Proporções horizontais ────────────────────────────────────────────────
-    obs_w   = w * 0.43                    # caixa de observação
-    qr_col  = qr_sz + gap + 4            # coluna do QR (à direita)
-    sig_w   = w - obs_w - gap - qr_col   # área da assinatura (meio)
-
-    # ── OBSERVAÇÃO (esquerda) ──────────────────────────────────────────────────
     _box(pdf, x, y, obs_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
-    lbl   = "OBSERVAÇÃO:"
-    lbl_w = pdfmetrics.stringWidth(lbl, PDF_FONT_BOLD, 8) + 10
-    _txt(pdf, lbl, x + 8, y + h / 2 - 4, 8, C_TEXT, bold=True)
+    lbl = "OBSERVA??O:"
+    lbl_w = pdfmetrics.stringWidth(lbl, PDF_FONT_BOLD, 8) + 8
+    _txt(pdf, lbl, x + 6, y + h / 2 - 4, 8, C_TEXT, bold=True)
     _txt(pdf, _safe(obs, ""), x + lbl_w, y + h / 2 - 4, 8,
-         C_TEXT_SOFT, max_w=obs_w - lbl_w - 10)
+         C_TEXT_SOFT, max_w=obs_w - lbl_w - 8)
 
-    # ── ASSINATURA (centro) ───────────────────────────────────────────────────
-    sig_x   = x + obs_w + gap
+    sig_x = x + obs_w + gap
+    _box(pdf, sig_x, y, sig_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
     sig_mid = y + h / 2
     sig_lbl = "ASSINATURA DO CLIENTE:"
-    _txt(pdf, sig_lbl, sig_x + 4, sig_mid + 3, 7.5, C_TEXT_SOFT, bold=False)
-    lbl_offset = pdfmetrics.stringWidth(sig_lbl, PDF_FONT_REGULAR, 7.5) + 10
-    _line(pdf, sig_x + 4 + lbl_offset, sig_mid,
-          sig_x + sig_w, sig_mid, C_TEXT, lw=0.8)
+    _txt(pdf, sig_lbl, sig_x + 6, sig_mid + 3, 7.5, C_TEXT_SOFT, bold=False)
+    lbl_offset = pdfmetrics.stringWidth(sig_lbl, PDF_FONT_REGULAR, 7.5) + 12
+    _line(pdf, sig_x + lbl_offset, sig_mid,
+          sig_x + sig_w - 8, sig_mid, C_TEXT, lw=0.8)
 
-    # ── QR CODE (direita) com rótulo ──────────────────────────────────────────
-    qr_x   = sig_x + sig_w + gap
+    qr_x = sig_x + sig_w + gap
+    _box(pdf, qr_x, y, qr_box_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
     digits = "".join(c for c in vendor_phone if c.isdigit())
     wa_url = f"https://wa.me/55{digits}" if digits else "https://wa.me/"
     qr_bytes = _make_qr_bytes(wa_url)
     if qr_bytes:
+        qr_size = min(qr_box_w, h) - 8
         pdf.drawImage(
             ImageReader(io.BytesIO(qr_bytes)),
-            qr_x, y + 3, width=qr_sz, height=qr_sz,
-            preserveAspectRatio=True, mask="auto",
+            qr_x + (qr_box_w - qr_size) / 2,
+            y + (h - qr_size) / 2,
+            width=qr_size,
+            height=qr_size,
+            preserveAspectRatio=True,
+            mask="auto",
         )
 
-    # rótulo "Contato do Vendedor" centralizado abaixo do QR
-    _txt(pdf, qr_label,
-         qr_x + qr_sz / 2, y - 1, 6, C_TEXT_SOFT,
-         align="center")
-
-
-# ── Canvas → PNG ─────────────────────────────────────────────────────────────
 
 def _build_canvas_item(data: dict):
     try:
@@ -1054,7 +1028,7 @@ def generate_pdf(
     top = cli_y - GAP
 
     canvas_result = _render_canvas(canvas_json)
-    footer_h = 52
+    footer_h = 28
     foot_y = my
     table_h = _items_table_height(items_list)
     table_y = top - table_h
