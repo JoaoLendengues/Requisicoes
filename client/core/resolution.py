@@ -67,8 +67,7 @@ class ResolutionManager:
 
     @property
     def pdf_folder(self) -> str:
-        default = r"Z:\REQUISIÇÕES (VENDAS)\PDF"
-        return self._load_setting("pdf_folder") or default
+        return r"Z:\REQUISIÇÕES (VENDAS)\PDF"
 
     def save(self, **kwargs):
         data = self._read_file()
