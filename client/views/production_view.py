@@ -11,7 +11,6 @@ from PySide6.QtGui import QPalette, QColor, QPixmap
 
 from ..api import client as api
 from ..core.session import session
-from ..core import theme
 
 
 COLS = ["PED", "CLIENTE", "OBRA", "DATA"]
@@ -27,8 +26,12 @@ PROD_CANCELED = "CANCELADA"
 PROD_CARD_SURFACE = "#FFFFFF"
 PROD_CARD_PRIMARY = "#1E3A5F"
 PROD_CARD_SECONDARY = "#27496D"
+PROD_CARD_DANGER = "#DC2626"
+PROD_CARD_WARNING = "#F59E0B"
 PROD_CARD_TEXT = "#0F172A"
 PROD_CARD_MUTED = "#64748B"
+PROD_CARD_BORDER = "#E2E8F0"
+PROD_CARD_ROW_ALT = "#F8FBFF"
 
 _ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
 _DESTINATION_CARD_META = {
@@ -110,11 +113,29 @@ class UiCallback(QObject):
     error = Signal(str)
 
 
-def _make_card(scale: float) -> QFrame:
+def _make_card(
+    scale: float,
+    background: str | None = None,
+    border_color: str | None = None,
+    radius: int = 18,
+    hover_background: str | None = None,
+) -> QFrame:
     card = QFrame()
+    card.setObjectName("productionCard")
+    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    bg = background or PROD_CARD_SURFACE
+    border = f"1px solid {border_color}" if border_color else "none"
+    hover = hover_background or bg
     card.setStyleSheet(
-        f"background:{theme.CARD_BG}; border:none; border-radius:8px;"
+        f"QFrame#productionCard {{"
+        f"  background:{bg}; border:{border}; border-radius:{radius}px;"
+        f"}}"
+        f"QFrame#productionCard:hover {{"
+        f"  background:{hover}; border:{border};"
+        f"}}"
     )
+    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
 
@@ -129,15 +150,42 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
 
 
 def _flat_secondary_btn_style(scale: float) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
-        f"  border:none; outline:none; border-radius:8px;"
-        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"  background:{PROD_CARD_SURFACE}; color:{PROD_CARD_PRIMARY};"
+        f"  border:1px solid {PROD_CARD_BORDER}; outline:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
-        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+        f"QPushButton:hover {{ background:{PROD_CARD_ROW_ALT}; border-color:{_rgba(PROD_CARD_PRIMARY, 70)}; }}"
+        f"QPushButton:pressed {{ background:#E7EEF7; }}"
+        f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
+    )
+
+
+def _primary_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{PROD_CARD_PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{PROD_CARD_SECONDARY}; }}"
+        f"QPushButton:pressed {{ background:#152D49; }}"
+        f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
+    )
+
+
+def _danger_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{PROD_CARD_DANGER}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:#B91C1C; }}"
+        f"QPushButton:pressed {{ background:#991B1B; }}"
+        f"QPushButton:disabled {{ background:#F0B4B4; color:#FFF7F7; }}"
     )
 
 
@@ -197,9 +245,9 @@ class ProductionView(QWidget):
             f"QWidget#productionView {{ background:{page_bg}; }}"
         )
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(max(12, int(16 * s)), max(12, int(16 * s)),
-                                  max(12, int(16 * s)), max(12, int(16 * s)))
-        layout.setSpacing(max(10, int(12 * s)))
+        layout.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                  max(18, int(24 * s)), max(18, int(24 * s)))
+        layout.setSpacing(max(14, int(18 * s)))
 
         header = QHBoxLayout()
         header.setSpacing(max(12, int(16 * s)))
@@ -269,7 +317,8 @@ class ProductionView(QWidget):
         layout.addLayout(header)
 
         counts = QGridLayout()
-        counts.setSpacing(max(8, int(10 * s)))
+        counts.setHorizontalSpacing(max(12, int(16 * s)))
+        counts.setVerticalSpacing(max(12, int(16 * s)))
         for index, destination in enumerate(self.destinations):
             counts.setColumnStretch(index, 1)
             counts.addWidget(self._build_destination_summary_card(destination), 0, index)
@@ -277,7 +326,7 @@ class ProductionView(QWidget):
         layout.addLayout(counts)
 
         columns_row = QHBoxLayout()
-        columns_row.setSpacing(max(10, int(12 * s)))
+        columns_row.setSpacing(max(14, int(18 * s)))
         for destination in self.destinations:
             columns_row.addWidget(self._build_destination_column(destination), 1)
         layout.addLayout(columns_row, 1)
@@ -286,23 +335,46 @@ class ProductionView(QWidget):
             "Use os painéis de cada destino para abrir, confirmar recebimento, finalizar ou cancelar requisições."
         )
         hint.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-style:italic;"
+            f"color:{PROD_CARD_MUTED}; font-size:{max(8, int(10 * s))}pt; font-weight:600;"
         )
         layout.addWidget(hint)
 
     def _build_destination_column(self, destination: str) -> QFrame:
         s = self.scale
-        card = _make_card(s)
+        meta = _destination_card_meta(destination) or {}
+        accent_color = meta.get("accent") or PROD_CARD_PRIMARY
+        card = _make_card(
+            s,
+            PROD_CARD_SURFACE,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background="#FBFDFF",
+        )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(12, int(14 * s)), max(12, int(14 * s)),
-                                  max(12, int(14 * s)), max(12, int(14 * s)))
+        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
         layout.setSpacing(max(10, int(12 * s)))
+
+        accent = QFrame()
+        accent.setFixedHeight(max(4, int(5 * s)))
+        accent.setStyleSheet(
+            f"background:{accent_color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
 
         title = QLabel(_normalize_destination(destination))
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"color:{PROD_CARD_TEXT}; background:transparent;"
         )
+        subtitle = QLabel("Fluxo operacional deste destino.")
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; color:{PROD_CARD_MUTED}; background:transparent;"
+        )
+
+        layout.addWidget(accent)
         layout.addWidget(title)
+        layout.addWidget(subtitle)
 
         self._cards[destination] = {}
 
@@ -414,13 +486,16 @@ class ProductionView(QWidget):
 
     def _build_stage_panel(self, destination: str, stage: str) -> dict:
         s = self.scale
-        card = QFrame()
-        card.setStyleSheet(
-            f"background:{theme.INPUT_BG}; border:none; border-radius:8px;"
+        card = _make_card(
+            s,
+            PROD_CARD_ROW_ALT,
+            border_color=PROD_CARD_BORDER,
+            radius=max(16, int(18 * s)),
+            hover_background=PROD_CARD_SURFACE,
         )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(10, int(12 * s)), max(10, int(12 * s)),
-                                  max(10, int(12 * s)), max(10, int(12 * s)))
+        layout.setContentsMargins(max(14, int(16 * s)), max(12, int(14 * s)),
+                                  max(14, int(16 * s)), max(12, int(14 * s)))
         layout.setSpacing(max(8, int(10 * s)))
 
         if stage == WAITING_STAGE:
@@ -435,14 +510,15 @@ class ProductionView(QWidget):
         title_row = QHBoxLayout()
         title = QLabel(title_text)
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:bold;"
+            f"color:{PROD_CARD_TEXT}; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
         )
         count = QLabel("0")
         count.setAlignment(Qt.AlignmentFlag.AlignCenter)
         count.setMinimumWidth(max(28, int(34 * s)))
+        pill_color = PROD_CARD_WARNING if stage == WAITING_STAGE else PROD_CARD_PRIMARY
         count.setStyleSheet(
-            f"background:{theme.TABLE_HEADER_BG}; color:#fff; border-radius:999px;"
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:bold; padding:2px 8px;"
+            f"background:{pill_color}; color:#fff; border-radius:999px;"
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; padding:4px 10px;"
         )
         title_row.addWidget(title)
         title_row.addStretch()
@@ -451,22 +527,23 @@ class ProductionView(QWidget):
         subtitle = QLabel(subtitle_text)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
+            f"color:{PROD_CARD_MUTED}; font-size:{max(7, int(8 * s))}pt;"
         )
         layout.addLayout(title_row)
         layout.addWidget(subtitle)
 
         actions = QHBoxLayout()
+        actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
         btn_primary = QPushButton(primary_text)
         btn_cancel = QPushButton("Cancelar")
 
         for btn in (btn_open, btn_primary, btn_cancel):
-            btn.setFixedHeight(max(28, int(32 * s)))
+            btn.setFixedHeight(max(34, int(38 * s)))
 
         btn_open.setStyleSheet(_flat_secondary_btn_style(s))
-        btn_primary.setStyleSheet(theme.primary_btn_style(s))
-        btn_cancel.setStyleSheet(theme.danger_btn_style(s))
+        btn_primary.setStyleSheet(_primary_action_btn_style(s))
+        btn_cancel.setStyleSheet(_danger_action_btn_style(s))
 
         btn_open.clicked.connect(lambda: self._open_selected(destination, stage))
         if stage == WAITING_STAGE:
@@ -491,28 +568,35 @@ class ProductionView(QWidget):
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        table.horizontalHeader().setMinimumHeight(max(34, int(40 * s)))
+        table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:none; outline:none; background:{theme.CARD_BG};"
-            f"  gridline-color:transparent; font-size:{max(9, int(10 * s))}pt; color:{theme.TEXT_DARK};"
+            f"  border:none; outline:none; background:{PROD_CARD_SURFACE};"
+            f"  alternate-background-color:{PROD_CARD_ROW_ALT}; color:{PROD_CARD_TEXT};"
+            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:8px;"
-            f"  font-weight:bold; font-size:{max(8, int(9 * s))}pt; border:none;"
+            f"  background:{PROD_CARD_PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
             f"QTableWidget::item {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  background:{PROD_CARD_SURFACE}; color:{PROD_CARD_TEXT};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(PROD_CARD_PRIMARY, 18)};"
             f"}}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:alternate {{ background:{PROD_CARD_ROW_ALT}; color:{PROD_CARD_TEXT}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(PROD_CARD_PRIMARY, 18)}; color:{PROD_CARD_TEXT}; }}"
         )
         pal = table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
-        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Base, QColor(PROD_CARD_SURFACE))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(PROD_CARD_ROW_ALT))
+        pal.setColor(QPalette.ColorRole.Text, QColor(PROD_CARD_TEXT))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(PROD_CARD_TEXT))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(PROD_CARD_PRIMARY, 40)))
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
+        table.setMinimumHeight(max(220, int(240 * s)))
         table.doubleClicked.connect(
             lambda index, dest=destination, current_stage=stage: self._open_row(dest, current_stage, index.row())
         )
