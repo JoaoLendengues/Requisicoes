@@ -61,13 +61,13 @@ _QT_FONT_READY   = False
 
 # Colunas da tabela (9 colunas — soma = 1.00)
 TABLE_COLS = [
-    ("POS.",    0.05),
-    ("C?DIGO",  0.10),
-    ("NOME",    0.28),
-    ("QUANT.",  0.07),
-    ("COMP.",   0.10),
-    ("DESENV.", 0.10),
-    ("CHAPA",   0.09),
+    ("POS.",    0.04),
+    ("C\u00d3DIGO",  0.08),
+    ("NOME",    0.36),
+    ("QUANT.",  0.06),
+    ("COMP.",   0.09),
+    ("DESENV.", 0.09),
+    ("CHAPA",   0.08),
     ("TIPO.",   0.10),
     ("PESO",    0.10),
 ]
@@ -283,9 +283,8 @@ def _draw_header(
 
     sep_gap = 6
     logo_w = w * 0.27
-    contact_w = w * 0.17
+    contact_w = w * 0.20
     ped_w = w * 0.19
-    title_w = w - logo_w - contact_w - ped_w - sep_gap * 2 - 10
 
     logo_path = _resolve_logo_path()
     logo_area_x = x
@@ -314,35 +313,37 @@ def _draw_header(
 
     contact_x = sep_x + sep_gap + 2
     icon_r = 2.8
-    line_h = 15
+    line_h = 13
     lines = [
         (COMPANY_PHONES[0],),
         (COMPANY_PHONES[1],),
         (COMPANY_SITE,),
         (COMPANY_LOCATION,),
     ]
-    ty = y + h - 14
+    ty = y + h - 12
     for (label,) in lines:
         _small_dot(pdf, contact_x + icon_r, ty + 3.5, icon_r, C_BRAND)
-        _txt(pdf, label, contact_x + icon_r * 2 + 5, ty, 8, C_TEXT,
-             max_w=contact_w - 18)
+        _txt(pdf, label, contact_x + icon_r * 2 + 5, ty, 7.1, C_TEXT,
+             max_w=contact_w - 12)
         ty -= line_h
 
-    title_x = contact_x + contact_w + 8
-    tx_center = title_x + title_w / 2
-    _txt(pdf, "REQUISI??O", tx_center, y + h - 28, 26,
+    title_x = contact_x + contact_w + 4
+    ped_x = x + w - ped_w
+    title_w = max(ped_x - title_x - 4, 120)
+    group_center = title_x + title_w / 2
+    group_w = min(title_w * 0.74, 175)
+    _txt(pdf, "REQUISI\u00c7\u00c3O", group_center, y + h - 28, 26,
          C_BRAND, bold=True, align="center")
 
     emission = _fmt_date(req.get("emission_date"), datetime.now().strftime("%d/%m/%Y"))
-    date_cx = title_x + title_w * 0.26
-    vendor_cx = title_x + title_w * 0.74
+    date_cx = group_center - group_w * 0.24
+    vendor_cx = group_center + group_w * 0.24
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
     _txt(pdf, "Data", date_cx, y + 18, 7, C_TEXT_SOFT, align="center")
     _txt(pdf, vendor_name, vendor_cx, y + 30, 10, C_TEXT, bold=True,
-         align="center", max_w=title_w * 0.40)
+         align="center", max_w=group_w * 0.52)
     _txt(pdf, "Vendedor", vendor_cx, y + 18, 7, C_TEXT_SOFT, align="center")
 
-    ped_x = title_x + title_w + 6
     ped_h = h * 0.68
     ped_y = y + (h - ped_h) / 2
     ped_label_w = ped_w * 0.34
@@ -454,7 +455,7 @@ def _draw_client_section(
     # linha inferior: FONE | ENDEREÇO
     _label_val(x, y, fone_end - x, h / 2, "FONE:", phone_display)
     _label_val(fone_end, y, x + w - fone_end, h / 2,
-               "ENDEREÇO A ENTREGAR:", address)
+               "ENDERE\u00c7O A ENTREGAR:", address)
 
 
 def _is_complete_item(item: dict) -> bool:
@@ -575,8 +576,13 @@ def _draw_items_table(
             # NOME alinhado à esquerda; demais centrado
             align = "left" if ci == 2 else "center"
             pad   = 4 if ci == 2 else 0
+            font_size = 7.5
+            if ci == 2:
+                font_size = 7.3
+                while font_size > 5.8 and pdfmetrics.stringWidth(str(val or ""), PDF_FONT_REGULAR, font_size) > cw - 8:
+                    font_size -= 0.2
             _txt(pdf, val, cx + pad + (cw - pad) / 2 if align == "center" else cx + pad + 2,
-                 base_y, 7.5, C_TEXT,
+                 base_y, font_size, C_TEXT,
                  bold=(ci == 0), align=align, max_w=cw - 6)
 
 
@@ -663,20 +669,22 @@ def _draw_footer(
     sig_w = w - obs_w - gap * 2 - qr_box_w
 
     _box(pdf, x, y, obs_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
-    lbl = "OBSERVA??O:"
+    lbl = "OBSERVA\u00c7\u00c3O:"
     lbl_w = pdfmetrics.stringWidth(lbl, PDF_FONT_BOLD, 8) + 8
-    _txt(pdf, lbl, x + 6, y + h / 2 - 4, 8, C_TEXT, bold=True)
-    _txt(pdf, _safe(obs, ""), x + lbl_w, y + h / 2 - 4, 8,
+    obs_y = y + h / 2 - 3
+    _txt(pdf, lbl, x + 6, obs_y, 8, C_TEXT, bold=True)
+    _txt(pdf, _safe(obs, ""), x + lbl_w, obs_y, 8,
          C_TEXT_SOFT, max_w=obs_w - lbl_w - 8)
 
     sig_x = x + obs_w + gap
     _box(pdf, sig_x, y, sig_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
-    sig_mid = y + h / 2
+    sig_line_y = y + h / 2 - 1
+    sig_text_y = y + h / 2 - 3
     sig_lbl = "ASSINATURA DO CLIENTE:"
-    _txt(pdf, sig_lbl, sig_x + 6, sig_mid + 3, 7.5, C_TEXT_SOFT, bold=False)
-    lbl_offset = pdfmetrics.stringWidth(sig_lbl, PDF_FONT_REGULAR, 7.5) + 12
-    _line(pdf, sig_x + lbl_offset, sig_mid,
-          sig_x + sig_w - 8, sig_mid, C_TEXT, lw=0.8)
+    _txt(pdf, sig_lbl, sig_x + 8, sig_text_y, 7.5, C_TEXT_SOFT, bold=False)
+    lbl_offset = pdfmetrics.stringWidth(sig_lbl, PDF_FONT_REGULAR, 7.5) + 14
+    _line(pdf, sig_x + lbl_offset, sig_line_y,
+          sig_x + sig_w - 8, sig_line_y, C_TEXT, lw=0.8)
 
     qr_x = sig_x + sig_w + gap
     _box(pdf, qr_x, y, qr_box_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
