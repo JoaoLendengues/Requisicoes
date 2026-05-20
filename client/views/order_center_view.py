@@ -405,19 +405,23 @@ class OrderCenterView(QWidget):
 
         value = QLabel("-")
         value.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(20, int(26 * s))}pt; font-weight:800;"
+            f"color:{DASH_TEXT}; font-size:{max(20, int(26 * s))}pt;"
+            f"font-weight:800; background:transparent; border:none;"
         )
+        value.setWordWrap(True)
 
         title = QLabel(title_text)
         title.setWordWrap(True)
         title.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:700;"
+            f"color:{DASH_PRIMARY}; font-size:{max(9, int(11 * s))}pt;"
+            f"font-weight:700; background:transparent; border:none;"
         )
 
         helper = QLabel(helper_text)
         helper.setWordWrap(True)
         helper.setStyleSheet(
             f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; border:none;"
         )
 
         accent_line = QFrame()
@@ -516,12 +520,12 @@ class OrderCenterView(QWidget):
         title_col.setSpacing(max(2, int(3 * s)))
         title = QLabel(title_text)
         title.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(subtitle_text)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+            f"font-size:{max(7, int(8 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
