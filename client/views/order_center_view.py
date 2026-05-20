@@ -521,11 +521,13 @@ class OrderCenterView(QWidget):
         title = QLabel(title_text)
         title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"color:{DASH_TEXT}; background:transparent;"
         )
         subtitle = QLabel(subtitle_text)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt;"
+            f"color:{DASH_MUTED}; background:transparent;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
