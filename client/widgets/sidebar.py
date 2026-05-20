@@ -1,46 +1,42 @@
 import os
 import unicodedata
 
-<<<<<<< HEAD
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
-=======
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
->>>>>>> 32e736c206c7d6d9553434af5b8dc93a88088465
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from ..core import theme
 from ..core.session import session
 
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_sidebar.png")
+
 SIDEBAR_ICON_DIRS = [
     r"Z:\REQUISIÇÕES (VENDAS)\ícones\PAINEL GERENCIAL\emoji\barral_lateral",
     r"\\data04tg\TI\REQUISIÇÕES (VENDAS)\ícones\PAINEL GERENCIAL\emoji\barral_lateral",
     os.path.join(os.path.dirname(__file__), "..", "assets", "sidebar_icons"),
 ]
+
 SIDEBAR_ICON_ALIASES = {
     "notificacoes": ["notificacoes", "notificações", "notificacao", "notificação", "sino", "bell"],
-    "nova": ["nova requisicao", "nova requisição", "requisicao", "requisição", "nova"],
-    "dashboard": ["painel gerencial", "dashboard", "painel"],
-    "pedidos": ["central de pedidos", "pedidos", "pedido"],
-    "producao": ["producao", "produção"],
-    "historico": ["historico", "histórico", "busca", "historico busca", "histórico busca"],
-    "usuarios": ["usuarios", "usuários", "usuario", "usuário", "central de usuarios", "central de usuários"],
-    "config": ["configuracoes", "configurações", "config", "ajustes"],
-    "usuario": ["usuario", "usuário", "perfil"],
-    "sair": ["sair", "logout"],
+    "nova":         ["nova requisicao", "nova requisição", "requisicao", "requisição", "nova"],
+    "dashboard":    ["painel gerencial", "dashboard", "painel"],
+    "pedidos":      ["central de pedidos", "pedidos", "pedido"],
+    "producao":     ["producao", "produção"],
+    "historico":    ["historico", "histórico", "busca", "historico busca", "histórico busca"],
+    "usuarios":     ["usuarios", "usuários", "usuario", "usuário", "central de usuarios", "central de usuários"],
+    "config":       ["configuracoes", "configurações", "config", "ajustes"],
+    "usuario":      ["usuario", "usuário", "perfil"],
+    "sair":         ["sair", "logout"],
 }
 
 NAV_ITEMS = [
-    ("nova", "NOVA REQUISIÇÃO", "nova"),
-    ("dashboard", "PAINEL GERENCIAL", "dashboard"),
-    ("pedidos", "CENTRAL DE PEDIDOS", "pedidos"),
-    ("producao", "PRODUÇÃO", "producao"),
-    ("historico", "HISTÓRICO / BUSCA", "historico"),
-    ("usuarios", "CENTRAL DE USUÁRIOS", "usuarios"),
+    ("nova",      "NOVA REQUISIÇÃO",    "nova"),
+    ("dashboard", "PAINEL GERENCIAL",   "dashboard"),
+    ("pedidos",   "CENTRAL DE PEDIDOS", "pedidos"),
+    ("producao",  "PRODUÇÃO",           "producao"),
+    ("historico", "HISTÓRICO / BUSCA",  "historico"),
+    ("usuarios",  "CENTRAL DE USUÁRIOS","usuarios"),
 ]
 
 BOTTOM_NAV_ITEMS = [
@@ -57,7 +53,7 @@ def _normalize_icon_name(value: str) -> str:
 
 
 def _find_sidebar_icon_path(icon_key: str) -> str:
-    aliases = [_normalize_icon_name(alias) for alias in SIDEBAR_ICON_ALIASES.get(icon_key, [icon_key])]
+    aliases = [_normalize_icon_name(a) for a in SIDEBAR_ICON_ALIASES.get(icon_key, [icon_key])]
 
     for directory in SIDEBAR_ICON_DIRS:
         try:
@@ -87,15 +83,12 @@ def _load_sidebar_pixmap(icon_key: str, scale: float, size: int | None = None) -
     path = _find_sidebar_icon_path(icon_key)
     if not path:
         return QPixmap()
-
     pixmap = QPixmap(path)
     if pixmap.isNull():
         return pixmap
-
     side = size or max(18, int(20 * scale))
     return pixmap.scaled(
-        side,
-        side,
+        side, side,
         Qt.AspectRatioMode.KeepAspectRatio,
         Qt.TransformationMode.SmoothTransformation,
     )
@@ -167,25 +160,6 @@ class _BellButton(QWidget):
             self._badge.hide()
 
 
-<<<<<<< HEAD
-LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_sidebar.png")
-
-NAV_ITEMS = [
-    ("nova",      "📝", "NOVA REQUISIÇÃO"),
-    ("dashboard", "📊", "PAINEL GERENCIAL"),
-    ("pedidos",   "📦", "CENTRAL DE PEDIDOS"),
-    ("producao",  "🏭", "PRODUÇÃO"),
-    ("historico", "🕘", "HISTÓRICO / BUSCA"),
-    ("usuarios",  "👥", "CENTRAL DE USUÁRIOS"),
-]
-
-BOTTOM_NAV_ITEMS = [
-    ("config", "⚙️", "CONFIGURAÇÕES"),
-]
-
-
-=======
->>>>>>> 32e736c206c7d6d9553434af5b8dc93a88088465
 class Sidebar(QWidget):
     nav_clicked = Signal(str)
     logout_clicked = Signal()
@@ -211,8 +185,7 @@ class Sidebar(QWidget):
         root_layout.setSpacing(0)
 
         # ── ScrollArea que envolve TODO o conteúdo da sidebar ─────────────────
-        # Quando a escala for grande e o conteúdo ultrapassar a altura da janela,
-        # uma barra de rolagem fina e discreta aparece automaticamente.
+        # Barra fina e discreta aparece automaticamente quando a escala for grande.
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -231,7 +204,6 @@ class Sidebar(QWidget):
             f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background:none; }}"
         )
 
-        # Panel interno: todo o conteúdo da sidebar num único VBox
         panel = QWidget()
         panel.setObjectName("SidebarPanel")
         panel_layout = QVBoxLayout(panel)
@@ -260,20 +232,14 @@ class Sidebar(QWidget):
         panel_layout.addWidget(logo_container)
         panel_layout.addWidget(self._separator())
 
-<<<<<<< HEAD
         # ── Navegação principal ───────────────────────────────────────────────
-        for key, icon, label in NAV_ITEMS:
-            btn = self._make_btn(icon, label, nav_key=key)
-=======
         for key, label, icon_key in NAV_ITEMS:
             btn = self._make_btn(label, icon_key, nav_key=key)
->>>>>>> 32e736c206c7d6d9553434af5b8dc93a88088465
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
             panel_layout.addWidget(btn)
 
-        # Espaço flexível — empurra o rodapé para baixo quando há espaço sobrando.
-        # Quando não há espaço, o scroll entra em ação.
+        # Espaço flexível — empurra o rodapé para baixo quando há espaço sobrando
         panel_layout.addStretch(1)
 
         # ── Rodapé: config + notificações + usuário + sair ────────────────────
@@ -293,9 +259,7 @@ class Sidebar(QWidget):
 
         panel_layout.addWidget(self._separator())
 
-<<<<<<< HEAD
-        self.user_label = QLabel(f"👤 USUÁRIO: {session.user_name}")
-=======
+        # Linha do usuário: ícone + nome
         user_row = QWidget()
         user_row.setStyleSheet("background:transparent;")
         user_layout = QHBoxLayout(user_row)
@@ -307,26 +271,15 @@ class Sidebar(QWidget):
         user_layout.addWidget(self.user_icon_label, 0, Qt.AlignmentFlag.AlignTop)
 
         self.user_label = QLabel(f"USUÁRIO: {session.user_name}")
->>>>>>> 32e736c206c7d6d9553434af5b8dc93a88088465
         self.user_label.setStyleSheet(
             f"color:rgba(255,255,255,0.78); font-size:{max(8, int(9 * self.scale))}pt;"
         )
         self.user_label.setWordWrap(True)
-<<<<<<< HEAD
-        panel_layout.addWidget(self.user_label)
-
-        btn_sair = self._make_btn("🚪", "SAIR")
-=======
-<<<<<<< HEAD
         user_layout.addWidget(self.user_label, 1)
         panel_layout.addWidget(user_row)
         self._refresh_user_icon()
-=======
-        bottom_layout.addWidget(self.user_label)
->>>>>>> dacd8a77b8a83191f41888036b104bc3071c37a1
 
         btn_sair = self._make_btn("SAIR", "sair")
->>>>>>> 32e736c206c7d6d9553434af5b8dc93a88088465
         btn_sair.clicked.connect(self.logout_clicked.emit)
         panel_layout.addWidget(btn_sair)
         panel_layout.addSpacing(12)
@@ -376,12 +329,8 @@ class Sidebar(QWidget):
             btn.setChecked(nav_key == key)
 
     def refresh_user(self):
-<<<<<<< HEAD
-        self.user_label.setText(f"👤 USUÁRIO: {session.user_name}")
-=======
         self.user_label.setText(f"USUÁRIO: {session.user_name}")
         self._refresh_user_icon()
->>>>>>> 32e736c206c7d6d9553434af5b8dc93a88088465
 
     def set_notification_count(self, count: int):
         self._bell.set_count(count)
