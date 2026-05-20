@@ -141,7 +141,7 @@ def global_style() -> str:
         f"  color:{TEXT_DARK};"
         f"  font-family:'{FONT_PRIMARY}', '{FONT_FALLBACK}', 'Segoe UI';"
         f"}}"
-        f"QLabel {{ background:transparent; }}"
+        f"QLabel {{ background:transparent; color:{TEXT_DARK}; }}"
         f"QFrame {{ color:{TEXT_DARK}; }}"
         f"QToolTip {{"
         f"  background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"
