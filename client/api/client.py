@@ -177,6 +177,21 @@ def update_canvas(req_id: int, json_data: str) -> dict:
         ))
 
 
+def notification_unread_count() -> dict:
+    with _cli() as client:
+        return _check(client.get("/notifications/count"))
+
+
+def list_notifications() -> list:
+    with _cli() as client:
+        return _check(client.get("/notifications/"))
+
+
+def mark_all_notifications_read() -> dict:
+    with _cli() as client:
+        return _check(client.patch("/notifications/read-all"))
+
+
 def health_check(server_url: str) -> bool:
     try:
         resp = httpx.get(f"{server_url.rstrip('/')}/health", timeout=5.0)

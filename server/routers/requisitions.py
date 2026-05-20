@@ -717,23 +717,54 @@ def update_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from ..services.notification_service import (
+        build_production_sent, build_vendor_event, push_all,
+    )
+
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
     old_status = req.status
-    if _parse_production_note(data.note):
+    prod = _parse_production_note(data.note)
+    if prod:
         _apply_production_transition(req, data)
     else:
         req.status = data.status
+    new_status = req.status
 
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=old_status,
-        new_status=req.status,
+        new_status=new_status,
         changed_by_id=current_user.id,
         note=data.note,
     ))
+
+    # Cria notificações dentro da mesma transação
+    notifications = []
+    if prod:
+        action = prod["action"]
+        if action == _PROD_SEND:
+            notifications.extend(build_production_sent(db, req, prod["target"]))
+        elif action == _PROD_RECEIVED:
+            n = build_vendor_event(db, req, "em_producao")
+            if n:
+                notifications.append(n)
+        elif action == _PROD_FINISHED:
+            n = build_vendor_event(db, req, "finalizada")
+            if n:
+                notifications.append(n)
+        elif action == _PROD_CANCELED:
+            n = build_vendor_event(db, req, "prod_cancelada", prod.get("reason", ""))
+            if n:
+                notifications.append(n)
+    elif new_status == RequisitionStatus.CANCELADA:
+        n = build_vendor_event(db, req, "cancelada")
+        if n:
+            notifications.append(n)
+
     db.commit()
+    push_all(notifications)
     return _get_or_404(db, req_id)
 
 
@@ -778,6 +809,8 @@ def cancel_requisition(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from ..services.notification_service import build_vendor_event, push_all
+
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissao para cancelar esta requisicao")
@@ -789,4 +822,12 @@ def cancel_requisition(
         new_status=RequisitionStatus.CANCELADA,
         changed_by_id=current_user.id,
     ))
+
+    notifications = []
+    if req.vendor_id != current_user.id:
+        n = build_vendor_event(db, req, "cancelada")
+        if n:
+            notifications.append(n)
+
     db.commit()
+    push_all(notifications)

@@ -2,13 +2,17 @@ from datetime import datetime
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
+    QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea,
 )
+from PySide6.QtCore import Qt, Signal
 
 from ..core import theme
 from ..core.resolution import res
 from ..core.session import session
 from ..api import client as api
 from ..widgets.sidebar import Sidebar
+from ..widgets.notification_toast import ToastManager
+from ..services.notification_listener import NotificationListener
 from .requisition_form import RequisitionForm, _run_in_thread
 from .history_view import HistoryView
 from .dashboard_view import DashboardView
@@ -32,6 +36,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.scale = res.scale
         self._threads: list = []
+        self._unread_count = 0
+        self._listener: NotificationListener | None = None
         self._setup_ui()
         self._setup_statusbar()
         self.setWindowTitle("Sistema de Requisições - Ferragens Pinheiro")
@@ -41,6 +47,8 @@ class MainWindow(QMainWindow):
             width = max(1024, int(1280 * self.scale))
             height = max(700, int(800 * self.scale))
             self.resize(width, height)
+        self._toast_manager = ToastManager(self)
+        self._start_notification_listener()
 
     def _setup_ui(self):
         self.setStyleSheet(f"background:{theme.CONTENT_BG};")
@@ -53,6 +61,7 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar(self.scale)
         self.sidebar.nav_clicked.connect(self._on_nav)
         self.sidebar.logout_clicked.connect(self._logout)
+        self.sidebar.bell_clicked.connect(self._show_notification_panel)
         root.addWidget(self.sidebar)
 
         sep = QFrame()
@@ -351,6 +360,57 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(PAGE_FORM)
         self.sidebar._highlight("nova")
 
+    # ── Notificações ─────────────────────────────────────────────────────────
+
+    def _start_notification_listener(self):
+        self._listener = NotificationListener(self)
+        self._listener.notification_received.connect(self._on_notification)
+        self._listener.start()
+
+        thread, worker = _run_in_thread(
+            api.notification_unread_count,
+            on_result=lambda r: self.sidebar.set_notification_count(r.get("count", 0)),
+            on_error=lambda _: None,
+        )
+        self._threads.append((thread, worker))
+
+    def _on_notification(self, data: dict):
+        self._unread_count += 1
+        self.sidebar.set_notification_count(self._unread_count)
+        self._toast_manager.show(data, on_action=self._on_toast_action)
+
+    def _on_toast_action(self, req_id):
+        if req_id:
+            self._open_requisition(req_id)
+
+    def _show_notification_panel(self):
+        thread, worker = _run_in_thread(
+            api.list_notifications,
+            on_result=self._open_notification_dialog,
+            on_error=lambda msg: QMessageBox.warning(self, "Erro", msg),
+        )
+        self._threads.append((thread, worker))
+
+    def _open_notification_dialog(self, notifications: list):
+        dlg = _NotificationPanel(notifications, self)
+        dlg.mark_all_requested.connect(self._mark_all_read)
+        dlg.open_req_requested.connect(self._open_requisition)
+        dlg.exec()
+
+    def _mark_all_read(self):
+        thread, worker = _run_in_thread(
+            api.mark_all_notifications_read,
+            on_result=lambda _: self._reset_badge(),
+            on_error=lambda _: None,
+        )
+        self._threads.append((thread, worker))
+
+    def _reset_badge(self):
+        self._unread_count = 0
+        self.sidebar.set_notification_count(0)
+
+    # ── Logout ───────────────────────────────────────────────────────────────
+
     def _logout(self):
         reply = QMessageBox.question(
             self,
@@ -359,5 +419,136 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
+            if self._listener:
+                self._listener.stop()
             session.logout()
             self.close()
+
+
+# ── Painel de notificações ────────────────────────────────────────────────────
+
+_NOTIF_ICONS = {
+    "nova_requisicao":   "🏭",
+    "em_producao":       "⚙️",
+    "finalizada":        "✅",
+    "cancelada":         "❌",
+    "prod_cancelada":    "⚠️",
+    "requisicao_parada": "⏰",
+}
+
+
+class _NotificationPanel(QDialog):
+    mark_all_requested = Signal()
+    open_req_requested = Signal(int)
+
+    def __init__(self, notifications: list, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Notificações")
+        self.setMinimumWidth(480)
+        self.setMaximumHeight(560)
+        self.setStyleSheet(
+            f"QDialog {{ background:{theme.CONTENT_BG}; }}"
+            f"QLabel {{ color:{theme.TEXT_DARK}; }}"
+        )
+        self._build(notifications)
+
+    def _build(self, notifications: list):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        header = QWidget()
+        header.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
+        hlay = QHBoxLayout(header)
+        hlay.setContentsMargins(16, 12, 16, 12)
+
+        title = QLabel("🔔  Notificações")
+        title.setStyleSheet("font-size:11pt; font-weight:bold; color:#F1F5F9;")
+        hlay.addWidget(title, 1)
+
+        if notifications:
+            btn_all = QPushButton("Marcar todas como lidas")
+            btn_all.setStyleSheet(
+                f"QPushButton {{ background:{theme.PRIMARY}; color:#fff; border:none;"
+                f"  border-radius:5px; padding:5px 12px; font-size:9pt; }}"
+                f"QPushButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
+            )
+            btn_all.clicked.connect(self._on_mark_all)
+            hlay.addWidget(btn_all)
+
+        root.addWidget(header)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border:none; }")
+
+        container = QWidget()
+        container.setStyleSheet(f"background:{theme.CONTENT_BG};")
+        vlay = QVBoxLayout(container)
+        vlay.setContentsMargins(12, 8, 12, 8)
+        vlay.setSpacing(6)
+
+        if not notifications:
+            empty = QLabel("Nenhuma notificação não lida 🎉")
+            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty.setStyleSheet(f"color:{theme.TEXT_LIGHT}; font-size:10pt; padding:40px;")
+            vlay.addWidget(empty)
+        else:
+            for n in notifications:
+                vlay.addWidget(self._make_card(n))
+
+        vlay.addStretch()
+        scroll.setWidget(container)
+        root.addWidget(scroll)
+
+    def _make_card(self, n: dict) -> QFrame:
+        card = QFrame()
+        card.setStyleSheet(
+            f"QFrame {{ background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"  border-radius:8px; }}"
+            f"QLabel {{ background:transparent; }}"
+        )
+        lay = QHBoxLayout(card)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(10)
+
+        icon = QLabel(_NOTIF_ICONS.get(n.get("type", ""), "🔔"))
+        icon.setStyleSheet("font-size:16px;")
+        lay.addWidget(icon)
+
+        text = QVBoxLayout()
+        text.setSpacing(2)
+
+        title_lbl = QLabel(n.get("title", ""))
+        title_lbl.setStyleSheet(f"font-weight:bold; font-size:9pt; color:{theme.TEXT_DARK};")
+        text.addWidget(title_lbl)
+
+        msg_lbl = QLabel(n.get("message", ""))
+        msg_lbl.setStyleSheet(f"font-size:8pt; color:{theme.TEXT_LIGHT};")
+        msg_lbl.setWordWrap(True)
+        text.addWidget(msg_lbl)
+
+        lay.addLayout(text, 1)
+
+        req_id = n.get("requisition_id")
+        if req_id:
+            btn = QPushButton("Abrir")
+            btn.setFixedWidth(60)
+            btn.setStyleSheet(
+                f"QPushButton {{ background:transparent; color:{theme.PRIMARY};"
+                f"  border:1px solid {theme.PRIMARY}; border-radius:4px;"
+                f"  padding:4px 8px; font-size:8pt; }}"
+                f"QPushButton:hover {{ background:#1e3a5f; }}"
+            )
+            btn.clicked.connect(lambda checked=False, rid=req_id: self._on_open(rid))
+            lay.addWidget(btn)
+
+        return card
+
+    def _on_mark_all(self):
+        self.mark_all_requested.emit()
+        self.accept()
+
+    def _on_open(self, req_id: int):
+        self.open_req_requested.emit(req_id)
+        self.accept()

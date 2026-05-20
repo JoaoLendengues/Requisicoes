@@ -5,8 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .database import Base, engine
-from .models import client, product, requisition, user  # garante registro dos modelos no SQLAlchemy
-from .routers import auth, clients, products, requisitions, users
+from .models import client, notification, product, requisition, user  # garante registro dos modelos no SQLAlchemy
+from .routers import auth, clients, notifications, products, requisitions, users
 from .seed import seed_admin
 
 
@@ -62,6 +62,7 @@ app.include_router(users.router)
 app.include_router(clients.router)
 app.include_router(products.router)
 app.include_router(requisitions.router)
+app.include_router(notifications.router)
 
 
 @app.get("/health", tags=["Sistema"])
