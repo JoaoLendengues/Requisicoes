@@ -1,11 +1,107 @@
 import os
+import unicodedata
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ..core import theme
 from ..core.session import session
+
+
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_sidebar.png")
+SIDEBAR_ICON_DIRS = [
+    r"Z:\REQUISIÇÕES (VENDAS)\ícones\PAINEL GERENCIAL\emoji\barral_lateral",
+    r"\\data04tg\TI\REQUISIÇÕES (VENDAS)\ícones\PAINEL GERENCIAL\emoji\barral_lateral",
+    os.path.join(os.path.dirname(__file__), "..", "assets", "sidebar_icons"),
+]
+SIDEBAR_ICON_ALIASES = {
+    "notificacoes": ["notificacoes", "notificações", "notificacao", "notificação", "sino", "bell"],
+    "nova": ["nova requisicao", "nova requisição", "requisicao", "requisição", "nova"],
+    "dashboard": ["painel gerencial", "dashboard", "painel"],
+    "pedidos": ["central de pedidos", "pedidos", "pedido"],
+    "producao": ["producao", "produção"],
+    "historico": ["historico", "histórico", "busca", "historico busca", "histórico busca"],
+    "usuarios": ["usuarios", "usuários", "usuario", "usuário", "central de usuarios", "central de usuários"],
+    "config": ["configuracoes", "configurações", "config", "ajustes"],
+    "usuario": ["usuario", "usuário", "perfil"],
+    "sair": ["sair", "logout"],
+}
+
+NAV_ITEMS = [
+    ("nova", "NOVA REQUISIÇÃO", "nova"),
+    ("dashboard", "PAINEL GERENCIAL", "dashboard"),
+    ("pedidos", "CENTRAL DE PEDIDOS", "pedidos"),
+    ("producao", "PRODUÇÃO", "producao"),
+    ("historico", "HISTÓRICO / BUSCA", "historico"),
+    ("usuarios", "CENTRAL DE USUÁRIOS", "usuarios"),
+]
+
+BOTTOM_NAV_ITEMS = [
+    ("config", "CONFIGURAÇÕES", "config"),
+]
+
+
+def _normalize_icon_name(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    stripped = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return " ".join(
+        "".join(ch if ch.isalnum() else " " for ch in stripped.lower()).split()
+    )
+
+
+def _find_sidebar_icon_path(icon_key: str) -> str:
+    aliases = [_normalize_icon_name(alias) for alias in SIDEBAR_ICON_ALIASES.get(icon_key, [icon_key])]
+
+    for directory in SIDEBAR_ICON_DIRS:
+        try:
+            filenames = os.listdir(directory)
+        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+            continue
+
+        fallback = ""
+        for filename in filenames:
+            stem, ext = os.path.splitext(filename)
+            if ext.lower() not in {".png", ".jpg", ".jpeg", ".bmp", ".webp"}:
+                continue
+            normalized_name = _normalize_icon_name(stem)
+            full_path = os.path.join(directory, filename)
+            for alias in aliases:
+                if normalized_name == alias:
+                    return full_path
+                if alias and alias in normalized_name:
+                    fallback = fallback or full_path
+        if fallback:
+            return fallback
+
+    return ""
+
+
+def _load_sidebar_pixmap(icon_key: str, scale: float, size: int | None = None) -> QPixmap:
+    path = _find_sidebar_icon_path(icon_key)
+    if not path:
+        return QPixmap()
+
+    pixmap = QPixmap(path)
+    if pixmap.isNull():
+        return pixmap
+
+    side = size or max(18, int(20 * scale))
+    return pixmap.scaled(
+        side,
+        side,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+
+
+def _apply_sidebar_icon(button: QPushButton, icon_key: str, scale: float):
+    pixmap = _load_sidebar_pixmap(icon_key, scale)
+    if pixmap.isNull():
+        button.setIcon(QIcon())
+        return
+    button.setIcon(QIcon(pixmap))
+    button.setIconSize(QSize(pixmap.width(), pixmap.height()))
 
 
 class _BellButton(QWidget):
@@ -26,7 +122,7 @@ class _BellButton(QWidget):
         height = max(40, int(48 * self._scale))
         font_size = max(9, int(11 * self._scale))
 
-        self._btn = QPushButton("  🔔  NOTIFICAÇÕES")
+        self._btn = QPushButton("NOTIFICAÇÕES")
         self._btn.setFixedHeight(height)
         self._btn.setStyleSheet(
             f"QPushButton {{"
@@ -39,6 +135,7 @@ class _BellButton(QWidget):
             f"  border-color:rgba(255,255,255,0.08);"
             f"}}"
         )
+        _apply_sidebar_icon(self._btn, "notificacoes", self._scale)
         self._btn.clicked.connect(self.clicked.emit)
         lay.addWidget(self._btn, 1)
 
@@ -62,22 +159,6 @@ class _BellButton(QWidget):
             self._badge.show()
         else:
             self._badge.hide()
-
-
-LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_sidebar.png")
-
-NAV_ITEMS = [
-    ("nova", "\U0001F4DD", "NOVA REQUISI\u00c7\u00c3O"),
-    ("dashboard", "\U0001F4CA", "PAINEL GERENCIAL"),
-    ("pedidos", "\U0001F4E6", "CENTRAL DE PEDIDOS"),
-    ("producao", "\U0001F3ED", "PRODU\u00c7\u00c3O"),
-    ("historico", "\U0001F558", "HIST\u00d3RICO / BUSCA"),
-    ("usuarios", "\U0001F465", "CENTRAL DE USU\u00c1RIOS"),
-]
-
-BOTTOM_NAV_ITEMS = [
-    ("config", "\u2699\ufe0f", "CONFIGURA\u00c7\u00d5ES"),
-]
 
 
 class Sidebar(QWidget):
@@ -110,6 +191,14 @@ class Sidebar(QWidget):
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(0)
 
+        # \u2500\u2500 Se\u00e7\u00e3o superior: logo + navega\u00e7\u00e3o principal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # Ocupa o espa\u00e7o dispon\u00edvel e empurra a se\u00e7\u00e3o inferior para baixo.
+        top = QWidget()
+        top.setObjectName("SidebarPanel")
+        top_layout = QVBoxLayout(top)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(0)
+
         logo_container = QWidget()
         logo_container.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
         logo_layout = QVBoxLayout(logo_container)
@@ -128,51 +217,78 @@ class Sidebar(QWidget):
             )
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_layout.addWidget(logo_label)
-        panel_layout.addWidget(logo_container)
+        top_layout.addWidget(logo_container)
+        top_layout.addWidget(self._separator())
 
-        panel_layout.addWidget(self._separator())
-
-        for key, icon, label in NAV_ITEMS:
-            btn = self._make_btn(icon, label, nav_key=key)
+        for key, label, icon_key in NAV_ITEMS:
+            btn = self._make_btn(label, icon_key, nav_key=key)
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
-            panel_layout.addWidget(btn)
+            top_layout.addWidget(btn)
 
-        panel_layout.addStretch()
-        panel_layout.addWidget(self._separator())
+        top_layout.addStretch()
 
-        for key, icon, label in BOTTOM_NAV_ITEMS:
-            btn = self._make_btn(icon, label, nav_key=key)
+        # \u2500\u2500 Se\u00e7\u00e3o inferior: config + notifica\u00e7\u00f5es + usu\u00e1rio + sair \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # Fixada no rodap\u00e9 \u2014 sempre vis\u00edvel independente da resolu\u00e7\u00e3o/escala.
+        bottom = QWidget()
+        bottom.setObjectName("SidebarPanel")
+        bottom_layout = QVBoxLayout(bottom)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setSpacing(0)
+
+        bottom_layout.addWidget(self._separator())
+
+        for key, label, icon_key in BOTTOM_NAV_ITEMS:
+            btn = self._make_btn(label, icon_key, nav_key=key)
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
-            panel_layout.addWidget(btn)
+            bottom_layout.addWidget(btn)
 
-        panel_layout.addWidget(self._separator())
+        bottom_layout.addWidget(self._separator())
 
         self._bell = _BellButton(self.scale)
         self._bell.clicked.connect(self.bell_clicked.emit)
-        panel_layout.addWidget(self._bell)
+        bottom_layout.addWidget(self._bell)
 
-        panel_layout.addWidget(self._separator())
+        bottom_layout.addWidget(self._separator())
 
-        self.user_label = QLabel(f"\U0001F464 USU\u00c1RIO: {session.user_name}")
+        user_row = QWidget()
+        user_row.setStyleSheet("background:transparent;")
+        user_layout = QHBoxLayout(user_row)
+        user_layout.setContentsMargins(18, 10, 18, 10)
+        user_layout.setSpacing(8)
+
+        self.user_icon_label = QLabel()
+        self.user_icon_label.setStyleSheet("background:transparent;")
+        user_layout.addWidget(self.user_icon_label, 0, Qt.AlignmentFlag.AlignTop)
+
+        self.user_label = QLabel(f"USUÁRIO: {session.user_name}")
         self.user_label.setStyleSheet(
-            f"color:rgba(255,255,255,0.78); font-size:{max(8, int(9 * self.scale))}pt; padding:10px 18px;"
+            f"color:rgba(255,255,255,0.78); font-size:{max(8, int(9 * self.scale))}pt;"
         )
         self.user_label.setWordWrap(True)
-        panel_layout.addWidget(self.user_label)
+<<<<<<< HEAD
+        user_layout.addWidget(self.user_label, 1)
+        panel_layout.addWidget(user_row)
+        self._refresh_user_icon()
+=======
+        bottom_layout.addWidget(self.user_label)
+>>>>>>> dacd8a77b8a83191f41888036b104bc3071c37a1
 
-        btn_sair = self._make_btn("\U0001F6AA", "SAIR")
+        btn_sair = self._make_btn("SAIR", "sair")
         btn_sair.clicked.connect(self.logout_clicked.emit)
-        panel_layout.addWidget(btn_sair)
-        panel_layout.addSpacing(12)
+        bottom_layout.addWidget(btn_sair)
+        bottom_layout.addSpacing(12)
+
+        panel_layout.addWidget(top, 1)     # estica para preencher espa\u00e7o livre
+        panel_layout.addWidget(bottom, 0)  # sempre vis\u00edvel, tamanho fixo
 
         layout.addWidget(panel)
 
         self._highlight(self._active)
 
-    def _make_btn(self, icon: str, label: str, nav_key: str = "") -> QPushButton:
-        btn = QPushButton(f"  {icon}  {label}")
+    def _make_btn(self, label: str, icon_key: str, nav_key: str = "") -> QPushButton:
+        btn = QPushButton(label)
         btn.setCheckable(bool(nav_key))
         height = max(40, int(48 * self.scale))
         font_size = max(9, int(11 * self.scale))
@@ -191,6 +307,7 @@ class Sidebar(QWidget):
             f"  border:1px solid {theme.SIDEBAR_INDICATOR};"
             f"}}"
         )
+        _apply_sidebar_icon(btn, icon_key, self.scale)
         return btn
 
     def _separator(self) -> QFrame:
@@ -210,10 +327,20 @@ class Sidebar(QWidget):
             btn.setChecked(nav_key == key)
 
     def refresh_user(self):
-        self.user_label.setText(f"\U0001F464 USU\u00c1RIO: {session.user_name}")
+        self.user_label.setText(f"USUÁRIO: {session.user_name}")
+        self._refresh_user_icon()
 
     def set_notification_count(self, count: int):
         self._bell.set_count(count)
 
     def set_actions_visible(self, visible: bool):
         pass
+
+    def _refresh_user_icon(self):
+        pixmap = _load_sidebar_pixmap("usuario", self.scale, size=max(16, int(18 * self.scale)))
+        if pixmap.isNull():
+            self.user_icon_label.clear()
+            self.user_icon_label.setFixedWidth(0)
+            return
+        self.user_icon_label.setPixmap(pixmap)
+        self.user_icon_label.setFixedWidth(max(18, pixmap.width()))
