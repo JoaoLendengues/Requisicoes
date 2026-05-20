@@ -1,23 +1,79 @@
 import os
+from datetime import datetime
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
-    QLabel, QLineEdit, QPushButton, QSlider, QFrame,
+    QLabel, QLineEdit, QPushButton, QSlider, QFrame, QGraphicsDropShadowEffect,
     QMessageBox, QProgressBar, QTextEdit,
     QFileDialog,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
+from PySide6.QtGui import QColor
 
 from ..core import theme
 from ..core.resolution import res
 from ..api import client as api
 
 
+DASH_BG = "#F4F7FB"
+DASH_SURFACE = "#FFFFFF"
+DASH_PRIMARY = "#1E3A5F"
+DASH_SECONDARY = "#27496D"
+DASH_SUCCESS = "#16A34A"
+DASH_DANGER = "#DC2626"
+DASH_TEXT = "#0F172A"
+DASH_MUTED = "#64748B"
+DASH_BORDER = "#E2E8F0"
+DASH_ROW_ALT = "#F8FBFF"
+
+
+def _rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
+
+
+def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
+    shadow = QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur)
+    shadow.setOffset(0, y_offset)
+    color = QColor(DASH_TEXT)
+    color.setAlpha(alpha)
+    shadow.setColor(color)
+    widget.setGraphicsEffect(shadow)
+
+
+def _make_card(
+    scale: float,
+    background: str | None = None,
+    border_color: str | None = None,
+    radius: int = 18,
+    hover_background: str | None = None,
+) -> QFrame:
+    card = QFrame()
+    card.setObjectName("settingsCard")
+    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    bg = background or DASH_SURFACE
+    border = f"1px solid {border_color}" if border_color else "none"
+    hover = hover_background or bg
+    card.setStyleSheet(
+        f"QFrame#settingsCard {{"
+        f"  background:{bg}; border:{border}; border-radius:{radius}px;"
+        f"}}"
+        f"QFrame#settingsCard:hover {{"
+        f"  background:{hover}; border:{border};"
+        f"}}"
+    )
+    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
+    return card
+
+
 def _section(title: str, scale: float) -> QLabel:
-    lbl = QLabel(title)
+    cleaned = title.lstrip("ðŸâš™ï¸🌐🎨📥📦 ").strip()
+    lbl = QLabel(cleaned)
     lbl.setStyleSheet(
-        f"color:{theme.PRIMARY}; font-size:{max(11,int(13*scale))}pt;"
-        f"font-weight:bold; padding-top:8px;"
+        f"color:{DASH_TEXT}; font-size:{max(10,int(12*scale))}pt;"
+        f"font-weight:800; padding-top:4px;"
     )
     return lbl
 
@@ -26,21 +82,57 @@ def _separator() -> QFrame:
     sep = QFrame()
     sep.setFrameShape(QFrame.Shape.NoFrame)
     sep.setFixedHeight(4)
-    sep.setStyleSheet("background:transparent; border:none;")
+    sep.setStyleSheet(f"background:{DASH_BORDER}; border:none; border-radius:2px;")
     return sep
 
 
 def _flat_secondary_btn_style(scale: float) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
-        f"  border:none; outline:none; border-radius:8px;"
-        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"  background:{DASH_SURFACE}; color:{DASH_PRIMARY};"
+        f"  border:1px solid {DASH_BORDER}; outline:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
-        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+        f"QPushButton:hover {{ background:{DASH_ROW_ALT}; border-color:{_rgba(DASH_PRIMARY, 70)}; }}"
+        f"QPushButton:pressed {{ background:#E7EEF7; }}"
+        f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
     )
+
+
+def _primary_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{DASH_PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{DASH_SECONDARY}; }}"
+        f"QPushButton:pressed {{ background:#152D49; }}"
+        f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
+    )
+
+
+def _field_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QLineEdit, QTextEdit {{"
+        f"  background:{DASH_SURFACE}; border:1px solid {DASH_BORDER}; border-radius:14px;"
+        f"  padding:9px 12px; font-size:{fs}pt; color:{DASH_TEXT};"
+        f"  selection-background-color:{_rgba(DASH_PRIMARY, 24)}; selection-color:{DASH_TEXT};"
+        f"}}"
+        f"QLineEdit {{ placeholder-text-color:{DASH_MUTED}; }}"
+    )
+
+
+def _format_header_date(value: datetime | None = None) -> str:
+    current = value or datetime.now()
+    return current.strftime("%d/%m/%Y")
+
+
+def _format_datetime(value: datetime | None = None) -> str:
+    current = value or datetime.now()
+    return current.strftime("%d/%m/%Y %H:%M")
 
 
 class ImportWorker(QObject):
@@ -85,23 +177,78 @@ class SettingsView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = "#B3D1FF"
+        page_bg = DASH_BG
         self.setObjectName("settingsView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             f"QWidget#settingsView {{ background:{page_bg}; }}"
         )
 
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                       max(18, int(24 * s)), max(18, int(24 * s)))
+        root_layout.setSpacing(max(14, int(18 * s)))
+
+        header = QHBoxLayout()
+        header.setSpacing(max(12, int(16 * s)))
+        title_col = QVBoxLayout()
+        title_col.setSpacing(max(4, int(5 * s)))
+
+        title = QLabel("Configurações")
+        title.setStyleSheet(
+            f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+        )
+        subtitle = QLabel(
+            "Preferencias locais, conexao com o servidor e rotinas de importacao do sistema."
+        )
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(
+            f"color:{DASH_MUTED}; font-size:{max(8, int(10 * s))}pt;"
+        )
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        header.addLayout(title_col, 1)
+
+        info_card = _make_card(
+            s,
+            DASH_SURFACE,
+            border_color=None,
+            radius=max(16, int(18 * s)),
+            hover_background=DASH_SURFACE,
+        )
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
+                                       max(14, int(16 * s)), max(10, int(12 * s)))
+        info_layout.setSpacing(max(2, int(3 * s)))
+        date_hint = QLabel("DATA ATUAL")
+        date_hint.setStyleSheet(
+            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent;"
+        )
+        self.date_label = QLabel(_format_header_date())
+        self.date_label.setStyleSheet(
+            f"color:{DASH_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
+            f"background:transparent;"
+        )
+        self.updated_label = QLabel("Preferencias do sistema")
+        self.updated_label.setStyleSheet(
+            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+        )
+        info_layout.addWidget(date_hint)
+        info_layout.addWidget(self.date_label)
+        info_layout.addWidget(self.updated_label)
+        header.addWidget(info_card, 0, Qt.AlignmentFlag.AlignTop)
+        root_layout.addLayout(header)
+
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setStyleSheet(
             f"QScrollArea {{ border:none; background:{page_bg}; }}"
         )
         scroll.viewport().setStyleSheet(
             f"background:{page_bg}; border:none;"
         )
-        root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.addWidget(scroll)
 
         container = QWidget()
@@ -113,9 +260,8 @@ class SettingsView(QWidget):
         scroll.setWidget(container)
 
         outer = QVBoxLayout(container)
-        outer.setContentsMargins(max(12,int(16*s)), max(12,int(16*s)),
-                                  max(12,int(16*s)), max(12,int(16*s)))
-        outer.setSpacing(max(10,int(14*s)))
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(max(16,int(18*s)))
 
         title = QLabel("⚙️ CONFIGURAÇÕES")
         title.setStyleSheet(
@@ -123,15 +269,20 @@ class SettingsView(QWidget):
         )
         outer.addWidget(title)
 
-        card = QFrame()
-        card.setStyleSheet(
-            f"background:{theme.CARD_BG}; border:none; border-radius:8px;"
+        title.hide()
+
+        card = _make_card(
+            s,
+            DASH_SURFACE,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background="#FBFDFF",
         )
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(16,int(24*s)), max(16,int(20*s)),
-                                   max(16,int(24*s)), max(16,int(20*s)))
-        layout.setSpacing(max(10,int(14*s)))
+        layout.setContentsMargins(max(16,int(20*s)), max(14,int(18*s)),
+                                   max(16,int(20*s)), max(14,int(18*s)))
+        layout.setSpacing(max(12,int(16*s)))
 
         layout.addWidget(_section("🌐 Conexão com o Servidor", s))
         layout.addWidget(_separator())
@@ -141,19 +292,21 @@ class SettingsView(QWidget):
 
         grid.addWidget(self._lbl("URL do servidor:", s), 0, 0)
         self.input_url = QLineEdit(res.server_url)
-        self.input_url.setFixedHeight(max(30,int(36*s)))
-        self.input_url.setStyleSheet(theme.input_style(s))
+        self.input_url.setFixedHeight(max(38,int(44*s)))
+        self.input_url.setStyleSheet(_field_style(s))
         self.input_url.setPlaceholderText("http://192.168.1.100:5000")
         grid.addWidget(self.input_url, 0, 1)
 
         self.btn_test = QPushButton("Testar conexão")
-        self.btn_test.setFixedHeight(max(30,int(36*s)))
+        self.btn_test.setFixedHeight(max(38,int(44*s)))
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_test.clicked.connect(self._test_connection)
         grid.addWidget(self.btn_test, 0, 2)
 
         self.lbl_conn_status = QLabel("")
-        self.lbl_conn_status.setStyleSheet(f"font-size:{max(9,int(10*s))}pt;")
+        self.lbl_conn_status.setStyleSheet(
+            f"color:{DASH_MUTED}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
         grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
         layout.addLayout(grid)
 
@@ -174,7 +327,7 @@ class SettingsView(QWidget):
         self.lbl_scale_val = QLabel(f"{int(res.scale * 100)}%")
         self.lbl_scale_val.setFixedWidth(40)
         self.lbl_scale_val.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-weight:bold; font-size:{max(10,int(12*s))}pt;"
+            f"color:{DASH_PRIMARY}; font-weight:800; font-size:{max(10,int(12*s))}pt;"
         )
         scale_row.addWidget(self.slider_scale)
         scale_row.addWidget(self.lbl_scale_val)
@@ -186,7 +339,7 @@ class SettingsView(QWidget):
             f"DPI: {res.dpi:.0f}  |  Escala automática: {res.auto_scale:.2f}×"
         )
         screen_info.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8,int(9*s))}pt; font-style:italic;"
+            f"color:{DASH_MUTED}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
         )
         layout.addWidget(screen_info)
 
@@ -218,8 +371,9 @@ class SettingsView(QWidget):
 
         layout.addSpacing(4)
         btn_save = QPushButton("💾 Salvar configurações")
-        btn_save.setFixedHeight(max(36,int(42*s)))
-        btn_save.setStyleSheet(theme.primary_btn_style(s))
+        btn_save.setText("SALVAR CONFIGURACOES")
+        btn_save.setFixedHeight(max(38,int(44*s)))
+        btn_save.setStyleSheet(_primary_action_btn_style(s))
         btn_save.clicked.connect(self._save)
         layout.addWidget(btn_save, alignment=Qt.AlignmentFlag.AlignLeft)
 
@@ -231,18 +385,18 @@ class SettingsView(QWidget):
         s = self.scale
         layout.addWidget(_section(title, s))
         layout.addWidget(_separator())
-        layout.addWidget(self._lbl(description, s, color=theme.TEXT_LIGHT, italic=True))
+        layout.addWidget(self._lbl(description, s, color=DASH_MUTED, italic=False))
 
         path_row = QHBoxLayout()
         path_row.addWidget(self._lbl("Arquivo:", s))
 
         input_path = QLineEdit(default_path)
-        input_path.setFixedHeight(max(30,int(36*s)))
-        input_path.setStyleSheet(theme.input_style(s))
+        input_path.setFixedHeight(max(38,int(44*s)))
+        input_path.setStyleSheet(_field_style(s))
         path_row.addWidget(input_path, 1)
 
         btn_browse = QPushButton("...")
-        btn_browse.setFixedSize(max(30,int(36*s)), max(30,int(36*s)))
+        btn_browse.setFixedSize(max(38,int(44*s)), max(38,int(44*s)))
         btn_browse.setStyleSheet(_flat_secondary_btn_style(s))
         btn_browse.setToolTip("Navegar...")
         btn_browse.clicked.connect(lambda: self._browse_import_path(kind))
@@ -251,8 +405,8 @@ class SettingsView(QWidget):
 
         import_row = QHBoxLayout()
         btn_import = QPushButton(button_text)
-        btn_import.setFixedHeight(max(34,int(40*s)))
-        btn_import.setStyleSheet(theme.primary_btn_style(s))
+        btn_import.setFixedHeight(max(38,int(44*s)))
+        btn_import.setStyleSheet(_primary_action_btn_style(s))
         btn_import.clicked.connect(lambda: self._start_import(kind))
         import_row.addWidget(btn_import)
 
@@ -261,8 +415,8 @@ class SettingsView(QWidget):
         progress_bar.setVisible(False)
         progress_bar.setStyleSheet(
             f"QProgressBar {{ border:none; border-radius:4px;"
-            f"background:{theme.INPUT_BG}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
-            f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
+            f"background:{DASH_ROW_ALT}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
+            f"QProgressBar::chunk {{ background:{DASH_PRIMARY}; border-radius:3px; }}"
         )
         import_row.addWidget(progress_bar, 1)
         layout.addLayout(import_row)
@@ -272,8 +426,8 @@ class SettingsView(QWidget):
         txt_log.setMaximumHeight(max(100,int(120*s)))
         txt_log.setVisible(False)
         txt_log.setStyleSheet(
-            f"background:{theme.INPUT_BG}; border:none; border-radius:6px;"
-            f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:4px;"
+            f"background:{DASH_ROW_ALT}; border:none; border-radius:12px;"
+            f"font-size:{max(9,int(10*s))}pt; color:{DASH_TEXT}; padding:6px;"
         )
         layout.addWidget(txt_log)
 
@@ -305,8 +459,8 @@ class SettingsView(QWidget):
     def _lbl(self, text: str, scale: float, color: str = None,
              italic: bool = False) -> QLabel:
         lbl = QLabel(text)
-        c = color or theme.TEXT_MEDIUM
-        fs = max(9, int(11 * scale))
+        c = color or DASH_MUTED
+        fs = max(8, int(9 * scale))
         style = f"color:{c}; font-size:{fs}pt;"
         if italic:
             style += " font-style:italic;"
@@ -324,10 +478,10 @@ class SettingsView(QWidget):
         s = self.scale
         if ok:
             self.lbl_conn_status.setText("Servidor online e respondendo")
-            self.lbl_conn_status.setStyleSheet(f"color:{theme.SUCCESS}; font-size:{max(9,int(10*s))}pt;")
+            self.lbl_conn_status.setStyleSheet(f"color:{DASH_SUCCESS}; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         else:
             self.lbl_conn_status.setText("Não foi possível conectar ao servidor")
-            self.lbl_conn_status.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(9,int(10*s))}pt;")
+            self.lbl_conn_status.setStyleSheet(f"color:{DASH_DANGER}; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         self.btn_test.setEnabled(True)
         self.btn_test.setText("Testar conexão")
 
@@ -347,6 +501,9 @@ class SettingsView(QWidget):
             "Salvo",
             "Configurações salvas.\nReinicie o aplicativo para aplicar a nova escala."
         )
+        current = datetime.now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
         self.scale_changed.emit(scale)
 
     def _browse_import_path(self, kind: str):

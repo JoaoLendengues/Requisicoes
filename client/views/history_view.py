@@ -418,7 +418,7 @@ class HistoryView(QWidget):
         self.table.setShowGrid(False)
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         header_widget = self.table.horizontalHeader()
-        stretch_columns = {1, 2, 3}
+        stretch_columns = {2, 3}
         for col in range(len(COLS)):
             mode = (
                 QHeaderView.ResizeMode.Stretch
@@ -426,9 +426,13 @@ class HistoryView(QWidget):
                 else QHeaderView.ResizeMode.ResizeToContents
             )
             header_widget.setSectionResizeMode(col, mode)
+        header_widget.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
+        self.table.setColumnWidth(1, max(180, int(220 * s)))
+        self.table.setColumnWidth(5, max(150, int(180 * s)))
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{DASH_SURFACE};"
