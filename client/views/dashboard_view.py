@@ -727,7 +727,6 @@ class DashboardView(QWidget):
             for col, value in enumerate(values):
                 if col == 4:
                     status = str(row.get("status") or "")
-                    label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     color_map = {
                         "em_andamento": DASH_SECONDARY,
                         "aguardando_recebimento": DASH_WARNING,
@@ -735,12 +734,18 @@ class DashboardView(QWidget):
                         "cancelada": DASH_DANGER,
                     }
                     color = color_map.get(status, DASH_SLATE)
+                    label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     label.setStyleSheet(
                         f"background:{_rgba(color, 30)}; color:{color}; border-radius:999px;"
                         f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
-                    table.setCellWidget(line, col, label)
+                    container = QWidget()
+                    container.setStyleSheet(f"background:{DASH_SURFACE};")
+                    cl = QHBoxLayout(container)
+                    cl.setContentsMargins(6, 2, 6, 2)
+                    cl.addWidget(label)
+                    table.setCellWidget(line, col, container)
                 else:
                     item = QTableWidgetItem(value)
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
