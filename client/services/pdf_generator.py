@@ -234,11 +234,11 @@ def _draw_header(
     """Cabeçalho completo: logo | contato || REQUISIÇÃO | data/vendedor || PED"""
 
     # ── proporções da faixa do cabeçalho
-    logo_w  = w * 0.195
-    sep_gap = 6
-    contact_w = w * 0.205
-    title_w = w * 0.33
-    ped_w   = w * 0.215
+    sep_gap   = 6
+    logo_w    = w * 0.245          # logo maior
+    contact_w = w * 0.185
+    ped_w     = w * 0.165          # PED box menor
+    title_w   = w - logo_w - contact_w - ped_w - sep_gap * 2 - 10
 
     # --- Logo (esquerda) -----------------------------------------------------
     logo_path = os.path.abspath(
@@ -343,22 +343,19 @@ def _draw_info_bar(
     req: dict,
     client: dict | None,
     items: list[dict],
+    vendor_phone: str = "--",
 ) -> None:
-    """Barra de informações: OS | Prazo | Retirada | Entrega | NF | Contato | Peso"""
+    """Barra de informações: Prazo | Retirada | Entrega | Telefone Vendedor | Peso"""
     _box(pdf, x, y, w, h, radius=8, fill=C_WHITE, stroke=C_BORDER)
 
-    contact_phone = _resolve_phone(req, client, "--")
-    weight_val    = _resolve_weight(req, items)
-    nf_raw        = str(req.get("nf_attachment") or "").strip()
-    nf_label      = os.path.basename(nf_raw) if nf_raw else "--"
+    weight_val = _resolve_weight(req, items)
 
     cells = [
-        ("\U0001f4c5", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")),  0.20, C_TEXT),
-        ("\U0001f69a", "RETIRADA",         _fmt_yes_no(req.get("retirada")),     0.15, C_BRAND),
-        ("\U0001f69a", "ENTREGA",          _fmt_yes_no(req.get("entrega")),      0.15, C_BRAND),
-        ("\U0001f4c4", "NF:",              nf_label,                             0.17, C_TEXT),
-        ("\U0001f4f1", contact_phone,      "",                                   0.20, C_GREEN),
-        ("⚖",         "PESO:",            _fmt_kg(weight_val),                  0.13, C_TEXT),
+        ("\U0001f4c5", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")),  0.24, C_TEXT),
+        ("\U0001f69a", "RETIRADA",         _fmt_yes_no(req.get("retirada")),     0.18, C_BRAND),
+        ("\U0001f69a", "ENTREGA",          _fmt_yes_no(req.get("entrega")),      0.18, C_BRAND),
+        ("\U0001f4f1", vendor_phone,       "",                                   0.25, C_GREEN),
+        ("⚖",         "PESO:",            _fmt_kg(weight_val),                  0.15, C_TEXT),
     ]
 
     cx = x
@@ -595,34 +592,68 @@ def _draw_grid_area(
     _grid(pdf, x + 4, y + 4, w - 8, h - 8, step=14)
 
 
+def _make_qr_bytes(text: str) -> bytes | None:
+    """Gera QR Code como PNG bytes. Retorna None se qrcode não estiver instalado."""
+    try:
+        import qrcode as _qrc
+        qr = _qrc.QRCode(version=1, box_size=4, border=2,
+                         error_correction=_qrc.constants.ERROR_CORRECT_M)
+        qr.add_data(text)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="#0E3A70", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
 def _draw_footer(
     pdf: pdfcanvas.Canvas,
-    x: float, y: float, w: float,
+    x: float, y: float, w: float, h: float,
     obs: str,
+    vendor_phone: str = "--",
 ) -> None:
-    """Assinatura do cliente + caixa de observação."""
-    # Assinatura — lado direito
-    sig_x   = x + w * 0.50
-    sig_y   = y + 30
+    """Rodapé:  [OBSERVAÇÃO]  /  [QR code]  [ASSINATURA DO CLIENTE: ____]"""
 
-    _txt(pdf, "ASSINATURA DO CLIENTE:", sig_x, sig_y, 8, C_TEXT, bold=False)
-    line_start = sig_x + pdfmetrics.stringWidth(
-        "ASSINATURA DO CLIENTE:", "Helvetica", 8
-    ) + 8
-    _line(pdf, line_start, sig_y - 2, x + w, sig_y - 2, C_TEXT, lw=0.8)
+    right_x = x + w * 0.45   # bloco ocupa a metade direita
+    right_w = w - (right_x - x)
 
-    # Observação
-    obs_x  = sig_x
-    obs_y  = y + 2
-    obs_w  = w - (sig_x - x)
-    obs_h  = 22
-    _box(pdf, obs_x, obs_y, obs_w, obs_h, radius=6, fill=C_WHITE, stroke=C_BORDER)
+    gap   = 6
+    obs_h = max(26, (h - gap) * 0.40)
+    sig_h = h - obs_h - gap
 
-    label_txt = "OBSERVAÇÃO:"
-    label_w   = pdfmetrics.stringWidth(label_txt, "Helvetica-Bold", 8) + 10
-    _txt(pdf, label_txt, obs_x + 8, obs_y + obs_h / 2 - 4, 8, C_TEXT, bold=True)
-    _txt(pdf, _safe(obs, ""), obs_x + label_w, obs_y + obs_h / 2 - 4, 8.5,
-         C_TEXT_SOFT, max_w=obs_w - label_w - 10)
+    # ── Observação (em cima) ──────────────────────────────────────────────────
+    obs_y = y + sig_h + gap
+    _box(pdf, right_x, obs_y, right_w, obs_h, radius=6, fill=C_WHITE, stroke=C_BORDER)
+    lbl = "OBSERVAÇÃO:"
+    lbl_w = pdfmetrics.stringWidth(lbl, "Helvetica-Bold", 8) + 10
+    _txt(pdf, lbl, right_x + 8, obs_y + obs_h / 2 - 4, 8, C_TEXT, bold=True)
+    _txt(pdf, _safe(obs, ""), right_x + lbl_w, obs_y + obs_h / 2 - 4, 8.5,
+         C_TEXT_SOFT, max_w=right_w - lbl_w - 10)
+
+    # ── Assinatura + QR (embaixo) ─────────────────────────────────────────────
+    sig_y  = y
+    qr_sz  = sig_h - 4          # QR ocupa quase toda a altura da linha
+
+    # QR code — WhatsApp do vendedor
+    digits = "".join(c for c in vendor_phone if c.isdigit())
+    wa_url = f"https://wa.me/55{digits}" if digits else "https://wa.me/"
+    qr_bytes = _make_qr_bytes(wa_url)
+    if qr_bytes:
+        pdf.drawImage(
+            ImageReader(io.BytesIO(qr_bytes)),
+            right_x + 2, sig_y + 2, width=qr_sz, height=qr_sz,
+            preserveAspectRatio=True, mask="auto",
+        )
+
+    # Linha de assinatura
+    after_qr = right_x + qr_sz + 8
+    sig_lbl  = "ASSINATURA DO CLIENTE:"
+    sig_mid  = sig_y + sig_h / 2
+    _txt(pdf, sig_lbl, after_qr, sig_mid + 2, 8, C_TEXT, bold=False)
+    line_x = after_qr + pdfmetrics.stringWidth(sig_lbl, "Helvetica", 8) + 6
+    _line(pdf, line_x, sig_mid, right_x + right_w, sig_mid, C_TEXT, lw=0.8)
 
 
 # ── Canvas → PNG ─────────────────────────────────────────────────────────────
@@ -780,8 +811,9 @@ def generate_pdf(
     pdf.setFillColor(C_WHITE)
     pdf.rect(0, 0, pw, ph, fill=1, stroke=0)
 
-    vendor_name = _safe(req.get("vendor_name"), _session.user_name or "--")
-    items_list  = req.get("items") or []
+    vendor_name  = _safe(req.get("vendor_name"), _session.user_name or "--")
+    vendor_phone = _format_phone(_session.whatsapp or req.get("vendor_whatsapp") or "", "--")
+    items_list   = req.get("items") or []
     if not isinstance(items_list, list):
         items_list = []
 
@@ -796,7 +828,8 @@ def generate_pdf(
     # 2. BARRA DE INFORMAÇÕES ──────────────────────────────────────────────────
     bar_h = 42
     bar_y = top - bar_h
-    _draw_info_bar(pdf, mx, bar_y, cw, bar_h, req, client, items_list)
+    _draw_info_bar(pdf, mx, bar_y, cw, bar_h, req, client, items_list,
+                   vendor_phone=vendor_phone)
     top = bar_y - GAP
 
     # 3. DADOS DO CLIENTE ──────────────────────────────────────────────────────
@@ -818,19 +851,12 @@ def generate_pdf(
                       canvas_result=canvas_result, title="DESENHO")
     top = body_y - GAP
 
-    # 5. GRADE GRANDE (bloco de anotação) ──────────────────────────────────────
-    # Calcula o espaço disponível antes do rodapé
-    footer_h = 42
-    grid_h   = top - my - footer_h - GAP
-    grid_h   = max(grid_h, 80)   # mínimo seguro
-    grid_y   = top - grid_h
-    _draw_grid_area(pdf, mx, grid_y, cw, grid_h)
-    top = grid_y - GAP
-
-    # 6. RODAPÉ ────────────────────────────────────────────────────────────────
-    foot_y = top - footer_h
+    # 5. RODAPÉ (ocupa o espaço restante até a margem inferior) ────────────────
+    footer_h = max(top - my, 70)   # usa todo o espaço disponível
+    foot_y   = top - footer_h
     observation = obs or req.get("obs") or ""
-    _draw_footer(pdf, mx, foot_y, cw, observation)
+    _draw_footer(pdf, mx, foot_y, cw, footer_h, observation,
+                 vendor_phone=vendor_phone)
 
     # 7. SEGUNDA PÁGINA (desenho em tela cheia, apenas se houver canvas) ───────
     if canvas_result:
