@@ -166,7 +166,7 @@ class ProductionView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = "#B3D1FF"
+        page_bg = "#F4F7FB"
         self.setObjectName("productionView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
