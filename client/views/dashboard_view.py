@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -497,12 +497,14 @@ class DashboardView(QWidget):
         title_label = QLabel(title)
         title_label.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"color:{DASH_TEXT}; background:transparent;"
         )
 
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
         subtitle_label.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt;"
+            f"color:{DASH_MUTED}; background:transparent;"
         )
 
         layout.addWidget(accent)
@@ -548,10 +550,19 @@ class DashboardView(QWidget):
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
             f"QTableWidget::item {{"
+            f"  background:{DASH_SURFACE}; color:{DASH_TEXT};"
             f"  padding:7px 6px; border-bottom:1px solid {_rgba(DASH_PRIMARY, 18)};"
             f"}}"
-            f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; }}"
+            f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; color:{DASH_TEXT}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(DASH_PRIMARY, 40)}; color:{DASH_TEXT}; }}"
         )
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(DASH_SURFACE))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(DASH_ROW_ALT))
+        pal.setColor(QPalette.ColorRole.Text, QColor(DASH_TEXT))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(DASH_TEXT))
+        table.setPalette(pal)
+        table.viewport().setAutoFillBackground(True)
         return table
 
     def _build_top_vendors_table(self) -> QTableWidget:
