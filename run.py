@@ -13,7 +13,7 @@ import uvicorn
 
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-VENV_PYTHON = os.path.join(ROOT_DIR, "venv", "Scripts", "python.exe")
+VENV_PYTHON = os.path.join(ROOT_DIR, ".venv", "Scripts", "python.exe")
 
 
 def _using_project_venv() -> bool:
