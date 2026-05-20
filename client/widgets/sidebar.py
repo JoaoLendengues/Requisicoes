@@ -2,7 +2,7 @@ import os
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from ..core import theme
 from ..core.session import session
@@ -67,16 +67,16 @@ class _BellButton(QWidget):
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_sidebar.png")
 
 NAV_ITEMS = [
-    ("nova", "\U0001F4DD", "NOVA REQUISI\u00c7\u00c3O"),
-    ("dashboard", "\U0001F4CA", "PAINEL GERENCIAL"),
-    ("pedidos", "\U0001F4E6", "CENTRAL DE PEDIDOS"),
-    ("producao", "\U0001F3ED", "PRODU\u00c7\u00c3O"),
-    ("historico", "\U0001F558", "HIST\u00d3RICO / BUSCA"),
-    ("usuarios", "\U0001F465", "CENTRAL DE USU\u00c1RIOS"),
+    ("nova",      "📝", "NOVA REQUISIÇÃO"),
+    ("dashboard", "📊", "PAINEL GERENCIAL"),
+    ("pedidos",   "📦", "CENTRAL DE PEDIDOS"),
+    ("producao",  "🏭", "PRODUÇÃO"),
+    ("historico", "🕘", "HISTÓRICO / BUSCA"),
+    ("usuarios",  "👥", "CENTRAL DE USUÁRIOS"),
 ]
 
 BOTTOM_NAV_ITEMS = [
-    ("config", "\u2699\ufe0f", "CONFIGURA\u00c7\u00d5ES"),
+    ("config", "⚙️", "CONFIGURAÇÕES"),
 ]
 
 
@@ -100,24 +100,39 @@ class Sidebar(QWidget):
             f"QWidget#SidebarPanel {{ background:{theme.SIDEBAR_BG}; }}"
             f"QWidget#SidebarPanel QLabel {{ background:transparent; }}"
         )
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
 
-        panel = QFrame()
+        # ── ScrollArea que envolve TODO o conteúdo da sidebar ─────────────────
+        # Quando a escala for grande e o conteúdo ultrapassar a altura da janela,
+        # uma barra de rolagem fina e discreta aparece automaticamente.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ background:{theme.SIDEBAR_BG}; border:none; }}"
+            f"QScrollBar:vertical {{"
+            f"  width:4px; background:transparent; margin:0;"
+            f"}}"
+            f"QScrollBar::handle:vertical {{"
+            f"  background:rgba(255,255,255,0.22); border-radius:2px; min-height:24px;"
+            f"}}"
+            f"QScrollBar::handle:vertical:hover {{ background:rgba(255,255,255,0.40); }}"
+            f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
+            f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background:none; }}"
+        )
+
+        # Panel interno: todo o conteúdo da sidebar num único VBox
+        panel = QWidget()
         panel.setObjectName("SidebarPanel")
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(0)
 
-        # \u2500\u2500 Se\u00e7\u00e3o superior: logo + navega\u00e7\u00e3o principal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        # Ocupa o espa\u00e7o dispon\u00edvel e empurra a se\u00e7\u00e3o inferior para baixo.
-        top = QWidget()
-        top.setObjectName("SidebarPanel")
-        top_layout = QVBoxLayout(top)
-        top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.setSpacing(0)
-
+        # ── Logo ──────────────────────────────────────────────────────────────
         logo_container = QWidget()
         logo_container.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
         logo_layout = QVBoxLayout(logo_container)
@@ -136,57 +151,51 @@ class Sidebar(QWidget):
             )
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_layout.addWidget(logo_label)
-        top_layout.addWidget(logo_container)
-        top_layout.addWidget(self._separator())
+        panel_layout.addWidget(logo_container)
+        panel_layout.addWidget(self._separator())
 
+        # ── Navegação principal ───────────────────────────────────────────────
         for key, icon, label in NAV_ITEMS:
             btn = self._make_btn(icon, label, nav_key=key)
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
-            top_layout.addWidget(btn)
+            panel_layout.addWidget(btn)
 
-        top_layout.addStretch()
+        # Espaço flexível — empurra o rodapé para baixo quando há espaço sobrando.
+        # Quando não há espaço, o scroll entra em ação.
+        panel_layout.addStretch(1)
 
-        # \u2500\u2500 Se\u00e7\u00e3o inferior: config + notifica\u00e7\u00f5es + usu\u00e1rio + sair \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-        # Fixada no rodap\u00e9 \u2014 sempre vis\u00edvel independente da resolu\u00e7\u00e3o/escala.
-        bottom = QWidget()
-        bottom.setObjectName("SidebarPanel")
-        bottom_layout = QVBoxLayout(bottom)
-        bottom_layout.setContentsMargins(0, 0, 0, 0)
-        bottom_layout.setSpacing(0)
-
-        bottom_layout.addWidget(self._separator())
+        # ── Rodapé: config + notificações + usuário + sair ────────────────────
+        panel_layout.addWidget(self._separator())
 
         for key, icon, label in BOTTOM_NAV_ITEMS:
             btn = self._make_btn(icon, label, nav_key=key)
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
-            bottom_layout.addWidget(btn)
+            panel_layout.addWidget(btn)
 
-        bottom_layout.addWidget(self._separator())
+        panel_layout.addWidget(self._separator())
 
         self._bell = _BellButton(self.scale)
         self._bell.clicked.connect(self.bell_clicked.emit)
-        bottom_layout.addWidget(self._bell)
+        panel_layout.addWidget(self._bell)
 
-        bottom_layout.addWidget(self._separator())
+        panel_layout.addWidget(self._separator())
 
-        self.user_label = QLabel(f"\U0001F464 USU\u00c1RIO: {session.user_name}")
+        self.user_label = QLabel(f"👤 USUÁRIO: {session.user_name}")
         self.user_label.setStyleSheet(
             f"color:rgba(255,255,255,0.78); font-size:{max(8, int(9 * self.scale))}pt; padding:10px 18px;"
         )
         self.user_label.setWordWrap(True)
-        bottom_layout.addWidget(self.user_label)
+        panel_layout.addWidget(self.user_label)
 
-        btn_sair = self._make_btn("\U0001F6AA", "SAIR")
+        btn_sair = self._make_btn("🚪", "SAIR")
         btn_sair.clicked.connect(self.logout_clicked.emit)
-        bottom_layout.addWidget(btn_sair)
-        bottom_layout.addSpacing(12)
+        panel_layout.addWidget(btn_sair)
+        panel_layout.addSpacing(12)
 
-        panel_layout.addWidget(top, 1)     # estica para preencher espa\u00e7o livre
-        panel_layout.addWidget(bottom, 0)  # sempre vis\u00edvel, tamanho fixo
-
-        layout.addWidget(panel)
+        scroll.setWidget(panel)
+        root_layout.addWidget(scroll)
 
         self._highlight(self._active)
 
@@ -229,7 +238,7 @@ class Sidebar(QWidget):
             btn.setChecked(nav_key == key)
 
     def refresh_user(self):
-        self.user_label.setText(f"\U0001F464 USU\u00c1RIO: {session.user_name}")
+        self.user_label.setText(f"👤 USUÁRIO: {session.user_name}")
 
     def set_notification_count(self, count: int):
         self._bell.set_count(count)

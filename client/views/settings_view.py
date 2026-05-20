@@ -3,7 +3,7 @@ from datetime import datetime
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
-    QLabel, QLineEdit, QPushButton, QSlider, QFrame, QGraphicsDropShadowEffect,
+    QLabel, QLineEdit, QPushButton, QFrame, QGraphicsDropShadowEffect,
     QMessageBox, QProgressBar, QTextEdit,
     QFileDialog,
 )
@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QColor
 
 from ..core import theme
-from ..core.resolution import res
+from ..core.resolution import res, SCALE_STEPS
 from ..api import client as api
 
 
@@ -314,29 +314,41 @@ class SettingsView(QWidget):
         layout.addWidget(_separator())
 
         scale_row = QHBoxLayout()
+        scale_row.setSpacing(max(6, int(8 * s)))
         scale_row.addWidget(self._lbl("Escala da interface:", s))
 
-        self.slider_scale = QSlider(Qt.Orientation.Horizontal)
-        self.slider_scale.setRange(70, 150)
-        self.slider_scale.setValue(int(res.scale * 100))
-        self.slider_scale.setTickInterval(10)
-        self.slider_scale.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.slider_scale.setFixedWidth(max(180,int(220*s)))
-        self.slider_scale.valueChanged.connect(self._on_scale_change)
+        self._scale_btns: dict[str, QPushButton] = {}
+        active_label = res.scale_label
+        for label, factor in SCALE_STEPS:
+            hint = ""
+            if factor is None:
+                hint = f"  ({res.recommended_label})"
+            btn = QPushButton(f"{label}{hint}")
+            btn.setCheckable(True)
+            btn.setChecked(label == active_label)
+            btn.setFixedHeight(max(32, int(36 * s)))
+            btn.setStyleSheet(
+                f"QPushButton {{"
+                f"  background:{DASH_SURFACE}; color:{DASH_PRIMARY};"
+                f"  border:1px solid {DASH_BORDER}; border-radius:10px;"
+                f"  padding:0 {max(10, int(14*s))}px;"
+                f"  font-size:{max(8, int(9*s))}pt; font-weight:700;"
+                f"}}"
+                f"QPushButton:hover {{ background:{DASH_ROW_ALT}; border-color:{DASH_PRIMARY}; }}"
+                f"QPushButton:checked {{"
+                f"  background:{DASH_PRIMARY}; color:#fff; border-color:{DASH_PRIMARY};"
+                f"}}"
+            )
+            btn.clicked.connect(lambda checked=False, lbl=label: self._on_scale_btn(lbl))
+            scale_row.addWidget(btn)
+            self._scale_btns[label] = btn
 
-        self.lbl_scale_val = QLabel(f"{int(res.scale * 100)}%")
-        self.lbl_scale_val.setFixedWidth(40)
-        self.lbl_scale_val.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-weight:800; font-size:{max(10,int(12*s))}pt;"
-        )
-        scale_row.addWidget(self.slider_scale)
-        scale_row.addWidget(self.lbl_scale_val)
         scale_row.addStretch()
         layout.addLayout(scale_row)
 
         screen_info = QLabel(
             f"Resolução detectada: {res.screen_width}×{res.screen_height}  |  "
-            f"DPI: {res.dpi:.0f}  |  Escala automática: {res.auto_scale:.2f}×"
+            f"DPI: {res.dpi:.0f}  |  Recomendado: {res.recommended_label}"
         )
         screen_info.setStyleSheet(
             f"color:{DASH_MUTED}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
@@ -467,8 +479,9 @@ class SettingsView(QWidget):
         lbl.setStyleSheet(style)
         return lbl
 
-    def _on_scale_change(self, value: int):
-        self.lbl_scale_val.setText(f"{value}%")
+    def _on_scale_btn(self, label: str):
+        for lbl, btn in self._scale_btns.items():
+            btn.setChecked(lbl == label)
 
     def _test_connection(self):
         url = self.input_url.text().strip()
@@ -487,24 +500,38 @@ class SettingsView(QWidget):
 
     def _save(self):
         url = self.input_url.text().strip()
-        scale = self.slider_scale.value() / 100.0
         clients_path = self.input_ods_path.text().strip()
         products_path = self.input_products_path.text().strip()
+
+        # Descobre qual botão de escala está marcado
+        selected_label = next(
+            (lbl for lbl, btn in self._scale_btns.items() if btn.isChecked()),
+            "Automática",
+        )
+        # "Automática" → salva None (auto-detect); outros → salva o label
+        font_scale_value = None if selected_label == "Automática" else selected_label
+
+        scale_changed = (font_scale_value != res._user_scale)
+
         res.save(
             server_url=url,
-            font_scale=scale,
+            font_scale=font_scale_value,
             ods_path=clients_path,
             products_path=products_path,
         )
-        QMessageBox.information(
-            self,
-            "Salvo",
-            "Configurações salvas.\nReinicie o aplicativo para aplicar a nova escala."
-        )
-        current = datetime.now()
-        self.date_label.setText(_format_header_date(current))
-        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
-        self.scale_changed.emit(scale)
+
+        if scale_changed:
+            QMessageBox.information(
+                self,
+                "Salvo",
+                "Configurações salvas.\nA interface será recarregada com a nova escala.",
+            )
+            self.scale_changed.emit(res.scale)
+        else:
+            current = datetime.now()
+            self.date_label.setText(_format_header_date(current))
+            self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
+            QMessageBox.information(self, "Salvo", "Configurações salvas.")
 
     def _browse_import_path(self, kind: str):
         title = (

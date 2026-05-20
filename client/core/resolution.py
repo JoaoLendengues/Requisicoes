@@ -3,9 +3,41 @@ import os
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "..", "settings.json")
 
+# ── Passos de escala disponíveis (referência: PROJECT_PARALLELv2) ─────────────
+# Cada entrada: (label exibida na UI, fator numérico ou None para automático)
+SCALE_STEPS: list[tuple[str, float | None]] = [
+    ("Automática", None),
+    ("90%",  0.90),
+    ("100%", 1.00),
+    ("110%", 1.10),
+    ("125%", 1.25),
+    ("150%", 1.50),
+    ("175%", 1.75),
+]
+
+# Mapa label → fator (exclui "Automática")
+SCALE_FACTOR: dict[str, float] = {
+    label: f for label, f in SCALE_STEPS if f is not None
+}
+
+
+def _ratio_to_scale(ratio: float) -> float:
+    """Mapeia ratio de resolução (vs 1920×1080) para o fator de escala discreto."""
+    if ratio <= 0.88:
+        return 0.90
+    if ratio <= 1.00:
+        return 1.00
+    if ratio <= 1.12:
+        return 1.10
+    if ratio <= 1.32:
+        return 1.25
+    if ratio <= 1.62:
+        return 1.50
+    return 1.75
+
 
 class ResolutionManager:
-    """Detecta resolução/DPI na inicialização e calcula fator de escala."""
+    """Detecta resolução na inicialização e calcula fator de escala adaptativo."""
 
     _instance = None
 
@@ -23,33 +55,66 @@ class ResolutionManager:
         self._logical_dpi  = screen.logicalDotsPerInch()
         self._geo          = screen.availableGeometry()
         self._auto_scale   = self._calc_auto_scale()
-        self._user_scale   = self._load_setting("font_scale")
+        self._user_scale   = self._load_setting("font_scale")   # None ou label "90%"/"100%"/…
         self._server_url   = self._load_setting("server_url") or "http://10.1.1.151:5000"
         self._maximized    = self._load_setting("maximized", True)
         self._ready = True
 
+    # ── Cálculo automático ───────────────────────────────────────────────────
     def _calc_auto_scale(self) -> float:
-        """Escala baseada em DPI, limitada pela altura disponível da tela.
+        """Escala automática por ratio de resolução (referência: 1920×1080).
 
-        Garante que todos os itens da sidebar caibam sem corte.
-        Sidebar precisa de ~179 px fixo + 9 botões × button_height(S),
-        onde button_height(S) = max(40, int(48 × S)).
+        Mapeia a resolução real a um dos passos discretos:
+        0.90 / 1.00 / 1.10 / 1.25 / 1.50 / 1.75.
+        Overflow de conteúdo é tratado por scrollbars na sidebar e nas views.
         """
-        dpi_scale = self._logical_dpi / 96.0
-        # Altura disponível descontando barra de tarefas + status bar (~64 px)
-        available_h = max(500, self._geo.height() - 64)
-        # S máximo para que 9 botões + partes fixas caibam
-        max_s = (available_h - 179) / (9 * 48)
-        return round(max(0.72, min(dpi_scale, max_s, 1.4)), 2)
+        w = max(1, self._geo.width())
+        h = max(1, self._geo.height())
+        ratio = min(w / 1920, h / 1080)
+        return _ratio_to_scale(ratio)
 
-    # ── Escala ──────────────────────────────────────────────────────────────
+    # ── Escala ───────────────────────────────────────────────────────────────
     @property
     def scale(self) -> float:
-        raw = float(self._user_scale) if self._user_scale else self._auto_scale
-        # Aplica o cap de altura mesmo para escala manual, evitando corte da sidebar
-        available_h = max(500, self._geo.height() - 64)
-        height_cap = max(0.72, (available_h - 179) / (9 * 48))
-        return min(raw, round(height_cap, 2))
+        """Fator de escala ativo (automático ou escolhido pelo usuário).
+
+        Aceita tanto o novo formato (label string, ex.: '100%') quanto o
+        formato legado (float, ex.: 0.95) para compatibilidade retroativa.
+        """
+        us = self._user_scale
+        if us is None:
+            return self._auto_scale
+        if isinstance(us, str) and us in SCALE_FACTOR:
+            return SCALE_FACTOR[us]
+        if isinstance(us, (int, float)):
+            return round(float(us), 2)
+        return self._auto_scale
+
+    @property
+    def scale_label(self) -> str:
+        """Label atual exibida na UI ('Automática', '90%', '100%', …)."""
+        us = self._user_scale
+        if us is None:
+            return "Automática"
+        if isinstance(us, str) and us in SCALE_FACTOR:
+            return us
+        # Formato legado (float): encontra o passo discreto mais próximo
+        if isinstance(us, (int, float)):
+            closest = min(SCALE_FACTOR.items(), key=lambda kv: abs(kv[1] - float(us)))
+            return closest[0]
+        return "Automática"
+
+    @property
+    def recommended_label(self) -> str:
+        """Label do passo recomendado para a resolução atual."""
+        raw = _ratio_to_scale(min(
+            max(1, self._geo.width()) / 1920,
+            max(1, self._geo.height()) / 1080,
+        ))
+        for label, f in SCALE_STEPS:
+            if f is not None and abs(f - raw) < 0.01:
+                return label
+        return "100%"
 
     def font(self, base_pt: int) -> int:
         return max(8, round(base_pt * self.scale))

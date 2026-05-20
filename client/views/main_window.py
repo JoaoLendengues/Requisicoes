@@ -2,7 +2,7 @@ from datetime import datetime
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
-    QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea,
+    QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -70,9 +70,41 @@ class MainWindow(QMainWindow):
         sep.setStyleSheet(f"background:{theme.SIDEBAR_BG}; color:{theme.SIDEBAR_BG}; border:none;")
         root.addWidget(sep)
 
+        # ── Área de conteúdo com scroll ───────────────────────────────────────
+        # O QScrollArea garante que qualquer view seja acessível por rolagem
+        # quando a janela for menor que o conteúdo (escala alta, tela pequena).
         self.stack = QStackedWidget()
         self.stack.setStyleSheet(f"background:{theme.CONTENT_BG};")
-        root.addWidget(self.stack, 1)
+        # Tamanho mínimo escalado: abaixo disso o scroll entra em ação
+        self.stack.setMinimumSize(
+            max(760, int(860 * self.scale)),
+            max(520, int(600 * self.scale)),
+        )
+
+        scroll_main = QScrollArea()
+        scroll_main.setWidgetResizable(True)
+        scroll_main.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_main.setStyleSheet(
+            f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}"
+            f"QScrollBar:vertical {{"
+            f"  width:8px; background:transparent;"
+            f"}}"
+            f"QScrollBar::handle:vertical {{"
+            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-height:32px;"
+            f"}}"
+            f"QScrollBar::handle:vertical:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
+            f"QScrollBar:horizontal {{"
+            f"  height:8px; background:transparent;"
+            f"}}"
+            f"QScrollBar::handle:horizontal {{"
+            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-width:32px;"
+            f"}}"
+            f"QScrollBar::handle:horizontal:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
+        )
+        scroll_main.setWidget(self.stack)
+        root.addWidget(scroll_main, 1)
 
         self.form_view = RequisitionForm(self.scale)
         self.history_view = HistoryView(self.scale)
@@ -100,6 +132,7 @@ class MainWindow(QMainWindow):
             lambda req_id: self._open_requisition(req_id, "production")
         )
         self.form_view.save_requested.connect(self._save_requisition)
+        self.settings_view.scale_changed.connect(self._on_scale_changed)
 
         if not session.can_access_dashboard:
             dash_btn = self.sidebar._nav_btns.get("dashboard")
@@ -408,6 +441,20 @@ class MainWindow(QMainWindow):
     def _reset_badge(self):
         self._unread_count = 0
         self.sidebar.set_notification_count(0)
+
+    # ── Escala ───────────────────────────────────────────────────────────────
+
+    def _on_scale_changed(self, _new_scale: float):
+        """Reconstrói a janela principal com a nova escala sem reiniciar o processo.
+
+        A sessão do usuário é mantida (singleton). Uma nova MainWindow é criada
+        já lendo res.scale atualizado, e a janela atual é fechada em seguida.
+        """
+        if self._listener:
+            self._listener.stop()
+        new_win = MainWindow()
+        new_win.show()
+        self.close()
 
     # ── Logout ───────────────────────────────────────────────────────────────
 
