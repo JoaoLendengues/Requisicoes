@@ -546,6 +546,7 @@ class OrderCenterView(QWidget):
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.doubleClicked.connect(lambda index, section=key: self._open_row(section, index.row()))
 
+        s = self.scale
         header = table.horizontalHeader()
         for col in range(len(headers)):
             mode = (
@@ -558,7 +559,6 @@ class OrderCenterView(QWidget):
         header.setMinimumHeight(max(34, int(40 * s)))
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
 
-        s = self.scale
         table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{DASH_SURFACE};"
