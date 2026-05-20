@@ -56,6 +56,16 @@ def _rgba(color: str, alpha: int) -> str:
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 
+def _tint(color: str, alpha: int = 40) -> str:
+    """Cor sólida equivalente a rgba(color, alpha) sobre fundo branco."""
+    c = QColor(color)
+    a = alpha / 255.0
+    r = round(c.red() * a + 255 * (1 - a))
+    g = round(c.green() * a + 255 * (1 - a))
+    b = round(c.blue() * a + 255 * (1 - a))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
@@ -270,14 +280,16 @@ class DashboardView(QWidget):
         date_hint = QLabel("DATA ATUAL")
         date_hint.setStyleSheet(
             f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent;"
         )
         self.date_label = QLabel(_format_header_date())
         self.date_label.setStyleSheet(
             f"color:{DASH_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
+            f"background:transparent;"
         )
         self.updated_label = QLabel("Atualizando dados...")
         self.updated_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
@@ -725,7 +737,6 @@ class DashboardView(QWidget):
             for col, value in enumerate(values):
                 if col == 4:
                     status = str(row.get("status") or "")
-                    label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     color_map = {
                         "em_andamento": DASH_SECONDARY,
                         "aguardando_recebimento": DASH_WARNING,
@@ -733,9 +744,10 @@ class DashboardView(QWidget):
                         "cancelada": DASH_DANGER,
                     }
                     color = color_map.get(status, DASH_SLATE)
+                    label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     label.setStyleSheet(
-                        f"background:{_rgba(color, 30)}; color:{color}; border-radius:999px;"
+                        f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
                         f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
                     table.setCellWidget(line, col, label)
