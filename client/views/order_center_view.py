@@ -5,9 +5,11 @@ import webbrowser
 from datetime import datetime
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -28,24 +30,85 @@ from ..services.pdf_generator import HAS_REPORTLAB, generate_pdf
 from .requisition_form import _run_in_thread
 
 
-def _make_card(scale: float, background: str = None) -> QFrame:
+DASH_BG = "#F4F7FB"
+DASH_SURFACE = "#FFFFFF"
+DASH_PRIMARY = "#1E3A5F"
+DASH_SECONDARY = "#27496D"
+DASH_SUCCESS = "#16A34A"
+DASH_DANGER = "#DC2626"
+DASH_WARNING = "#F59E0B"
+DASH_SLATE = "#334155"
+DASH_TEXT = "#0F172A"
+DASH_MUTED = "#64748B"
+DASH_BORDER = "#E2E8F0"
+DASH_ROW_ALT = "#F8FBFF"
+
+
+def _rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
+
+
+def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
+    shadow = QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur)
+    shadow.setOffset(0, y_offset)
+    color = QColor(DASH_TEXT)
+    color.setAlpha(alpha)
+    shadow.setColor(color)
+    widget.setGraphicsEffect(shadow)
+
+
+def _make_card(
+    scale: float,
+    background: str | None = None,
+    border_color: str | None = None,
+    radius: int = 18,
+    hover_background: str | None = None,
+) -> QFrame:
     card = QFrame()
+    card.setObjectName("orderCenterCard")
+    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    bg = background or DASH_SURFACE
+    border = f"1px solid {border_color}" if border_color else "none"
+    hover = hover_background or bg
     card.setStyleSheet(
-        f"background:{background or theme.CARD_BG}; border:none; border-radius:8px;"
+        f"QFrame#orderCenterCard {{"
+        f"  background:{bg}; border:{border}; border-radius:{radius}px;"
+        f"}}"
+        f"QFrame#orderCenterCard:hover {{"
+        f"  background:{hover}; border:{border};"
+        f"}}"
     )
+    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
 
 def _flat_secondary_btn_style(scale: float) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
-        f"  border:none; outline:none; border-radius:8px;"
-        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"  background:{DASH_SURFACE}; color:{DASH_PRIMARY};"
+        f"  border:1px solid {DASH_BORDER}; outline:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
-        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+        f"QPushButton:hover {{ background:{DASH_ROW_ALT}; border-color:{_rgba(DASH_PRIMARY, 70)}; }}"
+        f"QPushButton:pressed {{ background:#E7EEF7; }}"
+        f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
+    )
+
+
+def _primary_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{DASH_PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{DASH_SECONDARY}; }}"
+        f"QPushButton:pressed {{ background:#152D49; }}"
+        f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
     )
 
 
@@ -121,6 +184,11 @@ def _format_waiting_minutes(minutes: object) -> str:
     return f"{days}d {hours:02d}h"
 
 
+def _format_header_date(value: datetime | None = None) -> str:
+    current = value or datetime.now()
+    return current.strftime("%d/%m/%Y")
+
+
 class OrderCenterWorker(QObject):
     result = Signal(object)
     error = Signal(str)
@@ -157,47 +225,75 @@ class OrderCenterView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = "#B3D1FF"
+        page_bg = DASH_BG
         self.setObjectName("orderCenterView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             f"QWidget#orderCenterView {{ background:{page_bg}; }}"
         )
         root = QVBoxLayout(self)
-        root.setContentsMargins(max(12, int(16 * s)), max(12, int(16 * s)),
-                                max(12, int(16 * s)), max(12, int(16 * s)))
-        root.setSpacing(max(10, int(12 * s)))
+        root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                max(18, int(24 * s)), max(18, int(24 * s)))
+        root.setSpacing(max(14, int(18 * s)))
 
         header = QHBoxLayout()
+        header.setSpacing(max(12, int(16 * s)))
         title_col = QVBoxLayout()
+        title_col.setSpacing(max(4, int(5 * s)))
 
-        title = QLabel("CENTRAL DE PEDIDOS")
+        title = QLabel("Central de Pedidos")
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
+            f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Acompanhe pedidos por etapa, atrasos e finalizacoes em uma tela unica."
+            "Acompanhamento operacional dos pedidos por etapa, ritmo e pendencias da producao."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+            f"color:{DASH_MUTED}; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
 
-        right_col = QVBoxLayout()
-        self.updated_label = QLabel("Atualizando dados...")
-        self.updated_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.updated_label.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+        right_col = QHBoxLayout()
+        right_col.setSpacing(max(10, int(12 * s)))
+
+        info_card = _make_card(
+            s,
+            DASH_SURFACE,
+            border_color=None,
+            radius=max(16, int(18 * s)),
+            hover_background=DASH_SURFACE,
         )
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
+                                       max(14, int(16 * s)), max(10, int(12 * s)))
+        info_layout.setSpacing(max(2, int(3 * s)))
+
+        date_hint = QLabel("DATA ATUAL")
+        date_hint.setStyleSheet(
+            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+        )
+        self.date_label = QLabel(_format_header_date())
+        self.date_label.setStyleSheet(
+            f"color:{DASH_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
+        )
+        self.updated_label = QLabel("Atualizando dados...")
+        self.updated_label.setStyleSheet(
+            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+        )
+        self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        info_layout.addWidget(date_hint)
+        info_layout.addWidget(self.date_label)
+        info_layout.addWidget(self.updated_label)
+
         self.refresh_btn = QPushButton("ATUALIZAR")
-        self.refresh_btn.setFixedHeight(max(32, int(36 * s)))
+        self.refresh_btn.setFixedHeight(max(38, int(44 * s)))
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.refresh_btn.clicked.connect(self.refresh)
-        right_col.addWidget(self.updated_label)
-        right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignRight)
+        right_col.addWidget(info_card)
+        right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
         header.addLayout(right_col)
         root.addLayout(header)
 
@@ -205,9 +301,9 @@ class OrderCenterView(QWidget):
         self.error_label.hide()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
-            f"background:rgba(239, 68, 68, 0.12); color:{theme.DANGER};"
-            f"border:none; border-radius:8px;"
-            f"padding:10px 12px; font-size:{max(8, int(9 * s))}pt;"
+            f"background:{_rgba(DASH_DANGER, 18)}; color:{DASH_DANGER};"
+            f"border:1px solid {_rgba(DASH_DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         root.addWidget(self.error_label)
 
@@ -231,27 +327,35 @@ class OrderCenterView(QWidget):
         scroll.setWidget(content)
         layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(max(12, int(14 * s)))
+        layout.setSpacing(max(16, int(18 * s)))
 
         metrics = QGridLayout()
-        metrics.setHorizontalSpacing(max(10, int(12 * s)))
-        metrics.setVerticalSpacing(max(10, int(12 * s)))
+        metrics.setHorizontalSpacing(max(12, int(16 * s)))
+        metrics.setVerticalSpacing(max(12, int(16 * s)))
+        for column in range(3):
+            metrics.setColumnStretch(column, 1)
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_aguardando_recebimento", theme.WARNING, "PEDIDOS AGUARDANDO RECEBIMENTO"),
-            ("pedidos_em_producao", theme.PRIMARY_HOVER, "PEDIDOS EM PRODUCAO"),
-            ("pedidos_finalizados", theme.SUCCESS, "PEDIDOS FINALIZADOS"),
-            ("pedidos_cancelados", theme.DANGER, "PEDIDOS CANCELADOS"),
-            ("pedidos_atrasados", theme.DANGER, "PEDIDOS ATRASADOS"),
-            ("tempo_medio_producao_segundos", theme.SIDEBAR_BG, "TEMPO MEDIO DE PRODUCAO"),
+            ("pedidos_aguardando_recebimento", DASH_WARNING, "AR", "Aguardando Recebimento", "Pedidos pendentes de confirmacao da producao."),
+            ("pedidos_em_producao", DASH_PRIMARY, "PR", "Pedidos em Producao", "Ordens que ja entraram na esteira produtiva."),
+            ("pedidos_finalizados", DASH_SUCCESS, "OK", "Pedidos Finalizados", "Pedidos concluidos e prontos para consulta."),
+            ("pedidos_cancelados", DASH_DANGER, "CX", "Pedidos Cancelados", "Cancelamentos registrados na operacao."),
+            ("pedidos_atrasados", DASH_DANGER, "AT", "Pedidos Atrasados", "Pedidos com prazo vencido e ainda abertos."),
+            ("tempo_medio_producao_segundos", DASH_SLATE, "TM", "Tempo Medio de Producao", "Indicador medio de conclusao da producao."),
         ]
-        for index, (key, color, title_text) in enumerate(card_defs):
-            metrics.addWidget(self._build_metric_card(color, title_text, key), index // 3, index % 3)
+        for index, (key, color, icon_text, title_text, helper_text) in enumerate(card_defs):
+            metrics.addWidget(
+                self._build_metric_card(color, icon_text, title_text, helper_text, key),
+                index // 3,
+                index % 3,
+            )
 
         grid_top = QGridLayout()
-        grid_top.setHorizontalSpacing(max(10, int(12 * s)))
-        grid_top.setVerticalSpacing(max(10, int(12 * s)))
+        grid_top.setHorizontalSpacing(max(12, int(16 * s)))
+        grid_top.setVerticalSpacing(max(12, int(16 * s)))
+        grid_top.setColumnStretch(0, 1)
+        grid_top.setColumnStretch(1, 1)
         layout.addLayout(grid_top)
         grid_top.addWidget(self._build_section("Pedidos aguardando recebimento", "aguardando_recebimento"), 0, 0)
         grid_top.addWidget(self._build_section("Pedidos em producao", "em_producao"), 0, 1)
@@ -260,56 +364,142 @@ class OrderCenterView(QWidget):
         layout.addWidget(self._build_section("Pedidos atrasados", "atrasados"))
         layout.addStretch()
 
-    def _build_metric_card(self, color: str, title_text: str, key: str) -> QFrame:
+    def _build_metric_card(
+        self,
+        color: str,
+        icon_text: str,
+        title_text: str,
+        helper_text: str,
+        key: str,
+    ) -> QFrame:
         s = self.scale
-        card = _make_card(s, color)
+        card = _make_card(
+            s,
+            DASH_SURFACE,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background="#FBFDFF",
+        )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(14, int(18 * s)), max(12, int(16 * s)),
-                                  max(14, int(18 * s)), max(12, int(16 * s)))
+        layout.setContentsMargins(max(16, int(20 * s)), max(15, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(6, int(8 * s)))
+
+        top_row = QHBoxLayout()
+        icon_label = QLabel(icon_text)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setFixedSize(max(36, int(44 * s)), max(36, int(44 * s)))
+        icon_label.setStyleSheet(
+            f"background:{_rgba(color, 28)}; color:{color};"
+            f"border-radius:{max(12, int(14 * s))}px;"
+            f"font-size:{max(8, int(10 * s))}pt; font-weight:800;"
+        )
+        top_row.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignLeft)
+        top_row.addStretch()
+
+        value = QLabel("-")
+        value.setStyleSheet(
+            f"color:{DASH_TEXT}; font-size:{max(20, int(26 * s))}pt; font-weight:800;"
+        )
 
         title = QLabel(title_text)
         title.setWordWrap(True)
         title.setStyleSheet(
-            f"color:rgba(255,255,255,0.88); font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
+            f"color:{DASH_PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:700;"
         )
 
-        value = QLabel("-")
-        value.setStyleSheet(
-            f"color:#fff; font-size:{max(20, int(24 * s))}pt; font-weight:bold;"
+        helper = QLabel(helper_text)
+        helper.setWordWrap(True)
+        helper.setStyleSheet(
+            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
         )
 
-        layout.addWidget(title)
+        accent_line = QFrame()
+        accent_line.setFixedHeight(max(4, int(5 * s)))
+        accent_line.setStyleSheet(
+            f"background:{color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+
+        layout.addLayout(top_row)
         layout.addWidget(value)
+        layout.addWidget(title)
+        layout.addWidget(helper)
         layout.addStretch()
+        layout.addWidget(accent_line)
         self._metric_labels[key] = value
         return card
 
     def _build_section(self, title_text: str, key: str, pdf_action: bool = False) -> QFrame:
         s = self.scale
-        card = _make_card(s)
+        section_meta = {
+            "aguardando_recebimento": (
+                "Pedidos aguardando retorno e confirmacao da producao.",
+                DASH_WARNING,
+            ),
+            "em_producao": (
+                "Ordens em andamento com registro de recebimento na fabrica.",
+                DASH_PRIMARY,
+            ),
+            "finalizados": (
+                "Pedidos concluidos com PDF individual e tempo medio de producao.",
+                DASH_SUCCESS,
+            ),
+            "cancelados": (
+                "Historico de cancelamentos para consulta rapida da operacao.",
+                DASH_DANGER,
+            ),
+            "atrasados": (
+                "Pedidos fora do prazo para acompanhamento imediato.",
+                DASH_SLATE,
+            ),
+        }
+        subtitle_text, accent_color = section_meta[key]
+
+        card = _make_card(
+            s,
+            DASH_SURFACE,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background="#FBFDFF",
+        )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(14, int(16 * s)), max(12, int(14 * s)),
-                                  max(14, int(16 * s)), max(12, int(14 * s)))
-        layout.setSpacing(max(8, int(10 * s)))
+        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(10, int(12 * s)))
+
+        accent = QFrame()
+        accent.setFixedHeight(max(4, int(5 * s)))
+        accent.setStyleSheet(
+            f"background:{accent_color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+        layout.addWidget(accent)
 
         title_row = QHBoxLayout()
-        title = QLabel(title_text.upper())
+        title_col = QVBoxLayout()
+        title_col.setSpacing(max(2, int(3 * s)))
+        title = QLabel(title_text)
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"color:{DASH_PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
         )
-        title_row.addWidget(title)
-        title_row.addStretch()
+        subtitle = QLabel(subtitle_text)
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(
+            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+        )
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        title_row.addLayout(title_col, 1)
 
         btn_open = QPushButton("ABRIR PEDIDO")
-        btn_open.setFixedHeight(max(28, int(32 * s)))
+        btn_open.setFixedHeight(max(34, int(38 * s)))
         btn_open.setStyleSheet(_flat_secondary_btn_style(s))
         btn_open.clicked.connect(lambda: self._open_selected(key))
         title_row.addWidget(btn_open)
 
         if pdf_action:
             btn_pdf = QPushButton("VER PDF")
-            btn_pdf.setFixedHeight(max(28, int(32 * s)))
-            btn_pdf.setStyleSheet(theme.primary_btn_style(s))
+            btn_pdf.setFixedHeight(max(34, int(38 * s)))
+            btn_pdf.setStyleSheet(_primary_action_btn_style(s))
             btn_pdf.clicked.connect(self._open_selected_pdf)
             title_row.addWidget(btn_pdf)
 
@@ -318,7 +508,7 @@ class OrderCenterView(QWidget):
         if pdf_action:
             self.avg_finished_label = QLabel("Tempo medio: -")
             self.avg_finished_label.setStyleSheet(
-                f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
+                f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:600;"
             )
             layout.addWidget(self.avg_finished_label)
 
@@ -364,19 +554,24 @@ class OrderCenterView(QWidget):
                 else QHeaderView.ResizeMode.ResizeToContents
             )
             header.setSectionResizeMode(col, mode)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.setMinimumHeight(max(34, int(40 * s)))
+        table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
 
         s = self.scale
         table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:none; outline:none; background:{theme.CARD_BG};"
-            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"  border:none; outline:none; background:{DASH_SURFACE};"
+            f"  alternate-background-color:{DASH_ROW_ALT}; color:{DASH_SLATE};"
+            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:7px;"
-            f"  font-weight:bold; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"  background:{DASH_PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
-            f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(DASH_PRIMARY, 18)}; color:{DASH_TEXT}; }}"
+            f"QTableWidget::item {{ padding:7px 6px; border-bottom:1px solid {_rgba(DASH_PRIMARY, 18)}; }}"
+            f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; }}"
         )
         table.setMinimumHeight(max(220, int(240 * s)))
         return table
@@ -405,6 +600,7 @@ class OrderCenterView(QWidget):
         self.refresh_btn.setEnabled(not loading)
         if loading:
             self.updated_label.setText("Atualizando dados...")
+            self.date_label.setText(_format_header_date())
 
     def _show_error(self, message: str):
         self.error_label.setText(f"Nao foi possivel carregar a central de pedidos.\n\n{message}")
@@ -426,6 +622,8 @@ class OrderCenterView(QWidget):
             else:
                 label.setText(str(value if value is not None else 0))
 
+        generated_at = _parse_datetime(payload.get("generated_at"))
+        self.date_label.setText(_format_header_date(generated_at or datetime.now()))
         self.updated_label.setText(f"Atualizado em {_format_datetime(payload.get('generated_at'))}")
         if hasattr(self, "avg_finished_label"):
             self.avg_finished_label.setText(
@@ -499,10 +697,16 @@ class OrderCenterView(QWidget):
                     status = str(row_data.get("status") or "")
                     badge = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    color = theme.STATUS_COLORS.get(status, theme.TEXT_MEDIUM)
+                    color_map = {
+                        "em_andamento": DASH_SECONDARY,
+                        "aguardando_recebimento": DASH_WARNING,
+                        "em_producao": DASH_PRIMARY,
+                        "cancelada": DASH_DANGER,
+                    }
+                    color = color_map.get(status, DASH_SLATE)
                     badge.setStyleSheet(
-                        f"background:{color}; color:{theme.TEXT_WHITE}; border-radius:8px;"
-                        f"font-weight:600; padding:3px 8px; font-size:{max(7, int(8 * self.scale))}pt;"
+                        f"background:{_rgba(color, 30)}; color:{color}; border-radius:999px;"
+                        f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
                     table.setCellWidget(row, col, badge)
                 else:
@@ -515,6 +719,7 @@ class OrderCenterView(QWidget):
         table.setSpan(0, 0, 1, table.columnCount())
         item = QTableWidgetItem(message)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item.setForeground(QColor(DASH_MUTED))
         table.setItem(0, 0, item)
 
     def _selected_row(self, key: str) -> dict | None:
