@@ -68,6 +68,7 @@ class MainWindow(QMainWindow):
         self.sidebar.nav_clicked.connect(self._on_nav)
         self.sidebar.logout_clicked.connect(self._logout)
         self.sidebar.bell_clicked.connect(self._show_notification_panel)
+        self.sidebar.theme_toggled.connect(self._on_theme_toggle)
         root.addWidget(self.sidebar)
 
         sep = QFrame()
@@ -530,6 +531,19 @@ class MainWindow(QMainWindow):
         self.sidebar.set_notification_count(0)
 
     # ── Escala ───────────────────────────────────────────────────────────────
+
+    def _on_theme_toggle(self, dark: bool):
+        """Salva preferência, aplica tema e reconstrói a janela."""
+        from PySide6.QtWidgets import QApplication
+        res.save(dark_mode=dark)
+        theme.set_dark(dark)
+        QApplication.instance().setStyleSheet(theme.global_style())
+        self._notif_timer.stop()
+        if self._listener:
+            self._listener.stop()
+        new_win = MainWindow()
+        new_win.show()
+        self.close()
 
     def _on_scale_changed(self, _new_scale: float):
         """Reconstrói a janela principal com a nova escala sem reiniciar o processo.

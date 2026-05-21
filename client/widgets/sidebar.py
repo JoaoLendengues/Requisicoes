@@ -1,7 +1,7 @@
 import os
 import unicodedata
 
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QPoint, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
@@ -105,6 +105,95 @@ def _apply_sidebar_icon(button: QPushButton, icon_key: str, scale: float):
     button.setIconSize(QSize(pixmap.width(), pixmap.height()))
 
 
+# ── Toggle claro / escuro ──────────────────────────────────────────────────────
+
+_PILL_W    = 38
+_PILL_H    = 20
+_KNOB_SIZE = 14
+_KNOB_PAD  = 3
+
+
+class _ThemeToggle(QWidget):
+    """Interruptor ☀️/🌙 embutido no sidebar com animação deslizante."""
+
+    toggled = Signal(bool)   # True = modo escuro
+
+    def __init__(self, is_dark: bool, scale: float, parent=None):
+        super().__init__(parent)
+        self._dark  = is_dark
+        self._scale = scale
+        self._build()
+
+    def _build(self):
+        height    = max(40, int(48 * self._scale))
+        font_size = max(8, int(10 * self._scale))
+        self.setFixedHeight(height)
+        self.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(18, 0, 16, 0)
+        lay.setSpacing(10)
+
+        # ── Pill ──────────────────────────────────────────────────────────────
+        self._pill = QWidget()
+        self._pill.setFixedSize(_PILL_W, _PILL_H)
+
+        self._knob = QWidget(self._pill)
+        self._knob.setFixedSize(_KNOB_SIZE, _KNOB_SIZE)
+        self._knob.setStyleSheet("background:#FFFFFF; border-radius:7px;")
+
+        # Posição e cor iniciais (sem animação)
+        self._knob.move(self._knob_x(self._dark), _KNOB_PAD)
+        self._pill.setStyleSheet(self._pill_style(self._dark))
+
+        lay.addWidget(self._pill)
+
+        # ── Ícone e texto ─────────────────────────────────────────────────────
+        self._icon_lbl = QLabel("🌙" if self._dark else "☀️")
+        self._icon_lbl.setStyleSheet("font-size:14px; background:transparent;")
+        lay.addWidget(self._icon_lbl)
+
+        self._text_lbl = QLabel("MODO ESCURO" if self._dark else "MODO CLARO")
+        self._text_lbl.setStyleSheet(
+            f"color:rgba(255,255,255,0.82); font-size:{font_size}pt;"
+            f"font-weight:700; background:transparent;"
+        )
+        lay.addWidget(self._text_lbl, 1)
+
+        # ── Animação do knob ──────────────────────────────────────────────────
+        self._anim = QPropertyAnimation(self._knob, b"pos")
+        self._anim.setDuration(180)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _knob_x(self, dark: bool) -> int:
+        return _PILL_W - _KNOB_SIZE - _KNOB_PAD if dark else _KNOB_PAD
+
+    def _pill_style(self, dark: bool) -> str:
+        bg = theme.SIDEBAR_INDICATOR if dark else "rgba(255,255,255,0.22)"
+        return f"background:{bg}; border-radius:{_PILL_H // 2}px;"
+
+    def _animate_to(self, dark: bool):
+        self._pill.setStyleSheet(self._pill_style(dark))
+        self._anim.stop()
+        self._anim.setStartValue(self._knob.pos())
+        self._anim.setEndValue(QPoint(self._knob_x(dark), _KNOB_PAD))
+        self._anim.start()
+
+    # ── Interação ─────────────────────────────────────────────────────────────
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dark = not self._dark
+            self._animate_to(self._dark)
+            self._icon_lbl.setText("🌙" if self._dark else "☀️")
+            self._text_lbl.setText("MODO ESCURO" if self._dark else "MODO CLARO")
+            self.toggled.emit(self._dark)
+        super().mousePressEvent(event)
+
+
 class _BellButton(QWidget):
     """Sininho com badge de contagem de não lidas."""
 
@@ -163,9 +252,10 @@ class _BellButton(QWidget):
 
 
 class Sidebar(QWidget):
-    nav_clicked = Signal(str)
+    nav_clicked    = Signal(str)
     logout_clicked = Signal()
-    bell_clicked = Signal()
+    bell_clicked   = Signal()
+    theme_toggled  = Signal(bool)   # True = modo escuro
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -252,6 +342,11 @@ class Sidebar(QWidget):
             self._nav_btns[key] = btn
             btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
             panel_layout.addWidget(btn)
+
+        # ── Toggle claro / escuro ─────────────────────────────────────────────
+        self._theme_toggle = _ThemeToggle(theme.is_dark, self.scale)
+        self._theme_toggle.toggled.connect(self.theme_toggled.emit)
+        panel_layout.addWidget(self._theme_toggle)
 
         panel_layout.addWidget(self._separator())
 

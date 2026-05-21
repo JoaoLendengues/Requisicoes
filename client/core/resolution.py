@@ -51,6 +51,7 @@ class ResolutionManager:
         """Deve ser chamado após QApplication ser criada."""
         if self._ready:
             return
+        from . import theme as _theme   # import local para evitar ciclo
         screen = app.primaryScreen()
         self._logical_dpi  = screen.logicalDotsPerInch()
         self._geo          = screen.availableGeometry()
@@ -58,6 +59,8 @@ class ResolutionManager:
         self._user_scale   = self._load_setting("font_scale")   # None ou label "90%"/"100%"/…
         self._server_url   = self._load_setting("server_url") or "http://10.1.1.151:5000"
         self._maximized    = self._load_setting("maximized", True)
+        self._dark_mode    = bool(self._load_setting("dark_mode", False))
+        _theme.set_dark(self._dark_mode)
         self._ready = True
 
     # ── Cálculo automático ───────────────────────────────────────────────────
@@ -149,6 +152,10 @@ class ResolutionManager:
         return bool(self._maximized)
 
     @property
+    def dark_mode(self) -> bool:
+        return self._dark_mode
+
+    @property
     def pdf_folder(self) -> str:
         return r"Z:\REQUISIÇÕES (VENDAS)\PDF"
 
@@ -164,6 +171,8 @@ class ResolutionManager:
                 self._maximized = v
             if k == "pdf_folder":
                 self._pdf_folder = v
+            if k == "dark_mode":
+                self._dark_mode = bool(v)
         self._write_file(data)
 
     # ── Helpers ─────────────────────────────────────────────────────────────
