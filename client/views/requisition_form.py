@@ -1090,8 +1090,10 @@ class RequisitionForm(QWidget):
 
         document = QPdfDocument(self)
         load_result = document.load(pdf_path)
-        if int(load_result) != 0:
-            raise RuntimeError("Não foi possível abrir o PDF da requisição para impressão.")
+        if load_result != QPdfDocument.Error.None_:
+            raise RuntimeError(
+                f"Não foi possível abrir o PDF da requisição para impressão ({load_result.name})."
+            )
         if document.pageCount() <= 0:
             raise RuntimeError("O PDF da requisição não possui páginas para imprimir.")
 
