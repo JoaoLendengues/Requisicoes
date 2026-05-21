@@ -16,6 +16,7 @@ from ..models.requisition import (
 )
 from ..models.user import User, Role
 from ..schemas.dashboard import (
+    DashboardMachineUsageItem,
     DashboardReceiptAlertItem,
     DashboardRecentRequisitionItem,
     DashboardStatsResponse,
@@ -372,6 +373,52 @@ def _current_production_machine(req: Requisition) -> str:
         if machine:
             return machine
     return ""
+
+
+def _history_production_machine(req: Requisition) -> str:
+    current_machine = _current_production_machine(req)
+    if current_machine:
+        return current_machine
+
+    latest_cycle = _latest_finished_cycle(req)
+    if latest_cycle:
+        machine = str(latest_cycle.get("machine") or "").strip()
+        if machine:
+            return machine
+
+    return ""
+
+
+def _history_production_status(req: Requisition) -> str:
+    current_status = str(getattr(req.status, "value", req.status) or "")
+    if req.status == RequisitionStatus.CANCELADA:
+        return current_status
+
+    latest_event = _latest_production_event(
+        req,
+        _PROD_SEND,
+        _PROD_RECEIVED,
+        _PROD_QUEUED,
+        _PROD_STARTED,
+        _PROD_RETURNED_QUEUE,
+        _PROD_FINISHED,
+        _PROD_CANCELED,
+    )
+    if not latest_event:
+        return current_status
+
+    action = latest_event["action"]
+    if action == _PROD_FINISHED:
+        return "finalizada_producao"
+    if action == _PROD_CANCELED:
+        return "cancelada_producao"
+    if action == _PROD_SEND:
+        return RequisitionStatus.AGUARDANDO_RECEBIMENTO.value
+    if action in (_PROD_QUEUED, _PROD_RETURNED_QUEUE):
+        return RequisitionStatus.AGUARDANDO_NA_FILA.value
+    if action in (_PROD_RECEIVED, _PROD_STARTED):
+        return RequisitionStatus.EM_PRODUCAO.value
+    return current_status
 
 
 def _can_view_requisition(req: Requisition, current_user: User) -> bool:
@@ -770,7 +817,79 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
     )
 
 
-def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardResponse:
+def _build_machine_usage_rows(
+    reqs: list[Requisition],
+    machines: list[ProductionMachine],
+    destination: str,
+) -> list[DashboardMachineUsageItem]:
+    normalized_destination = _canonical_destination(destination)
+    destination_machines = [
+        machine
+        for machine in machines
+        if _canonical_destination(machine.destination) == normalized_destination
+    ]
+    usage: dict[str, dict] = {
+        str(machine.name): {
+            "machine": machine,
+            "finished_count": 0,
+            "in_production_count": 0,
+            "durations": [],
+        }
+        for machine in destination_machines
+    }
+
+    for req in reqs:
+        if _current_production_destination(req) != normalized_destination:
+            continue
+
+        current_machine = _current_production_machine(req)
+        if req.status == RequisitionStatus.EM_PRODUCAO and current_machine in usage:
+            usage[current_machine]["in_production_count"] += 1
+
+        for cycle in _all_finished_cycles(req):
+            if _canonical_destination(cycle.get("target")) != normalized_destination:
+                continue
+            machine_name = str(cycle.get("machine") or "").strip()
+            if machine_name not in usage:
+                continue
+            usage[machine_name]["finished_count"] += 1
+            production_seconds = cycle.get("production_time_seconds")
+            if isinstance(production_seconds, int):
+                usage[machine_name]["durations"].append(max(0, production_seconds))
+
+    rows: list[DashboardMachineUsageItem] = []
+    for machine in destination_machines:
+        machine_name = str(machine.name)
+        stats = usage[machine_name]
+        durations = stats["durations"]
+        average_seconds = None
+        if durations:
+            average_seconds = int(sum(durations) / len(durations))
+
+        rows.append(
+            DashboardMachineUsageItem(
+                machine_name=machine_name,
+                total_operations=int(stats["finished_count"]),
+                in_production_count=int(stats["in_production_count"]),
+                average_seconds=average_seconds,
+                machine_status=getattr(machine.status, "value", machine.status) or "",
+            )
+        )
+
+    rows.sort(
+        key=lambda item: (
+            -int(item.total_operations or 0),
+            -int(item.in_production_count or 0),
+            _normalize_text(item.machine_name),
+        )
+    )
+    return rows
+
+
+def _build_management_dashboard(
+    reqs: list[Requisition],
+    machines: list[ProductionMachine],
+) -> ManagementDashboardResponse:
     now = datetime.utcnow()
     today = now.date()
     one_hour_ago = now - timedelta(hours=1)
@@ -872,6 +991,17 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
     if completion_durations:
         average_seconds = int(sum(completion_durations) / len(completion_durations))
 
+    top_machines_industria = _build_machine_usage_rows(
+        reqs,
+        machines,
+        _DESTINATION_PINHEIRO,
+    )
+    top_machines_ar = _build_machine_usage_rows(
+        reqs,
+        machines,
+        _DESTINATION_AR,
+    )
+
     return ManagementDashboardResponse(
         generated_at=now,
         stats=DashboardStatsResponse(
@@ -887,6 +1017,8 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
         top_vendors=top_vendors,
         receipt_alerts=receipt_alerts[:10],
         recent_requisitions=recent_requisitions[:12],
+        top_machines_ar=top_machines_ar,
+        top_machines_industria=top_machines_industria,
     )
 
 
@@ -1017,6 +1149,8 @@ def list_requisitions(
     req_status: Optional[RequisitionStatus] = Query(None, alias="status"),
     client_id: Optional[int] = None,
     vendor_id: Optional[int] = None,
+    production_destination: Optional[str] = None,
+    production_machine: Optional[str] = None,
     search: Optional[str] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, le=200),
@@ -1043,7 +1177,35 @@ def list_requisitions(
     # Vendedor e gerente só veem as próprias requisições
     reqs = q.order_by(Requisition.created_at.desc()).all()
     visible = _filter_requisitions_for_user(reqs, current_user)
-    return visible[skip:skip + limit]
+
+    if production_destination:
+        normalized_destination = _canonical_destination(production_destination)
+        visible = [
+            req for req in visible
+            if _current_production_destination(req) == normalized_destination
+        ]
+
+    if production_machine:
+        machine_key = _normalize_text(production_machine)
+        visible = [
+            req for req in visible
+            if _normalize_text(_history_production_machine(req)) == machine_key
+        ]
+
+    paginated = visible[skip:skip + limit]
+    for req in paginated:
+        setattr(
+            req,
+            "production_destination_display",
+            _current_production_destination(req) or None,
+        )
+        setattr(
+            req,
+            "production_machine_display",
+            _history_production_machine(req) or None,
+        )
+        setattr(req, "production_status", _history_production_status(req))
+    return paginated
 
 
 @router.get("/dashboard/summary", response_model=ManagementDashboardResponse)
@@ -1057,7 +1219,16 @@ def get_management_dashboard(
         .order_by(Requisition.created_at.desc())
         .all()
     )
-    return _build_management_dashboard(reqs)
+    machines = (
+        db.query(ProductionMachine)
+        .order_by(
+            ProductionMachine.destination.asc(),
+            ProductionMachine.sort_order.asc(),
+            ProductionMachine.id.asc(),
+        )
+        .all()
+    )
+    return _build_management_dashboard(reqs, machines)
 
 
 @router.get("/order-center/summary", response_model=OrderCenterResponse)
@@ -1097,6 +1268,22 @@ def get_production_summary(
         .all()
     )
     return _build_production_summary(visible, machines, normalized_destination)
+
+
+@router.get("/production/machines", response_model=List[str])
+def list_production_machines(
+    destination: str = Query(...),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    normalized_destination = _canonical_destination(destination)
+    machines = (
+        db.query(ProductionMachine)
+        .filter(ProductionMachine.destination == normalized_destination)
+        .order_by(ProductionMachine.sort_order.asc(), ProductionMachine.id.asc())
+        .all()
+    )
+    return [str(machine.name or "").strip() for machine in machines if str(machine.name or "").strip()]
 
 
 @router.patch(

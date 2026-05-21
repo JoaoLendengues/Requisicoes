@@ -42,12 +42,22 @@ class DashboardRecentRequisitionItem(BaseModel):
     destination: Optional[str] = None
 
 
+class DashboardMachineUsageItem(BaseModel):
+    machine_name: str
+    total_operations: int
+    in_production_count: int
+    average_seconds: Optional[int] = None
+    machine_status: str
+
+
 class ManagementDashboardResponse(BaseModel):
     generated_at: datetime
     stats: DashboardStatsResponse
     top_vendors: list[DashboardVendorItem]
     receipt_alerts: list[DashboardReceiptAlertItem]
     recent_requisitions: list[DashboardRecentRequisitionItem]
+    top_machines_ar: list[DashboardMachineUsageItem]
+    top_machines_industria: list[DashboardMachineUsageItem]
 
 
 class TechnicalPanelStatsResponse(BaseModel):

@@ -30,6 +30,10 @@ AR_MACHINES = (
     "Dobradeira de 3000 newton modelo PDM 60/75X3050",
     "PLASMA de 6000 quarks modelo QP 6030",
     "Laser de 3000 esab modelo FL 30.15",
+    "Dobradeira Newton PSA 13530 (SIA)",
+    "Dobradeira Newton PSA 13530 (SIA)",
+    "Martelo Newton 17530 (SIA)",
+    "Cortadeira Newton GHN 3010 (SIA)",
 )
 
 
