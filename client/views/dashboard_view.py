@@ -568,6 +568,10 @@ class DashboardView(QWidget):
             ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
             {1},
         )
+        header = self.top_machines_ar_table.horizontalHeader()
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_ar_table.setColumnWidth(5, max(140, int(170 * self.scale)))
+        self.top_machines_ar_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
         self.top_machines_ar_table.setMinimumHeight(max(260, int(300 * self.scale)))
         return self.top_machines_ar_table
 
@@ -576,6 +580,10 @@ class DashboardView(QWidget):
             ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
             {1},
         )
+        header = self.top_machines_industria_table.horizontalHeader()
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_industria_table.setColumnWidth(5, max(140, int(170 * self.scale)))
+        self.top_machines_industria_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
         self.top_machines_industria_table.setMinimumHeight(max(260, int(300 * self.scale)))
         return self.top_machines_industria_table
 
