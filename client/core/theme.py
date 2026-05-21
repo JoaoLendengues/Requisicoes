@@ -342,11 +342,23 @@ def global_style() -> str:
         f"QMessageBox QLabel {{ background-color:transparent; color:{TEXT_DARK}; padding:2px 0; }}"  # noqa: F821
         f"QMessageBox QFrame {{ background-color:{CARD_BG}; border:none; }}"  # noqa: F821
         f"QMessageBox QDialogButtonBox {{ background-color:{CARD_BG}; border-top:1px solid {BORDER_COLOR}; padding-top:10px; }}"  # noqa: F821
-        f"QMessageBox QPushButton {{"
-        f"  background:{PRIMARY}; color:{TEXT_WHITE}; border:none;"  # noqa: F821
-        f"  border-radius:8px; padding:7px 16px; min-width:84px; font-weight:600;"
+        f"QMessageBox QPushButton, QMessageBox QDialogButtonBox QPushButton {{"
+        f"  background-color:{PRIMARY}; color:{TEXT_WHITE}; border:1px solid {PRIMARY};"  # noqa: F821
+        f"  border-radius:8px; padding:7px 16px; min-width:84px; min-height:34px; font-weight:600;"
         f"}}"
-        f"QMessageBox QPushButton:hover {{ background:{PRIMARY_HOVER}; }}"  # noqa: F821
+        f"QMessageBox QPushButton:hover, QMessageBox QDialogButtonBox QPushButton:hover {{"
+        f"  background-color:{PRIMARY_HOVER}; border-color:{PRIMARY_HOVER};"  # noqa: F821
+        f"}}"
+        f"QMessageBox QPushButton:pressed, QMessageBox QDialogButtonBox QPushButton:pressed {{"
+        f"  background-color:{PRIMARY}; border-color:{PRIMARY};"  # noqa: F821
+        f"}}"
+        f"QMessageBox QPushButton:focus, QMessageBox QPushButton:default,"
+        f"QMessageBox QDialogButtonBox QPushButton:focus, QMessageBox QDialogButtonBox QPushButton:default {{"
+        f"  background-color:{PRIMARY}; color:{TEXT_WHITE}; border:1px solid {PRIMARY};"  # noqa: F821
+        f"}}"
+        f"QMessageBox QPushButton:disabled, QMessageBox QDialogButtonBox QPushButton:disabled {{"
+        f"  background-color:{BORDER_COLOR}; color:{TEXT_LIGHT}; border:1px solid {BORDER_COLOR};"  # noqa: F821
+        f"}}"
         f"QInputDialog, QFileDialog, QColorDialog {{"
         f"  background-color:{CARD_BG}; color:{TEXT_DARK};"  # noqa: F821
         f"}}"
@@ -378,11 +390,22 @@ def global_style() -> str:
         f"  background-color:{CARD_BG}; border-top:1px solid {BORDER_COLOR}; padding-top:10px;"  # noqa: F821
         f"}}"
         f"QInputDialog QPushButton, QFileDialog QPushButton, QColorDialog QPushButton {{"
-        f"  background-color:{PRIMARY}; color:{TEXT_WHITE}; border:none;"  # noqa: F821
-        f"  border-radius:8px; padding:7px 16px; min-width:84px; font-weight:600;"
+        f"  background-color:{PRIMARY}; color:{TEXT_WHITE}; border:1px solid {PRIMARY};"  # noqa: F821
+        f"  border-radius:8px; padding:7px 16px; min-width:84px; min-height:34px; font-weight:600;"
         f"}}"
         f"QInputDialog QPushButton:hover, QFileDialog QPushButton:hover, QColorDialog QPushButton:hover {{"
-        f"  background-color:{PRIMARY_HOVER};"  # noqa: F821
+        f"  background-color:{PRIMARY_HOVER}; border-color:{PRIMARY_HOVER};"  # noqa: F821
+        f"}}"
+        f"QInputDialog QPushButton:pressed, QFileDialog QPushButton:pressed, QColorDialog QPushButton:pressed {{"
+        f"  background-color:{PRIMARY}; border-color:{PRIMARY};"  # noqa: F821
+        f"}}"
+        f"QInputDialog QPushButton:focus, QInputDialog QPushButton:default,"
+        f"QFileDialog QPushButton:focus, QFileDialog QPushButton:default,"
+        f"QColorDialog QPushButton:focus, QColorDialog QPushButton:default {{"
+        f"  background-color:{PRIMARY}; color:{TEXT_WHITE}; border:1px solid {PRIMARY};"  # noqa: F821
+        f"}}"
+        f"QInputDialog QPushButton:disabled, QFileDialog QPushButton:disabled, QColorDialog QPushButton:disabled {{"
+        f"  background-color:{BORDER_COLOR}; color:{TEXT_LIGHT}; border:1px solid {BORDER_COLOR};"  # noqa: F821
         f"}}"
         f"QLineEdit, QTextEdit, QPlainTextEdit {{"
         f"  background:{INPUT_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"  # noqa: F821
