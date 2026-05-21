@@ -29,9 +29,10 @@ PAGE_HISTORY = 1
 PAGE_DASHBOARD = 2
 PAGE_TECHNICAL = 3
 PAGE_ORDER_CENTER = 4
-PAGE_PRODUCTION = 5
-PAGE_USER_CENTER = 6
-PAGE_SETTINGS = 7
+PAGE_PINHEIRO_INDUSTRIA = 5
+PAGE_AR = 6
+PAGE_USER_CENTER = 7
+PAGE_SETTINGS = 8
 
 
 class MainWindow(QMainWindow):
@@ -120,7 +121,18 @@ class MainWindow(QMainWindow):
         self.dashboard_view = DashboardView(self.scale)
         self.technical_panel_view = TechnicalPanelView(self.scale)
         self.order_center_view = OrderCenterView(self.scale)
-        self.production_view = ProductionView(self.scale)
+        self.pinheiro_industria_view = ProductionView(
+            self.scale,
+            destinations=("Pinheiro Indústria",),
+            title="PINHEIRO INDÚSTRIA",
+            subtitle="Acompanhamento operacional das requisições enviadas para a Pinheiro Indústria.",
+        )
+        self.ar_view = ProductionView(
+            self.scale,
+            destinations=("A&R",),
+            title="A&R",
+            subtitle="Acompanhamento operacional das requisições enviadas para a A&R.",
+        )
         self.user_center_view = UserCenterView(self.scale)
         self.settings_view = SettingsView(self.scale)
 
@@ -129,7 +141,8 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.dashboard_view)
         self.stack.addWidget(self.technical_panel_view)
         self.stack.addWidget(self.order_center_view)
-        self.stack.addWidget(self.production_view)
+        self.stack.addWidget(self.pinheiro_industria_view)
+        self.stack.addWidget(self.ar_view)
         self.stack.addWidget(self.user_center_view)
         self.stack.addWidget(self.settings_view)
 
@@ -139,7 +152,10 @@ class MainWindow(QMainWindow):
         self.order_center_view.open_requisition.connect(
             lambda req_id: self._open_requisition(req_id, "order_center")
         )
-        self.production_view.open_requisition.connect(
+        self.pinheiro_industria_view.open_requisition.connect(
+            lambda req_id: self._open_requisition(req_id, "production")
+        )
+        self.ar_view.open_requisition.connect(
             lambda req_id: self._open_requisition(req_id, "production")
         )
         self.form_view.save_requested.connect(self._save_requisition)
@@ -163,11 +179,17 @@ class MainWindow(QMainWindow):
                 orders_btn.setEnabled(False)
                 orders_btn.setToolTip("Acesso restrito a administradores, gerentes e vendedores")
 
-        if not session.can_access_production:
-            production_btn = self.sidebar._nav_btns.get("producao")
-            if production_btn:
-                production_btn.setEnabled(False)
-                production_btn.setToolTip("Acesso restrito a administradores, produção e indústria")
+        visible_production_destinations = set(session.visible_production_destinations)
+
+        pinheiro_btn = self.sidebar._nav_btns.get("pinheiro_industria")
+        if pinheiro_btn and "Pinheiro Indústria" not in visible_production_destinations:
+            pinheiro_btn.setEnabled(False)
+            pinheiro_btn.setToolTip("Acesso restrito a administradores, indústria e entrega")
+
+        ar_btn = self.sidebar._nav_btns.get("ar")
+        if ar_btn and "A&R" not in visible_production_destinations:
+            ar_btn.setEnabled(False)
+            ar_btn.setToolTip("Acesso restrito a administradores e produção")
 
         if not session.can_manage_users:
             users_btn = self.sidebar._nav_btns.get("usuarios")
@@ -215,7 +237,8 @@ class MainWindow(QMainWindow):
             "dashboard": PAGE_DASHBOARD,
             "tecnico": PAGE_TECHNICAL,
             "pedidos": PAGE_ORDER_CENTER,
-            "producao": PAGE_PRODUCTION,
+            "pinheiro_industria": PAGE_PINHEIRO_INDUSTRIA,
+            "ar": PAGE_AR,
             "usuarios": PAGE_USER_CENTER,
             "config": PAGE_SETTINGS,
         }
@@ -264,13 +287,24 @@ class MainWindow(QMainWindow):
             self._highlight_current_page()
             return
 
-        if page == PAGE_PRODUCTION and session.can_access_production:
-            self.production_view.refresh()
-        elif page == PAGE_PRODUCTION:
+        if page == PAGE_PINHEIRO_INDUSTRIA and "Pinheiro Indústria" in set(session.visible_production_destinations):
+            self.pinheiro_industria_view.refresh()
+        elif page == PAGE_PINHEIRO_INDUSTRIA:
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "A tela de Produção é restrita a administradores, produção e indústria.",
+                "A tela da Pinheiro Indústria é restrita a administradores, indústria e entrega.",
+            )
+            self._highlight_current_page()
+            return
+
+        if page == PAGE_AR and "A&R" in set(session.visible_production_destinations):
+            self.ar_view.refresh()
+        elif page == PAGE_AR:
+            QMessageBox.warning(
+                self,
+                "Acesso negado",
+                "A tela da A&R é restrita a administradores e produção.",
             )
             self._highlight_current_page()
             return
@@ -318,7 +352,8 @@ class MainWindow(QMainWindow):
             PAGE_DASHBOARD: "dashboard",
             PAGE_TECHNICAL: "tecnico",
             PAGE_ORDER_CENTER: "pedidos",
-            PAGE_PRODUCTION: "producao",
+            PAGE_PINHEIRO_INDUSTRIA: "pinheiro_industria",
+            PAGE_AR: "ar",
             PAGE_USER_CENTER: "usuarios",
             PAGE_SETTINGS: "config",
         }
@@ -681,8 +716,10 @@ class MainWindow(QMainWindow):
             self.technical_panel_view.refresh()
         elif current_page == PAGE_ORDER_CENTER:
             self.order_center_view.refresh()
-        elif current_page == PAGE_PRODUCTION:
-            self.production_view.refresh()
+        elif current_page == PAGE_PINHEIRO_INDUSTRIA:
+            self.pinheiro_industria_view.refresh()
+        elif current_page == PAGE_AR:
+            self.ar_view.refresh()
         elif current_page == PAGE_USER_CENTER:
             self.user_center_view.refresh()
             self._restore_user_center_state(state.get("user_center") or {})
@@ -751,17 +788,13 @@ class MainWindow(QMainWindow):
         self._build_replacement_window()
 
     def _on_theme_toggle(self, dark: bool):
-        """Salva preferência, aplica tema e reconstrói a janela."""
+        """Aplica a troca de tema na própria janela com transição visual."""
         previous_frame = self.grab()
         self._start_theme_transition(previous_frame)
         QTimer.singleShot(24, lambda: self._apply_theme_toggle(dark))
 
     def _on_scale_changed(self, _new_scale: float):
-        """Reconstrói a janela principal com a nova escala sem reiniciar o processo.
-
-        A sessão do usuário é mantida (singleton). Uma nova MainWindow é criada
-        já lendo res.scale atualizado, e a janela atual é fechada em seguida.
-        """
+        """Reconstrói o conteúdo da janela principal com a nova escala."""
         self._build_replacement_window()
 
     # ── Logout ───────────────────────────────────────────────────────────────

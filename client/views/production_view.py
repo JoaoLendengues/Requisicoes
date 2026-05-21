@@ -206,10 +206,22 @@ def _parse_production_note(note: str) -> dict | None:
 class ProductionView(QWidget):
     open_requisition = Signal(int)
 
-    def __init__(self, scale: float = 1.0, parent=None):
+    def __init__(
+        self,
+        scale: float = 1.0,
+        destinations: tuple[str, ...] | None = None,
+        *,
+        title: str | None = None,
+        subtitle: str | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.scale = scale
-        self.destinations = session.visible_production_destinations
+        configured_destinations = destinations or session.visible_production_destinations
+        self.destinations = tuple(_normalize_destination(dest) for dest in configured_destinations)
+        self.page_title = title or "Produção"
+        self.page_subtitle = subtitle or "Acompanhamento operacional por destino, etapa e pendências da produção."
+        self.dialog_title = self.page_title
         self._threads: list[tuple[QThread, QObject]] = []
         self._rows_by_destination: dict[str, dict[str, list[dict]]] = {
             destination: {WAITING_STAGE: [], PRODUCTION_STAGE: []}
@@ -237,13 +249,11 @@ class ProductionView(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(max(4, int(5 * s)))
 
-        title = QLabel("Produção")
+        title = QLabel(self.page_title)
         title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
-        subtitle = QLabel(
-            "Acompanhamento operacional por destino, etapa e pendências da produção."
-        )
+        subtitle = QLabel(self.page_subtitle)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
@@ -633,7 +643,7 @@ class ProductionView(QWidget):
     def _show_error(self, msg: str):
         if hasattr(self, "updated_label"):
             self.updated_label.setText("Falha ao atualizar")
-        QMessageBox.critical(self, "Produção", msg)
+        QMessageBox.critical(self, self.dialog_title, msg)
 
     def _populate(self, payload: object):
         grouped = {
@@ -741,7 +751,7 @@ class ProductionView(QWidget):
     def _open_selected(self, destination: str, stage: str):
         req = self._selected_req(destination, stage)
         if not req:
-            QMessageBox.information(self, "Produção", "Selecione uma requisição primeiro.")
+            QMessageBox.information(self, self.dialog_title, "Selecione uma requisição primeiro.")
             return
         self.open_requisition.emit(req["id"])
 
@@ -750,7 +760,7 @@ class ProductionView(QWidget):
         if not req:
             QMessageBox.information(
                 self,
-                "Produção",
+                self.dialog_title,
                 "Selecione uma requisição no painel de aguardando recebimento.",
             )
             return
@@ -769,7 +779,7 @@ class ProductionView(QWidget):
         if not req:
             QMessageBox.information(
                 self,
-                "Produção",
+                self.dialog_title,
                 "Selecione uma requisição no painel de em produção.",
             )
             return
@@ -799,7 +809,7 @@ class ProductionView(QWidget):
             panel_name = "aguardando recebimento" if stage == WAITING_STAGE else "em produção"
             QMessageBox.information(
                 self,
-                "Produção",
+                self.dialog_title,
                 f"Selecione uma requisição no painel de {panel_name}.",
             )
             return
@@ -857,4 +867,4 @@ class ProductionView(QWidget):
 
     def _after_action(self, success_message: str):
         self.refresh()
-        QMessageBox.information(self, "Produção", success_message)
+        QMessageBox.information(self, self.dialog_title, success_message)

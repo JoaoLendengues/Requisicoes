@@ -36,7 +36,8 @@ NAV_ITEMS = [
     ("dashboard", "PAINEL GERENCIAL",   "dashboard"),
     ("tecnico",   "PAINEL TÉCNICO",     "tecnico"),
     ("pedidos",   "CENTRAL DE PEDIDOS", "pedidos"),
-    ("producao",  "PRODUÇÃO",           "producao"),
+    ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "producao"),
+    ("ar",        "A&R",                "producao"),
     ("historico", "HISTÓRICO / BUSCA",  "historico"),
     ("usuarios",  "CENTRAL DE USUÁRIOS","usuarios"),
 ]
