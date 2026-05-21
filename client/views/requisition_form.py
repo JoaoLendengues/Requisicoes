@@ -3,6 +3,7 @@ Formulário principal de requisição — fiel ao mockup fornecido.
 """
 import os
 import io
+import tempfile
 from datetime import date, datetime
 
 from PySide6.QtWidgets import (
