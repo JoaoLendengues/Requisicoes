@@ -34,6 +34,21 @@ PRODUCTION_OPTIONS = (
     ("Pinheiro Indústria", "Pinheiro Indústria"),
 )
 
+if "FATURADO" not in COLS:
+    COLS.insert(6, "FATURADO")
+
+_LEGACY_INVOICED_OPTIONS = (
+    ("TODOS", ""),
+    ("SIM", "sim"),
+    ("NÃ£o", "nao"),
+)
+
+INVOICED_OPTIONS = (
+    ("TODOS", ""),
+    ("SIM", "sim"),
+    ("NÃO", "nao"),
+)
+
 STATUS_LABELS = {
     **theme.STATUS_LABELS,
     "finalizada_producao": "Finalizada na Produção",
@@ -129,15 +144,22 @@ class HistoryWorker(QObject):
         search: str = "",
         production_destination: str = "",
         production_machine: str = "",
+        invoiced: str = "",
     ):
         super().__init__()
         self.status = status
         self.search = search
         self.production_destination = production_destination
         self.production_machine = production_machine
+        self.invoiced = invoiced
 
     def run(self):
         try:
+            invoiced_value = None
+            if self.invoiced == "sim":
+                invoiced_value = True
+            elif self.invoiced == "nao":
+                invoiced_value = False
             self.result.emit(
                 api.list_requisitions(
                     self.status,
@@ -145,6 +167,7 @@ class HistoryWorker(QObject):
                     limit=100,
                     production_destination=self.production_destination,
                     production_machine=self.production_machine,
+                    invoiced=invoiced_value,
                 )
             )
         except Exception as exc:
@@ -327,6 +350,20 @@ class HistoryView(QWidget):
         status_col.addWidget(status_label)
         status_col.addWidget(self.combo_status)
 
+        invoiced_col = QVBoxLayout()
+        invoiced_col.setSpacing(max(6, int(8 * s)))
+        invoiced_label = QLabel("FATURADO")
+        invoiced_label.setStyleSheet(
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+        )
+        self.combo_invoiced = QComboBox()
+        for label, value in INVOICED_OPTIONS:
+            self.combo_invoiced.addItem(label, value)
+        self.combo_invoiced.setFixedHeight(max(38, int(44 * s)))
+        self.combo_invoiced.setStyleSheet(_field_style(s))
+        invoiced_col.addWidget(invoiced_label)
+        invoiced_col.addWidget(self.combo_invoiced)
+
         production_col = QVBoxLayout()
         production_col.setSpacing(max(6, int(8 * s)))
         production_label = QLabel("PRODUÇÃO")
@@ -389,6 +426,7 @@ class HistoryView(QWidget):
         buttons_col.addLayout(buttons_row)
 
         controls.addLayout(status_col, 1)
+        controls.addLayout(invoiced_col, 1)
         controls.addLayout(production_col, 1)
         controls.addLayout(machine_col, 1)
         controls.addLayout(search_col, 2)
@@ -451,14 +489,16 @@ class HistoryView(QWidget):
         header_widget.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         self.table.setColumnWidth(1, max(180, int(220 * s)))
         self.table.setColumnWidth(3, max(150, int(180 * s)))
         self.table.setColumnWidth(5, max(150, int(180 * s)))
-        self.table.setColumnWidth(6, max(150, int(170 * s)))
-        self.table.setColumnWidth(7, max(220, int(260 * s)))
+        self.table.setColumnWidth(6, max(110, int(130 * s)))
+        self.table.setColumnWidth(7, max(150, int(170 * s)))
+        self.table.setColumnWidth(8, max(220, int(260 * s)))
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{theme.CARD_BG};"
@@ -493,6 +533,7 @@ class HistoryView(QWidget):
         self._set_loading(True)
         self.error_label.hide()
         status = self.combo_status.currentData() or ""
+        invoiced = self.combo_invoiced.currentData() or ""
         production_destination = self.combo_production.currentData() or ""
         production_machine = self.combo_machine.currentData() or ""
         search = self.input_search.text().strip()
@@ -502,6 +543,7 @@ class HistoryView(QWidget):
             search,
             production_destination,
             production_machine,
+            invoiced,
         )
         thread = QThread()
         worker.moveToThread(thread)
@@ -593,6 +635,7 @@ class HistoryView(QWidget):
         self.search_btn.setEnabled(not loading)
         self.clear_btn.setEnabled(not loading)
         self.combo_status.setEnabled(not loading)
+        self.combo_invoiced.setEnabled(not loading)
         self.combo_production.setEnabled(not loading)
         if not loading:
             self.combo_machine.setEnabled(bool(self.combo_production.currentData()))
@@ -631,6 +674,7 @@ class HistoryView(QWidget):
                     str(req.get("vendor_name") or req.get("vendor_id") or "-"),
                     _format_date(req.get("emission_date")),
                     status or "-",
+                    "SIM" if bool(req.get("invoiced")) or status == "faturado" else "NÃO",
                     str(
                         req.get("production_destination_display")
                         or req.get("production_destination")
@@ -687,6 +731,7 @@ class HistoryView(QWidget):
 
     def _clear_filters(self):
         self.combo_status.setCurrentIndex(0)
+        self.combo_invoiced.setCurrentIndex(0)
         self.combo_production.setCurrentIndex(0)
         self._reset_machine_filter()
         self.input_search.clear()
@@ -730,6 +775,9 @@ class HistoryView(QWidget):
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         self.combo_status.setStyleSheet(_field_style(s))
+        self.combo_invoiced.setStyleSheet(_field_style(s))
+        self.combo_production.setStyleSheet(_field_style(s))
+        self.combo_machine.setStyleSheet(_field_style(s))
         self.input_search.setStyleSheet(_field_style(s))
         self.search_btn.setStyleSheet(_primary_action_btn_style(s))
         self.clear_btn.setStyleSheet(_flat_secondary_btn_style(s))

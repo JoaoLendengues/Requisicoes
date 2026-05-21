@@ -1205,6 +1205,7 @@ def list_requisitions(
     vendor_id: Optional[int] = None,
     production_destination: Optional[str] = None,
     production_machine: Optional[str] = None,
+    invoiced: Optional[bool] = None,
     search: Optional[str] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, le=200),
@@ -1246,6 +1247,12 @@ def list_requisitions(
             if _normalize_text(_history_production_machine(req)) == machine_key
         ]
 
+    if invoiced is not None:
+        visible = [
+            req for req in visible
+            if (req.status == RequisitionStatus.FATURADO) == invoiced
+        ]
+
     paginated = visible[skip:skip + limit]
     for req in paginated:
         setattr(
@@ -1259,6 +1266,7 @@ def list_requisitions(
             _history_production_machine(req) or None,
         )
         setattr(req, "production_status", _history_production_status(req))
+        setattr(req, "invoiced", req.status == RequisitionStatus.FATURADO)
     return paginated
 
 

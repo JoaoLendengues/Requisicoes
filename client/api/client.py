@@ -132,6 +132,7 @@ def list_requisitions(
     limit: int = 50,
     production_destination: str = "",
     production_machine: str = "",
+    invoiced: bool | None = None,
 ) -> list:
     with _cli() as client:
         params: dict = {"skip": skip, "limit": limit}
@@ -143,6 +144,8 @@ def list_requisitions(
             params["production_destination"] = production_destination
         if production_machine:
             params["production_machine"] = production_machine
+        if invoiced is not None:
+            params["invoiced"] = invoiced
         return _check(client.get("/requisitions/", params=params))
 
 
