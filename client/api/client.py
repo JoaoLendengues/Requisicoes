@@ -125,14 +125,24 @@ def bulk_import_products(items: list) -> dict:
         return _check(client.post("/products/import/bulk", json=items, timeout=120))
 
 
-def list_requisitions(status: str = "", search: str = "",
-                      skip: int = 0, limit: int = 50) -> list:
+def list_requisitions(
+    status: str = "",
+    search: str = "",
+    skip: int = 0,
+    limit: int = 50,
+    production_destination: str = "",
+    production_machine: str = "",
+) -> list:
     with _cli() as client:
         params: dict = {"skip": skip, "limit": limit}
         if status:
             params["status"] = status
         if search:
             params["search"] = search
+        if production_destination:
+            params["production_destination"] = production_destination
+        if production_machine:
+            params["production_machine"] = production_machine
         return _check(client.get("/requisitions/", params=params))
 
 
@@ -156,6 +166,16 @@ def get_production_summary(destination: str) -> dict:
         return _check(
             client.get(
                 "/requisitions/production/summary",
+                params={"destination": destination},
+            )
+        )
+
+
+def get_production_machines(destination: str) -> list:
+    with _cli() as client:
+        return _check(
+            client.get(
+                "/requisitions/production/machines",
                 params={"destination": destination},
             )
         )

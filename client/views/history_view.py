@@ -26,7 +26,19 @@ from ..core.datetime_utils import (
 )
 
 
-COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS"]
+COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS", "PRODUCAO", "MAQUINA"]
+
+PRODUCTION_OPTIONS = (
+    ("Todas as producoes", ""),
+    ("A&R", "A&R"),
+    ("Pinheiro Industria", "Pinheiro Industria"),
+)
+
+STATUS_LABELS = {
+    **theme.STATUS_LABELS,
+    "finalizada_producao": "Finalizada na Producao",
+    "cancelada_producao": "Cancelada na Producao",
+}
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -120,22 +132,52 @@ class HistoryWorker(QObject):
     error = Signal(str)
     finished = Signal()
 
-    def __init__(self, status: str = "", search: str = ""):
+    def __init__(
+        self,
+        status: str = "",
+        search: str = "",
+        production_destination: str = "",
+        production_machine: str = "",
+    ):
         super().__init__()
         self.status = status
         self.search = search
+        self.production_destination = production_destination
+        self.production_machine = production_machine
 
     def run(self):
         try:
-            if self.status == "aguardando_recebimento":
-                reqs = api.list_requisitions("", self.search, limit=100)
-                reqs = [
-                    req for req in reqs
-                    if isinstance(req, dict) and req.get("status") == "aguardando_recebimento"
-                ]
-                self.result.emit(reqs)
-            else:
-                self.result.emit(api.list_requisitions(self.status, self.search, limit=100))
+            self.result.emit(
+                api.list_requisitions(
+                    self.status,
+                    self.search,
+                    limit=100,
+                    production_destination=self.production_destination,
+                    production_machine=self.production_machine,
+                )
+            )
+        except Exception as exc:
+            self.error.emit(str(exc))
+        finally:
+            self.finished.emit()
+
+
+class MachineOptionsWorker(QObject):
+    result = Signal(object)
+    error = Signal(str)
+    finished = Signal()
+
+    def __init__(self, destination: str = ""):
+        super().__init__()
+        self.destination = destination
+
+    def run(self):
+        try:
+            if not self.destination:
+                self.result.emit([])
+                return
+            machines = api.get_production_machines(self.destination)
+            self.result.emit(machines if isinstance(machines, list) else [])
         except Exception as exc:
             self.error.emit(str(exc))
         finally:
@@ -151,6 +193,7 @@ class HistoryView(QWidget):
         self._threads: list[tuple[QThread, QObject]] = []
         self._reqs: list[dict] = []
         self._setup_ui()
+        self._reset_machine_filter()
 
     def _setup_ui(self):
         s = self.scale
@@ -264,7 +307,7 @@ class HistoryView(QWidget):
             f"color:{theme.TEXT_DARK}; background:transparent;"
         )
         filter_subtitle = QLabel(
-            "Refine a consulta por status e pesquise por pedido, cliente ou obra."
+            "Refine a consulta por status, producao e maquina, ou pesquise por pedido, cliente ou obra."
         )
         filter_subtitle.setWordWrap(True)
         filter_subtitle.setStyleSheet(
@@ -290,6 +333,33 @@ class HistoryView(QWidget):
         self.combo_status.setStyleSheet(_field_style(s))
         status_col.addWidget(status_label)
         status_col.addWidget(self.combo_status)
+
+        production_col = QVBoxLayout()
+        production_col.setSpacing(max(6, int(8 * s)))
+        production_label = QLabel("PRODUCAO")
+        production_label.setStyleSheet(
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+        )
+        self.combo_production = QComboBox()
+        for label, value in PRODUCTION_OPTIONS:
+            self.combo_production.addItem(label, value)
+        self.combo_production.setFixedHeight(max(38, int(44 * s)))
+        self.combo_production.setStyleSheet(_field_style(s))
+        self.combo_production.currentIndexChanged.connect(self._on_production_changed)
+        production_col.addWidget(production_label)
+        production_col.addWidget(self.combo_production)
+
+        machine_col = QVBoxLayout()
+        machine_col.setSpacing(max(6, int(8 * s)))
+        machine_label = QLabel("MAQUINA")
+        machine_label.setStyleSheet(
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+        )
+        self.combo_machine = QComboBox()
+        self.combo_machine.setFixedHeight(max(38, int(44 * s)))
+        self.combo_machine.setStyleSheet(_field_style(s))
+        machine_col.addWidget(machine_label)
+        machine_col.addWidget(self.combo_machine)
 
         search_col = QVBoxLayout()
         search_col.setSpacing(max(6, int(8 * s)))
@@ -325,6 +395,8 @@ class HistoryView(QWidget):
         buttons_col.addLayout(buttons_row)
 
         controls.addLayout(status_col, 1)
+        controls.addLayout(production_col, 1)
+        controls.addLayout(machine_col, 1)
         controls.addLayout(search_col, 2)
         controls.addLayout(buttons_col)
         filter_layout.addLayout(controls)
@@ -372,7 +444,7 @@ class HistoryView(QWidget):
         self.table.setShowGrid(False)
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         header_widget = self.table.horizontalHeader()
-        stretch_columns = {2, 3}
+        stretch_columns = {1, 2}
         for col in range(len(COLS)):
             mode = (
                 QHeaderView.ResizeMode.Stretch
@@ -381,12 +453,18 @@ class HistoryView(QWidget):
             )
             header_widget.setSectionResizeMode(col, mode)
         header_widget.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         self.table.setColumnWidth(1, max(180, int(220 * s)))
+        self.table.setColumnWidth(3, max(150, int(180 * s)))
         self.table.setColumnWidth(5, max(150, int(180 * s)))
+        self.table.setColumnWidth(6, max(150, int(170 * s)))
+        self.table.setColumnWidth(7, max(220, int(260 * s)))
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{theme.CARD_BG};"
@@ -421,9 +499,16 @@ class HistoryView(QWidget):
         self._set_loading(True)
         self.error_label.hide()
         status = self.combo_status.currentData() or ""
+        production_destination = self.combo_production.currentData() or ""
+        production_machine = self.combo_machine.currentData() or ""
         search = self.input_search.text().strip()
 
-        worker = HistoryWorker(status, search)
+        worker = HistoryWorker(
+            status,
+            search,
+            production_destination,
+            production_machine,
+        )
         thread = QThread()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -440,10 +525,85 @@ class HistoryView(QWidget):
     def _cleanup_thread(self, thread: QThread, worker: QObject):
         self._threads = [pair for pair in self._threads if pair != (thread, worker)]
 
+    def _reset_machine_filter(self, placeholder: str = "Todas as maquinas"):
+        self.combo_machine.blockSignals(True)
+        self.combo_machine.clear()
+        self.combo_machine.addItem(placeholder, "")
+        self.combo_machine.setCurrentIndex(0)
+        self.combo_machine.blockSignals(False)
+        self.combo_machine.setEnabled(False)
+
+    def _on_production_changed(self):
+        destination = self.combo_production.currentData() or ""
+        if not destination:
+            self._reset_machine_filter()
+            return
+        self._load_machine_options(str(destination))
+
+    def _load_machine_options(self, destination: str):
+        self.error_label.hide()
+        self.combo_machine.blockSignals(True)
+        self.combo_machine.clear()
+        self.combo_machine.addItem("Carregando maquinas...", "")
+        self.combo_machine.setCurrentIndex(0)
+        self.combo_machine.blockSignals(False)
+        self.combo_machine.setEnabled(False)
+
+        worker = MachineOptionsWorker(destination)
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.result.connect(
+            lambda machines, selected=destination: self._populate_machine_options(selected, machines)
+        )
+        worker.error.connect(
+            lambda message, selected=destination: self._handle_machine_options_error(selected, message)
+        )
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        thread.start()
+        self._threads.append((thread, worker))
+
+    def _populate_machine_options(self, destination: str, machines: object):
+        current_destination = str(self.combo_production.currentData() or "")
+        if current_destination != destination:
+            return
+
+        self.combo_machine.blockSignals(True)
+        self.combo_machine.clear()
+        self.combo_machine.addItem("Todas as maquinas", "")
+        for machine_name in machines if isinstance(machines, list) else []:
+            if not isinstance(machine_name, str):
+                continue
+            name = machine_name.strip()
+            if name:
+                self.combo_machine.addItem(name, name)
+        self.combo_machine.setCurrentIndex(0)
+        self.combo_machine.blockSignals(False)
+        self.combo_machine.setEnabled(True)
+
+    def _handle_machine_options_error(self, destination: str, message: str):
+        current_destination = str(self.combo_production.currentData() or "")
+        if current_destination != destination:
+            return
+        self._reset_machine_filter("Todas as maquinas")
+        self.error_label.setText(
+            f"Nao foi possivel carregar as maquinas da producao selecionada.\n\n{message}"
+        )
+        self.error_label.show()
+
     def _set_loading(self, loading: bool):
         self.refresh_btn.setEnabled(not loading)
         self.search_btn.setEnabled(not loading)
         self.clear_btn.setEnabled(not loading)
+        self.combo_status.setEnabled(not loading)
+        self.combo_production.setEnabled(not loading)
+        if not loading:
+            self.combo_machine.setEnabled(bool(self.combo_production.currentData()))
+        elif self.combo_machine.isEnabled():
+            self.combo_machine.setEnabled(False)
         if loading:
             self.updated_label.setText("Atualizando dados...")
             self.date_label.setText(_format_header_date())
@@ -469,24 +629,36 @@ class HistoryView(QWidget):
             for req in self._reqs:
                 row = self.table.rowCount()
                 self.table.insertRow(row)
+                status = str(req.get("production_status") or req.get("status") or "")
                 values = [
                     str(req.get("ped_number") or "-"),
                     str(req.get("client_name") or req.get("client_id") or "-"),
                     str(req.get("obra") or "-"),
                     str(req.get("vendor_name") or req.get("vendor_id") or "-"),
                     _format_date(req.get("emission_date")),
-                    str(req.get("status") or "-"),
+                    status or "-",
+                    str(
+                        req.get("production_destination_display")
+                        or req.get("production_destination")
+                        or "-"
+                    ),
+                    str(
+                        req.get("production_machine_display")
+                        or req.get("production_machine")
+                        or "-"
+                    ),
                 ]
                 for col, value in enumerate(values):
                     if col == 5:
-                        status = str(req.get("status") or "")
-                        badge = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
+                        badge = QLabel(STATUS_LABELS.get(status, status or "-"))
                         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         color_map = {
                             "em_andamento": theme.PRIMARY_HOVER,
                             "aguardando_recebimento": theme.WARNING,
                             "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
                             "em_producao": theme.PRIMARY,
+                            "finalizada_producao": theme.SUCCESS,
+                            "cancelada_producao": theme.DANGER,
                             "cancelada": theme.DANGER,
                         }
                         color = color_map.get(status, theme.BORDER_COLOR)
@@ -519,5 +691,7 @@ class HistoryView(QWidget):
 
     def _clear_filters(self):
         self.combo_status.setCurrentIndex(0)
+        self.combo_production.setCurrentIndex(0)
+        self._reset_machine_filter()
         self.input_search.clear()
         self.refresh()

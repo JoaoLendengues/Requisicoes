@@ -126,7 +126,10 @@ class RequisitionResponse(BaseModel):
     obs: Optional[str] = None
     status: RequisitionStatus
     production_destination: Optional[str] = None
+    production_destination_display: Optional[str] = None
     production_machine: Optional[str] = None
+    production_machine_display: Optional[str] = None
+    production_status: Optional[str] = None
     finalized_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime

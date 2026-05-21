@@ -374,6 +374,52 @@ def _current_production_machine(req: Requisition) -> str:
     return ""
 
 
+def _history_production_machine(req: Requisition) -> str:
+    current_machine = _current_production_machine(req)
+    if current_machine:
+        return current_machine
+
+    latest_cycle = _latest_finished_cycle(req)
+    if latest_cycle:
+        machine = str(latest_cycle.get("machine") or "").strip()
+        if machine:
+            return machine
+
+    return ""
+
+
+def _history_production_status(req: Requisition) -> str:
+    current_status = str(getattr(req.status, "value", req.status) or "")
+    if req.status == RequisitionStatus.CANCELADA:
+        return current_status
+
+    latest_event = _latest_production_event(
+        req,
+        _PROD_SEND,
+        _PROD_RECEIVED,
+        _PROD_QUEUED,
+        _PROD_STARTED,
+        _PROD_RETURNED_QUEUE,
+        _PROD_FINISHED,
+        _PROD_CANCELED,
+    )
+    if not latest_event:
+        return current_status
+
+    action = latest_event["action"]
+    if action == _PROD_FINISHED:
+        return "finalizada_producao"
+    if action == _PROD_CANCELED:
+        return "cancelada_producao"
+    if action == _PROD_SEND:
+        return RequisitionStatus.AGUARDANDO_RECEBIMENTO.value
+    if action in (_PROD_QUEUED, _PROD_RETURNED_QUEUE):
+        return RequisitionStatus.AGUARDANDO_NA_FILA.value
+    if action in (_PROD_RECEIVED, _PROD_STARTED):
+        return RequisitionStatus.EM_PRODUCAO.value
+    return current_status
+
+
 def _can_view_requisition(req: Requisition, current_user: User) -> bool:
     role = _role_key(current_user.role)
     if role in (Role.ADMIN.value, Role.GERENTE.value):
@@ -1017,6 +1063,8 @@ def list_requisitions(
     req_status: Optional[RequisitionStatus] = Query(None, alias="status"),
     client_id: Optional[int] = None,
     vendor_id: Optional[int] = None,
+    production_destination: Optional[str] = None,
+    production_machine: Optional[str] = None,
     search: Optional[str] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, le=200),
@@ -1043,7 +1091,35 @@ def list_requisitions(
     # Vendedor e gerente só veem as próprias requisições
     reqs = q.order_by(Requisition.created_at.desc()).all()
     visible = _filter_requisitions_for_user(reqs, current_user)
-    return visible[skip:skip + limit]
+
+    if production_destination:
+        normalized_destination = _canonical_destination(production_destination)
+        visible = [
+            req for req in visible
+            if _current_production_destination(req) == normalized_destination
+        ]
+
+    if production_machine:
+        machine_key = _normalize_text(production_machine)
+        visible = [
+            req for req in visible
+            if _normalize_text(_history_production_machine(req)) == machine_key
+        ]
+
+    paginated = visible[skip:skip + limit]
+    for req in paginated:
+        setattr(
+            req,
+            "production_destination_display",
+            _current_production_destination(req) or None,
+        )
+        setattr(
+            req,
+            "production_machine_display",
+            _history_production_machine(req) or None,
+        )
+        setattr(req, "production_status", _history_production_status(req))
+    return paginated
 
 
 @router.get("/dashboard/summary", response_model=ManagementDashboardResponse)
@@ -1097,6 +1173,22 @@ def get_production_summary(
         .all()
     )
     return _build_production_summary(visible, machines, normalized_destination)
+
+
+@router.get("/production/machines", response_model=List[str])
+def list_production_machines(
+    destination: str = Query(...),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    normalized_destination = _canonical_destination(destination)
+    machines = (
+        db.query(ProductionMachine)
+        .filter(ProductionMachine.destination == normalized_destination)
+        .order_by(ProductionMachine.sort_order.asc(), ProductionMachine.id.asc())
+        .all()
+    )
+    return [str(machine.name or "").strip() for machine in machines if str(machine.name or "").strip()]
 
 
 @router.patch(
