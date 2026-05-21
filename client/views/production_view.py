@@ -10,6 +10,7 @@ from PySide6.QtGui import QPalette, QColor, QPixmap
 
 from ..api import client as api
 from ..core import theme
+from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -773,13 +774,14 @@ class ProductionView(QWidget):
             )
             return
 
-        reply = QMessageBox.question(
+        reply = ask_confirmation(
             self,
             "Finalizar produção",
             "Deseja finalizar a produção desta requisição?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            yes_text="Sim",
+            no_text="Não",
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not reply:
             return
 
         thread, worker = self._run_action(

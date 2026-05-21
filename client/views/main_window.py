@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 
 from ..core import theme
+from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import local_now
 from ..core.resolution import res
 from ..core.session import session
@@ -298,14 +299,15 @@ class MainWindow(QMainWindow):
         if not self.form_view.has_unsaved_data():
             return True
 
-        reply = QMessageBox.question(
+        reply = ask_confirmation(
             self,
             "Nova requisição",
             "Deseja iniciar uma nova requisição?\n\n"
             "Os dados atuais serão perdidos se ainda não estiverem salvos.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            yes_text="Sim",
+            no_text="Não",
         )
-        return reply == QMessageBox.StandardButton.Yes
+        return reply
 
     def _highlight_current_page(self):
         mapping = {
@@ -560,13 +562,14 @@ class MainWindow(QMainWindow):
     # ── Logout ───────────────────────────────────────────────────────────────
 
     def _logout(self):
-        reply = QMessageBox.question(
+        reply = ask_confirmation(
             self,
             "Sair",
             "Deseja encerrar a sessão?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            yes_text="Sim",
+            no_text="Não",
         )
-        if reply == QMessageBox.StandardButton.Yes:
+        if reply:
             self._notif_timer.stop()
             if self._listener:
                 self._listener.stop()

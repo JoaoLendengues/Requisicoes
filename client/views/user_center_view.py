@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
     format_header_date as _format_header_date,
@@ -918,13 +919,14 @@ class UserCenterView(QWidget):
             QMessageBox.warning(self, "Central de usuários", "Não é permitido desativar o próprio usuário.")
             return
 
-        reply = QMessageBox.question(
+        reply = ask_confirmation(
             self,
             "Central de usuários",
             "Deseja desativar este usuário?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            yes_text="Sim",
+            no_text="Não",
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not reply:
             return
 
         self._run_action(

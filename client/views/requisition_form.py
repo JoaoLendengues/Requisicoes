@@ -24,6 +24,7 @@ except ImportError:
     HAS_QR = False
 
 from ..core import theme
+from ..core.dialogs import apply_message_box_theme
 from ..core.resolution import res
 from ..core.session import session
 from ..api import client as api
@@ -1382,6 +1383,7 @@ class RequisitionForm(QWidget):
         btn_ar = msg.addButton("A&&R", QMessageBox.ButtonRole.AcceptRole)
         btn_pinheiro = msg.addButton("Pinheiro Indústria", QMessageBox.ButtonRole.AcceptRole)
         msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        apply_message_box_theme(msg)
 
         msg.exec()
         clicked = msg.clickedButton()
