@@ -29,26 +29,26 @@ def _make(
 
 def _as_dict(n: Notification) -> dict:
     return {
-        "id": n.id,
-        "type": n.type,
-        "title": n.title,
-        "message": n.message,
+        "id":             n.id,
+        "type":           n.type,
+        "title":          n.title,
+        "message":        n.message,
         "requisition_id": n.requisition_id,
-        "read": False,
-        "created_at": (n.created_at or datetime.utcnow()).isoformat(),
+        "read":           False,
+        "created_at":     (n.created_at or datetime.utcnow()).isoformat(),
     }
 
 
 def push_all(notifications: list[Notification]):
-    print(f"[NOTIF] push_all: {len(notifications)} notificação(ões) para enviar")
+    """Envia notificações via SSE para os usuários conectados."""
     for n in notifications:
-        print(f"[NOTIF]   → user_id={n.user_id} type={n.type} title={n.title!r}")
         sse_manager.push_to_user(n.user_id, _as_dict(n))
 
 
 def build_production_sent(
     db: Session, req: Requisition, destino: str
 ) -> list[Notification]:
+    """Notifica equipe de produção quando uma requisição é enviada."""
     dest_upper = destino.upper()
     if "A&R" in dest_upper or dest_upper.startswith("A R"):
         roles = [Role.PRODUCAO]
@@ -62,16 +62,14 @@ def build_production_sent(
         .filter(User.role.in_(roles), User.is_active == True)
         .all()
     )
-
-    print(f"[NOTIF] build_production_sent: destino={destino!r} roles={roles} usuarios_encontrados={[u.name for u in users]}")
-
+    destino_label = destino or "Produção"
     return [
         _make(
             db,
             u.id,
             "nova_requisicao",
             "Nova Requisição para Produção",
-            f"PED #{req.ped_number} — {req.client_name or 'cliente'} encaminhado para {destino}.",
+            f"PED #{req.ped_number} — {req.client_name or 'cliente'} encaminhado para {destino_label}.",
             req.id,
         )
         for u in users
@@ -84,6 +82,10 @@ def build_vendor_event(
     event: str,
     reason: str = "",
 ) -> Notification | None:
+    """Notifica o vendedor sobre mudanças de status na sua requisição."""
+    if not req.vendor_id:
+        return None
+
     _map = {
         "em_producao": (
             "Requisição Recebida em Produção",
@@ -104,6 +106,7 @@ def build_vendor_event(
     }
     if event not in _map:
         return None
+
     title, msg = _map[event]
     return _make(db, req.vendor_id, event, title, msg, req.id)
 
@@ -124,16 +127,16 @@ def stuck_requisition_events(db: Session) -> list[dict]:
     now = datetime.utcnow().isoformat()
     return [
         {
-            "id": None,
-            "type": "requisicao_parada",
-            "title": "Requisição Parada ⏰",
-            "message": (
+            "id":             None,
+            "type":           "requisicao_parada",
+            "title":          "Requisição Parada ⏰",
+            "message":        (
                 f"PED #{r.ped_number} ({r.client_name or ''}) "
                 f"está em andamento há mais de 48 horas."
             ),
             "requisition_id": r.id,
-            "read": False,
-            "created_at": now,
+            "read":           False,
+            "created_at":     now,
         }
         for r in stuck
     ]

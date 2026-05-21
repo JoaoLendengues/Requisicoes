@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
         self._threads: list = []
         self._unread_count = 0
         self._listener: NotificationListener | None = None
-        self._shown_notif_ids: set[int] = set()  # IDs já exibidos como toast
+        self._shown_notif_ids: set[int] = set()   # evita toast duplicado
         self._setup_ui()
         self._setup_statusbar()
         self.setWindowTitle("Sistema de Requisições - Ferragens Pinheiro")
@@ -414,51 +414,44 @@ class MainWindow(QMainWindow):
     def _start_notification_listener(self):
         self._listener = NotificationListener(self)
         self._listener.notification_received.connect(self._on_notification)
-        # Ao reconectar após queda, sincroniza badge com o banco
-        self._listener.connected.connect(self._sync_badge)
         self._listener.start()
 
-        # Busca contagem inicial
-        self._sync_badge()
-
-        # Poll a cada 30s como fallback para eventos SSE perdidos
+        # Poll a cada 60s como segurança para o badge
         self._notif_timer = QTimer(self)
-        self._notif_timer.setInterval(30_000)
+        self._notif_timer.setInterval(60_000)
         self._notif_timer.timeout.connect(self._sync_badge)
         self._notif_timer.start()
 
+    def _on_notification(self, data: dict):
+        """
+        Chamado para CADA evento SSE recebido — incluindo os eventos iniciais
+        que o servidor envia ao conectar (notificações não lidas do banco).
+        Usa _shown_notif_ids para garantir que o toast apareça apenas uma vez
+        por notificação, mesmo que o evento chegue via SSE inicial e depois
+        via push em tempo real.
+        """
+        nid = data.get("id")
+        if nid and nid in self._shown_notif_ids:
+            return  # já exibido, ignorar
+        if nid:
+            self._shown_notif_ids.add(nid)
+
+        self._unread_count += 1
+        self.sidebar.set_notification_count(self._unread_count)
+        self._toast_manager.show(data, on_action=self._on_toast_action)
+
     def _sync_badge(self):
-        """Sincroniza badge e exibe toasts para notificações perdidas."""
+        """Poll de segurança: mantém badge sincronizado com o banco."""
         thread, worker = _run_in_thread(
-            api.list_notifications,
-            on_result=self._handle_sync,
+            api.notification_unread_count,
+            on_result=lambda r: self._update_badge(r.get("count", 0)),
             on_error=lambda _: None,
         )
         self._threads.append((thread, worker))
 
-    def _handle_sync(self, notifications: list):
-        """Atualiza badge e exibe toast para notificações ainda não mostradas."""
-        count = len(notifications)
-        self._update_badge(count)
-
-        for n in notifications:
-            nid = n.get("id")
-            if nid and nid not in self._shown_notif_ids:
-                self._shown_notif_ids.add(nid)
-                self._toast_manager.show(n, on_action=self._on_toast_action)
-
     def _update_badge(self, count: int):
         self._unread_count = count
         self.sidebar.set_notification_count(count)
-
-    def _on_notification(self, data: dict):
-        # Registra o ID para não repetir toast no próximo sync
-        nid = data.get("id")
-        if nid:
-            self._shown_notif_ids.add(nid)
-        self._unread_count += 1
-        self.sidebar.set_notification_count(self._unread_count)
-        self._toast_manager.show(data, on_action=self._on_toast_action)
 
     def _on_toast_action(self, req_id):
         if req_id:

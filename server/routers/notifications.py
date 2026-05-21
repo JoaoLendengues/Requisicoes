@@ -14,14 +14,45 @@ from ..services.notification_service import stuck_requisition_events
 router = APIRouter(prefix="/notifications", tags=["Notificações"])
 
 
+def _notif_to_dict(n: Notification) -> dict:
+    return {
+        "id":             n.id,
+        "type":           n.type,
+        "title":          n.title,
+        "message":        n.message,
+        "requisition_id": n.requisition_id,
+        "read":           n.read,
+        "created_at":     n.created_at.isoformat() if n.created_at else "",
+    }
+
+
 @router.get("/stream")
 async def stream_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    initial: list[dict] = []
+    """
+    SSE stream de notificações.
+    Ao conectar (ou reconectar), envia imediatamente todas as notificações
+    não lidas do banco — garantindo entrega mesmo que o push em tempo real
+    tenha ocorrido enquanto o usuário estava desconectado.
+    """
+    # Notificações não lidas do banco como eventos iniciais
+    unread = (
+        db.query(Notification)
+        .filter(
+            Notification.user_id == current_user.id,
+            Notification.read == False,
+        )
+        .order_by(Notification.created_at.asc())
+        .limit(30)
+        .all()
+    )
+    initial: list[dict] = [_notif_to_dict(n) for n in unread]
+
+    # Requisições paradas para admin/gerente
     if current_user.role in (Role.ADMIN, Role.GERENTE):
-        initial = stuck_requisition_events(db)
+        initial.extend(stuck_requisition_events(db))
 
     return StreamingResponse(
         sse_manager.event_stream(current_user.id, initial),
