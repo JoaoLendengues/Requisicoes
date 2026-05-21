@@ -646,10 +646,9 @@ def _draw_drawing_box(
     inner_w = w - 12
     inner_h = h - 22
 
-    # fundo interno
+    # fundo interno liso para o PDF
     _box(pdf, inner_x, inner_y, inner_w, inner_h,
-         radius=5, fill=C_MUTED_BG, stroke=C_GRID, lw=0.5)
-    _grid(pdf, inner_x + 2, inner_y + 2, inner_w - 4, inner_h - 4, step=14)
+         radius=5, fill=C_WHITE, stroke=C_BORDER, lw=0.5)
 
     if not canvas_result:
         return
