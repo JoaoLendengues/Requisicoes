@@ -33,6 +33,10 @@ AR_MACHINES = (
 )
 
 
+def _machine_display_name(index: int, name: str) -> str:
+    return f"{index:02d} - {name}"
+
+
 def seed_admin() -> None:
     db = SessionLocal()
     try:
@@ -59,26 +63,47 @@ def seed_production_machines() -> None:
             "Pinheiro Indústria": PINHEIRO_MACHINES,
             "A&R": AR_MACHINES,
         }
-        existing = {
-            (machine.destination, machine.name)
-            for machine in db.query(ProductionMachine).all()
+        machines = db.query(ProductionMachine).all()
+        existing_by_order = {
+            (machine.destination, int(machine.sort_order or 0)): machine
+            for machine in machines
         }
-        created = False
+        existing_by_name = {
+            (machine.destination, machine.name): machine
+            for machine in machines
+        }
+        changed = False
         for destination, names in catalogs.items():
             for index, name in enumerate(names, start=1):
-                key = (destination, name)
-                if key in existing:
+                display_name = _machine_display_name(index, name)
+                machine = existing_by_order.get((destination, index))
+                if machine is None:
+                    machine = existing_by_name.get((destination, display_name))
+
+                if machine is not None:
+                    if machine.name != display_name:
+                        machine.name = display_name
+                        changed = True
+                    if int(machine.sort_order or 0) != index:
+                        machine.sort_order = index
+                        changed = True
+                    if machine.status is None:
+                        machine.status = MachineOperationalStatus.FUNCIONANDO
+                        changed = True
                     continue
-                db.add(
-                    ProductionMachine(
-                        destination=destination,
-                        name=name,
-                        sort_order=index,
-                        status=MachineOperationalStatus.FUNCIONANDO,
-                    )
+
+                machine = ProductionMachine(
+                    destination=destination,
+                    name=display_name,
+                    sort_order=index,
+                    status=MachineOperationalStatus.FUNCIONANDO,
                 )
-                created = True
-        if created:
+                db.add(machine)
+                existing_by_order[(destination, index)] = machine
+                existing_by_name[(destination, display_name)] = machine
+                changed = True
+
+        if changed:
             db.commit()
     finally:
         db.close()
