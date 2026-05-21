@@ -1,6 +1,6 @@
 {
   "server_url": "http://10.1.1.151:5000",
-  "font_scale": null,
+  "font_scale": "110%",
   "ods_path": "Z:\\REQUISIÇÕES (VENDAS)\\relacao_cadastros.ods",
   "products_path": "Z:\\REQUISIÇÕES (VENDAS)\\produtos.ods"
 }
