@@ -56,8 +56,8 @@ _ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons
 def _destination_card_meta_dict() -> dict:
     return {
         "A&R": {
-            "title": "A&&R",
-            "helper": "Fluxo operacional da produção da A&&R.",
+            "title": "A&R",
+            "helper": "Fluxo operacional da produção da A&R.",
             "accent": theme.PRIMARY_HOVER,
             "icon": "producao_ar.png",
         },
