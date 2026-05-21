@@ -100,7 +100,10 @@ def _build_production_note(action: str, destination: str) -> str:
 
 
 def _format_phone_text(raw: str) -> str:
-    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())[:11]
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if len(digits) > 11 and digits.startswith("55"):
+        digits = digits[2:]
+    digits = digits[-11:]
     if not digits:
         return ""
     if len(digits) <= 2:
@@ -849,8 +852,10 @@ class RequisitionForm(QWidget):
         if not HAS_QR or not session.whatsapp:
             return
         try:
-            phone = "".join(filter(str.isdigit, session.whatsapp))
-            url = f"https://wa.me/55{phone}"
+            phone = self._normalize_whatsapp_number(session.whatsapp)
+            if not phone:
+                return
+            url = f"https://wa.me/{phone}"
             qr = qrcode.make(url)
             buf = io.BytesIO()
             qr.save(buf, format="PNG")
@@ -866,6 +871,11 @@ class RequisitionForm(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._generate_qr()
+
+    def refresh_logged_user(self):
+        if hasattr(self, "lbl_vendor"):
+            self.lbl_vendor.setText((session.user_name or "--").upper())
         self._generate_qr()
 
     # ── WhatsApp do cliente ───────────────────────────────────────────────────

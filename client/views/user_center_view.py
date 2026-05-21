@@ -62,7 +62,10 @@ def _rgba(color: str, alpha: int) -> str:
 
 
 def _format_contact_text(raw: str) -> str:
-    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())[:11]
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if len(digits) > 11 and digits.startswith("55"):
+        digits = digits[2:]
+    digits = digits[-11:]
     if not digits:
         return ""
     if len(digits) <= 2:
