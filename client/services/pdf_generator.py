@@ -225,6 +225,50 @@ def _fit(text: str, font: str, size: float, max_w: float) -> str:
     return "..."
 
 
+def _wrap_text(text: str, font: str, size: float, max_w: float, max_lines: int | None = None) -> list[str]:
+    raw = str(text or "")
+    if not raw:
+        return []
+
+    lines: list[str] = []
+    paragraphs = raw.splitlines() or [raw]
+
+    for paragraph in paragraphs:
+        words = paragraph.split()
+        if not words:
+            if lines and (max_lines is None or len(lines) < max_lines):
+                lines.append("")
+            continue
+
+        current = ""
+        for word in words:
+            candidate = word if not current else f"{current} {word}"
+            if pdfmetrics.stringWidth(candidate, font, size) <= max_w:
+                current = candidate
+                continue
+
+            if current:
+                lines.append(current)
+                if max_lines is not None and len(lines) >= max_lines:
+                    lines[-1] = _fit(lines[-1], font, size, max_w)
+                    return lines
+
+            current = word
+            if pdfmetrics.stringWidth(current, font, size) > max_w:
+                current = _fit(current, font, size, max_w)
+
+        if current:
+            lines.append(current)
+            if max_lines is not None and len(lines) >= max_lines:
+                lines[-1] = _fit(lines[-1], font, size, max_w)
+                return lines
+
+    if max_lines is not None and len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = _fit(lines[-1], font, size, max_w)
+    return lines
+
+
 # ── Primitivos de desenho ─────────────────────────────────────────────────────
 
 def _txt(
@@ -710,11 +754,26 @@ def _draw_footer(
 
     _box(pdf, x, y, obs_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
     lbl = "OBSERVA\u00c7\u00c3O:"
-    lbl_w = pdfmetrics.stringWidth(lbl, PDF_FONT_BOLD, 8) + 8
-    obs_y = y + h / 2 - 3
-    _txt(pdf, lbl, x + 6, obs_y, 8, C_TEXT, bold=True)
-    _txt(pdf, _safe(obs, ""), x + lbl_w, obs_y, 8,
-         C_TEXT_SOFT, max_w=obs_w - lbl_w - 8)
+    obs_label_y = y + h - 14
+    obs_text_x = x + 6
+    obs_text_y = obs_label_y - 11
+    obs_text_w = obs_w - 12
+    obs_text_size = 7.4
+    obs_leading = 8.6
+    max_obs_lines = max(1, int((h - 24) / obs_leading))
+    obs_lines = _wrap_text(
+        _safe(obs, ""),
+        PDF_FONT_REGULAR,
+        obs_text_size,
+        obs_text_w,
+        max_lines=max_obs_lines,
+    )
+
+    _txt(pdf, lbl, obs_text_x, obs_label_y, 8, C_TEXT, bold=True)
+    current_y = obs_text_y
+    for line in obs_lines:
+        _txt(pdf, line, obs_text_x, current_y, obs_text_size, C_TEXT_SOFT)
+        current_y -= obs_leading
 
     sig_x = x + obs_w + gap
     _box(pdf, sig_x, y, sig_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
