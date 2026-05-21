@@ -39,6 +39,7 @@ def _create(
     req_id: int | None = None,
 ) -> Notification:
     """Cria uma notificação e faz flush (sem commit — responsabilidade do caller)."""
+    print(f"[NOTIF] _create → user_id={user_id} type={type_!r} req_id={req_id}")
     n = Notification(
         user_id=user_id,
         type=type_,
@@ -47,7 +48,12 @@ def _create(
         requisition_id=req_id,
     )
     db.add(n)
-    db.flush()   # garante que n.id seja preenchido antes do return
+    try:
+        db.flush()
+        print(f"[NOTIF] _create → flush OK, id={n.id}")
+    except Exception as exc:
+        print(f"[NOTIF] _create → flush FALHOU: {exc}")
+        raise
     return n
 
 
@@ -84,6 +90,7 @@ def dispatch(notifications: list[Notification]) -> None:
     Envia notificações via SSE para os usuários conectados.
     Deve ser chamado APÓS db.commit() para que os IDs estejam confirmados.
     """
+    print(f"[NOTIF] dispatch → {len(notifications)} notificação(ões)")
     for n in notifications:
         sse_manager.push_to_user(n.user_id, _to_dict(n))
 
@@ -110,6 +117,7 @@ def notify_production_team(
         .filter(User.role.in_(roles), User.is_active == True)
         .all()
     )
+    print(f"[NOTIF] notify_production_team → destino={destino!r} roles={roles} usuarios={[u.name for u in usuarios]}")
 
     destino_label = destino.strip() or "Produção"
     type_   = "nova_requisicao"
