@@ -705,6 +705,14 @@ class MainWindow(QMainWindow):
         if previous_frame.isNull():
             return
 
+        if self._theme_transition_anim is not None:
+            self._theme_transition_anim.stop()
+            self._theme_transition_anim = None
+
+        if self._theme_transition_overlay is not None:
+            self._theme_transition_overlay.deleteLater()
+            self._theme_transition_overlay = None
+
         overlay = QLabel(self)
         overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         overlay.setScaledContents(True)
@@ -718,7 +726,7 @@ class MainWindow(QMainWindow):
         overlay.setGraphicsEffect(effect)
 
         anim = QPropertyAnimation(effect, b"opacity", overlay)
-        anim.setDuration(260)
+        anim.setDuration(420)
         anim.setStartValue(1.0)
         anim.setEndValue(0.0)
         anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
@@ -733,15 +741,20 @@ class MainWindow(QMainWindow):
         self._theme_transition_anim = anim
         anim.start()
 
-    def _on_theme_toggle(self, dark: bool):
-        """Salva preferência, aplica tema e reconstrói a janela."""
+    def _apply_theme_toggle(self, dark: bool):
+        """Aplica o tema na mesma janela apÃ³s iniciar a transiÃ§Ã£o visual."""
         from PySide6.QtWidgets import QApplication
-        previous_frame = self.grab()
+
         res.save(dark_mode=dark)
         theme.set_dark(dark)
         QApplication.instance().setStyleSheet(theme.global_style())
         self._build_replacement_window()
+
+    def _on_theme_toggle(self, dark: bool):
+        """Salva preferência, aplica tema e reconstrói a janela."""
+        previous_frame = self.grab()
         self._start_theme_transition(previous_frame)
+        QTimer.singleShot(24, lambda: self._apply_theme_toggle(dark))
 
     def _on_scale_changed(self, _new_scale: float):
         """Reconstrói a janela principal com a nova escala sem reiniciar o processo.
