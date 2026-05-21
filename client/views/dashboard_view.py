@@ -31,19 +31,6 @@ from ..core.datetime_utils import (
 )
 
 
-DASH_BG = "#F4F7FB"
-DASH_SURFACE = "#FFFFFF"
-DASH_PRIMARY = "#1E3A5F"
-DASH_SECONDARY = "#27496D"
-DASH_SUCCESS = "#16A34A"
-DASH_DANGER = "#DC2626"
-DASH_WARNING = "#F59E0B"
-DASH_SLATE = "#334155"
-DASH_TEXT = "#0F172A"
-DASH_MUTED = "#64748B"
-DASH_BORDER = "#E2E8F0"
-DASH_ROW_ALT = "#F8FBFF"
-
 _ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
 _METRIC_ICON_FILES = {
     "pedidos_em_producao": "pedidos_em_producao.png",
@@ -76,7 +63,7 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
     shadow.setOffset(0, y_offset)
-    color = QColor(DASH_TEXT)
+    color = QColor(theme.TEXT_DARK)
     color.setAlpha(alpha)
     shadow.setColor(color)
     widget.setGraphicsEffect(shadow)
@@ -119,11 +106,11 @@ def _flat_secondary_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{DASH_SURFACE}; color:{DASH_PRIMARY};"
-        f"  border:1px solid {DASH_BORDER}; outline:none; border-radius:14px;"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{DASH_ROW_ALT}; border-color:{_rgba(DASH_PRIMARY, 70)}; }}"
+        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
         f"QPushButton:pressed {{ background:#E7EEF7; }}"
         f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
     )
@@ -198,7 +185,7 @@ class DashboardView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = DASH_BG
+        page_bg = theme.CONTENT_BG
         self.setObjectName("dashboardView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
@@ -216,13 +203,13 @@ class DashboardView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Painel de Produção")
         title.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Visão executiva da operação industrial com indicadores, alertas e ritmo de produção."
         )
         subtitle.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(8, int(10 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
         )
         subtitle.setWordWrap(True)
         title_col.addWidget(title)
@@ -234,10 +221,10 @@ class DashboardView(QWidget):
 
         info_card = _make_shadow_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(16, int(18 * s)),
-            hover_background=DASH_SURFACE,
+            hover_background=theme.CARD_BG,
         )
         info_layout = QVBoxLayout(info_card)
         info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
@@ -246,17 +233,17 @@ class DashboardView(QWidget):
 
         date_hint = QLabel("DATA ATUAL")
         date_hint.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
             f"background:transparent;"
         )
         self.date_label = QLabel(_format_header_date())
         self.date_label.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
             f"background:transparent;"
         )
         self.updated_label = QLabel("Atualizando dados...")
         self.updated_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
@@ -277,8 +264,8 @@ class DashboardView(QWidget):
         self.error_label.hide()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
-            f"background:{_rgba(DASH_DANGER, 18)}; color:{DASH_DANGER};"
-            f"border:1px solid {_rgba(DASH_DANGER, 48)}; border-radius:16px;"
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         root.addWidget(self.error_label)
@@ -314,14 +301,14 @@ class DashboardView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_em_producao", DASH_PRIMARY, "Pedidos em Produção", "Requisições recebidas pela produção."),
-            ("pedidos_em_atraso", DASH_DANGER, "Pedidos em Atraso", "Pedidos abertos com prazo vencido."),
-            ("pedidos_finalizados_hoje", DASH_SUCCESS, "Finalizados Hoje", "Finalizações registradas no dia."),
-            ("requisicoes_feitas_no_dia", DASH_SECONDARY, "Requisições do Dia", "Novas requisições criadas hoje."),
-            ("producao_pinheiro_industria", DASH_PRIMARY, "Produção Pinheiro Indústria", "Fila ativa enviada para esse destino."),
-            ("producao_ar", DASH_SECONDARY, "Produção da A&R", "Fila ativa enviada para esse destino."),
-            ("pedidos_sem_confirmacao_1h", DASH_WARNING, "Sem Confirmação", "Aguardando retorno há mais de 1 hora."),
-            ("tempo_medio_finalizacao_segundos", DASH_SLATE, "Tempo Médio de Finalização", "Média entre recebimento e finalização."),
+            ("pedidos_em_producao", theme.PRIMARY, "Pedidos em Produção", "Requisições recebidas pela produção."),
+            ("pedidos_em_atraso", theme.DANGER, "Pedidos em Atraso", "Pedidos abertos com prazo vencido."),
+            ("pedidos_finalizados_hoje", theme.SUCCESS, "Finalizados Hoje", "Finalizações registradas no dia."),
+            ("requisicoes_feitas_no_dia", theme.PRIMARY_HOVER, "Requisições do Dia", "Novas requisições criadas hoje."),
+            ("producao_pinheiro_industria", theme.PRIMARY, "Produção Pinheiro Indústria", "Fila ativa enviada para esse destino."),
+            ("producao_ar", theme.PRIMARY_HOVER, "Produção da A&R", "Fila ativa enviada para esse destino."),
+            ("pedidos_sem_confirmacao_1h", theme.WARNING, "Sem Confirmação", "Aguardando retorno há mais de 1 hora."),
+            ("tempo_medio_finalizacao_segundos", theme.BORDER_COLOR, "Tempo Médio de Finalização", "Média entre recebimento e finalização."),
         ]
 
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
@@ -340,7 +327,7 @@ class DashboardView(QWidget):
                 "Vendedores com Mais Requisições",
                 "Ranking geral por volume de requisições emitidas.",
                 self._build_top_vendors_table(),
-                DASH_PRIMARY,
+                theme.PRIMARY,
             ),
             1,
         )
@@ -349,7 +336,7 @@ class DashboardView(QWidget):
                 "Pedidos sem Confirmação",
                 "Pedidos aguardando retorno da produção por mais de 1 hora.",
                 self._build_alerts_table(),
-                DASH_WARNING,
+                theme.WARNING,
             ),
             1,
         )
@@ -360,7 +347,7 @@ class DashboardView(QWidget):
                 "Últimas Requisições",
                 "Visão rápida das requisições mais recentes do sistema.",
                 self._build_recent_table(),
-                DASH_SLATE,
+                theme.BORDER_COLOR,
             )
         )
         layout.addStretch()
@@ -375,10 +362,10 @@ class DashboardView(QWidget):
         s = self.scale
         card = _make_shadow_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(16, int(20 * s)), max(15, int(18 * s)),
@@ -387,7 +374,7 @@ class DashboardView(QWidget):
 
         value_label = QLabel("-")
         value_label.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(20, int(26 * s))}pt;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(20, int(26 * s))}pt;"
             f"font-weight:800; background:transparent; border:none;"
         )
         value_label.setWordWrap(True)
@@ -395,14 +382,14 @@ class DashboardView(QWidget):
         title_label = QLabel(title)
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(9, int(11 * s))}pt;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt;"
             f"font-weight:700; background:transparent; border:none;"
         )
 
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
         helper_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;"
             f"background:transparent; border:none;"
         )
 
@@ -457,10 +444,10 @@ class DashboardView(QWidget):
         s = self.scale
         card = _make_shadow_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
@@ -476,14 +463,14 @@ class DashboardView(QWidget):
         title_label = QLabel(title)
         title_label.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{DASH_TEXT}; background:transparent;"
+            f"color:{theme.TEXT_DARK}; background:transparent;"
         )
 
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
         subtitle_label.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt;"
-            f"color:{DASH_MUTED}; background:transparent;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
         )
 
         layout.addWidget(accent)
@@ -519,27 +506,27 @@ class DashboardView(QWidget):
 
         table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:none; outline:none; background:{DASH_SURFACE};"
-            f"  alternate-background-color:{DASH_ROW_ALT};"
-            f"  color:{DASH_SLATE}; border-radius:14px;"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
+            f"  color:{theme.BORDER_COLOR}; border-radius:14px;"
             f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{DASH_PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
             f"QTableWidget::item {{"
-            f"  background:{DASH_SURFACE}; color:{DASH_TEXT};"
-            f"  padding:7px 6px; border-bottom:1px solid {_rgba(DASH_PRIMARY, 18)};"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
             f"}}"
-            f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; color:{DASH_TEXT}; }}"
-            f"QTableWidget::item:selected {{ background:{_rgba(DASH_PRIMARY, 40)}; color:{DASH_TEXT}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.TEXT_DARK}; }}"
         )
         pal = table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(DASH_SURFACE))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(DASH_ROW_ALT))
-        pal.setColor(QPalette.ColorRole.Text, QColor(DASH_TEXT))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(DASH_TEXT))
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
         return table
@@ -703,12 +690,12 @@ class DashboardView(QWidget):
                 if col == 4:
                     status = str(row.get("status") or "")
                     color_map = {
-                        "em_andamento": DASH_SECONDARY,
-                        "aguardando_recebimento": DASH_WARNING,
-                        "em_producao": DASH_PRIMARY,
-                        "cancelada": DASH_DANGER,
+                        "em_andamento": theme.PRIMARY_HOVER,
+                        "aguardando_recebimento": theme.WARNING,
+                        "em_producao": theme.PRIMARY,
+                        "cancelada": theme.DANGER,
                     }
-                    color = color_map.get(status, DASH_SLATE)
+                    color = color_map.get(status, theme.BORDER_COLOR)
                     label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     label.setStyleSheet(
@@ -726,5 +713,5 @@ class DashboardView(QWidget):
         table.setSpan(0, 0, 1, table.columnCount())
         item = QTableWidgetItem(message)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        item.setForeground(QColor(DASH_MUTED))
+        item.setForeground(QColor(theme.TEXT_MEDIUM))
         table.setItem(0, 0, item)
