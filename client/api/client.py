@@ -197,6 +197,11 @@ def mark_all_notifications_read() -> dict:
         return _check(client.patch("/notifications/read-all"))
 
 
+def mark_one_notification_read(notif_id: int) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/notifications/{notif_id}/read"))
+
+
 def health_check(server_url: str) -> bool:
     try:
         resp = httpx.get(f"{server_url.rstrip('/')}/health", timeout=5.0)
