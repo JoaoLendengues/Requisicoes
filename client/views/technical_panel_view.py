@@ -194,7 +194,6 @@ class TechnicalPanelView(QWidget):
 
         card_defs = [
             ("system_online", DASH_SUCCESS, "Sistema Online/Offline", "Status atual de disponibilidade da aplicacao."),
-            ("connected_users", DASH_PRIMARY, "Usuarios logados", "Usuarios conectados no momento e horario do ultimo login."),
             ("requisitions_today", DASH_SECONDARY, "Requisicoes hoje", "Requisicoes registradas no dia atual."),
             ("average_response_ms", DASH_SLATE, "Tempo medio de resposta", "Media das respostas HTTP processadas hoje."),
             ("last_backup_at", DASH_WARNING, "Ultimo backup", "Horario mais recente de backup localizado no ambiente."),
@@ -204,7 +203,11 @@ class TechnicalPanelView(QWidget):
         ]
 
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
-            metrics.addWidget(self._build_metric_card(color, title_text, helper_text, key), index // 4, index % 4)
+            metrics.addWidget(
+                self._build_metric_card(color, title_text, helper_text, key),
+                index // 4,
+                index % 4,
+            )
 
         info_note = _make_shadow_card(
             s,
@@ -234,8 +237,24 @@ class TechnicalPanelView(QWidget):
         info_note_layout.addWidget(note_body)
         layout.addWidget(info_note)
         layout.addStretch()
+        layout.addWidget(
+            self._build_metric_card(
+                DASH_PRIMARY,
+                "Usuarios logados",
+                "Usuarios conectados no momento e horario do ultimo login.",
+                "connected_users",
+                prominent=True,
+            )
+        )
 
-    def _build_metric_card(self, color: str, title: str, helper_text: str, key: str) -> QFrame:
+    def _build_metric_card(
+        self,
+        color: str,
+        title: str,
+        helper_text: str,
+        key: str,
+        prominent: bool = False,
+    ) -> QFrame:
         s = self.scale
         card = _make_shadow_card(
             s,
@@ -244,29 +263,44 @@ class TechnicalPanelView(QWidget):
             radius=max(18, int(20 * s)),
             hover_background="#FBFDFF",
         )
+        if prominent:
+            card.setMinimumHeight(max(180, int(210 * s)))
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(16, int(20 * s)), max(15, int(18 * s)),
-                                  max(16, int(20 * s)), max(14, int(18 * s)))
-        layout.setSpacing(max(6, int(8 * s)))
+        if prominent:
+            layout.setContentsMargins(
+                max(20, int(26 * s)),
+                max(18, int(24 * s)),
+                max(20, int(26 * s)),
+                max(18, int(22 * s)),
+            )
+            layout.setSpacing(max(8, int(10 * s)))
+        else:
+            layout.setContentsMargins(
+                max(16, int(20 * s)),
+                max(15, int(18 * s)),
+                max(16, int(20 * s)),
+                max(14, int(18 * s)),
+            )
+            layout.setSpacing(max(6, int(8 * s)))
 
         value_label = QLabel("-")
         value_label.setWordWrap(True)
         value_label.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(18, int(24 * s))}pt;"
+            f"color:{DASH_TEXT}; font-size:{max(24, int(32 * s)) if prominent else max(18, int(24 * s))}pt;"
             f"font-weight:800; background:transparent; border:none;"
         )
 
         title_label = QLabel(title)
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(9, int(11 * s))}pt;"
+            f"color:{DASH_PRIMARY}; font-size:{max(10, int(13 * s)) if prominent else max(9, int(11 * s))}pt;"
             f"font-weight:700; background:transparent; border:none;"
         )
 
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
         helper_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+            f"color:{DASH_MUTED}; font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
             f"background:transparent; border:none;"
         )
 
@@ -274,12 +308,12 @@ class TechnicalPanelView(QWidget):
         detail_label.setWordWrap(True)
         detail_label.hide()
         detail_label.setStyleSheet(
-            f"color:{DASH_SLATE}; font-size:{max(7, int(8 * s))}pt;"
+            f"color:{DASH_SLATE}; font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
             f"background:transparent; border:none; line-height:1.35;"
         )
 
         accent_line = QFrame()
-        accent_line.setFixedHeight(max(4, int(5 * s)))
+        accent_line.setFixedHeight(max(6, int(8 * s)) if prominent else max(4, int(5 * s)))
         accent_line.setStyleSheet(
             f"background:{color}; border:none; border-radius:{max(2, int(3 * s))}px;"
         )
