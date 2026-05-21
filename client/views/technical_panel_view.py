@@ -94,14 +94,15 @@ class TechnicalPanelView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Painel Técnico")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Monitoramento rápido da aplicação, do banco de dados e da disponibilidade operacional."
         )
         subtitle.setWordWrap(True)
+        subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
+            f"font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -123,18 +124,18 @@ class TechnicalPanelView(QWidget):
         info_layout.setSpacing(max(2, int(3 * s)))
 
         date_hint = QLabel("DATA ATUAL")
+        date_hint.setProperty("muted", "1")
         date_hint.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
-            f"background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;"
         )
         self.date_label = QLabel(_format_header_date())
         self.date_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
-            f"background:transparent;"
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
         )
         self.updated_label = QLabel("Atualizando dados...")
+        self.updated_label.setProperty("muted", "1")
         self.updated_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
@@ -159,20 +160,20 @@ class TechnicalPanelView(QWidget):
         )
         root.addWidget(self.error_label)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{theme.CONTENT_BG}; }}")
-        scroll.viewport().setStyleSheet(f"background:{theme.CONTENT_BG}; border:none;")
-        root.addWidget(scroll, 1)
+        self._page_scroll = QScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{theme.CONTENT_BG}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{theme.CONTENT_BG}; border:none;")
+        root.addWidget(self._page_scroll, 1)
 
-        content = QWidget()
-        content.setObjectName("technicalPanelContent")
-        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        content.setStyleSheet(f"QWidget#technicalPanelContent {{ background:{theme.CONTENT_BG}; }}")
-        scroll.setWidget(content)
+        self._page_content = QWidget()
+        self._page_content.setObjectName("technicalPanelContent")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(f"QWidget#technicalPanelContent {{ background:{theme.CONTENT_BG}; }}")
+        self._page_scroll.setWidget(self._page_content)
 
-        layout = QVBoxLayout(content)
+        layout = QVBoxLayout(self._page_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(max(16, int(18 * s)))
 
@@ -214,15 +215,16 @@ class TechnicalPanelView(QWidget):
 
         note_title = QLabel("Leitura tecnica")
         note_title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
         )
         note_body = QLabel(
             "Este painel mostra indicadores operacionais em tempo real. Último backup pode aparecer como "
             "'Não identificado' quando o ambiente ainda não expõe uma rotina de backup catalogada."
         )
         note_body.setWordWrap(True)
+        note_body.setProperty("muted", "1")
         note_body.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(9 * s))}pt;"
+            f"font-size:{max(8, int(9 * s))}pt;"
         )
         info_note_layout.addWidget(note_title)
         info_note_layout.addWidget(note_body)
@@ -277,29 +279,31 @@ class TechnicalPanelView(QWidget):
         value_label = QLabel("-")
         value_label.setWordWrap(True)
         value_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(24, int(32 * s)) if prominent else max(18, int(24 * s))}pt;"
+            f"font-size:{max(24, int(32 * s)) if prominent else max(18, int(24 * s))}pt;"
             f"font-weight:800; background:transparent; border:none;"
         )
 
         title_label = QLabel(title)
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(13 * s)) if prominent else max(9, int(11 * s))}pt;"
+            f"font-size:{max(10, int(13 * s)) if prominent else max(9, int(11 * s))}pt;"
             f"font-weight:700; background:transparent; border:none;"
         )
 
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
+        helper_label.setProperty("muted", "1")
         helper_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
+            f"font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
             f"background:transparent; border:none;"
         )
 
         detail_label = QLabel("")
         detail_label.setWordWrap(True)
         detail_label.hide()
+        detail_label.setProperty("muted", "1")
         detail_label.setStyleSheet(
-            f"color:{theme.BORDER_COLOR}; font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
+            f"font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
             f"background:transparent; border:none; line-height:1.35;"
         )
 
@@ -410,3 +414,17 @@ class TechnicalPanelView(QWidget):
             last_login = _format_datetime(row.get("last_login_at"))
             lines.append(f"{name} | último login: {last_login}")
         return "\n".join(lines)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#technicalPanelView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#technicalPanelContent {{ background:{bg}; }}")
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )

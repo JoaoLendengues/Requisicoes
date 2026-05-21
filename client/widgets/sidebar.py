@@ -316,12 +316,12 @@ class Sidebar(QWidget):
 
         # ── ScrollArea que envolve TODO o conteúdo da sidebar ─────────────────
         # Barra fina e discreta aparece automaticamente quando a escala for grande.
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(
+        self._sidebar_scroll = QScrollArea()
+        self._sidebar_scroll.setWidgetResizable(True)
+        self._sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._sidebar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._sidebar_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._sidebar_scroll.setStyleSheet(
             f"QScrollArea {{ background:{theme.SIDEBAR_BG}; border:none; }}"
             f"QScrollBar:vertical {{"
             f"  width:4px; background:transparent; margin:0;"
@@ -419,8 +419,8 @@ class Sidebar(QWidget):
         panel_layout.addWidget(btn_sair)
         panel_layout.addSpacing(12)
 
-        scroll.setWidget(panel)
-        root_layout.addWidget(scroll)
+        self._sidebar_scroll.setWidget(panel)
+        root_layout.addWidget(self._sidebar_scroll)
 
         self._highlight(self._active)
 
@@ -481,3 +481,41 @@ class Sidebar(QWidget):
             return
         self.user_icon_label.setPixmap(pixmap)
         self.user_icon_label.setFixedWidth(max(18, pixmap.width()))
+
+    def apply_theme(self) -> None:
+        self.setStyleSheet(
+            f"QWidget#SidebarColumn {{ background:{theme.SIDEBAR_BG}; }}"
+            f"QWidget#SidebarPanel {{ background:{theme.SIDEBAR_BG}; }}"
+            f"QWidget#SidebarPanel QLabel {{ background:transparent; }}"
+        )
+        self._sidebar_scroll.setStyleSheet(
+            f"QScrollArea {{ background:{theme.SIDEBAR_BG}; border:none; }}"
+            f"QScrollBar:vertical {{"
+            f"  width:4px; background:transparent; margin:0;"
+            f"}}"
+            f"QScrollBar::handle:vertical {{"
+            f"  background:rgba(255,255,255,0.22); border-radius:2px; min-height:24px;"
+            f"}}"
+            f"QScrollBar::handle:vertical:hover {{ background:rgba(255,255,255,0.40); }}"
+            f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
+            f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background:none; }}"
+        )
+        font_size = max(9, int(11 * self.scale))
+        for btn in self._nav_btns.values():
+            btn.setStyleSheet(
+                f"QPushButton {{"
+                f"  background:transparent; color:rgba(255,255,255,0.88);"
+                f"  text-align:left; padding-left:16px; border:1px solid transparent;"
+                f"  margin:4px 12px; border-radius:8px; font-size:{font_size}pt; font-weight:700;"
+                f"}}"
+                f"QPushButton:hover {{"
+                f"  background:rgba(45, 127, 249, 0.16); color:#fff;"
+                f"  border-color:rgba(255,255,255,0.08);"
+                f"}}"
+                f"QPushButton:checked {{"
+                f"  background:{theme.SIDEBAR_ACTIVE}; color:#fff;"
+                f"  border:1px solid {theme.SIDEBAR_INDICATOR};"
+                f"}}"
+            )
+        self._theme_toggle.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
+        self._bell.setStyleSheet(f"background:{theme.SIDEBAR_BG};")

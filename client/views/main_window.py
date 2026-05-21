@@ -74,11 +74,11 @@ class MainWindow(QMainWindow):
         self.sidebar.theme_toggled.connect(self._on_theme_toggle)
         root.addWidget(self.sidebar)
 
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setFixedWidth(1)
-        sep.setStyleSheet(f"background:{theme.SIDEBAR_BG}; color:{theme.SIDEBAR_BG}; border:none;")
-        root.addWidget(sep)
+        self._sep = QFrame()
+        self._sep.setFrameShape(QFrame.Shape.VLine)
+        self._sep.setFixedWidth(1)
+        self._sep.setStyleSheet(f"background:{theme.SIDEBAR_BG}; color:{theme.SIDEBAR_BG}; border:none;")
+        root.addWidget(self._sep)
 
         # ── Área de conteúdo com scroll ───────────────────────────────────────
         # O QScrollArea garante que qualquer view seja acessível por rolagem
@@ -91,10 +91,10 @@ class MainWindow(QMainWindow):
             max(520, int(600 * self.scale)),
         )
 
-        scroll_main = QScrollArea()
-        scroll_main.setWidgetResizable(True)
-        scroll_main.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_main.setStyleSheet(
+        self._scroll_main = QScrollArea()
+        self._scroll_main.setWidgetResizable(True)
+        self._scroll_main.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll_main.setStyleSheet(
             f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}"
             f"QScrollBar:vertical {{"
             f"  width:8px; background:transparent;"
@@ -113,8 +113,8 @@ class MainWindow(QMainWindow):
             f"QScrollBar::handle:horizontal:hover {{ background:rgba(0,0,0,0.32); }}"
             f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
         )
-        scroll_main.setWidget(self.stack)
-        root.addWidget(scroll_main, 1)
+        self._scroll_main.setWidget(self.stack)
+        root.addWidget(self._scroll_main, 1)
 
         self.form_view = RequisitionForm(self.scale)
         self.history_view = HistoryView(self.scale)
@@ -794,6 +794,47 @@ class MainWindow(QMainWindow):
         self._theme_transition_anim = anim
         anim.start()
 
+    def _apply_theme_to_all(self) -> None:
+        """Re-aplica apenas os estilos inline dependentes do tema — ~50 ms."""
+        from PySide6.QtWidgets import QApplication
+
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"background:{bg};")
+        self._sep.setStyleSheet(
+            f"background:{theme.SIDEBAR_BG}; color:{theme.SIDEBAR_BG}; border:none;"
+        )
+        self.stack.setStyleSheet(f"background:{bg};")
+        self._scroll_main.setStyleSheet(
+            f"QScrollArea {{ background:{bg}; border:none; }}"
+            f"QScrollBar:vertical {{"
+            f"  width:8px; background:transparent;"
+            f"}}"
+            f"QScrollBar::handle:vertical {{"
+            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-height:32px;"
+            f"}}"
+            f"QScrollBar::handle:vertical:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
+            f"QScrollBar:horizontal {{"
+            f"  height:8px; background:transparent;"
+            f"}}"
+            f"QScrollBar::handle:horizontal {{"
+            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-width:32px;"
+            f"}}"
+            f"QScrollBar::handle:horizontal:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
+        )
+        self.sidebar.apply_theme()
+        self.form_view.apply_theme()
+        self.history_view.apply_theme()
+        self.dashboard_view.apply_theme()
+        self.technical_panel_view.apply_theme()
+        self.order_center_view.apply_theme()
+        self.pinheiro_industria_view.apply_theme()
+        self.ar_view.apply_theme()
+        self.user_center_view.apply_theme()
+        self.settings_view.apply_theme()
+        self._setup_statusbar()
+
     def _on_theme_toggle(self, dark: bool):
         """
         Troca de tema com transição visual responsiva.
@@ -801,9 +842,9 @@ class MainWindow(QMainWindow):
         Sequência:
         1. Screenshot da janela atual
         2. Overlay aparece imediatamente (cobre a janela)
-        3. processEvents() — força a pintura do overlay ANTES do rebuild
-        4. Rebuild síncrono (bloqueante; overlay cobre os widgets antigos)
-        5. Rebuild concluído → fade-out do overlay revela o novo tema
+        3. processEvents() — força a pintura do overlay ANTES do re-estilo
+        4. Re-aplica apenas estilos dependentes do tema (~50 ms)
+        5. Re-estilo concluído → fade-out do overlay revela o novo tema
         """
         from PySide6.QtWidgets import QApplication
 
@@ -815,13 +856,13 @@ class MainWindow(QMainWindow):
         # Garante que o overlay seja PINTADO antes de bloquear a thread
         QApplication.processEvents()
 
-        # Aplica tema + reconstrói (overlay cobre tudo durante o rebuild)
+        # Aplica tema + re-estila widgets existentes (sem reconstruir)
         res.save(dark_mode=dark)
         theme.set_dark(dark)
         QApplication.instance().setStyleSheet(theme.global_style())
-        self._build_replacement_window()
+        self._apply_theme_to_all()
 
-        # Rebuild concluído — agora o fade-out corre suavemente
+        # Re-estilo concluído — agora o fade-out corre suavemente
         self._start_overlay_fadeout(overlay)
 
     def _on_scale_changed(self, _new_scale: float):

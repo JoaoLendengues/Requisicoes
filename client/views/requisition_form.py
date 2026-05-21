@@ -128,10 +128,10 @@ def _emphasized_btn_style(base_style: str) -> str:
 # ── Card helper ───────────────────────────────────────────────────────────────
 def _make_card(parent=None) -> QFrame:
     card = QFrame(parent)
-    card.setStyleSheet(
-        f"QFrame {{ background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
-        f"border-radius:8px; }}"
-    )
+    card.setObjectName("reqCard")
+    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    card.setProperty("theme_bg", "card_bordered")
+    card.setStyleSheet("QFrame#reqCard { border-radius:8px; }")
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(10)
     shadow.setOffset(0, 2)
@@ -142,8 +142,9 @@ def _make_card(parent=None) -> QFrame:
 
 def _field_label(text: str, scale: float) -> QLabel:
     lbl = QLabel(text)
+    lbl.setProperty("accent", "1")
     lbl.setStyleSheet(
-        f"color:{theme.PRIMARY}; font-size:{max(7, int(8*scale))}pt; "
+        f"font-size:{max(7, int(8*scale))}pt; "
         f"font-weight:bold; text-transform:uppercase; border:none;"
     )
     return lbl
@@ -152,8 +153,7 @@ def _field_label(text: str, scale: float) -> QLabel:
 def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     lbl = QLabel(text)
     lbl.setStyleSheet(
-        f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11*scale))}pt; "
-        f"font-weight:bold; border:none;"
+        f"font-size:{max(9, int(11*scale))}pt; font-weight:bold; border:none;"
     )
     return lbl
 
@@ -436,18 +436,18 @@ class RequisitionForm(QWidget):
         root.setSpacing(0)
 
         # ScrollArea
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(
+        self._page_scroll = QScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setStyleSheet(
             f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}"
         )
-        root.addWidget(scroll)
+        root.addWidget(self._page_scroll)
 
-        container = QWidget()
-        container.setStyleSheet(f"background:{theme.CONTENT_BG};")
-        scroll.setWidget(container)
+        self._page_content = QWidget()
+        self._page_content.setStyleSheet(f"background:{theme.CONTENT_BG};")
+        self._page_scroll.setWidget(self._page_content)
 
-        layout = QVBoxLayout(container)
+        layout = QVBoxLayout(self._page_content)
         s = self.scale
         margin = max(12, int(16 * s))
         layout.setContentsMargins(margin, margin, margin, margin)
@@ -556,12 +556,14 @@ class RequisitionForm(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(0)
         lbl_req = QLabel("REQUISIÇÃO")
+        lbl_req.setProperty("accent", "1")
         lbl_req.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(10,int(12*s))}pt; font-weight:700; border:none;"
+            f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none;"
         )
         self.lbl_ped_num = QLabel("#000000")
+        self.lbl_ped_num.setProperty("accent", "1")
         self.lbl_ped_num.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(16,int(20*s))}pt; font-weight:bold; border:none;"
+            f"font-size:{max(16,int(20*s))}pt; font-weight:bold; border:none;"
         )
         title_col.addWidget(lbl_req)
         title_col.addWidget(self.lbl_ped_num)
@@ -1621,3 +1623,23 @@ class RequisitionForm(QWidget):
         self.item_table.set_items([])
         self._canvas_json = "{}"
         self._update_canvas_preview()
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ background:{bg}; border:none; }}")
+        self._page_content.setStyleSheet(f"background:{bg};")
+        self.input_ped.setStyleSheet(
+            f"font-size:{max(14,int(18*s))}pt; font-weight:bold; color:{theme.PRIMARY};"
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:5px; padding:2px 6px;"
+            f"background:{theme.INPUT_BG};"
+        )
+        self.input_obs.setStyleSheet(
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+            f"font-size:{max(9,int(11*s))}pt; padding:6px; background:{theme.INPUT_BG};"
+        )
+        self.btn_calc.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))

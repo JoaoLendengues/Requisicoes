@@ -93,17 +93,8 @@ def _make_card(
     card.setObjectName("userCenterCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    bg = background or theme.CARD_BG
-    border = f"1px solid {border_color}" if border_color else "none"
-    hover = hover_background or bg
-    card.setStyleSheet(
-        f"QFrame#userCenterCard {{"
-        f"  background:{bg}; border:{border}; border-radius:{radius}px;"
-        f"}}"
-        f"QFrame#userCenterCard:hover {{"
-        f"  background:{hover}; border:{border};"
-        f"}}"
-    )
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#userCenterCard {{ border-radius:{radius}px; }}")
     _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
@@ -247,14 +238,15 @@ class UserCenterView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Central de Usuários")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Importe usuários, ajuste níveis de acesso e mantenha senhas e cadastros em dia."
         )
         subtitle.setWordWrap(True)
+        subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
+            f"font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -276,18 +268,18 @@ class UserCenterView(QWidget):
         info_layout.setSpacing(max(2, int(3 * s)))
 
         date_hint = QLabel("DATA ATUAL")
+        date_hint.setProperty("muted", "1")
         date_hint.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
-            f"background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;"
         )
         self.date_label = QLabel(_format_header_date())
         self.date_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
-            f"background:transparent;"
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
         )
         self.updated_label = QLabel("Pronto para atualizar")
+        self.updated_label.setProperty("muted", "1")
         self.updated_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
@@ -313,25 +305,25 @@ class UserCenterView(QWidget):
         )
         root.addWidget(self.error_label)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(
+        self._page_scroll = QScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(
             f"QScrollArea {{ border:none; background:{page_bg}; }}"
         )
-        scroll.viewport().setStyleSheet(
+        self._page_scroll.viewport().setStyleSheet(
             f"background:{page_bg}; border:none;"
         )
-        root.addWidget(scroll, 1)
+        root.addWidget(self._page_scroll, 1)
 
-        content = QWidget()
-        content.setObjectName("userCenterContent")
-        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        content.setStyleSheet(
+        self._page_content = QWidget()
+        self._page_content.setObjectName("userCenterContent")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(
             f"QWidget#userCenterContent {{ background:{page_bg}; }}"
         )
-        scroll.setWidget(content)
-        layout = QVBoxLayout(content)
+        self._page_scroll.setWidget(self._page_content)
+        layout = QVBoxLayout(self._page_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(max(16, int(18 * s)))
 
@@ -365,15 +357,15 @@ class UserCenterView(QWidget):
         )
         title = QLabel("IMPORTAÇÃO DE USUÁRIOS")
         title.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{theme.TEXT_DARK}; background:transparent;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
         helper = QLabel(
             "Arquivo esperado: usuarios.ods na pasta base, com colunas Código, Nome, Contato e Setor."
         )
         helper.setWordWrap(True)
+        helper.setProperty("muted", "1")
         helper.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;"
+            f"font-size:{max(7, int(8 * s))}pt;"
         )
         layout.addWidget(accent)
         layout.addWidget(title)
@@ -436,8 +428,7 @@ class UserCenterView(QWidget):
         header.setSpacing(max(10, int(12 * s)))
         title = QLabel("LISTA DE USUÁRIOS")
         title.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{theme.TEXT_DARK}; background:transparent;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
         header.addWidget(title)
         header.addStretch()
@@ -521,15 +512,15 @@ class UserCenterView(QWidget):
 
         title = QLabel("CADASTRO INDIVIDUAL")
         title.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{theme.TEXT_DARK}; background:transparent;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
         helper = QLabel(
             "Deixe a senha em branco para criar o usuário em primeiro acesso. No cadastro existente, só preencha a senha se quiser alterá-la."
         )
         helper.setWordWrap(True)
+        helper.setProperty("muted", "1")
         helper.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;"
+            f"font-size:{max(7, int(8 * s))}pt;"
         )
         layout.addWidget(title)
         layout.addWidget(helper)
@@ -539,8 +530,9 @@ class UserCenterView(QWidget):
         grid.setVerticalSpacing(max(8, int(10 * s)))
 
         self.form_status = QLabel("Novo usuário")
+        self.form_status.setProperty("accent", "1")
         self.form_status.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(8, int(9 * s))}pt; font-weight:700;"
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:700;"
         )
         layout.addWidget(self.form_status)
 
@@ -556,7 +548,7 @@ class UserCenterView(QWidget):
         self.check_active = QCheckBox("Usuário ativo")
         self.check_active.setChecked(True)
         self.check_active.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(8, int(9 * s))}pt;"
+            f"font-size:{max(8, int(9 * s))}pt;"
         )
 
         self.combo_role = QComboBox()
@@ -615,8 +607,9 @@ class UserCenterView(QWidget):
 
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text.upper())
+        label.setProperty("muted", "1")
         label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
+            f"font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
         )
         return label
 
@@ -935,3 +928,60 @@ class UserCenterView(QWidget):
             on_result=lambda _: (self.refresh(), self._prepare_new_user()),
             success_message="Usuário desativado com sucesso.",
         )
+
+    def _apply_table_style(self) -> None:
+        s = self.scale
+        self.table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
+            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+        )
+        pal = self.table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
+        self.table.setPalette(pal)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#userCenterView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#userCenterContent {{ background:{bg}; }}")
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )
+        self.import_btn.setStyleSheet(_primary_action_btn_style(s))
+        self.input_import_path.setStyleSheet(_field_style(s))
+        self.import_progress.setStyleSheet(
+            f"QProgressBar {{ border:none; border-radius:4px;"
+            f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8, int(9 * s))}pt; }}"
+            f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
+        )
+        self.import_log.setStyleSheet(
+            f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
+            f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
+        )
+        self.search_input.setStyleSheet(_field_style(s))
+        self._apply_table_style()
+        self.combo_role.setStyleSheet(_field_style(s))
+        self.btn_save.setStyleSheet(_primary_action_btn_style(s))
+        self.btn_disable.setStyleSheet(_danger_action_btn_style(s))
