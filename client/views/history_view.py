@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
@@ -20,6 +18,12 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.datetime_utils import (
+    format_date as _format_date,
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+)
 
 
 DASH_BG = "#F4F7FB"
@@ -123,44 +127,6 @@ def _field_style(scale: float) -> str:
     )
 
 
-def _parse_datetime(value: object) -> datetime | None:
-    if not value:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
-    except ValueError:
-        return None
-
-
-def _format_datetime(value: object) -> str:
-    parsed = _parse_datetime(value)
-    if parsed is None:
-        return "-"
-    return parsed.strftime("%d/%m/%Y %H:%M")
-
-
-def _format_date(value: object) -> str:
-    if not value:
-        return "-"
-    text = str(value).strip()
-    if not text:
-        return "-"
-    if "T" in text:
-        return _format_datetime(text)[:10]
-    try:
-        return datetime.fromisoformat(text).strftime("%d/%m/%Y")
-    except ValueError:
-        return text[:10]
-
-
-def _format_header_date(value: datetime | None = None) -> str:
-    current = value or datetime.now()
-    return current.strftime("%d/%m/%Y")
-
-
 class HistoryWorker(QObject):
     result = Signal(object)
     error = Signal(str)
@@ -222,7 +188,7 @@ class HistoryView(QWidget):
             f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Consulta operacional de requisicoes por status, pedido, cliente, obra e vendedor."
+            "Consulta operacional de requisições por status, pedido, cliente, obra e vendedor."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -496,12 +462,12 @@ class HistoryView(QWidget):
 
     def _show_error(self, message: str):
         self.updated_label.setText("Falha ao atualizar")
-        self.error_label.setText(f"Nao foi possivel carregar o historico.\n\n{message}")
+        self.error_label.setText(f"Não foi possível carregar o histórico.\n\n{message}")
         self.error_label.show()
 
     def _populate(self, reqs: object):
         if not isinstance(reqs, list):
-            self._show_error("Resposta invalida do servidor.")
+            self._show_error("Resposta inválida do servidor.")
             self._set_empty_message("Nenhuma requisição encontrada.")
             return
 
@@ -545,7 +511,7 @@ class HistoryView(QWidget):
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(row, col, item)
 
-        current = datetime.now()
+        current = local_now()
         self.date_label.setText(_format_header_date(current))
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 

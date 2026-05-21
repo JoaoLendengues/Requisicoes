@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -10,6 +9,13 @@ from PySide6.QtCore import Qt, QThread, QObject, Signal
 from PySide6.QtGui import QPalette, QColor, QPixmap
 
 from ..api import client as api
+from ..core.datetime_utils import (
+    format_date as _format_date,
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+    parse_datetime as _parse_datetime,
+)
 from ..core.session import session
 
 
@@ -36,13 +42,13 @@ PROD_CARD_ROW_ALT = "#F8FBFF"
 _ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
 _DESTINATION_CARD_META = {
     "A&R": {
-        "title": "Producao da A&R",
+        "title": "Produção da A&R",
         "helper": "Fila ativa enviada para esse destino.",
         "accent": PROD_CARD_SECONDARY,
         "icon": "producao_ar.png",
     },
     "Pinheiro Indústria": {
-        "title": "Producao Pinheiro Industria",
+        "title": "Produção Pinheiro Indústria",
         "helper": "Fila ativa enviada para esse destino.",
         "accent": PROD_CARD_PRIMARY,
         "icon": "producao_pinheiro_industria.png",
@@ -53,29 +59,6 @@ _DESTINATION_CARD_META = {
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
-
-
-def _parse_datetime(value: object) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
-    except ValueError:
-        return None
-
-
-def _format_datetime(value: object) -> str:
-    parsed = _parse_datetime(value)
-    if parsed is None:
-        return "-"
-    return parsed.strftime("%d/%m/%Y %H:%M")
-
-
-def _format_header_date(value: datetime | None = None) -> str:
-    current = value or datetime.now()
-    return current.strftime("%d/%m/%Y")
 
 
 class ProductionWorker(QObject):
@@ -264,7 +247,7 @@ class ProductionView(QWidget):
             f"color:{PROD_CARD_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Acompanhamento operacional por destino, etapa e pendencias da producao."
+            "Acompanhamento operacional por destino, etapa e pendências da produção."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -397,7 +380,7 @@ class ProductionView(QWidget):
         s = self.scale
         meta = _destination_card_meta(destination) or {}
         title_text = meta.get("title") or _normalize_destination(destination)
-        helper_text = meta.get("helper") or "Requisicoes ativas neste destino."
+        helper_text = meta.get("helper") or "Requisições ativas neste destino."
         accent_color = meta.get("accent") or PROD_CARD_PRIMARY
 
         card = QFrame()
@@ -704,7 +687,7 @@ class ProductionView(QWidget):
             self._fill_stage_table(destination, PRODUCTION_STAGE, production_rows)
 
         generated_at = _parse_datetime(payload.get("generated_at")) if isinstance(payload, dict) else None
-        current = generated_at or datetime.now()
+        current = generated_at or local_now()
         self.date_label.setText(_format_header_date(current))
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
@@ -721,7 +704,7 @@ class ProductionView(QWidget):
                 str(req.get("ped_number", "")),
                 req.get("client_name") or str(req.get("client_id", "")),
                 req.get("obra") or "—",
-                str(req.get("emission_date", ""))[:10],
+                _format_date(req.get("emission_date")),
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(str(value))

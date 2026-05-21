@@ -1,7 +1,6 @@
-"""Central de usuarios com importacao, cadastro individual e manutencao de acessos."""
+"""Central de usuários com importação, cadastro individual e manutenção de acessos."""
 
 import os
-from datetime import datetime
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
@@ -30,18 +29,23 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.datetime_utils import (
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+)
 from ..core.session import session
 
 
 ROLE_OPTIONS = [
     ("ADMINISTRADOR", "admin"),
     ("GERENTE", "gerente"),
-    ("PRODUCAO", "producao"),
-    ("INDUSTRIA", "industria"),
+    ("PRODUÇÃO", "producao"),
+    ("INDÚSTRIA", "industria"),
     ("VENDEDOR", "vendedor"),
 ]
 ROLE_LABELS = {value: label for label, value in ROLE_OPTIONS}
-ROLE_LABELS["entrega"] = "INDUSTRIA"
+ROLE_LABELS["entrega"] = "INDÚSTRIA"
 
 DASH_BG = "#F4F7FB"
 DASH_SURFACE = "#FFFFFF"
@@ -174,16 +178,6 @@ def _field_style(scale: float) -> str:
     )
 
 
-def _format_header_date(value: datetime | None = None) -> str:
-    current = value or datetime.now()
-    return current.strftime("%d/%m/%Y")
-
-
-def _format_datetime(value: datetime | None = None) -> str:
-    current = value or datetime.now()
-    return current.strftime("%d/%m/%Y %H:%M")
-
-
 class ActionWorker(QObject):
     result = Signal(object)
     error = Signal(str)
@@ -268,7 +262,7 @@ class UserCenterView(QWidget):
             f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Importe usuarios, ajuste niveis de acesso e mantenha senhas e cadastros em dia."
+            "Importe usuários, ajuste níveis de acesso e mantenha senhas e cadastros em dia."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -381,13 +375,13 @@ class UserCenterView(QWidget):
         accent.setStyleSheet(
             f"background:{DASH_SECONDARY}; border:none; border-radius:{max(2, int(3 * s))}px;"
         )
-        title = QLabel("IMPORTACAO DE USUARIOS")
+        title = QLabel("IMPORTAÇÃO DE USUÁRIOS")
         title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
             f"color:{DASH_TEXT}; background:transparent;"
         )
         helper = QLabel(
-            "Arquivo esperado: usuarios.ods na pasta base, com colunas Codigo, Nome, Contato e Setor."
+            "Arquivo esperado: usuarios.ods na pasta base, com colunas Código, Nome, Contato e Setor."
         )
         helper.setWordWrap(True)
         helper.setStyleSheet(
@@ -409,7 +403,7 @@ class UserCenterView(QWidget):
         browse.clicked.connect(self._browse_import_file)
         row.addWidget(browse)
 
-        self.import_btn = QPushButton("IMPORTAR USUARIOS")
+        self.import_btn = QPushButton("IMPORTAR USUÁRIOS")
         self.import_btn.setFixedHeight(max(38, int(44 * s)))
         self.import_btn.setStyleSheet(_primary_action_btn_style(s))
         self.import_btn.clicked.connect(self._start_import)
@@ -452,7 +446,7 @@ class UserCenterView(QWidget):
 
         header = QHBoxLayout()
         header.setSpacing(max(10, int(12 * s)))
-        title = QLabel("LISTA DE USUARIOS")
+        title = QLabel("LISTA DE USUÁRIOS")
         title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
             f"color:{DASH_TEXT}; background:transparent;"
@@ -461,7 +455,7 @@ class UserCenterView(QWidget):
         header.addStretch()
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Buscar por codigo, nome, contato ou setor...")
+        self.search_input.setPlaceholderText("Buscar por código, nome, contato ou setor...")
         self.search_input.setFixedHeight(max(38, int(44 * s)))
         self.search_input.setStyleSheet(_field_style(s))
         self.search_input.textChanged.connect(self._apply_filter)
@@ -543,7 +537,7 @@ class UserCenterView(QWidget):
             f"color:{DASH_TEXT}; background:transparent;"
         )
         helper = QLabel(
-            "Deixe a senha em branco para criar o usuario em primeiro acesso. No cadastro existente, so preencha a senha se quiser altera-la."
+            "Deixe a senha em branco para criar o usuário em primeiro acesso. No cadastro existente, só preencha a senha se quiser alterá-la."
         )
         helper.setWordWrap(True)
         helper.setStyleSheet(
@@ -556,7 +550,7 @@ class UserCenterView(QWidget):
         grid.setHorizontalSpacing(max(8, int(10 * s)))
         grid.setVerticalSpacing(max(8, int(10 * s)))
 
-        self.form_status = QLabel("Novo usuario")
+        self.form_status = QLabel("Novo usuário")
         self.form_status.setStyleSheet(
             f"color:{DASH_PRIMARY}; font-size:{max(8, int(9 * s))}pt; font-weight:700;"
         )
@@ -571,7 +565,7 @@ class UserCenterView(QWidget):
         self.input_sector = self._input()
         self.input_password = self._input(password=True)
         self.input_password_confirm = self._input(password=True)
-        self.check_active = QCheckBox("Usuario ativo")
+        self.check_active = QCheckBox("Usuário ativo")
         self.check_active.setChecked(True)
         self.check_active.setStyleSheet(
             f"color:{DASH_TEXT}; font-size:{max(8, int(9 * s))}pt;"
@@ -583,7 +577,7 @@ class UserCenterView(QWidget):
         for label, value in ROLE_OPTIONS:
             self.combo_role.addItem(label, value)
 
-        grid.addWidget(self._field_label("Codigo"), 0, 0)
+        grid.addWidget(self._field_label("Código"), 0, 0)
         grid.addWidget(self.input_code, 0, 1)
         grid.addWidget(self._field_label("Nome"), 1, 0)
         grid.addWidget(self.input_name, 1, 1)
@@ -591,7 +585,7 @@ class UserCenterView(QWidget):
         grid.addWidget(self.input_contact, 2, 1)
         grid.addWidget(self._field_label("Setor"), 3, 0)
         grid.addWidget(self.input_sector, 3, 1)
-        grid.addWidget(self._field_label("Nivel de acesso"), 4, 0)
+        grid.addWidget(self._field_label("Nível de acesso"), 4, 0)
         grid.addWidget(self.combo_role, 4, 1)
         grid.addWidget(self._field_label("Nova senha"), 5, 0)
         grid.addWidget(self.input_password, 5, 1)
@@ -667,10 +661,10 @@ class UserCenterView(QWidget):
             cb.result.connect(on_result)
         if success_message:
             cb.result.connect(
-                lambda _: QMessageBox.information(self, "Central de usuarios", success_message)
+                lambda _: QMessageBox.information(self, "Central de usuários", success_message)
             )
         cb.error.connect(self._show_error)
-        cb.error.connect(lambda msg: QMessageBox.critical(self, "Central de usuarios", msg))
+        cb.error.connect(lambda msg: QMessageBox.critical(self, "Central de usuários", msg))
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
@@ -691,13 +685,13 @@ class UserCenterView(QWidget):
 
     def _show_error(self, message: str):
         self.updated_label.setText("Falha ao atualizar")
-        self.error_label.setText(f"Nao foi possivel carregar a central de usuarios.\n\n{message}")
+        self.error_label.setText(f"Não foi possível carregar a central de usuários.\n\n{message}")
         self.error_label.show()
 
     def _populate_users(self, payload: object):
         self._users_all = payload if isinstance(payload, list) else []
         self._apply_filter()
-        current = datetime.now()
+        current = local_now()
         self.date_label.setText(_format_header_date(current))
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
@@ -737,7 +731,7 @@ class UserCenterView(QWidget):
                 str(user.get("sector") or "-"),
                 ROLE_LABELS.get(str(user.get("role") or ""), str(user.get("role") or "-")),
                 "Ativo" if user.get("is_active") else "Inativo",
-                "Pendente" if user.get("must_change_password") else "Concluido",
+                "Pendente" if user.get("must_change_password") else "Concluído",
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -758,7 +752,7 @@ class UserCenterView(QWidget):
     def _browse_import_file(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Selecionar planilha de usuarios",
+            "Selecionar planilha de usuários",
             "",
             "Planilhas (*.ods *.xlsx *.xlsm *.xls)",
             options=QFileDialog.Option.DontUseNativeDialog,
@@ -769,12 +763,12 @@ class UserCenterView(QWidget):
     def _start_import(self):
         path = self.input_import_path.text().strip()
         if not path:
-            QMessageBox.warning(self, "Central de usuarios", "Informe o caminho da planilha.")
+            QMessageBox.warning(self, "Central de usuários", "Informe o caminho da planilha.")
             return
 
         current = next((pair for pair in self._threads if isinstance(pair[1], ImportWorker)), None)
         if current and current[0].isRunning():
-            QMessageBox.information(self, "Central de usuarios", "A importacao atual ainda esta em andamento.")
+            QMessageBox.information(self, "Central de usuários", "A importação atual ainda está em andamento.")
             return
 
         self.import_btn.setEnabled(False)
@@ -812,7 +806,7 @@ class UserCenterView(QWidget):
         try:
             self.import_log.setPlainText(result.summary())
         except Exception:
-            self.import_log.setPlainText("Importacao concluida.")
+            self.import_log.setPlainText("Importação concluída.")
         self.refresh()
 
     def _on_import_error(self, message: str):
@@ -822,11 +816,11 @@ class UserCenterView(QWidget):
 
     def _reset_import_button(self):
         self.import_btn.setEnabled(True)
-        self.import_btn.setText("IMPORTAR USUARIOS")
+        self.import_btn.setText("IMPORTAR USUÁRIOS")
 
     def _prepare_new_user(self):
         self._selected_user_id = None
-        self.form_status.setText("Novo usuario")
+        self.form_status.setText("Novo usuário")
         self.input_code.clear()
         self.input_name.clear()
         self.input_contact.clear()
@@ -877,20 +871,20 @@ class UserCenterView(QWidget):
         contact_digits = "".join(ch for ch in contact if ch.isdigit())
 
         if not code or not name:
-            QMessageBox.warning(self, "Central de usuarios", "Informe ao menos codigo e nome.")
+            QMessageBox.warning(self, "Central de usuários", "Informe ao menos código e nome.")
             return
         if contact and len(contact_digits) != 11:
             QMessageBox.warning(
                 self,
-                "Central de usuarios",
+                "Central de usuários",
                 "Informe o contato no formato (61) 9 9999-9999.",
             )
             return
         if password != password_confirm:
-            QMessageBox.warning(self, "Central de usuarios", "A confirmacao da senha nao confere.")
+            QMessageBox.warning(self, "Central de usuários", "A confirmação da senha não confere.")
             return
         if password and len(password.strip()) < 6:
-            QMessageBox.warning(self, "Central de usuarios", "A senha precisa ter pelo menos 6 caracteres.")
+            QMessageBox.warning(self, "Central de usuários", "A senha precisa ter pelo menos 6 caracteres.")
             return
 
         self._set_contact_text(contact)
@@ -918,7 +912,7 @@ class UserCenterView(QWidget):
                 api.create_user,
                 payload,
                 on_result=_after_save,
-                success_message="Usuario salvo com sucesso.",
+                success_message="Usuário salvo com sucesso.",
             )
         else:
             self._run_action(
@@ -931,16 +925,16 @@ class UserCenterView(QWidget):
 
     def _deactivate_user(self):
         if self._selected_user_id is None:
-            QMessageBox.information(self, "Central de usuarios", "Selecione um usuario primeiro.")
+            QMessageBox.information(self, "Central de usuários", "Selecione um usuário primeiro.")
             return
         if self._selected_user_id == session.user_id:
-            QMessageBox.warning(self, "Central de usuarios", "Nao e permitido desativar o proprio usuario.")
+            QMessageBox.warning(self, "Central de usuários", "Não é permitido desativar o próprio usuário.")
             return
 
         reply = QMessageBox.question(
             self,
-            "Central de usuarios",
-            "Deseja desativar este usuario?",
+            "Central de usuários",
+            "Deseja desativar este usuário?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -950,5 +944,5 @@ class UserCenterView(QWidget):
             api.deactivate_user,
             self._selected_user_id,
             on_result=lambda _: (self.refresh(), self._prepare_new_user()),
-            success_message="Usuario desativado com sucesso.",
+            success_message="Usuário desativado com sucesso.",
         )
