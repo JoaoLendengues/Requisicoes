@@ -15,12 +15,13 @@ from ..schemas.user import (
     UserUpdate,
 )
 from ..services.auth_service import hash_password
+from ..services.text_normalizer import normalize_upper_required
 
 router = APIRouter(prefix="/users", tags=["Usuarios"])
 
 
 def _normalize_code(code: str) -> str:
-    return str(code or "").strip()
+    return normalize_upper_required(code)
 
 
 def _auto_email(code: str) -> str:

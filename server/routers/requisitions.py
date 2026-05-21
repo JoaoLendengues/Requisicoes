@@ -52,6 +52,7 @@ from ..dependencies import (
 )
 from ..services.runtime_monitor import snapshot as runtime_snapshot
 from ..services.sse_manager import connected_user_ids
+from ..services.text_normalizer import normalize_canvas_json_text
 
 router = APIRouter(prefix="/requisitions", tags=["Requisições"])
 
@@ -1476,10 +1477,11 @@ def update_canvas(
     if not _can_edit_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_editable(req)
+    normalized_json = normalize_canvas_json_text(data.json_data) or "{}"
     if req.canvas:
-        req.canvas.json_data = data.json_data
+        req.canvas.json_data = normalized_json
     else:
-        db.add(CanvasData(requisition_id=req.id, json_data=data.json_data))
+        db.add(CanvasData(requisition_id=req.id, json_data=normalized_json))
     db.commit()
     return _get_or_404(db, req_id)
 

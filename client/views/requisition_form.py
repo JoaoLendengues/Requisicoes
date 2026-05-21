@@ -27,6 +27,7 @@ from ..core import theme
 from ..core.dialogs import apply_message_box_theme
 from ..core.resolution import res
 from ..core.session import session
+from ..core.text_case import bind_uppercase_line_edit, bind_uppercase_text_edit
 from ..api import client as api
 from ..widgets.status_badge import StatusBadge
 from ..widgets.item_table import ItemTable
@@ -696,6 +697,7 @@ class RequisitionForm(QWidget):
         self.input_obra.setPlaceholderText("Nome da obra")
         self.input_obra.setFixedHeight(max(30,int(36*s)))
         self.input_obra.setStyleSheet(theme.input_style(s))
+        bind_uppercase_line_edit(self.input_obra)
         layout.addWidget(self.input_obra, 1, 1)
 
         # Fone
@@ -714,6 +716,7 @@ class RequisitionForm(QWidget):
         self.input_address.setPlaceholderText("Endereço completo de entrega")
         self.input_address.setFixedHeight(max(30,int(36*s)))
         self.input_address.setStyleSheet(theme.input_style(s))
+        bind_uppercase_line_edit(self.input_address)
         layout.addWidget(self.input_address, 3, 1)
 
         layout.setColumnStretch(0, 1)
@@ -803,6 +806,7 @@ class RequisitionForm(QWidget):
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
             f"font-size:{max(9,int(11*s))}pt; padding:6px; background:{theme.INPUT_BG};"
         )
+        bind_uppercase_text_edit(self.input_obs)
         obs_layout.addWidget(self.input_obs)
         layout.addWidget(obs_card, 2)
 

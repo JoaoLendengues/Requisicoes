@@ -10,6 +10,7 @@ from .models import client, notification, product, production_machine, requisiti
 from .routers import auth, clients, notifications, products, requisitions, users
 from .seed import seed_admin, seed_production_machines
 from .services.runtime_monitor import record_exception, record_request
+from .services.text_normalizer import normalize_existing_user_written_data
 
 
 def _migrate():
@@ -50,6 +51,10 @@ async def lifespan(app: FastAPI):
     _migrate()
     seed_admin()
     seed_production_machines()
+    try:
+        normalize_existing_user_written_data()
+    except Exception:
+        pass
     yield
 
 

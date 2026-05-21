@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QFrame, QComboBox,
 )
 from ..core import theme
+from ..core.text_case import normalize_upper_text
 
 
 class Tool(Enum):
@@ -99,7 +100,7 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setPen(pen)
 
     elif t == "text":
-        item = QGraphicsTextItem(d.get("text", ""))
+        item = QGraphicsTextItem(normalize_upper_text(d.get("text", "")))
         item.setPos(QPointF(d["x"], d["y"]))
         item.setDefaultTextColor(QColor(d.get("color", "#000000")))
         font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
@@ -331,6 +332,9 @@ class DrawingScene(QGraphicsScene):
         selected = set(self.selectedItems())
         for item in self.items():
             if isinstance(item, QGraphicsTextItem) and item not in selected:
+                normalized_text = normalize_upper_text(item.toPlainText())
+                if normalized_text != item.toPlainText():
+                    item.setPlainText(normalized_text)
                 item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         for item in selected:
             if isinstance(item, QGraphicsTextItem):
@@ -461,6 +465,7 @@ class DrawingScene(QGraphicsScene):
 
         if tool == Tool.TEXT:
             text, ok = QInputDialog.getText(self.cw, "Texto", "Digite o texto:")
+            text = normalize_upper_text(text).strip()
             if ok and text:
                 item = QGraphicsTextItem(text)
                 item.setPos(pos)
@@ -1343,7 +1348,7 @@ class DrawingCanvas(QWidget):
         if isinstance(item, QGraphicsTextItem):
             return {"type": "text",
                     "x": item.pos().x(), "y": item.pos().y(),
-                    "text": item.toPlainText(),
+                    "text": normalize_upper_text(item.toPlainText()),
                     "color": item.defaultTextColor().name(),
                     "font_size": item.font().pointSize(),
                     "rotation": rot}

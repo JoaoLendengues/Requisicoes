@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 
 from ..core import theme
+from ..core.text_case import normalize_upper_text
 
 
 POSITION_COL = 0
@@ -31,6 +32,14 @@ COLUMNS = [
 ]
 
 POSITIONS = [chr(i) for i in range(ord("A"), ord("Z") + 1)]
+UPPERCASE_COLS = {
+    PRODUCT_CODE_COL,
+    PRODUCT_NAME_COL,
+    COMP_COL,
+    DESENV_COL,
+    CHAPA_COL,
+    TIPO_COL,
+}
 
 
 class ItemTable(QWidget):
@@ -112,7 +121,7 @@ class ItemTable(QWidget):
         return POSITIONS[row] if row < len(POSITIONS) else f"#{row + 1}"
 
     def _set_position_item(self, row: int, value: str | None = None):
-        text = (value or self._default_position(row)).strip().upper() or self._default_position(row)
+        text = normalize_upper_text(value or self._default_position(row)).strip() or self._default_position(row)
         item = QTableWidgetItem(text)
         item.setFlags(
             Qt.ItemFlag.ItemIsEnabled
@@ -163,12 +172,19 @@ class ItemTable(QWidget):
         col = item.column()
 
         if col == POSITION_COL:
-            text = item.text().strip().upper() or self._default_position(row)
+            text = normalize_upper_text(item.text()).strip() or self._default_position(row)
             self.table.blockSignals(True)
             item.setText(text)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.blockSignals(False)
             return
+
+        if col in UPPERCASE_COLS:
+            normalized = normalize_upper_text(item.text())
+            if normalized != item.text():
+                self.table.blockSignals(True)
+                item.setText(normalized)
+                self.table.blockSignals(False)
 
         if col == PRODUCT_CODE_COL:
             code = item.text().strip()
@@ -210,8 +226,8 @@ class ItemTable(QWidget):
 
     def apply_product_lookup(self, row: int, product: dict):
         self.table.blockSignals(True)
-        self._ensure_cell(row, PRODUCT_CODE_COL).setText(product.get("code", ""))
-        self._ensure_cell(row, PRODUCT_NAME_COL).setText(product.get("name", ""))
+        self._ensure_cell(row, PRODUCT_CODE_COL).setText(normalize_upper_text(product.get("code", "")))
+        self._ensure_cell(row, PRODUCT_NAME_COL).setText(normalize_upper_text(product.get("name", "")))
         self.table.blockSignals(False)
 
     def get_items(self) -> list[dict]:
@@ -244,20 +260,20 @@ class ItemTable(QWidget):
         for row, item in enumerate(items):
             self._set_position_item(row, item.get("position"))
             self.table.setItem(
-                row, PRODUCT_CODE_COL, QTableWidgetItem(item.get("product_code") or "")
+                row, PRODUCT_CODE_COL, QTableWidgetItem(normalize_upper_text(item.get("product_code") or ""))
             )
             self.table.setItem(
-                row, PRODUCT_NAME_COL, QTableWidgetItem(item.get("product_name") or "")
+                row, PRODUCT_NAME_COL, QTableWidgetItem(normalize_upper_text(item.get("product_name") or ""))
             )
             self.table.setItem(
                 row, QUANTITY_COL, QTableWidgetItem(str(item.get("quantity") or ""))
             )
-            self.table.setItem(row, COMP_COL, QTableWidgetItem(item.get("comp") or ""))
+            self.table.setItem(row, COMP_COL, QTableWidgetItem(normalize_upper_text(item.get("comp") or "")))
             self.table.setItem(
-                row, DESENV_COL, QTableWidgetItem(item.get("desenv") or "")
+                row, DESENV_COL, QTableWidgetItem(normalize_upper_text(item.get("desenv") or ""))
             )
-            self.table.setItem(row, CHAPA_COL, QTableWidgetItem(item.get("chapa") or ""))
-            self.table.setItem(row, TIPO_COL, QTableWidgetItem(item.get("tipo") or ""))
+            self.table.setItem(row, CHAPA_COL, QTableWidgetItem(normalize_upper_text(item.get("chapa") or "")))
+            self.table.setItem(row, TIPO_COL, QTableWidgetItem(normalize_upper_text(item.get("tipo") or "")))
             weight = item.get("weight")
             self.table.setItem(
                 row,

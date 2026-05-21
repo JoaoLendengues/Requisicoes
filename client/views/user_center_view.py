@@ -36,6 +36,7 @@ from ..core.datetime_utils import (
     local_now,
 )
 from ..core.session import session
+from ..core.text_case import bind_uppercase_line_edit
 
 
 ROLE_OPTIONS = [
@@ -545,6 +546,9 @@ class UserCenterView(QWidget):
         self.input_sector = self._input()
         self.input_password = self._input(password=True)
         self.input_password_confirm = self._input(password=True)
+        bind_uppercase_line_edit(self.input_code)
+        bind_uppercase_line_edit(self.input_name)
+        bind_uppercase_line_edit(self.input_sector)
         self.check_active = QCheckBox("Usuário ativo")
         self.check_active.setChecked(True)
         self.check_active.setStyleSheet(

@@ -5,6 +5,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from ..models.user import User
 from ..config import settings
+from .text_normalizer import normalize_upper_required
 
 
 def _normalize_password(password: str) -> str:
@@ -43,7 +44,10 @@ def authenticate_user(db: Session, code: str, password: str) -> Optional[User]:
 
 
 def get_active_user_by_code(db: Session, code: str) -> Optional[User]:
-    return db.query(User).filter(User.code == code, User.is_active == True).first()
+    normalized_code = normalize_upper_required(code)
+    if not normalized_code:
+        return None
+    return db.query(User).filter(User.code == normalized_code, User.is_active == True).first()
 
 
 def decode_token(token: str) -> Optional[dict]:
