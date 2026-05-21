@@ -383,15 +383,9 @@ class ProductionView(QWidget):
         machine_title_col = QVBoxLayout()
         machine_title_col.setSpacing(max(3, int(4 * s)))
 
-<<<<<<< HEAD
         machine_title = QLabel("Máquinas")
         machine_title.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(12, int(14 * s))}pt; font-weight:800;")
         machine_subtitle = QLabel("Selecione a requisição de cada card para finalizar ou devolver para a fila.")
-=======
-        machine_title = QLabel("Maquinas")
-        machine_title.setStyleSheet(f"font-size:{max(12, int(14 * s))}pt; font-weight:800;")
-        machine_subtitle = QLabel("Selecione a requisicao de cada card para finalizar ou devolver para a fila.")
->>>>>>> ab3c7371db9f7ab14a6cd098ffab3bfab817e55c
         machine_subtitle.setWordWrap(True)
         machine_subtitle.setProperty("muted", "1")
         machine_subtitle.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
@@ -688,14 +682,9 @@ class ProductionView(QWidget):
         s = self.scale
 
         if not self._machines_data:
-<<<<<<< HEAD
             empty = QLabel("Nenhuma máquina cadastrada para este destino.")
             empty.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:600;")
-=======
-            empty = QLabel("Nenhuma maquina cadastrada para este destino.")
             empty.setProperty("muted", "1")
-            empty.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt; font-weight:600;")
->>>>>>> ab3c7371db9f7ab14a6cd098ffab3bfab817e55c
             self.machines_grid.addWidget(empty, 0, 0)
             return
 
@@ -742,14 +731,9 @@ class ProductionView(QWidget):
 
         status_row = QHBoxLayout()
         status_row.setSpacing(max(8, int(10 * s)))
-<<<<<<< HEAD
         status_label = QLabel("Status da Máquina")
         status_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
-=======
-        status_label = QLabel("Status da Maquina")
         status_label.setProperty("muted", "1")
-        status_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
->>>>>>> ab3c7371db9f7ab14a6cd098ffab3bfab817e55c
         status_combo = QComboBox()
         for value, text in MACHINE_STATUS_OPTIONS:
             status_combo.addItem(text, value)
