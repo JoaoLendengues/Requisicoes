@@ -1145,6 +1145,7 @@ class RequisitionForm(QWidget):
         printer = QPrinter(QPrinter.PrinterMode.HighResolution)
         printer.setDocName(f"Requisicao {self.input_ped.text().strip() or '000000'}")
         printer.setPageOrientation(QPageLayout.Orientation.Landscape)
+        printer.setFullPage(True)
 
         dialog = QPrintDialog(printer, self)
         dialog.setWindowTitle("Imprimir requisição")
@@ -1177,7 +1178,9 @@ class RequisitionForm(QWidget):
                     printer.newPage()
 
                 page_size = document.pagePointSize(page_index)
-                target_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+                target_rect = printer.paperRect(QPrinter.Unit.DevicePixel)
+                if target_rect.width() <= 0 or target_rect.height() <= 0:
+                    target_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
                 target_x = int(round(target_rect.x()))
                 target_y = int(round(target_rect.y()))
                 target_width = max(1, int(round(target_rect.width())))
