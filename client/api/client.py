@@ -151,6 +151,16 @@ def get_order_center() -> dict:
         return _check(client.get("/requisitions/order-center/summary"))
 
 
+def get_production_summary(destination: str) -> dict:
+    with _cli() as client:
+        return _check(
+            client.get(
+                "/requisitions/production/summary",
+                params={"destination": destination},
+            )
+        )
+
+
 def get_requisition(req_id: int) -> dict:
     with _cli() as client:
         return _check(client.get(f"/requisitions/{req_id}"))
@@ -172,6 +182,16 @@ def update_status(req_id: int, status: str, note: str = "") -> dict:
             f"/requisitions/{req_id}/status",
             json={"status": status, "note": note},
         ))
+
+
+def update_production_machine_status(machine_id: int, status: str) -> dict:
+    with _cli() as client:
+        return _check(
+            client.patch(
+                f"/requisitions/production/machines/{machine_id}/status",
+                json={"status": status},
+            )
+        )
 
 
 def update_canvas(req_id: int, json_data: str) -> dict:
