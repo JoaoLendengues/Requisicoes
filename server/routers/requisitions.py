@@ -718,7 +718,9 @@ def update_status(
     current_user: User = Depends(get_current_user),
 ):
     from ..services.notification_service import (
-        build_production_sent, build_vendor_event, push_all,
+        notify_production_team as build_production_sent,
+        notify_vendor          as build_vendor_event,
+        dispatch               as push_all,
     )
 
     req = _get_or_404(db, req_id)
@@ -812,7 +814,10 @@ def cancel_requisition(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from ..services.notification_service import build_vendor_event, push_all
+    from ..services.notification_service import (
+        notify_vendor as build_vendor_event,
+        dispatch      as push_all,
+    )
 
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):

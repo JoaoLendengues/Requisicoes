@@ -1,20 +1,30 @@
+"""
+Endpoints de notificações.
+
+GET  /notifications/stream    → SSE: stream em tempo real + entrega inicial das não lidas
+GET  /notifications/          → lista as não lidas do usuário (máx 50)
+GET  /notifications/count     → contagem de não lidas
+PATCH /notifications/read-all → marca todas como lidas
+PATCH /notifications/{id}/read → marca uma como lida
+"""
+from typing import List
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List
 
 from ..database import get_db
-from ..models.notification import Notification
-from ..models.user import User, Role
-from ..schemas.notification import NotificationResponse
 from ..dependencies import get_current_user
+from ..models.notification import Notification
+from ..models.user import Role, User
+from ..schemas.notification import NotificationOut
 from ..services import sse_manager
 from ..services.notification_service import stuck_requisition_events
 
 router = APIRouter(prefix="/notifications", tags=["Notificações"])
 
 
-def _notif_to_dict(n: Notification) -> dict:
+def _orm_to_dict(n: Notification) -> dict:
     return {
         "id":             n.id,
         "type":           n.type,
@@ -32,13 +42,15 @@ async def stream_notifications(
     current_user: User = Depends(get_current_user),
 ):
     """
-    SSE stream de notificações.
-    Ao conectar (ou reconectar), envia imediatamente todas as notificações
-    não lidas do banco — garantindo entrega mesmo que o push em tempo real
-    tenha ocorrido enquanto o usuário estava desconectado.
+    SSE stream de notificações para o usuário autenticado.
+
+    Ao conectar (ou reconectar após queda), o servidor entrega imediatamente
+    todas as notificações não lidas do banco como eventos iniciais — garantindo
+    que nenhuma notificação seja perdida mesmo que o push em tempo real tenha
+    ocorrido enquanto o cliente estava desconectado.
     """
-    # Notificações não lidas do banco como eventos iniciais
-    unread = (
+    # Busca notificações não lidas do banco
+    nao_lidas = (
         db.query(Notification)
         .filter(
             Notification.user_id == current_user.id,
@@ -48,27 +60,34 @@ async def stream_notifications(
         .limit(30)
         .all()
     )
-    initial: list[dict] = [_notif_to_dict(n) for n in unread]
+    initial = [_orm_to_dict(n) for n in nao_lidas]
 
-    # Requisições paradas para admin/gerente
+    # Admin e gerente recebem alertas de requisições paradas
     if current_user.role in (Role.ADMIN, Role.GERENTE):
         initial.extend(stuck_requisition_events(db))
 
     return StreamingResponse(
         sse_manager.event_stream(current_user.id, initial),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
-@router.get("/", response_model=List[NotificationResponse])
+@router.get("/", response_model=List[NotificationOut])
 def list_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Retorna as 50 notificações não lidas mais recentes do usuário."""
     return (
         db.query(Notification)
-        .filter(Notification.user_id == current_user.id, Notification.read == False)
+        .filter(
+            Notification.user_id == current_user.id,
+            Notification.read == False,
+        )
         .order_by(Notification.created_at.desc())
         .limit(50)
         .all()
@@ -80,9 +99,13 @@ def unread_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Retorna a contagem de notificações não lidas."""
     count = (
         db.query(Notification)
-        .filter(Notification.user_id == current_user.id, Notification.read == False)
+        .filter(
+            Notification.user_id == current_user.id,
+            Notification.read == False,
+        )
         .count()
     )
     return {"count": count}
@@ -93,6 +116,7 @@ def mark_all_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Marca todas as notificações do usuário como lidas."""
     db.query(Notification).filter(
         Notification.user_id == current_user.id,
         Notification.read == False,
@@ -102,11 +126,12 @@ def mark_all_read(
 
 
 @router.patch("/{notif_id}/read")
-def mark_read(
+def mark_one_read(
     notif_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Marca uma notificação específica como lida."""
     n = db.query(Notification).filter(
         Notification.id == notif_id,
         Notification.user_id == current_user.id,

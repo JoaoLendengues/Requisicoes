@@ -412,11 +412,20 @@ class MainWindow(QMainWindow):
     # ── Notificações ─────────────────────────────────────────────────────────
 
     def _start_notification_listener(self):
+        """
+        Inicia o listener SSE e o poll de segurança do badge.
+
+        Fluxo de entrega garantida:
+        1. Ao conectar ao SSE, o servidor envia todas as não lidas do banco
+        2. _on_notification exibe toast + atualiza badge para cada evento
+        3. _shown_notif_ids evita toast duplicado (SSE inicial vs push)
+        4. Poll de 60s sincroniza o badge caso o SSE esteja indisponível
+        """
         self._listener = NotificationListener(self)
         self._listener.notification_received.connect(self._on_notification)
         self._listener.start()
 
-        # Poll a cada 60s como segurança para o badge
+        # Poll de segurança a cada 60s para manter o badge correto
         self._notif_timer = QTimer(self)
         self._notif_timer.setInterval(60_000)
         self._notif_timer.timeout.connect(self._sync_badge)
@@ -424,24 +433,29 @@ class MainWindow(QMainWindow):
 
     def _on_notification(self, data: dict):
         """
-        Chamado para CADA evento SSE recebido — incluindo os eventos iniciais
-        que o servidor envia ao conectar (notificações não lidas do banco).
-        Usa _shown_notif_ids para garantir que o toast apareça apenas uma vez
-        por notificação, mesmo que o evento chegue via SSE inicial e depois
-        via push em tempo real.
+        Processa cada evento SSE recebido.
+
+        Inclui tanto eventos iniciais (não lidas do banco ao conectar)
+        quanto pushes em tempo real. _shown_notif_ids garante que o
+        toast apareça exatamente uma vez por notificação.
         """
         nid = data.get("id")
-        if nid and nid in self._shown_notif_ids:
-            return  # já exibido, ignorar
         if nid:
+            if nid in self._shown_notif_ids:
+                return          # já exibido — ignora
             self._shown_notif_ids.add(nid)
 
         self._unread_count += 1
         self.sidebar.set_notification_count(self._unread_count)
         self._toast_manager.show(data, on_action=self._on_toast_action)
 
+    def _on_toast_action(self, req_id):
+        """Abre a requisição ao clicar no toast."""
+        if req_id:
+            self._open_requisition(req_id)
+
     def _sync_badge(self):
-        """Poll de segurança: mantém badge sincronizado com o banco."""
+        """Poll de segurança: sincroniza badge com a contagem real do banco."""
         thread, worker = _run_in_thread(
             api.notification_unread_count,
             on_result=lambda r: self._update_badge(r.get("count", 0)),
@@ -452,10 +466,6 @@ class MainWindow(QMainWindow):
     def _update_badge(self, count: int):
         self._unread_count = count
         self.sidebar.set_notification_count(count)
-
-    def _on_toast_action(self, req_id):
-        if req_id:
-            self._open_requisition(req_id)
 
     def _show_notification_panel(self):
         thread, worker = _run_in_thread(
