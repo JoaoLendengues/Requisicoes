@@ -11,14 +11,17 @@ from .seed import seed_admin
 
 
 def _migrate():
-    """Aplica migracoes de colunas adicionadas apos criacao inicial do banco."""
+    """Aplica migracoes de colunas adicionadas apos criacao inicial do banco.
+    Cada statement roda em sua propria transacao para evitar que uma falha
+    (ex: coluna ja existe) aborte as demais — necessario no PostgreSQL.
+    """
     stmts = [
         "ALTER TABLE users ADD COLUMN sector TEXT",
-        "ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT FALSE",
         "ALTER TABLE requisitions ADD COLUMN obs TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",
-        "UPDATE users SET must_change_password = 0 WHERE must_change_password IS NULL",
+        "UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL",
         "UPDATE users SET role = 'industria' WHERE role = 'entrega'",
         "UPDATE requisitions SET status = 'em_andamento' WHERE UPPER(status) IN "
         "('RASCUNHO','EMITIDA','RECEBIDA_PRODUCAO','PRONTA','EM_ROTA','AGUARDANDO_RETIRADA','CONCLUIDA')",
@@ -26,12 +29,12 @@ def _migrate():
         "UPDATE requisitions SET status = 'aguardando_recebimento' "
         "WHERE status = 'em_producao' AND finalized_at IS NULL",
     ]
-    with engine.begin() as conn:
-        for stmt in stmts:
-            try:
+    for stmt in stmts:
+        try:
+            with engine.begin() as conn:
                 conn.execute(text(stmt))
-            except Exception:
-                pass
+        except Exception:
+            pass
 
 
 @asynccontextmanager
