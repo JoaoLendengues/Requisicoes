@@ -925,7 +925,7 @@ class RequisitionForm(QWidget):
     def _print_requisition_pdf(self):
         self._set_print_busy(True)
         try:
-            pdf_path = self._generate_current_pdf()
+            pdf_path = self._find_saved_pdf_for_print()
             self._print_pdf_file(pdf_path)
         except Exception as exc:
             QMessageBox.critical(self, "Impressão", str(exc))
@@ -1011,6 +1011,39 @@ class RequisitionForm(QWidget):
         obs = self.input_obs.toPlainText().strip()
         return req, client_payload, obs, self._canvas_json
 
+    def _find_saved_pdf_for_print(self) -> str:
+        ped_number = self.input_ped.text().strip()
+        if not ped_number or not ped_number.isdigit() or int(ped_number) == 0:
+            raise RuntimeError("Informe um número de requisição válido antes de imprimir.")
+
+        folder = self._resolve_pdf_output_folder(require_configured_folder=True)
+        if not os.path.isdir(folder):
+            raise RuntimeError("A pasta de PDFs configurada não foi encontrada.")
+
+        ped_file = ped_number.zfill(6)
+        prefix = f"REQ-{ped_file}-"
+
+        try:
+            pdf_candidates = [
+                os.path.join(folder, name)
+                for name in os.listdir(folder)
+                if name.lower().endswith(".pdf") and name.upper().startswith(prefix.upper())
+            ]
+        except OSError as exc:
+            raise RuntimeError(f"Não foi possível acessar a pasta de PDFs.\n\n{exc}") from exc
+
+        if not pdf_candidates:
+            raise RuntimeError(
+                "Não foi encontrado um PDF salvo para essa requisição na pasta configurada.\n\n"
+                f"Requisição: {ped_file}"
+            )
+
+        pdf_candidates.sort(
+            key=lambda path: (os.path.getmtime(path), os.path.basename(path).lower()),
+            reverse=True,
+        )
+        return pdf_candidates[0]
+
     def _resolve_pdf_output_folder(self, require_configured_folder: bool = True) -> str:
         folder = res.pdf_folder.strip()
         if folder:
@@ -1018,7 +1051,7 @@ class RequisitionForm(QWidget):
 
         if require_configured_folder:
             raise RuntimeError(
-                "Defina a pasta de PDFs nas Configurações antes de enviar a requisição pelo WhatsApp."
+                "Defina a pasta de PDFs nas Configurações antes de localizar ou gerar o PDF da requisição."
             )
 
         folder = os.path.join(tempfile.gettempdir(), "requisicoes-pdf")
