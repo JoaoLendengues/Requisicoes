@@ -758,6 +758,9 @@ def update_status(
             n = build_vendor_event(db, req, "prod_cancelada", prod.get("reason", ""))
             if n:
                 notifications.append(n)
+    elif new_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+        # Vendedor enviou para produção direto pelo status — notifica equipe de produção
+        notifications.extend(build_production_sent(db, req, ""))
     elif new_status == RequisitionStatus.CANCELADA:
         n = build_vendor_event(db, req, "cancelada")
         if n:
