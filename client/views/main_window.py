@@ -178,6 +178,20 @@ class MainWindow(QMainWindow):
             f"{datetime.now().strftime('%d/%m/%Y  %H:%M')}"
         )
 
+    def _refresh_session_profile(self):
+        thread, worker = _run_in_thread(
+            api.get_me,
+            on_result=self._apply_session_profile,
+            on_error=lambda _msg: None,
+        )
+        self._threads.append((thread, worker))
+
+    def _apply_session_profile(self, data: dict):
+        session.update_profile(data)
+        self.sidebar.refresh_user()
+        self.form_view.refresh_logged_user()
+        self._setup_statusbar()
+
     def _on_nav(self, key: str):
         mapping = {
             "nova": PAGE_FORM,
