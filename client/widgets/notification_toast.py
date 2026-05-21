@@ -3,6 +3,7 @@ Sistema de toasts de notificação.
 
 NotificationToast  — card flutuante com slide + fade simultâneos,
                      barra de countdown e pausa automática ao hover.
+                     Usa os tokens TOAST_* de theme.py (suporte a dark mode).
 ToastManager       — empilha múltiplos toasts no canto inferior direito.
 """
 from PySide6.QtCore import (
@@ -15,12 +16,14 @@ from PySide6.QtWidgets import (
     QPushButton, QVBoxLayout,
 )
 
+from ..core import theme
+
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-DISPLAY_MS   = 6_000   # tempo de exibição antes do auto-dismiss
-TOAST_WIDTH  = 360
-MARGIN       = 20      # distância das bordas da janela
-SPACING      = 10      # espaço vertical entre toasts empilhados
+DISPLAY_MS  = 6_000
+TOAST_WIDTH = 360
+MARGIN      = 20
+SPACING     = 10
 
 _ICONS: dict[str, str] = {
     "nova_requisicao":   "🏭",
@@ -32,15 +35,15 @@ _ICONS: dict[str, str] = {
 }
 
 _ACCENT: dict[str, str] = {
-    "nova_requisicao":   "#3B82F6",
-    "em_producao":       "#22C55E",
-    "finalizada":        "#22C55E",
-    "cancelada":         "#EF4444",
-    "prod_cancelada":    "#EAB308",
-    "requisicao_parada": "#EAB308",
+    "nova_requisicao":   "#2563EB",
+    "em_producao":       "#16A34A",
+    "finalizada":        "#16A34A",
+    "cancelada":         "#DC2626",
+    "prod_cancelada":    "#D97706",
+    "requisicao_parada": "#D97706",
 }
 
-_DEFAULT_ACCENT = "#3B82F6"
+_DEFAULT_ACCENT = "#2563EB"
 
 
 # ── Toast individual ──────────────────────────────────────────────────────────
@@ -49,7 +52,7 @@ class NotificationToast(QFrame):
     """Card flutuante com animação de entrada/saída (slide + fade) e hover-pause."""
 
     dismissed      = Signal()
-    action_clicked = Signal(object)   # emite requisition_id (int ou None)
+    action_clicked = Signal(object)
 
     def __init__(self, data: dict, parent=None):
         super().__init__(
@@ -62,9 +65,9 @@ class NotificationToast(QFrame):
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.setWindowOpacity(0.0)
 
-        self._req_id   = data.get("requisition_id")
-        self._group:   QParallelAnimationGroup | None = None
-        self._remaining = DISPLAY_MS   # ms restantes quando hover pausar
+        self._req_id    = data.get("requisition_id")
+        self._group:    QParallelAnimationGroup | None = None
+        self._remaining = DISPLAY_MS
 
         accent = _ACCENT.get(data.get("type", ""), _DEFAULT_ACCENT)
         self._build(data, accent)
@@ -80,44 +83,53 @@ class NotificationToast(QFrame):
         self.setFixedWidth(TOAST_WIDTH)
         self.setStyleSheet(
             f"QFrame {{"
-            f"  background: #1E293B;"
-            f"  border: 1px solid #334155;"
+            f"  background: {theme.TOAST_BG};"
+            f"  border: 1px solid {theme.TOAST_BORDER};"
             f"  border-left: 4px solid {accent};"
-            f"  border-radius: 14px;"
+            f"  border-radius: 12px;"
+            f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
             f"}}"
             f"QLabel {{ background: transparent; }}"
         )
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 14, 12, 10)
-        root.setSpacing(6)
+        root.setContentsMargins(16, 12, 14, 10)
+        root.setSpacing(4)
 
-        # ── Cabeçalho: ícone + título + "agora" + fechar ──
+        # ── Cabeçalho: ícone + título + timestamp + fechar ──
         header = QHBoxLayout()
         header.setSpacing(8)
+        header.setContentsMargins(0, 0, 0, 0)
 
         icon_lbl = QLabel(_ICONS.get(data.get("type", ""), "🔔"))
-        icon_lbl.setStyleSheet("font-size: 18px;")
+        icon_lbl.setStyleSheet("font-size: 17px;")
+        icon_lbl.setFixedWidth(26)
         header.addWidget(icon_lbl)
 
         title_lbl = QLabel(data.get("title", "Notificação"))
-        title_lbl.setStyleSheet("color: #F1F5F9; font-size: 10pt; font-weight: bold;")
+        title_lbl.setStyleSheet(
+            f"color: {theme.TOAST_TITLE}; font-size: 9pt; font-weight: 700;"
+        )
         title_lbl.setWordWrap(True)
         header.addWidget(title_lbl, 1)
 
         ts_lbl = QLabel("agora")
-        ts_lbl.setStyleSheet("color: #475569; font-size: 8pt;")
+        ts_lbl.setStyleSheet(
+            f"color: {theme.TOAST_MUTED}; font-size: 7pt; font-weight: 400;"
+        )
         header.addWidget(ts_lbl)
 
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(22, 22)
+        close_btn.setFixedSize(20, 20)
         close_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         close_btn.setStyleSheet(
-            "QPushButton {"
-            "  background: transparent; color: #64748B;"
-            "  border: none; font-size: 11px; border-radius: 11px;"
-            "}"
-            "QPushButton:hover { background: #334155; color: #F1F5F9; }"
+            f"QPushButton {{"
+            f"  background: transparent; color: {theme.TOAST_CLOSE_FG};"
+            f"  border: none; font-size: 10px; border-radius: 10px;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f"  background: {theme.TOAST_CLOSE_HV}; color: {theme.TOAST_TITLE};"
+            f"}}"
         )
         close_btn.clicked.connect(self._slide_out)
         header.addWidget(close_btn)
@@ -127,40 +139,43 @@ class NotificationToast(QFrame):
         msg = data.get("message", "")
         if msg:
             msg_lbl = QLabel(msg)
-            msg_lbl.setStyleSheet("color: #94A3B8; font-size: 9pt;")
+            msg_lbl.setStyleSheet(
+                f"color: {theme.TOAST_BODY}; font-size: 8pt; font-weight: 400;"
+                f"padding-left: 34px;"
+            )
             msg_lbl.setWordWrap(True)
             root.addWidget(msg_lbl)
 
         # ── Barra de countdown ──
-        root.addSpacing(4)
+        root.addSpacing(6)
         self._bar = QFrame()
-        self._bar.setFixedHeight(3)
+        self._bar.setFixedHeight(2)
         self._bar.setStyleSheet(
-            f"background: {accent}; border-radius: 2px; border: none;"
+            f"background: {accent}; border-radius: 1px; border: none;"
         )
         root.addWidget(self._bar)
 
         self._bar_anim = QPropertyAnimation(self._bar, b"maximumWidth")
-        self._bar_anim.setStartValue(TOAST_WIDTH - 28)
+        self._bar_anim.setStartValue(TOAST_WIDTH - 30)
         self._bar_anim.setEndValue(0)
         self._bar_anim.setDuration(DISPLAY_MS)
         self._bar_anim.setEasingCurve(QEasingCurve.Type.Linear)
 
     def _add_shadow(self):
+        # Extrai RGB do token TOAST_SHADOW para usar em QColor
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(28)
-        shadow.setColor(QColor(0, 0, 0, 160))
-        shadow.setOffset(0, 8)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 44, 109, 30 if not theme.is_dark else 120))
+        shadow.setOffset(0, 4)
         self.setGraphicsEffect(shadow)
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def show_at(self, x: int, y: int):
-        """Exibe o toast com slide-up + fade-in simultâneos."""
         self.adjustSize()
         h = self.sizeHint().height()
 
-        start_pos = QPoint(x, y + h + 30)
+        start_pos = QPoint(x, y + h + 24)
         end_pos   = QPoint(x, y)
 
         self.move(start_pos)
@@ -170,13 +185,13 @@ class NotificationToast(QFrame):
         slide = QPropertyAnimation(self, b"pos")
         slide.setStartValue(start_pos)
         slide.setEndValue(end_pos)
-        slide.setDuration(380)
+        slide.setDuration(340)
         slide.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         fade = QPropertyAnimation(self, b"windowOpacity")
         fade.setStartValue(0.0)
         fade.setEndValue(1.0)
-        fade.setDuration(380)
+        fade.setDuration(340)
         fade.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self._group = QParallelAnimationGroup(self)
@@ -189,7 +204,6 @@ class NotificationToast(QFrame):
         self._dismiss_timer.start(DISPLAY_MS)
 
     def _slide_out(self):
-        """Dispara slide-down + fade-out simultâneos e depois destrói o widget."""
         self._dismiss_timer.stop()
         self._bar_anim.stop()
         if self._group:
@@ -199,14 +213,14 @@ class NotificationToast(QFrame):
 
         slide = QPropertyAnimation(self, b"pos")
         slide.setStartValue(cur)
-        slide.setEndValue(QPoint(cur.x(), cur.y() + self.height() + 30))
-        slide.setDuration(260)
+        slide.setEndValue(QPoint(cur.x(), cur.y() + self.height() + 24))
+        slide.setDuration(240)
         slide.setEasingCurve(QEasingCurve.Type.InCubic)
 
         fade = QPropertyAnimation(self, b"windowOpacity")
         fade.setStartValue(self.windowOpacity())
         fade.setEndValue(0.0)
-        fade.setDuration(260)
+        fade.setDuration(240)
         fade.setEasingCurve(QEasingCurve.Type.InCubic)
 
         self._group = QParallelAnimationGroup(self)
@@ -220,10 +234,9 @@ class NotificationToast(QFrame):
         self.dismissed.emit()
         self.deleteLater()
 
-    # ── Hover: pausa e retomada do timer ──────────────────────────────────────
+    # ── Hover: pausa e retomada ───────────────────────────────────────────────
 
     def enterEvent(self, event):
-        """Pausa o auto-dismiss enquanto o cursor está sobre o toast."""
         remaining = self._dismiss_timer.remainingTime()
         if remaining > 0:
             self._remaining = remaining
@@ -232,7 +245,6 @@ class NotificationToast(QFrame):
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        """Retoma o auto-dismiss ao sair do hover."""
         self._bar_anim.resume()
         if self._remaining > 100:
             self._dismiss_timer.start(self._remaining)
