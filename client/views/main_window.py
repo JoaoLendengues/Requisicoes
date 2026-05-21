@@ -329,6 +329,9 @@ class MainWindow(QMainWindow):
             self._highlight_current_page()
             return
 
+        if page == PAGE_SETTINGS and session.can_access_settings:
+            self.settings_view.refresh_operational_settings()
+
         self.stack.setCurrentIndex(page)
 
     def _confirm_new_requisition(self) -> bool:
@@ -631,6 +634,7 @@ class MainWindow(QMainWindow):
             "url": self.settings_view.input_url.text(),
             "ods_path": self.settings_view.input_ods_path.text(),
             "products_path": self.settings_view.input_products_path.text(),
+            "pending_invoice_alert_days": self.settings_view.input_pending_invoice_days.value(),
             "scale_label": selected_scale,
         }
 
@@ -638,6 +642,9 @@ class MainWindow(QMainWindow):
         self.settings_view.input_url.setText(state.get("url") or "")
         self.settings_view.input_ods_path.setText(state.get("ods_path") or "")
         self.settings_view.input_products_path.setText(state.get("products_path") or "")
+        self.settings_view.input_pending_invoice_days.setValue(
+            int(state.get("pending_invoice_alert_days") or 1)
+        )
         selected_scale = state.get("scale_label")
         for label, btn in self.settings_view._scale_btns.items():
             btn.setChecked(label == selected_scale)

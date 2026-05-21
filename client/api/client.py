@@ -161,6 +161,16 @@ def get_order_center() -> dict:
         return _check(client.get("/requisitions/order-center/summary"))
 
 
+def get_operational_settings() -> dict:
+    with _cli() as client:
+        return _check(client.get("/system-settings/operational"))
+
+
+def update_operational_settings(data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.patch("/system-settings/operational", json=data))
+
+
 def get_production_summary(destination: str) -> dict:
     with _cli() as client:
         return _check(

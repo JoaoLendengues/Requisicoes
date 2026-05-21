@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from .database import Base, engine
 from .models import client, notification, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
-from .routers import auth, clients, notifications, products, requisitions, users
+from .routers import auth, clients, notifications, products, requisitions, system_settings, users
 from .seed import seed_admin, seed_production_machines
 from .services.runtime_monitor import record_exception, record_request
 from .services.text_normalizer import normalize_existing_user_written_data
@@ -93,6 +93,7 @@ app.include_router(clients.router)
 app.include_router(products.router)
 app.include_router(requisitions.router)
 app.include_router(notifications.router)
+app.include_router(system_settings.router)
 
 
 @app.get("/health", tags=["Sistema"])

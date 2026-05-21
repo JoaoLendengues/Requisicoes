@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QFrame, QGraphicsDropShadowEffect,
     QMessageBox, QProgressBar, QTextEdit,
-    QFileDialog,
+    QFileDialog, QSpinBox,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QColor
@@ -100,7 +100,7 @@ def _primary_action_btn_style(scale: float) -> str:
 def _field_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
-        f"QLineEdit, QTextEdit {{"
+        f"QLineEdit, QTextEdit, QSpinBox {{"
         f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:14px;"
         f"  padding:9px 12px; font-size:{fs}pt; color:{theme.TEXT_DARK};"
         f"  selection-background-color:{_rgba(theme.PRIMARY, 24)}; selection-color:{theme.TEXT_DARK};"
@@ -139,6 +139,33 @@ class ImportWorker(QObject):
             self.error.emit(self.kind, str(exc))
 
 
+class SettingsApiWorker(QObject):
+    result = Signal(str, object)
+    error = Signal(str, str)
+    finished = Signal()
+
+    def __init__(self, action: str, payload: dict | None = None):
+        super().__init__()
+        self.action = action
+        self.payload = payload or {}
+
+    def run(self):
+        try:
+            if self.action == "load_operational":
+                result = api.get_operational_settings()
+            elif self.action == "save_operational":
+                result = api.update_operational_settings(self.payload)
+            else:
+                raise ValueError(f"Ação inválida: {self.action}")
+            self.result.emit(self.action, result)
+        except api.APIError as exc:
+            self.error.emit(self.action, exc.detail)
+        except Exception as exc:
+            self.error.emit(self.action, str(exc))
+        finally:
+            self.finished.emit()
+
+
 class SettingsView(QWidget):
     scale_changed = Signal(float)
 
@@ -146,8 +173,11 @@ class SettingsView(QWidget):
         super().__init__(parent)
         self.scale = scale
         self._import_threads: dict[str, tuple[QThread, ImportWorker]] = {}
+        self._threads: list[tuple[QThread, QObject]] = []
         self._import_ui: dict[str, dict] = {}
+        self._pending_save_context: dict | None = None
         self._setup_ui()
+        self.refresh_operational_settings(silent=True)
 
     def _setup_ui(self):
         s = self.scale
@@ -332,6 +362,30 @@ class SettingsView(QWidget):
         )
         layout.addWidget(self.screen_info)
 
+        layout.addWidget(_section("Alertas de Faturamento", s))
+        layout.addWidget(_separator())
+
+        billing_grid = QGridLayout()
+        billing_grid.setSpacing(max(8, int(10 * s)))
+
+        billing_grid.addWidget(self._lbl("Dias para notificar gerente:", s), 0, 0)
+        self.input_pending_invoice_days = QSpinBox()
+        self.input_pending_invoice_days.setRange(1, 3650)
+        self.input_pending_invoice_days.setValue(
+            int(res._read_file().get("pending_invoice_alert_days", 1) or 1)
+        )
+        self.input_pending_invoice_days.setFixedHeight(max(38, int(44 * s)))
+        self.input_pending_invoice_days.setStyleSheet(_field_style(s))
+        billing_grid.addWidget(self.input_pending_invoice_days, 0, 1)
+
+        self.operational_status = QLabel("Sincronizando prazo de alerta com o servidor...")
+        self.operational_status.setProperty("muted", "1")
+        self.operational_status.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
+        billing_grid.addWidget(self.operational_status, 1, 1, 1, 2)
+        layout.addLayout(billing_grid)
+
         self._create_import_section(
             layout=layout,
             kind="clients",
@@ -456,6 +510,92 @@ class SettingsView(QWidget):
         lbl.setStyleSheet(style)
         return lbl
 
+    def refresh_operational_settings(self, silent: bool = False):
+        if not silent:
+            self.operational_status.setText("Sincronizando prazo de alerta com o servidor...")
+        self._start_api_worker("load_operational")
+
+    def _start_api_worker(self, action: str, payload: dict | None = None):
+        worker = SettingsApiWorker(action, payload)
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.result.connect(self._on_api_result)
+        worker.error.connect(self._on_api_error)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        thread.start()
+        self._threads.append((thread, worker))
+
+    def _cleanup_thread(self, thread: QThread, worker: QObject):
+        self._threads = [pair for pair in self._threads if pair != (thread, worker)]
+
+    def _on_api_result(self, action: str, payload: object):
+        if action == "load_operational":
+            data = payload if isinstance(payload, dict) else {}
+            days = int(data.get("pending_invoice_alert_days") or 1)
+            self.input_pending_invoice_days.setValue(days)
+            self.operational_status.setText(
+                f"Prazo sincronizado com o servidor: {days} dia(s)."
+            )
+            res.save(pending_invoice_alert_days=days)
+            return
+
+        if action == "save_operational":
+            self._finish_save(True)
+
+    def _on_api_error(self, action: str, message: str):
+        if action == "load_operational":
+            self.operational_status.setText(
+                "Nao foi possivel sincronizar com o servidor. Usando valor local."
+            )
+            return
+
+        if action == "save_operational":
+            self._finish_save(False, message)
+
+    def _set_save_busy(self, busy: bool):
+        self.btn_save.setEnabled(not busy)
+        self.btn_save.setText("SALVANDO..." if busy else "SALVAR CONFIGURACOES")
+
+    def _finish_save(self, remote_ok: bool, error_message: str = ""):
+        context = self._pending_save_context or {}
+        scale_changed = bool(context.get("scale_changed"))
+        current = local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
+        self._set_save_busy(False)
+
+        if remote_ok:
+            self.operational_status.setText(
+                f"Prazo sincronizado com o servidor: {self.input_pending_invoice_days.value()} dia(s)."
+            )
+            if scale_changed:
+                QMessageBox.information(
+                    self,
+                    "Salvo",
+                    "Configuracoes salvas.\nA interface sera recarregada com a nova escala.",
+                )
+                self.scale_changed.emit(res.scale)
+            else:
+                QMessageBox.information(self, "Salvo", "Configuracoes salvas.")
+        else:
+            self.operational_status.setText(
+                "Nao foi possivel salvar o prazo no servidor. O valor local foi mantido."
+            )
+            message = (
+                "As configuracoes locais foram salvas, mas o prazo de alerta "
+                "de faturamento nao foi salvo no servidor.\n\n"
+                f"{error_message}"
+            )
+            QMessageBox.warning(self, "Atencao", message)
+            if scale_changed:
+                self.scale_changed.emit(res.scale)
+
+        self._pending_save_context = None
+
     def _on_scale_btn(self, label: str):
         for lbl, btn in self._scale_btns.items():
             btn.setChecked(lbl == label)
@@ -479,6 +619,7 @@ class SettingsView(QWidget):
         url = self.input_url.text().strip()
         clients_path = self.input_ods_path.text().strip()
         products_path = self.input_products_path.text().strip()
+        pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
 
         # Descobre qual botão de escala está marcado
         selected_label = next(
@@ -495,7 +636,16 @@ class SettingsView(QWidget):
             font_scale=font_scale_value,
             ods_path=clients_path,
             products_path=products_path,
+            pending_invoice_alert_days=pending_invoice_alert_days,
         )
+        self._pending_save_context = {"scale_changed": scale_changed}
+        self._set_save_busy(True)
+        self.operational_status.setText("Salvando prazo de alerta no servidor...")
+        self._start_api_worker(
+            "save_operational",
+            {"pending_invoice_alert_days": pending_invoice_alert_days},
+        )
+        return
 
         if scale_changed:
             QMessageBox.information(
@@ -609,6 +759,7 @@ class SettingsView(QWidget):
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
         self._page_content.setStyleSheet(f"QWidget#settingsContainer {{ background:{bg}; }}")
         self.input_url.setStyleSheet(_field_style(s))
+        self.input_pending_invoice_days.setStyleSheet(_field_style(s))
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         for btn in self._scale_btns.values():

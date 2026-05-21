@@ -19,7 +19,11 @@ from ..models.notification import Notification
 from ..models.user import Role, User
 from ..schemas.notification import NotificationOut
 from ..services import sse_manager
-from ..services.notification_service import stuck_requisition_events
+from ..services.notification_service import (
+    dispatch as push_all,
+    ensure_pending_invoice_notifications,
+    stuck_requisition_events,
+)
 
 router = APIRouter(prefix="/notifications", tags=["Notificações"])
 
@@ -36,6 +40,13 @@ def _orm_to_dict(n: Notification) -> dict:
     }
 
 
+def _ensure_operational_alerts(db: Session):
+    notifications = ensure_pending_invoice_notifications(db)
+    if notifications:
+        db.commit()
+        push_all(notifications)
+
+
 @router.get("/stream")
 async def stream_notifications(
     db: Session = Depends(get_db),
@@ -50,6 +61,7 @@ async def stream_notifications(
     ocorrido enquanto o cliente estava desconectado.
     """
     # Busca notificações não lidas do banco
+    _ensure_operational_alerts(db)
     nao_lidas = (
         db.query(Notification)
         .filter(
@@ -82,6 +94,7 @@ def list_notifications(
     current_user: User = Depends(get_current_user),
 ):
     """Retorna as 50 notificações não lidas mais recentes do usuário."""
+    _ensure_operational_alerts(db)
     return (
         db.query(Notification)
         .filter(
@@ -100,6 +113,7 @@ def unread_count(
     current_user: User = Depends(get_current_user),
 ):
     """Retorna a contagem de notificações não lidas."""
+    _ensure_operational_alerts(db)
     count = (
         db.query(Notification)
         .filter(

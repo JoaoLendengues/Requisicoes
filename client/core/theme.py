@@ -58,7 +58,9 @@ _LIGHT: dict = {
         "em_andamento":           "#2D7FF9",
         "aguardando_recebimento": "#F3A01B",
         "aguardando_na_fila":     "#C7790A",
+        "aguardando_faturamento": "#A16207",
         "em_producao":            "#0057D8",
+        "faturado":               "#2DBE4E",
         "cancelada":              "#D64545",
     },
 
@@ -130,7 +132,9 @@ _DARK: dict = {
         "em_andamento":           "#60A5FA",
         "aguardando_recebimento": "#FBBF24",
         "aguardando_na_fila":     "#F59E0B",
+        "aguardando_faturamento": "#D97706",
         "em_producao":            "#3B82F6",
+        "faturado":               "#22C55E",
         "cancelada":              "#EF4444",
     },
 
@@ -163,7 +167,9 @@ STATUS_LABELS: dict = {
     "em_andamento":           "Em Andamento",
     "aguardando_recebimento": "Aguardando Recebimento",
     "aguardando_na_fila":     "Aguardando na Fila",
+    "aguardando_faturamento": "Aguardando Faturamento",
     "em_producao":            "Em Producao",
+    "faturado":               "Faturado",
     "cancelada":              "Cancelada",
 }
 

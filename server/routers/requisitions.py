@@ -315,7 +315,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
                 status_code=400,
                 detail="Confirme o recebimento antes de finalizar a produção",
             )
-        req.status = RequisitionStatus.EM_ANDAMENTO
+        req.status = RequisitionStatus.AGUARDANDO_FATURAMENTO
         req.production_machine = None
         return
 
@@ -329,6 +329,34 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         req.finalized_at = None
         req.production_machine = None
         return
+
+
+def _apply_manual_status_transition(
+    req: Requisition,
+    new_status: RequisitionStatus,
+):
+    if new_status == RequisitionStatus.FATURADO:
+        if req.status != RequisitionStatus.AGUARDANDO_FATURAMENTO:
+            raise HTTPException(
+                status_code=400,
+                detail="Somente pedidos aguardando faturamento podem ser marcados como faturados",
+            )
+        req.status = RequisitionStatus.FATURADO
+        return
+
+    if req.status == RequisitionStatus.AGUARDANDO_FATURAMENTO:
+        raise HTTPException(
+            status_code=400,
+            detail="Pedidos aguardando faturamento sÃ³ podem ser marcados como faturados",
+        )
+
+    if req.status == RequisitionStatus.FATURADO:
+        raise HTTPException(
+            status_code=400,
+            detail="Pedidos faturados nÃ£o podem retornar para outro status operacional",
+        )
+
+    req.status = new_status
 
 
 def _sorted_status_history(req: Requisition) -> list[StatusHistory]:
@@ -394,6 +422,11 @@ def _history_production_status(req: Requisition) -> str:
     current_status = str(getattr(req.status, "value", req.status) or "")
     if req.status == RequisitionStatus.CANCELADA:
         return current_status
+    if req.status in (
+        RequisitionStatus.AGUARDANDO_FATURAMENTO,
+        RequisitionStatus.FATURADO,
+    ):
+        return current_status
 
     latest_event = _latest_production_event(
         req,
@@ -457,13 +490,12 @@ def _can_edit_requisition(req: Requisition, current_user: User) -> bool:
 
 
 def _is_open_requisition(req: Requisition) -> bool:
-    if req.status == RequisitionStatus.CANCELADA:
+    if req.status in (
+        RequisitionStatus.CANCELADA,
+        RequisitionStatus.FATURADO,
+    ):
         return False
-
-    events = _production_events(req)
-    if not events:
-        return True
-    return events[-1]["action"] != _PROD_FINISHED
+    return True
 
 
 def _latest_production_event(req: Requisition, *actions: str) -> dict | None:
@@ -684,7 +716,8 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
 
     waiting_rows: list[OrderCenterItemResponse] = []
     production_rows: list[OrderCenterItemResponse] = []
-    finished_rows: list[OrderCenterItemResponse] = []
+    pending_invoice_rows: list[OrderCenterItemResponse] = []
+    billed_rows: list[OrderCenterItemResponse] = []
     canceled_rows: list[OrderCenterItemResponse] = []
     delayed_rows: list[OrderCenterItemResponse] = []
     production_durations: list[int] = []
@@ -744,19 +777,36 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         latest_event = events[-1] if events else None
         if latest_finished:
             production_durations.append(latest_finished["production_time_seconds"])
-        if latest_event and latest_event["action"] == _PROD_FINISHED and latest_finished:
-            finished_rows.append(
+        if req.status == RequisitionStatus.AGUARDANDO_FATURAMENTO and latest_finished:
+            pending_invoice_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
                     ped_number=req.ped_number,
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
-                    status="finalizado",
+                    status=RequisitionStatus.AGUARDANDO_FATURAMENTO.value,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
                     destination=latest_finished["target"] or destination,
                     received_at=latest_finished["received_at"],
                     finished_at=latest_finished["finished_at"],
+                    production_time_seconds=latest_finished["production_time_seconds"],
+                )
+            )
+        elif req.status == RequisitionStatus.FATURADO and latest_finished:
+            billed_rows.append(
+                OrderCenterItemResponse(
+                    id=req.id,
+                    ped_number=req.ped_number,
+                    client_name=req.client_name,
+                    vendor_name=req.vendor_name,
+                    status=RequisitionStatus.FATURADO.value,
+                    emission_date=req.emission_date,
+                    delivery_date=req.delivery_date,
+                    destination=latest_finished["target"] or destination,
+                    received_at=latest_finished["received_at"],
+                    finished_at=latest_finished["finished_at"],
+                    invoiced_at=_latest_status_changed_at(req, RequisitionStatus.FATURADO),
                     production_time_seconds=latest_finished["production_time_seconds"],
                 )
             )
@@ -792,7 +842,8 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
 
     waiting_rows.sort(key=lambda item: item.waiting_minutes or 0, reverse=True)
     production_rows.sort(key=lambda item: item.received_at or datetime.min, reverse=True)
-    finished_rows.sort(key=lambda item: item.finished_at or datetime.min, reverse=True)
+    pending_invoice_rows.sort(key=lambda item: item.finished_at or datetime.min)
+    billed_rows.sort(key=lambda item: item.invoiced_at or datetime.min, reverse=True)
     canceled_rows.sort(key=lambda item: item.canceled_at or datetime.min, reverse=True)
     delayed_rows.sort(key=lambda item: item.delay_days or 0, reverse=True)
 
@@ -805,14 +856,16 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         stats=OrderCenterStatsResponse(
             pedidos_aguardando_recebimento=len(waiting_rows),
             pedidos_em_producao=len(production_rows),
-            pedidos_finalizados=len(finished_rows),
+            pedidos_aguardando_faturamento=len(pending_invoice_rows),
+            pedidos_faturados=len(billed_rows),
             pedidos_cancelados=len(canceled_rows),
             pedidos_atrasados=len(delayed_rows),
             tempo_medio_producao_segundos=average_seconds,
         ),
         aguardando_recebimento=waiting_rows[:100],
         em_producao=production_rows[:100],
-        finalizados=finished_rows[:100],
+        aguardando_faturamento=pending_invoice_rows[:100],
+        faturados=billed_rows[:100],
         cancelados=canceled_rows[:100],
         atrasados=delayed_rows[:100],
     )
@@ -1214,6 +1267,16 @@ def get_management_dashboard(
     db: Session = Depends(get_db),
     _: User = Depends(require_manager_or_admin),
 ):
+    from ..services.notification_service import (
+        dispatch as push_all,
+        ensure_pending_invoice_notifications,
+    )
+
+    notifications = ensure_pending_invoice_notifications(db)
+    if notifications:
+        db.commit()
+        push_all(notifications)
+
     reqs = (
         db.query(Requisition)
         .options(*_LOAD_OPTS)
@@ -1237,6 +1300,16 @@ def get_order_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
+    from ..services.notification_service import (
+        dispatch as push_all,
+        ensure_pending_invoice_notifications,
+    )
+
+    notifications = ensure_pending_invoice_notifications(db)
+    if notifications:
+        db.commit()
+        push_all(notifications)
+
     reqs = (
         db.query(Requisition)
         .options(*_LOAD_OPTS)
@@ -1429,7 +1502,7 @@ def update_status(
     if prod:
         _apply_production_transition(req, data)
     else:
-        req.status = data.status
+        _apply_manual_status_transition(req, data.status)
     new_status = req.status
 
     db.add(StatusHistory(
@@ -1451,13 +1524,15 @@ def update_status(
         elif action in (_PROD_QUEUED, _PROD_RETURNED_QUEUE):
             notifications.extend(build_vendor_event(db, req, "aguardando_na_fila"))
         elif action == _PROD_FINISHED:
-            notifications.extend(build_vendor_event(db, req, "finalizada"))
+            notifications.extend(build_vendor_event(db, req, "aguardando_faturamento"))
         elif action == _PROD_CANCELED:
             notifications.extend(build_vendor_event(db, req, "prod_cancelada", prod.get("reason", "")))
     elif new_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
         notifications.extend(build_production_sent(db, req, ""))
     elif new_status == RequisitionStatus.AGUARDANDO_NA_FILA:
         notifications.extend(build_vendor_event(db, req, "aguardando_na_fila"))
+    elif new_status == RequisitionStatus.FATURADO:
+        notifications.extend(build_vendor_event(db, req, "faturado"))
     elif new_status == RequisitionStatus.CANCELADA:
         notifications.extend(build_vendor_event(db, req, "cancelada"))
 
