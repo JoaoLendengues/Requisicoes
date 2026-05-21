@@ -52,7 +52,7 @@ from ..dependencies import (
 )
 from ..services.runtime_monitor import snapshot as runtime_snapshot
 from ..services.sse_manager import connected_user_ids
-from ..services.text_normalizer import normalize_canvas_json_text
+from ..services.text_normalizer import normalize_canvas_json_text, normalize_upper_required
 
 router = APIRouter(prefix="/requisitions", tags=["Requisições"])
 
@@ -80,6 +80,10 @@ def _normalize_text(value: object) -> str:
     normalized = unicodedata.normalize("NFKD", str(value or ""))
     ascii_text = normalized.encode("ascii", "ignore").decode()
     return ascii_text.strip().casefold()
+
+
+def _normalize_machine_name(value: object) -> str:
+    return normalize_upper_required(value)
 
 
 def _canonical_destination(value: object) -> str:
@@ -224,7 +228,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
 
     action = prod_event["action"]
     target = prod_event["target"] or req.production_destination or ""
-    machine = str(prod_event.get("machine") or "").strip()
+    machine = _normalize_machine_name(prod_event.get("machine"))
     reason = prod_event["reason"]
     if target:
         req.production_destination = target
@@ -374,7 +378,7 @@ def _production_events(req: Requisition) -> list[dict]:
             {
                 "action": parsed["action"],
                 "target": parsed["target"],
-                "machine": parsed.get("machine", ""),
+                "machine": _normalize_machine_name(parsed.get("machine", "")),
                 "reason": parsed["reason"],
                 "changed_at": entry.changed_at,
             }
@@ -394,11 +398,11 @@ def _current_production_destination(req: Requisition) -> str:
 
 def _current_production_machine(req: Requisition) -> str:
     if req.production_machine:
-        return str(req.production_machine).strip()
+        return _normalize_machine_name(req.production_machine)
     if req.status != RequisitionStatus.EM_PRODUCAO:
         return ""
     for event in reversed(_production_events(req)):
-        machine = str(event.get("machine") or "").strip()
+        machine = _normalize_machine_name(event.get("machine"))
         if machine:
             return machine
     return ""
@@ -411,7 +415,7 @@ def _history_production_machine(req: Requisition) -> str:
 
     latest_cycle = _latest_finished_cycle(req)
     if latest_cycle:
-        machine = str(latest_cycle.get("machine") or "").strip()
+        machine = _normalize_machine_name(latest_cycle.get("machine"))
         if machine:
             return machine
 
@@ -597,7 +601,7 @@ def _production_item(
         created_at=req.created_at,
         delivery_date=req.delivery_date,
         destination=_current_production_destination(req) or None,
-        machine_name=machine_name or None,
+        machine_name=_normalize_machine_name(machine_name) or None,
         waiting_since=waiting_since,
         production_started_at=production_started_at,
     )
@@ -612,11 +616,11 @@ def _build_production_summary(
     waiting_receipt: list[ProductionItemResponse] = []
     waiting_queue: list[ProductionItemResponse] = []
     machine_rows: dict[str, list[ProductionItemResponse]] = {
-        machine.name: []
+        _normalize_machine_name(machine.name): []
         for machine in machines
     }
     machine_cycles: dict[str, list[dict]] = {
-        machine.name: []
+        _normalize_machine_name(machine.name): []
         for machine in machines
     }
 
@@ -664,7 +668,7 @@ def _build_production_summary(
         for cycle in _all_finished_cycles(req):
             if cycle.get("target") != normalized_destination:
                 continue
-            machine_name = str(cycle.get("machine") or "").strip()
+            machine_name = _normalize_machine_name(cycle.get("machine"))
             if machine_name in machine_cycles:
                 machine_cycles[machine_name].append(cycle)
 
@@ -673,9 +677,10 @@ def _build_production_summary(
 
     machine_cards: list[ProductionMachineCardResponse] = []
     for machine in machines:
-        rows = machine_rows.get(machine.name, [])
+        machine_name = _normalize_machine_name(machine.name)
+        rows = machine_rows.get(machine_name, [])
         rows.sort(key=lambda item: _production_sort_anchor(item, "production_started_at"))
-        finished_cycles = machine_cycles.get(machine.name, [])
+        finished_cycles = machine_cycles.get(machine_name, [])
         average_seconds = None
         if finished_cycles:
             average_seconds = int(
@@ -686,7 +691,7 @@ def _build_production_summary(
             ProductionMachineCardResponse(
                 id=machine.id,
                 destination=machine.destination,
-                name=machine.name,
+                name=machine_name,
                 sort_order=machine.sort_order,
                 status=machine.status,
                 quantity_in_production=len(rows),
@@ -883,7 +888,7 @@ def _build_machine_usage_rows(
         if _canonical_destination(machine.destination) == normalized_destination
     ]
     usage: dict[str, dict] = {
-        str(machine.name): {
+        _normalize_machine_name(machine.name): {
             "machine": machine,
             "finished_count": 0,
             "in_production_count": 0,
@@ -903,7 +908,7 @@ def _build_machine_usage_rows(
         for cycle in _all_finished_cycles(req):
             if _canonical_destination(cycle.get("target")) != normalized_destination:
                 continue
-            machine_name = str(cycle.get("machine") or "").strip()
+            machine_name = _normalize_machine_name(cycle.get("machine"))
             if machine_name not in usage:
                 continue
             usage[machine_name]["finished_count"] += 1
@@ -913,7 +918,7 @@ def _build_machine_usage_rows(
 
     rows: list[DashboardMachineUsageItem] = []
     for machine in destination_machines:
-        machine_name = str(machine.name)
+        machine_name = _normalize_machine_name(machine.name)
         stats = usage[machine_name]
         durations = stats["durations"]
         average_seconds = None
@@ -1365,7 +1370,11 @@ def list_production_machines(
         .order_by(ProductionMachine.sort_order.asc(), ProductionMachine.id.asc())
         .all()
     )
-    return [str(machine.name or "").strip() for machine in machines if str(machine.name or "").strip()]
+    return [
+        _normalize_machine_name(machine.name)
+        for machine in machines
+        if _normalize_machine_name(machine.name)
+    ]
 
 
 @router.patch(
@@ -1404,7 +1413,7 @@ def update_production_machine_status(
     return ProductionMachineStatusResponse(
         id=machine.id,
         destination=machine.destination,
-        name=machine.name,
+        name=_normalize_machine_name(machine.name),
         status=machine.status,
         updated_at=machine.updated_at,
     )

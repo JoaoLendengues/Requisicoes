@@ -2,6 +2,7 @@ from .database import SessionLocal
 from .models.user import User, Role
 from .models.production_machine import ProductionMachine, MachineOperationalStatus
 from .services.auth_service import hash_password
+from .services.text_normalizer import normalize_upper_required
 
 
 PINHEIRO_MACHINES = (
@@ -38,7 +39,7 @@ AR_MACHINES = (
 
 
 def _machine_display_name(index: int, name: str) -> str:
-    return f"{index:02d} - {name}"
+    return f"{index:02d} - {normalize_upper_required(name)}"
 
 
 def seed_admin() -> None:
