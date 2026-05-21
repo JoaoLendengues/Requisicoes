@@ -2,7 +2,6 @@
 
 import os
 import webbrowser
-from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
@@ -26,6 +25,13 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.datetime_utils import (
+    format_date as _format_date,
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+    parse_datetime as _parse_datetime,
+)
 from ..core.resolution import res
 from ..services.pdf_generator import HAS_REPORTLAB, generate_pdf
 from .requisition_form import _run_in_thread
@@ -131,36 +137,6 @@ def _primary_action_btn_style(scale: float) -> str:
     )
 
 
-def _parse_datetime(value: object) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
-    except ValueError:
-        return None
-
-
-def _format_datetime(value: object) -> str:
-    parsed = _parse_datetime(value)
-    if parsed is None:
-        return "-"
-    return parsed.strftime("%d/%m/%Y %H:%M")
-
-
-def _format_date(value: object) -> str:
-    if not value:
-        return "-"
-    text = str(value).strip()
-    if not text:
-        return "-"
-    if "T" in text:
-        return _format_datetime(text)[:10]
-    try:
-        return datetime.fromisoformat(text).strftime("%d/%m/%Y")
-    except ValueError:
-        return text[:10]
-
-
 def _format_duration(seconds: object) -> str:
     if seconds in (None, "", "-"):
         return "-"
@@ -201,11 +177,6 @@ def _format_waiting_minutes(minutes: object) -> str:
 
     days, hours = divmod(hours, 24)
     return f"{days}d {hours:02d}h"
-
-
-def _format_header_date(value: datetime | None = None) -> str:
-    current = value or datetime.now()
-    return current.strftime("%d/%m/%Y")
 
 
 class OrderCenterWorker(QObject):
@@ -265,7 +236,7 @@ class OrderCenterView(QWidget):
             f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Acompanhamento operacional dos pedidos por etapa, ritmo e pendencias da producao."
+            "Acompanhamento operacional dos pedidos por etapa, ritmo e pendências da produção."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -358,12 +329,12 @@ class OrderCenterView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_aguardando_recebimento", DASH_WARNING, "Aguardando Recebimento", "Pedidos pendentes de confirmacao da producao."),
-            ("pedidos_em_producao", DASH_PRIMARY, "Pedidos em Producao", "Ordens que ja entraram na esteira produtiva."),
-            ("pedidos_finalizados", DASH_SUCCESS, "Pedidos Finalizados", "Pedidos concluidos e prontos para consulta."),
-            ("pedidos_cancelados", DASH_DANGER, "Pedidos Cancelados", "Cancelamentos registrados na operacao."),
+            ("pedidos_aguardando_recebimento", DASH_WARNING, "Aguardando Recebimento", "Pedidos pendentes de confirmação da produção."),
+            ("pedidos_em_producao", DASH_PRIMARY, "Pedidos em Produção", "Ordens que já entraram na esteira produtiva."),
+            ("pedidos_finalizados", DASH_SUCCESS, "Pedidos Finalizados", "Pedidos concluídos e prontos para consulta."),
+            ("pedidos_cancelados", DASH_DANGER, "Pedidos Cancelados", "Cancelamentos registrados na operação."),
             ("pedidos_atrasados", DASH_DANGER, "Pedidos Atrasados", "Pedidos com prazo vencido e ainda abertos."),
-            ("tempo_medio_producao_segundos", DASH_SLATE, "Tempo Medio de Producao", "Indicador medio de conclusao da producao."),
+            ("tempo_medio_producao_segundos", DASH_SLATE, "Tempo Médio de Produção", "Indicador médio de conclusão da produção."),
         ]
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
             metrics.addWidget(
@@ -379,7 +350,7 @@ class OrderCenterView(QWidget):
         grid_top.setColumnStretch(1, 1)
         layout.addLayout(grid_top)
         grid_top.addWidget(self._build_section("Pedidos aguardando recebimento", "aguardando_recebimento"), 0, 0)
-        grid_top.addWidget(self._build_section("Pedidos em producao", "em_producao"), 0, 1)
+        grid_top.addWidget(self._build_section("Pedidos em produção", "em_producao"), 0, 1)
         grid_top.addWidget(self._build_section("Pedidos finalizados", "finalizados", pdf_action=True), 1, 0)
         grid_top.addWidget(self._build_section("Pedidos cancelados", "cancelados"), 1, 1)
         layout.addWidget(self._build_section("Pedidos atrasados", "atrasados"))
@@ -476,7 +447,7 @@ class OrderCenterView(QWidget):
         s = self.scale
         section_meta = {
             "aguardando_recebimento": (
-                "Pedidos aguardando retorno e confirmacao da producao.",
+                "Pedidos aguardando retorno e confirmação da produção.",
                 DASH_WARNING,
             ),
             "em_producao": (
@@ -484,11 +455,11 @@ class OrderCenterView(QWidget):
                 DASH_PRIMARY,
             ),
             "finalizados": (
-                "Pedidos concluidos com PDF individual e tempo medio de producao.",
+                "Pedidos concluídos com PDF individual e tempo médio de produção.",
                 DASH_SUCCESS,
             ),
             "cancelados": (
-                "Historico de cancelamentos para consulta rapida da operacao.",
+                "Histórico de cancelamentos para consulta rápida da operação.",
                 DASH_DANGER,
             ),
             "atrasados": (
@@ -551,7 +522,7 @@ class OrderCenterView(QWidget):
         layout.addLayout(title_row)
 
         if pdf_action:
-            self.avg_finished_label = QLabel("Tempo medio: -")
+            self.avg_finished_label = QLabel("Tempo médio: -")
             self.avg_finished_label.setStyleSheet(
                 f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:600;"
             )
@@ -662,12 +633,12 @@ class OrderCenterView(QWidget):
             self.date_label.setText(_format_header_date())
 
     def _show_error(self, message: str):
-        self.error_label.setText(f"Nao foi possivel carregar a central de pedidos.\n\n{message}")
+        self.error_label.setText(f"Não foi possível carregar a central de pedidos.\n\n{message}")
         self.error_label.show()
 
     def _populate(self, payload: object):
         if not isinstance(payload, dict):
-            self._show_error("Resposta invalida do servidor.")
+            self._show_error("Resposta inválida do servidor.")
             return
 
         stats = payload.get("stats") or {}
@@ -681,12 +652,12 @@ class OrderCenterView(QWidget):
             else:
                 label.setText(str(value if value is not None else 0))
 
-        generated_at = _parse_datetime(payload.get("generated_at"))
-        self.date_label.setText(_format_header_date(generated_at or datetime.now()))
-        self.updated_label.setText(f"Atualizado em {_format_datetime(payload.get('generated_at'))}")
+        current = _parse_datetime(payload.get("generated_at")) or local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
         if hasattr(self, "avg_finished_label"):
             self.avg_finished_label.setText(
-                f"Tempo medio: {_format_duration(stats.get('tempo_medio_producao_segundos'))}"
+                f"Tempo médio: {_format_duration(stats.get('tempo_medio_producao_segundos'))}"
             )
 
         for key in self._rows:
@@ -826,7 +797,7 @@ class OrderCenterView(QWidget):
             QMessageBox.warning(
                 self,
                 "Central de pedidos",
-                "Defina a pasta de PDFs nas configuracoes antes de abrir o arquivo.",
+                "Defina a pasta de PDFs nas configurações antes de abrir o arquivo.",
             )
             return
 
@@ -834,7 +805,7 @@ class OrderCenterView(QWidget):
             QMessageBox.warning(
                 self,
                 "Central de pedidos",
-                "A geracao de PDF nao esta disponivel neste ambiente.",
+                "A geração de PDF não está disponível neste ambiente.",
             )
             return
 
@@ -850,7 +821,7 @@ class OrderCenterView(QWidget):
             QMessageBox.critical(
                 self,
                 "Central de pedidos",
-                f"Nao foi possivel gerar o PDF deste pedido.\n\n{exc}",
+                f"Não foi possível gerar o PDF deste pedido.\n\n{exc}",
             )
             return
 
@@ -863,5 +834,5 @@ class OrderCenterView(QWidget):
             QMessageBox.information(
                 self,
                 "Central de pedidos",
-                f"PDF gerado em:\n{pdf_path}\n\nNao foi possivel abrir automaticamente: {exc}",
+                f"PDF gerado em:\n{pdf_path}\n\nNão foi possível abrir automaticamente: {exc}",
             )

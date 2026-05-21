@@ -21,7 +21,7 @@ SIDEBAR_ICON_ALIASES = {
     "notificacoes": ["notificacoes", "notificações", "notificacao", "notificação", "sino", "bell"],
     "nova":         ["nova requisicao", "nova requisição", "requisicao", "requisição", "nova"],
     "dashboard":    ["painel gerencial", "dashboard", "painel"],
-    "tecnico":      ["painel tecnico", "tecnico", "dashboard", "painel gerencial"],
+    "tecnico":      ["painel tecnico", "painel técnico", "tecnico", "técnico", "dashboard", "painel gerencial"],
     "pedidos":      ["central de pedidos", "pedidos", "pedido"],
     "producao":     ["producao", "produção"],
     "historico":    ["historico", "histórico", "busca", "historico busca", "histórico busca"],
@@ -34,7 +34,7 @@ SIDEBAR_ICON_ALIASES = {
 NAV_ITEMS = [
     ("nova",      "NOVA REQUISIÇÃO",    "nova"),
     ("dashboard", "PAINEL GERENCIAL",   "dashboard"),
-    ("tecnico",   "PAINEL TECNICO",     "tecnico"),
+    ("tecnico",   "PAINEL TÉCNICO",     "tecnico"),
     ("pedidos",   "CENTRAL DE PEDIDOS", "pedidos"),
     ("producao",  "PRODUÇÃO",           "producao"),
     ("historico", "HISTÓRICO / BUSCA",  "historico"),

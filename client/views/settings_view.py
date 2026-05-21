@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
@@ -11,6 +10,11 @@ from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QColor
 
 from ..core import theme
+from ..core.datetime_utils import (
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+)
 from ..core.resolution import res, SCALE_STEPS
 from ..api import client as api
 
@@ -69,7 +73,7 @@ def _make_card(
 
 
 def _section(title: str, scale: float) -> QLabel:
-    cleaned = title.lstrip("ðŸâš™ï¸🌐🎨📥📦 ").strip()
+    cleaned = title.lstrip("⚙️🌐🎨📥📦 ").strip()
     lbl = QLabel(cleaned)
     lbl.setStyleSheet(
         f"color:{DASH_TEXT}; font-size:{max(10,int(12*scale))}pt;"
@@ -123,16 +127,6 @@ def _field_style(scale: float) -> str:
         f"}}"
         f"QLineEdit {{ placeholder-text-color:{DASH_MUTED}; }}"
     )
-
-
-def _format_header_date(value: datetime | None = None) -> str:
-    current = value or datetime.now()
-    return current.strftime("%d/%m/%Y")
-
-
-def _format_datetime(value: datetime | None = None) -> str:
-    current = value or datetime.now()
-    return current.strftime("%d/%m/%Y %H:%M")
 
 
 class ImportWorker(QObject):
@@ -199,7 +193,7 @@ class SettingsView(QWidget):
             f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Preferencias locais, conexao com o servidor e rotinas de importacao do sistema."
+            "Preferências locais, conexão com o servidor e rotinas de importação do sistema."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -230,7 +224,7 @@ class SettingsView(QWidget):
             f"color:{DASH_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
             f"background:transparent;"
         )
-        self.updated_label = QLabel("Preferencias do sistema")
+        self.updated_label = QLabel("Preferências do sistema")
         self.updated_label.setStyleSheet(
             f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
@@ -528,7 +522,7 @@ class SettingsView(QWidget):
             )
             self.scale_changed.emit(res.scale)
         else:
-            current = datetime.now()
+            current = local_now()
             self.date_label.setText(_format_header_date(current))
             self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
             QMessageBox.information(self, "Salvo", "Configurações salvas.")
@@ -559,8 +553,8 @@ class SettingsView(QWidget):
         if current and current[0].isRunning():
             QMessageBox.information(
                 self,
-                "Importacao em andamento",
-                "Essa importacao ainda esta em execucao. Aguarde a conclusao.",
+                "Importação em andamento",
+                "Essa importação ainda está em execução. Aguarde a conclusão.",
             )
             return
 

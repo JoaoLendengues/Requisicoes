@@ -1,6 +1,4 @@
-"""Painel tecnico com indicadores de disponibilidade e diagnostico rapido."""
-
-from datetime import datetime
+"""Painel técnico com indicadores de disponibilidade e diagnóstico rápido."""
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtWidgets import (
@@ -15,6 +13,12 @@ from PySide6.QtWidgets import (
 )
 
 from ..api import client as api
+from ..core.datetime_utils import (
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+    parse_datetime as _parse_datetime,
+)
 from ..core.session import session
 from .dashboard_view import (
     DASH_BG,
@@ -29,10 +33,7 @@ from .dashboard_view import (
     DASH_TEXT,
     DASH_WARNING,
     _flat_secondary_btn_style,
-    _format_datetime,
-    _format_header_date,
     _make_shadow_card,
-    _parse_datetime,
     _rgba,
 )
 
@@ -101,12 +102,12 @@ class TechnicalPanelView(QWidget):
 
         title_col = QVBoxLayout()
         title_col.setSpacing(max(4, int(5 * s)))
-        title = QLabel("Painel Tecnico")
+        title = QLabel("Painel Técnico")
         title.setStyleSheet(
             f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Monitoramento rapido da aplicacao, do banco de dados e da disponibilidade operacional."
+            "Monitoramento rápido da aplicação, do banco de dados e da disponibilidade operacional."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -193,12 +194,12 @@ class TechnicalPanelView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("system_online", DASH_SUCCESS, "Sistema Online/Offline", "Status atual de disponibilidade da aplicacao."),
-            ("requisitions_today", DASH_SECONDARY, "Requisicoes hoje", "Requisicoes registradas no dia atual."),
-            ("average_response_ms", DASH_SLATE, "Tempo medio de resposta", "Media das respostas HTTP processadas hoje."),
-            ("last_backup_at", DASH_WARNING, "Ultimo backup", "Horario mais recente de backup localizado no ambiente."),
-            ("database_connected", DASH_SUCCESS, "Banco de dados conectado?", "Verificacao instantanea de acesso ao banco."),
-            ("available_space_bytes", DASH_PRIMARY, "Espaco disponivel", "Espaco livre no armazenamento principal da aplicacao."),
+            ("system_online", DASH_SUCCESS, "Sistema Online/Offline", "Status atual de disponibilidade da aplicação."),
+            ("requisitions_today", DASH_SECONDARY, "Requisições hoje", "Requisições registradas no dia atual."),
+            ("average_response_ms", DASH_SLATE, "Tempo médio de resposta", "Média das respostas HTTP processadas hoje."),
+            ("last_backup_at", DASH_WARNING, "Último backup", "Horário mais recente de backup localizado no ambiente."),
+            ("database_connected", DASH_SUCCESS, "Banco de dados conectado?", "Verificação instantânea de acesso ao banco."),
+            ("available_space_bytes", DASH_PRIMARY, "Espaço disponível", "Espaço livre no armazenamento principal da aplicação."),
             ("error_count_today", DASH_DANGER, "Quantidade de erros hoje", "Total de respostas com erro registradas hoje."),
         ]
 
@@ -226,8 +227,8 @@ class TechnicalPanelView(QWidget):
             f"color:{DASH_TEXT}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
         )
         note_body = QLabel(
-            "Este painel mostra indicadores operacionais em tempo real. Ultimo backup pode aparecer como "
-            "'Nao identificado' quando o ambiente ainda nao expoe uma rotina de backup catalogada."
+            "Este painel mostra indicadores operacionais em tempo real. Último backup pode aparecer como "
+            "'Não identificado' quando o ambiente ainda não expõe uma rotina de backup catalogada."
         )
         note_body.setWordWrap(True)
         note_body.setStyleSheet(
@@ -240,8 +241,8 @@ class TechnicalPanelView(QWidget):
         layout.addWidget(
             self._build_metric_card(
                 DASH_PRIMARY,
-                "Usuarios logados",
-                "Usuarios conectados no momento e horario do ultimo login.",
+                "Usuários logados",
+                "Usuários conectados no momento e horário do último login.",
                 "connected_users",
                 prominent=True,
             )
@@ -357,21 +358,21 @@ class TechnicalPanelView(QWidget):
             self.date_label.setText(_format_header_date())
 
     def _show_error(self, message: str):
-        self.error_label.setText(f"Nao foi possivel carregar o painel tecnico.\n\n{message}")
+        self.error_label.setText(f"Não foi possível carregar o painel técnico.\n\n{message}")
         self.error_label.show()
 
     def _populate(self, payload: object):
         if not isinstance(payload, dict):
-            self._show_error("Resposta invalida do servidor.")
+            self._show_error("Resposta inválida do servidor.")
             return
 
         stats = payload.get("stats") or {}
         if not isinstance(stats, dict):
             stats = {}
 
-        generated_at = _parse_datetime(payload.get("generated_at"))
-        self.date_label.setText(_format_header_date(generated_at or datetime.now()))
-        self.updated_label.setText(f"Atualizado em {_format_datetime(payload.get('generated_at'))}")
+        current = _parse_datetime(payload.get("generated_at")) or local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
         self._set_metric("system_online", "Online" if stats.get("system_online") else "Offline")
         self._set_metric("connected_users", str(stats.get("connected_users") or 0))
@@ -387,9 +388,9 @@ class TechnicalPanelView(QWidget):
         last_backup_at = stats.get("last_backup_at")
         self._set_metric(
             "last_backup_at",
-            _format_datetime(last_backup_at) if _parse_datetime(last_backup_at) else "Nao identificado",
+            _format_datetime(last_backup_at) if _parse_datetime(last_backup_at) else "Não identificado",
         )
-        self._set_metric("database_connected", "Sim" if stats.get("database_connected") else "Nao")
+        self._set_metric("database_connected", "Sim" if stats.get("database_connected") else "Não")
         self._set_metric("available_space_bytes", _format_storage(stats.get("available_space_bytes")))
         self._set_metric("error_count_today", str(stats.get("error_count_today") or 0))
 
@@ -409,13 +410,13 @@ class TechnicalPanelView(QWidget):
     def _format_logged_users(self, rows: object) -> str:
         users = rows if isinstance(rows, list) else []
         if not users:
-            return "Nenhum usuario conectado."
+            return "Nenhum usuário conectado."
 
         lines: list[str] = []
         for row in users:
             if not isinstance(row, dict):
                 continue
-            name = str(row.get("name") or "Usuario")
+            name = str(row.get("name") or "Usuário")
             last_login = _format_datetime(row.get("last_login_at"))
-            lines.append(f"{name} | ultimo login: {last_login}")
+            lines.append(f"{name} | último login: {last_login}")
         return "\n".join(lines)

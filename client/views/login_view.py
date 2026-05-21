@@ -83,7 +83,7 @@ class LoginWorker(QObject):
             else:
                 self.error.emit(detail)
         except Exception as exc:
-            self.error.emit(f"Sem conexao com o servidor.\n{exc}")
+            self.error.emit(f"Sem conexão com o servidor.\n{exc}")
         finally:
             self.finished.emit()
 
@@ -104,7 +104,7 @@ class FirstAccessWorker(QObject):
         except api.APIError as exc:
             self.error.emit(exc.detail)
         except Exception as exc:
-            self.error.emit(f"Sem conexao com o servidor.\n{exc}")
+            self.error.emit(f"Sem conexão com o servidor.\n{exc}")
         finally:
             self.finished.emit()
 
@@ -157,7 +157,7 @@ class FirstAccessDialog(QDialog):
             f"color:{theme.PRIMARY}; font-size:{max(12, int(14 * s))}pt; font-weight:bold;"
         )
         helper = QLabel(
-            "Informe seu codigo e cadastre uma senha para entrar no sistema."
+            "Informe seu código e cadastre uma senha para entrar no sistema."
         )
         helper.setWordWrap(True)
         helper.setStyleSheet(
@@ -187,7 +187,7 @@ class FirstAccessDialog(QDialog):
         self.input_password.returnPressed.connect(self._validate_and_accept)
         self.input_confirm.returnPressed.connect(self._validate_and_accept)
 
-        form.addRow("Codigo", self.input_code)
+        form.addRow("Código", self.input_code)
         form.addRow("Nova senha", self.input_password)
         form.addRow("Confirmar senha", self.input_confirm)
         layout.addLayout(form)
@@ -220,13 +220,13 @@ class FirstAccessDialog(QDialog):
         confirm = self.input_confirm.text().strip()
 
         if not code or not password:
-            self._show_error("Informe o codigo e a nova senha.")
+            self._show_error("Informe o código e a nova senha.")
             return
         if len(password) < 6:
             self._show_error("A senha precisa ter pelo menos 6 caracteres.")
             return
         if password.casefold() != confirm.casefold():
-            self._show_error("A confirmacao da senha nao confere.")
+            self._show_error("A confirmação da senha não confere.")
             return
 
         self.error_label.hide()
@@ -290,7 +290,7 @@ class LoginView(QWidget):
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(logo_label)
 
-        title = QLabel("Sistema de Requisicoes")
+        title = QLabel("Sistema de Requisições")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:600;"
@@ -381,7 +381,7 @@ class LoginView(QWidget):
         code = self.input_code.text().strip()
         password = self.input_pass.text()
         if not code or not password:
-            self._show_error("Preencha o codigo e a senha.")
+            self._show_error("Preencha o código e a senha.")
             return
         self._start_worker(LoginWorker(code, password), "Aguarde...")
 

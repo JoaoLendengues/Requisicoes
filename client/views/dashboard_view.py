@@ -1,6 +1,5 @@
 """Painel gerencial com indicadores operacionais e alertas."""
 
-from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
@@ -23,6 +22,13 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.datetime_utils import (
+    format_date as _format_date,
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+    parse_datetime as _parse_datetime,
+)
 
 
 DASH_BG = "#F4F7FB"
@@ -123,40 +129,6 @@ def _flat_secondary_btn_style(scale: float) -> str:
     )
 
 
-def _parse_datetime(value: object) -> datetime | None:
-    if not value:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
-    except ValueError:
-        return None
-
-
-def _format_datetime(value: object) -> str:
-    parsed = _parse_datetime(value)
-    if parsed is None:
-        return "-"
-    return parsed.strftime("%d/%m/%Y %H:%M")
-
-
-def _format_date(value: object) -> str:
-    if not value:
-        return "-"
-    text = str(value).strip()
-    if not text:
-        return "-"
-    if "T" in text:
-        return _format_datetime(text)[:10]
-    try:
-        parsed = datetime.fromisoformat(text)
-        return parsed.strftime("%d/%m/%Y")
-    except ValueError:
-        return text[:10]
-
-
 def _format_duration(seconds: object) -> str:
     if seconds in (None, "", "-"):
         return "-"
@@ -197,11 +169,6 @@ def _format_waiting_minutes(minutes: object) -> str:
 
     days, remaining_hours = divmod(hours, 24)
     return f"{days}d {remaining_hours:02d}h"
-
-
-def _format_header_date(value: datetime | None = None) -> str:
-    current = value or datetime.now()
-    return current.strftime("%d/%m/%Y")
 
 
 class DashWorker(QObject):
@@ -247,12 +214,12 @@ class DashboardView(QWidget):
 
         title_col = QVBoxLayout()
         title_col.setSpacing(max(4, int(5 * s)))
-        title = QLabel("Painel de Producao")
+        title = QLabel("Painel de Produção")
         title.setStyleSheet(
             f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Visao executiva da operacao industrial com indicadores, alertas e ritmo de producao."
+            "Visão executiva da operação industrial com indicadores, alertas e ritmo de produção."
         )
         subtitle.setStyleSheet(
             f"color:{DASH_MUTED}; font-size:{max(8, int(10 * s))}pt;"
@@ -347,14 +314,14 @@ class DashboardView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_em_producao", DASH_PRIMARY, "Pedidos em Producao", "Requisicoes recebidas pela producao."),
+            ("pedidos_em_producao", DASH_PRIMARY, "Pedidos em Produção", "Requisições recebidas pela produção."),
             ("pedidos_em_atraso", DASH_DANGER, "Pedidos em Atraso", "Pedidos abertos com prazo vencido."),
-            ("pedidos_finalizados_hoje", DASH_SUCCESS, "Finalizados Hoje", "Finalizacoes registradas no dia."),
-            ("requisicoes_feitas_no_dia", DASH_SECONDARY, "Requisicoes do Dia", "Novas requisicoes criadas hoje."),
-            ("producao_pinheiro_industria", DASH_PRIMARY, "Producao Pinheiro Industria", "Fila ativa enviada para esse destino."),
-            ("producao_ar", DASH_SECONDARY, "Producao da A&R", "Fila ativa enviada para esse destino."),
-            ("pedidos_sem_confirmacao_1h", DASH_WARNING, "Sem Confirmacao", "Aguardando retorno ha mais de 1 hora."),
-            ("tempo_medio_finalizacao_segundos", DASH_SLATE, "Tempo Medio de Finalizacao", "Media entre recebimento e finalizacao."),
+            ("pedidos_finalizados_hoje", DASH_SUCCESS, "Finalizados Hoje", "Finalizações registradas no dia."),
+            ("requisicoes_feitas_no_dia", DASH_SECONDARY, "Requisições do Dia", "Novas requisições criadas hoje."),
+            ("producao_pinheiro_industria", DASH_PRIMARY, "Produção Pinheiro Indústria", "Fila ativa enviada para esse destino."),
+            ("producao_ar", DASH_SECONDARY, "Produção da A&R", "Fila ativa enviada para esse destino."),
+            ("pedidos_sem_confirmacao_1h", DASH_WARNING, "Sem Confirmação", "Aguardando retorno há mais de 1 hora."),
+            ("tempo_medio_finalizacao_segundos", DASH_SLATE, "Tempo Médio de Finalização", "Média entre recebimento e finalização."),
         ]
 
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
@@ -370,8 +337,8 @@ class DashboardView(QWidget):
         secondary_row.setSpacing(max(12, int(16 * s)))
         secondary_row.addWidget(
             self._build_section_card(
-                "Vendedores com Mais Requisicoes",
-                "Ranking geral por volume de requisicoes emitidas.",
+                "Vendedores com Mais Requisições",
+                "Ranking geral por volume de requisições emitidas.",
                 self._build_top_vendors_table(),
                 DASH_PRIMARY,
             ),
@@ -379,8 +346,8 @@ class DashboardView(QWidget):
         )
         secondary_row.addWidget(
             self._build_section_card(
-                "Pedidos sem Confirmacao",
-                "Pedidos aguardando retorno da producao por mais de 1 hora.",
+                "Pedidos sem Confirmação",
+                "Pedidos aguardando retorno da produção por mais de 1 hora.",
                 self._build_alerts_table(),
                 DASH_WARNING,
             ),
@@ -390,8 +357,8 @@ class DashboardView(QWidget):
 
         layout.addWidget(
             self._build_section_card(
-                "Ultimas Requisicoes",
-                "Visao rapida das requisicoes mais recentes do sistema.",
+                "Últimas Requisições",
+                "Visão rápida das requisições mais recentes do sistema.",
                 self._build_recent_table(),
                 DASH_SLATE,
             )
@@ -629,12 +596,12 @@ class DashboardView(QWidget):
             self.date_label.setText(_format_header_date())
 
     def _show_error(self, message: str):
-        self.error_label.setText(f"Nao foi possivel carregar o painel.\n\n{message}")
+        self.error_label.setText(f"Não foi possível carregar o painel.\n\n{message}")
         self.error_label.show()
 
     def _populate(self, payload: object):
         if not isinstance(payload, dict):
-            self._show_error("Resposta invalida do servidor.")
+            self._show_error("Resposta inválida do servidor.")
             return
 
         stats = payload.get("stats") or {}
@@ -648,11 +615,9 @@ class DashboardView(QWidget):
             else:
                 label.setText(str(value if value is not None else 0))
 
-        generated_at = _parse_datetime(payload.get("generated_at"))
-        self.date_label.setText(_format_header_date(generated_at or datetime.now()))
-        self.updated_label.setText(
-            f"Atualizado em {_format_datetime(payload.get('generated_at'))}"
-        )
+        current = _parse_datetime(payload.get("generated_at")) or local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
         self._fill_top_vendors_table(payload.get("top_vendors") or [])
         self._fill_alerts_table(payload.get("receipt_alerts") or [])
@@ -690,7 +655,7 @@ class DashboardView(QWidget):
         items = rows if isinstance(rows, list) else []
 
         if not items:
-            self._set_empty_message(table, "Nenhum pedido aguardando confirmacao ha mais de 1 hora.")
+            self._set_empty_message(table, "Nenhum pedido aguardando confirmação há mais de 1 hora.")
             return
 
         for row in items:
@@ -716,7 +681,7 @@ class DashboardView(QWidget):
         items = rows if isinstance(rows, list) else []
 
         if not items:
-            self._set_empty_message(table, "Nenhuma requisicao recente encontrada.")
+            self._set_empty_message(table, "Nenhuma requisição recente encontrada.")
             return
 
         for row in items:

@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
     QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy,
@@ -7,6 +5,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QTimer
 
 from ..core import theme
+from ..core.datetime_utils import local_now
 from ..core.resolution import res
 from ..core.session import session
 from ..api import client as api
@@ -162,7 +161,7 @@ class MainWindow(QMainWindow):
             production_btn = self.sidebar._nav_btns.get("producao")
             if production_btn:
                 production_btn.setEnabled(False)
-                production_btn.setToolTip("Acesso restrito a administradores, producao e industria")
+                production_btn.setToolTip("Acesso restrito a administradores, produção e indústria")
 
         if not session.can_manage_users:
             users_btn = self.sidebar._nav_btns.get("usuarios")
@@ -186,7 +185,7 @@ class MainWindow(QMainWindow):
             f"pinheiroferragens.com.br  |  SIA e Taguatinga  |  "
             f"Sistema de Requisições Pinheiro Ferragens  |  "
             f"Usuário: {session.user_name}  |  "
-            f"{datetime.now().strftime('%d/%m/%Y  %H:%M')}"
+            f"{local_now().strftime('%d/%m/%Y  %H:%M')}"
         )
 
     def _refresh_session_profile(self):
@@ -243,7 +242,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "O Painel Tecnico e restrito a administradores.",
+                "O Painel Técnico é restrito a administradores.",
             )
             self._highlight_current_page()
             return
@@ -265,7 +264,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "A tela de Producao e restrita a administradores, producao e industria.",
+                "A tela de Produção é restrita a administradores, produção e indústria.",
             )
             self._highlight_current_page()
             return
@@ -276,7 +275,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "A Central de Usuarios e restrita a administradores.",
+                "A Central de Usuários é restrita a administradores.",
             )
             self._highlight_current_page()
             return
