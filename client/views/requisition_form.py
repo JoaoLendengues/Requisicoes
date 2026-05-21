@@ -3,6 +3,7 @@ Formulário principal de requisição — fiel ao mockup fornecido.
 """
 import os
 import io
+import shutil
 import tempfile
 from datetime import date, datetime
 
@@ -1103,6 +1104,35 @@ class RequisitionForm(QWidget):
             require_configured_folder=False,
         )
 
+    def _prepare_local_pdf_for_print(self, pdf_path: str) -> str:
+        if not os.path.isfile(pdf_path):
+            raise RuntimeError("O PDF da requisição não foi encontrado para impressão.")
+
+        temp_dir = os.path.join(tempfile.gettempdir(), "requisicoes-print")
+        os.makedirs(temp_dir, exist_ok=True)
+
+        ped_number = self.input_ped.text().strip() or "000000"
+        fd, local_pdf_path = tempfile.mkstemp(
+            prefix=f"req-{ped_number.zfill(6)}-",
+            suffix=".pdf",
+            dir=temp_dir,
+        )
+        os.close(fd)
+
+        try:
+            shutil.copyfile(pdf_path, local_pdf_path)
+        except OSError as exc:
+            try:
+                os.remove(local_pdf_path)
+            except OSError:
+                pass
+            raise RuntimeError(
+                "Não foi possível preparar uma cópia local do PDF para impressão.\n\n"
+                f"{exc}"
+            ) from exc
+
+        return local_pdf_path
+
     def _print_pdf_file(self, pdf_path: str) -> bool:
         try:
             from PySide6.QtCore import QRect, QSize
@@ -1121,20 +1151,24 @@ class RequisitionForm(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return False
 
+        if printer.outputFormat() == QPrinter.OutputFormat.NativeFormat:
+            printer.setOutputFileName("")
+
+        local_pdf_path = self._prepare_local_pdf_for_print(pdf_path)
         document = QPdfDocument(self)
-        load_result = document.load(pdf_path)
-        if load_result != QPdfDocument.Error.None_:
-            raise RuntimeError(
-                f"Não foi possível abrir o PDF da requisição para impressão ({load_result.name})."
-            )
-        if document.pageCount() <= 0:
-            raise RuntimeError("O PDF da requisição não possui páginas para imprimir.")
-
         painter = QPainter()
-        if not painter.begin(printer):
-            raise RuntimeError("Não foi possível iniciar a impressão na impressora selecionada.")
-
         try:
+            load_result = document.load(local_pdf_path)
+            if load_result != QPdfDocument.Error.None_:
+                raise RuntimeError(
+                    f"Não foi possível abrir o PDF da requisição para impressão ({load_result.name})."
+                )
+            if document.pageCount() <= 0:
+                raise RuntimeError("O PDF da requisição não possui páginas para imprimir.")
+
+            if not painter.begin(printer):
+                raise RuntimeError("Não foi possível iniciar a impressão na impressora selecionada.")
+
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
 
@@ -1144,20 +1178,32 @@ class RequisitionForm(QWidget):
 
                 page_size = document.pagePointSize(page_index)
                 target_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+                target_x = int(round(target_rect.x()))
+                target_y = int(round(target_rect.y()))
+                target_width = max(1, int(round(target_rect.width())))
+                target_height = max(1, int(round(target_rect.height())))
+                painter.fillRect(QRect(target_x, target_y, target_width, target_height), Qt.GlobalColor.white)
 
-                width = max(1, int((page_size.width() / 72.0) * printer.resolution()))
-                height = max(1, int((page_size.height() / 72.0) * printer.resolution()))
+                width = max(1, int((page_size.width() / 72.0) * 300))
+                height = max(1, int((page_size.height() / 72.0) * 300))
                 image = document.render(page_index, QSize(width, height))
                 if image.isNull():
                     raise RuntimeError(f"Não foi possível renderizar a página {page_index + 1} para impressão.")
 
                 scaled_size = image.size()
-                scaled_size.scale(target_rect.size(), Qt.AspectRatioMode.KeepAspectRatio)
-                x = target_rect.x() + max(0, (target_rect.width() - scaled_size.width()) // 2)
-                y = target_rect.y() + max(0, (target_rect.height() - scaled_size.height()) // 2)
+                scaled_size.scale(target_width, target_height, Qt.AspectRatioMode.KeepAspectRatio)
+                x = target_x + max(0, (target_width - scaled_size.width()) // 2)
+                y = target_y + max(0, (target_height - scaled_size.height()) // 2)
                 painter.drawImage(QRect(x, y, scaled_size.width(), scaled_size.height()), image)
         finally:
-            painter.end()
+            if painter.isActive():
+                painter.end()
+            if hasattr(document, "close"):
+                document.close()
+            try:
+                os.remove(local_pdf_path)
+            except OSError:
+                pass
 
         return True
 
