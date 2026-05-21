@@ -40,7 +40,9 @@ def _as_dict(n: Notification) -> dict:
 
 
 def push_all(notifications: list[Notification]):
+    print(f"[NOTIF] push_all: {len(notifications)} notificação(ões) para enviar")
     for n in notifications:
+        print(f"[NOTIF]   → user_id={n.user_id} type={n.type} title={n.title!r}")
         sse_manager.push_to_user(n.user_id, _as_dict(n))
 
 
@@ -60,6 +62,9 @@ def build_production_sent(
         .filter(User.role.in_(roles), User.is_active == True)
         .all()
     )
+
+    print(f"[NOTIF] build_production_sent: destino={destino!r} roles={roles} usuarios_encontrados={[u.name for u in users]}")
+
     return [
         _make(
             db,

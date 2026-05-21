@@ -11,8 +11,11 @@ _loop: asyncio.AbstractEventLoop | None = None
 def push_to_user(user_id: int, data: dict):
     """Envia notificação do contexto síncrono para as filas SSE do usuário."""
     if _loop is None or not _loop.is_running():
+        print(f"[SSE] push_to_user: loop não disponível (loop={_loop})")
         return
-    for q in list(_connections.get(user_id, [])):
+    queues = list(_connections.get(user_id, []))
+    print(f"[SSE] push_to_user: user_id={user_id} conexoes_ativas={len(queues)}")
+    for q in queues:
         _loop.call_soon_threadsafe(q.put_nowait, data)
 
 
