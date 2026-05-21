@@ -141,6 +141,11 @@ def get_management_dashboard() -> dict:
         return _check(client.get("/requisitions/dashboard/summary"))
 
 
+def get_technical_panel_summary() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/technical-panel/summary"))
+
+
 def get_order_center() -> dict:
     with _cli() as client:
         return _check(client.get("/requisitions/order-center/summary"))

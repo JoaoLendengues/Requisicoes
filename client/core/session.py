@@ -64,6 +64,10 @@ class UserSession:
         return self.role in ("admin", "gerente")
 
     @property
+    def can_access_technical_panel(self) -> bool:
+        return self.role == "admin"
+
+    @property
     def can_access_order_center(self) -> bool:
         return self.role in ("admin", "gerente", "vendedor")
 

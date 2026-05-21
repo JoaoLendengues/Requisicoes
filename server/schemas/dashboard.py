@@ -48,3 +48,19 @@ class ManagementDashboardResponse(BaseModel):
     top_vendors: list[DashboardVendorItem]
     receipt_alerts: list[DashboardReceiptAlertItem]
     recent_requisitions: list[DashboardRecentRequisitionItem]
+
+
+class TechnicalPanelStatsResponse(BaseModel):
+    system_online: bool
+    connected_users: int
+    requisitions_today: int
+    average_response_ms: Optional[int] = None
+    last_backup_at: Optional[datetime] = None
+    database_connected: bool
+    available_space_bytes: Optional[int] = None
+    error_count_today: int
+
+
+class TechnicalPanelResponse(BaseModel):
+    generated_at: datetime
+    stats: TechnicalPanelStatsResponse

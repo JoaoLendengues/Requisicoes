@@ -16,6 +16,7 @@ from ..services.notification_listener import NotificationListener
 from .requisition_form import RequisitionForm, _run_in_thread
 from .history_view import HistoryView
 from .dashboard_view import DashboardView
+from .technical_panel_view import TechnicalPanelView
 from .order_center_view import OrderCenterView
 from .production_view import ProductionView
 from .settings_view import SettingsView
@@ -25,10 +26,11 @@ from .user_center_view import UserCenterView
 PAGE_FORM = 0
 PAGE_HISTORY = 1
 PAGE_DASHBOARD = 2
-PAGE_ORDER_CENTER = 3
-PAGE_PRODUCTION = 4
-PAGE_USER_CENTER = 5
-PAGE_SETTINGS = 6
+PAGE_TECHNICAL = 3
+PAGE_ORDER_CENTER = 4
+PAGE_PRODUCTION = 5
+PAGE_USER_CENTER = 6
+PAGE_SETTINGS = 7
 
 
 class MainWindow(QMainWindow):
@@ -111,6 +113,7 @@ class MainWindow(QMainWindow):
         self.form_view = RequisitionForm(self.scale)
         self.history_view = HistoryView(self.scale)
         self.dashboard_view = DashboardView(self.scale)
+        self.technical_panel_view = TechnicalPanelView(self.scale)
         self.order_center_view = OrderCenterView(self.scale)
         self.production_view = ProductionView(self.scale)
         self.user_center_view = UserCenterView(self.scale)
@@ -119,6 +122,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.form_view)
         self.stack.addWidget(self.history_view)
         self.stack.addWidget(self.dashboard_view)
+        self.stack.addWidget(self.technical_panel_view)
         self.stack.addWidget(self.order_center_view)
         self.stack.addWidget(self.production_view)
         self.stack.addWidget(self.user_center_view)
@@ -141,6 +145,12 @@ class MainWindow(QMainWindow):
             if dash_btn:
                 dash_btn.setEnabled(False)
                 dash_btn.setToolTip("Acesso restrito a gerentes e administradores")
+
+        if not session.can_access_technical_panel:
+            technical_btn = self.sidebar._nav_btns.get("tecnico")
+            if technical_btn:
+                technical_btn.setEnabled(False)
+                technical_btn.setToolTip("Acesso restrito a administradores")
 
         if not session.can_access_order_center:
             orders_btn = self.sidebar._nav_btns.get("pedidos")
@@ -198,6 +208,7 @@ class MainWindow(QMainWindow):
             "nova": PAGE_FORM,
             "historico": PAGE_HISTORY,
             "dashboard": PAGE_DASHBOARD,
+            "tecnico": PAGE_TECHNICAL,
             "pedidos": PAGE_ORDER_CENTER,
             "producao": PAGE_PRODUCTION,
             "usuarios": PAGE_USER_CENTER,
@@ -222,6 +233,17 @@ class MainWindow(QMainWindow):
                 self,
                 "Acesso negado",
                 "O Painel Gerencial é restrito a gerentes e administradores.",
+            )
+            self._highlight_current_page()
+            return
+
+        if page == PAGE_TECHNICAL and session.can_access_technical_panel:
+            self.technical_panel_view.refresh()
+        elif page == PAGE_TECHNICAL:
+            QMessageBox.warning(
+                self,
+                "Acesso negado",
+                "O Painel Tecnico e restrito a administradores.",
             )
             self._highlight_current_page()
             return
@@ -288,6 +310,7 @@ class MainWindow(QMainWindow):
             PAGE_FORM: "nova",
             PAGE_HISTORY: "historico",
             PAGE_DASHBOARD: "dashboard",
+            PAGE_TECHNICAL: "tecnico",
             PAGE_ORDER_CENTER: "pedidos",
             PAGE_PRODUCTION: "producao",
             PAGE_USER_CENTER: "usuarios",

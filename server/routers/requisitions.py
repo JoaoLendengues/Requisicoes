@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from collections import Counter
 from datetime import datetime, timedelta
+from pathlib import Path
+import shutil
 import unicodedata
+from ..config import settings
 from ..database import get_db
 from ..models.client import Client
 from ..models.requisition import (
@@ -17,6 +20,8 @@ from ..schemas.dashboard import (
     DashboardStatsResponse,
     DashboardVendorItem,
     ManagementDashboardResponse,
+    TechnicalPanelResponse,
+    TechnicalPanelStatsResponse,
 )
 from ..schemas.order_center import (
     OrderCenterItemResponse,
@@ -29,10 +34,13 @@ from ..schemas.requisition import (
 )
 from ..dependencies import (
     get_current_user,
+    require_admin,
     require_creator,
     require_manager_or_admin,
     require_order_center_access,
 )
+from ..services.runtime_monitor import snapshot as runtime_snapshot
+from ..services.sse_manager import connected_users_count
 
 router = APIRouter(prefix="/requisitions", tags=["Requisições"])
 
@@ -599,6 +607,105 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
         top_vendors=top_vendors,
         receipt_alerts=receipt_alerts[:10],
         recent_requisitions=recent_requisitions[:12],
+    )
+
+
+def _resolve_storage_root() -> Path:
+    if settings.DATABASE_TYPE == "sqlite" and settings.DATABASE_URL.startswith("sqlite:///"):
+        raw_path = settings.DATABASE_URL.replace("sqlite:///", "", 1)
+        db_path = Path(raw_path)
+        if not db_path.is_absolute():
+            db_path = (Path.cwd() / db_path).resolve()
+        return db_path.parent
+
+    shared_root = Path(settings.SHARED_FOLDER_PATH)
+    if not shared_root.is_absolute():
+        shared_root = (Path.cwd() / shared_root).resolve()
+    return shared_root if shared_root.exists() else Path.cwd()
+
+
+def _available_space_bytes() -> int | None:
+    root = _resolve_storage_root()
+    try:
+        return shutil.disk_usage(root).free
+    except (FileNotFoundError, OSError, PermissionError):
+        return None
+
+
+def _is_backup_candidate(path: Path) -> bool:
+    if not path.is_file():
+        return False
+
+    name = path.name.casefold()
+    if "backup" in name or "bkp" in name:
+        return True
+
+    return path.suffix.casefold() in {".bak", ".backup", ".dump", ".zip", ".7z"}
+
+
+def _find_latest_backup_at() -> datetime | None:
+    roots: list[Path] = [_resolve_storage_root(), Path.cwd()]
+    latest_timestamp = 0.0
+
+    for root in roots:
+        if not root.exists() or not root.is_dir():
+            continue
+
+        scan_dirs = [root]
+        for folder_name in ("backup", "backups", "bkp"):
+            candidate_dir = root / folder_name
+            if candidate_dir.exists() and candidate_dir.is_dir():
+                scan_dirs.append(candidate_dir)
+
+        for scan_dir in scan_dirs:
+            try:
+                for item in scan_dir.iterdir():
+                    if _is_backup_candidate(item):
+                        latest_timestamp = max(latest_timestamp, item.stat().st_mtime)
+            except (FileNotFoundError, PermissionError, OSError):
+                continue
+
+    if latest_timestamp <= 0:
+        return None
+
+    return datetime.fromtimestamp(latest_timestamp)
+
+
+def _database_connected(db: Session) -> bool:
+    try:
+        db.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
+@router.get("/technical-panel/summary", response_model=TechnicalPanelResponse)
+def get_technical_panel_summary(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    now = datetime.utcnow()
+    today_start = datetime(now.year, now.month, now.day)
+    stats = runtime_snapshot()
+
+    requisitions_today = (
+        db.query(Requisition)
+        .filter(Requisition.created_at >= today_start)
+        .count()
+    )
+
+    return TechnicalPanelResponse(
+        generated_at=now,
+        stats=TechnicalPanelStatsResponse(
+            system_online=True,
+            connected_users=connected_users_count(),
+            requisitions_today=requisitions_today,
+            average_response_ms=stats.get("average_response_ms"),
+            last_backup_at=_find_latest_backup_at(),
+            database_connected=_database_connected(db),
+            available_space_bytes=_available_space_bytes(),
+            error_count_today=int(stats.get("error_count_today") or 0),
+        ),
     )
 
 

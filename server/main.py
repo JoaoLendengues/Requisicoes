@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
+from time import perf_counter
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -8,6 +9,7 @@ from .database import Base, engine
 from .models import client, notification, product, requisition, user  # garante registro dos modelos no SQLAlchemy
 from .routers import auth, clients, notifications, products, requisitions, users
 from .seed import seed_admin
+from .services.runtime_monitor import record_exception, record_request
 
 
 def _migrate():
@@ -59,6 +61,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def monitor_runtime(request: Request, call_next):
+    started_at = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        record_exception()
+        raise
+
+    duration_ms = (perf_counter() - started_at) * 1000.0
+    record_request(duration_ms, response.status_code)
+    return response
 
 app.include_router(auth.router)
 app.include_router(users.router)
