@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
     QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QTimer
 
 from ..core import theme
 from ..core.resolution import res
@@ -413,19 +413,38 @@ class MainWindow(QMainWindow):
     def _start_notification_listener(self):
         self._listener = NotificationListener(self)
         self._listener.notification_received.connect(self._on_notification)
+        # Ao reconectar após queda, sincroniza badge com o banco
+        self._listener.connected.connect(self._sync_badge)
         self._listener.start()
 
+        # Busca contagem inicial
+        self._sync_badge()
+
+        # Poll a cada 30s como fallback para eventos SSE perdidos
+        self._notif_timer = QTimer(self)
+        self._notif_timer.setInterval(30_000)
+        self._notif_timer.timeout.connect(self._sync_badge)
+        self._notif_timer.start()
+
+    def _sync_badge(self):
+        """Sincroniza o badge de notificações com o banco de dados."""
         thread, worker = _run_in_thread(
             api.notification_unread_count,
-            on_result=lambda r: self.sidebar.set_notification_count(r.get("count", 0)),
+            on_result=lambda r: self._update_badge(r.get("count", 0)),
             on_error=lambda _: None,
         )
         self._threads.append((thread, worker))
+
+    def _update_badge(self, count: int):
+        self._unread_count = count
+        self.sidebar.set_notification_count(count)
 
     def _on_notification(self, data: dict):
         self._unread_count += 1
         self.sidebar.set_notification_count(self._unread_count)
         self._toast_manager.show(data, on_action=self._on_toast_action)
+        # Sincroniza com o banco para garantir contagem exata
+        self._sync_badge()
 
     def _on_toast_action(self, req_id):
         if req_id:
@@ -465,6 +484,7 @@ class MainWindow(QMainWindow):
         A sessão do usuário é mantida (singleton). Uma nova MainWindow é criada
         já lendo res.scale atualizado, e a janela atual é fechada em seguida.
         """
+        self._notif_timer.stop()
         if self._listener:
             self._listener.stop()
         new_win = MainWindow()
@@ -481,6 +501,7 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
+            self._notif_timer.stop()
             if self._listener:
                 self._listener.stop()
             session.logout()
