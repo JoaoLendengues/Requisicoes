@@ -9,10 +9,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, Signal
-from PySide6.QtGui import QColor, QCursor, QGraphicsDropShadowEffect
+from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (
-    QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel,
-    QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
+    QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 # ── Constantes ────────────────────────────────────────────────────────────────
