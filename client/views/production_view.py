@@ -840,7 +840,14 @@ class ProductionView(QWidget):
 
     def _show_error(self, msg: str):
         self.updated_label.setText("Falha ao atualizar")
-        QMessageBox.critical(self, self.dialog_title, msg)
+        friendly = str(msg or "").strip()
+        normalized = friendly.casefold()
+        if normalized in {"not found", "404: not found"} or "not found" in normalized:
+            friendly = (
+                "O servidor da API ainda nao carregou o novo fluxo de producao.\n\n"
+                "Reinicie o servidor e abra novamente a tela de producao."
+            )
+        QMessageBox.critical(self, self.dialog_title, friendly)
 
     def _show_info(self, msg: str):
         QMessageBox.information(self, self.dialog_title, msg)
