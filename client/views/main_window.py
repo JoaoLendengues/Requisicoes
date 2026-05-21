@@ -738,14 +738,20 @@ class MainWindow(QMainWindow):
         self._restore_ui_state(state)
         return self
 
-    def _start_theme_transition(self, previous_frame):
-        if previous_frame.isNull():
-            return
+    def _show_frozen_overlay(self, pixmap) -> QLabel | None:
+        """
+        Exibe um overlay com o screenshot do estado anterior da janela.
+        Não inicia nenhuma animação — o overlay fica estático até
+        _start_overlay_fadeout() ser chamado.
+        Retorna o QLabel criado, ou None se o pixmap for nulo.
+        """
+        if pixmap.isNull():
+            return None
 
+        # Cancela overlay anterior se existir
         if self._theme_transition_anim is not None:
             self._theme_transition_anim.stop()
             self._theme_transition_anim = None
-
         if self._theme_transition_overlay is not None:
             self._theme_transition_overlay.deleteLater()
             self._theme_transition_overlay = None
@@ -753,20 +759,31 @@ class MainWindow(QMainWindow):
         overlay = QLabel(self)
         overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         overlay.setScaledContents(True)
-        overlay.setPixmap(previous_frame)
+        overlay.setPixmap(pixmap)
         overlay.setGeometry(self.rect())
         overlay.raise_()
         overlay.show()
+        self._theme_transition_overlay = overlay
+        return overlay
+
+    def _start_overlay_fadeout(self, overlay: QLabel | None):
+        """
+        Inicia o fade-out no overlay já visível.
+        Deve ser chamado APÓS o rebuild, para que a animação corra
+        suavemente sem competir com o bloqueio do event loop.
+        """
+        if overlay is None or not overlay.isVisible():
+            return
 
         effect = QGraphicsOpacityEffect(overlay)
         effect.setOpacity(1.0)
         overlay.setGraphicsEffect(effect)
 
         anim = QPropertyAnimation(effect, b"opacity", overlay)
-        anim.setDuration(420)
+        anim.setDuration(380)
         anim.setStartValue(1.0)
         anim.setEndValue(0.0)
-        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         def _cleanup():
             overlay.deleteLater()
@@ -774,24 +791,38 @@ class MainWindow(QMainWindow):
             self._theme_transition_anim = None
 
         anim.finished.connect(_cleanup)
-        self._theme_transition_overlay = overlay
         self._theme_transition_anim = anim
         anim.start()
 
-    def _apply_theme_toggle(self, dark: bool):
-        """Aplica o tema na mesma janela apÃ³s iniciar a transiÃ§Ã£o visual."""
+    def _on_theme_toggle(self, dark: bool):
+        """
+        Troca de tema com transição visual responsiva.
+
+        Sequência:
+        1. Screenshot da janela atual
+        2. Overlay aparece imediatamente (cobre a janela)
+        3. processEvents() — força a pintura do overlay ANTES do rebuild
+        4. Rebuild síncrono (bloqueante; overlay cobre os widgets antigos)
+        5. Rebuild concluído → fade-out do overlay revela o novo tema
+        """
         from PySide6.QtWidgets import QApplication
 
+        previous_frame = self.grab()
+
+        # Overlay aparece INSTANTANEAMENTE ao clicar
+        overlay = self._show_frozen_overlay(previous_frame)
+
+        # Garante que o overlay seja PINTADO antes de bloquear a thread
+        QApplication.processEvents()
+
+        # Aplica tema + reconstrói (overlay cobre tudo durante o rebuild)
         res.save(dark_mode=dark)
         theme.set_dark(dark)
         QApplication.instance().setStyleSheet(theme.global_style())
         self._build_replacement_window()
 
-    def _on_theme_toggle(self, dark: bool):
-        """Aplica a troca de tema na própria janela com transição visual."""
-        previous_frame = self.grab()
-        self._start_theme_transition(previous_frame)
-        QTimer.singleShot(24, lambda: self._apply_theme_toggle(dark))
+        # Rebuild concluído — agora o fade-out corre suavemente
+        self._start_overlay_fadeout(overlay)
 
     def _on_scale_changed(self, _new_scale: float):
         """Reconstrói o conteúdo da janela principal com a nova escala."""

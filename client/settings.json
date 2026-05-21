@@ -1,7 +1,11 @@
 {
+<<<<<<< HEAD
   "dark_mode": true,
   "server_url": "http://10.1.1.151:5000",
   "font_scale": "90%",
   "ods_path": "Z:\\REQUISIÇÕES (VENDAS)\\relacao_cadastros.ods",
   "products_path": "Z:\\REQUISIÇÕES (VENDAS)\\produtos.ods"
+=======
+  "dark_mode": true
+>>>>>>> 505cbda8960dd45f5049a2d8a192cab4a6830076
 }
