@@ -494,6 +494,16 @@ class RequisitionForm(QWidget):
 
         save_row.addSpacing(max(8, int(10 * s)))
 
+        btn_print = QPushButton("IMPRIMIR")
+        btn_print.setFixedHeight(max(42, int(48 * s)))
+        btn_print.setMinimumWidth(max(180, int(210 * s)))
+        btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        btn_print.clicked.connect(self._print_requisition_pdf)
+        save_row.addWidget(btn_print)
+        self.btn_print = btn_print
+
+        save_row.addSpacing(max(8, int(10 * s)))
+
         btn_save = QPushButton("SALVAR REQUISIÇÃO")
         btn_save.setFixedHeight(max(42, int(48 * s)))
         btn_save.setMinimumWidth(max(220, int(260 * s)))
@@ -905,6 +915,23 @@ class RequisitionForm(QWidget):
         self.btn_whatsapp.setEnabled(not busy)
         self.btn_whatsapp.setText("⏳ PREPARANDO PDF..." if busy else "📲 ENVIAR WHATSAPP")
 
+    def _set_print_busy(self, busy: bool):
+        if not hasattr(self, "btn_print"):
+            return
+
+        self.btn_print.setEnabled(not busy)
+        self.btn_print.setText("PREPARANDO IMPRESSÃO..." if busy else "IMPRIMIR")
+
+    def _print_requisition_pdf(self):
+        self._set_print_busy(True)
+        try:
+            pdf_path = self._generate_current_pdf()
+            self._print_pdf_file(pdf_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Impressão", str(exc))
+        finally:
+            self._set_print_busy(False)
+
     def _on_whatsapp_error(self, msg: str):
         self._set_whatsapp_busy(False)
         QMessageBox.critical(self, "WhatsApp", msg)
@@ -954,13 +981,59 @@ class RequisitionForm(QWidget):
             digits = "55" + digits
         return digits
 
-    def _generate_saved_pdf(self, req: dict) -> str:
+    def _build_current_pdf_payload(self) -> tuple[dict, dict, str, str]:
+        data = self.get_form_data()
+        ped_number = (data.get("ped_number") or "").strip()
+        client = self.client_search.get_selected()
+
+        if not ped_number or not ped_number.isdigit() or int(ped_number) == 0:
+            raise RuntimeError("Informe um número de PED válido antes de imprimir.")
+
+        if not data.get("client_id") or not client:
+            raise RuntimeError("Selecione um cliente antes de imprimir.")
+
+        req = dict(data)
+        if self.req_id:
+            req["id"] = self.req_id
+        req["client_name"] = client.get("name") or ""
+        req["client_code"] = client.get("code") or ""
+        req["vendor_name"] = session.user_name or ""
+        req["vendor_whatsapp"] = session.whatsapp or ""
+        req["emission_date"] = datetime.now().isoformat()
+
+        client_payload = {
+            "id": client.get("id"),
+            "code": client.get("code") or "",
+            "name": client.get("name") or "",
+            "phone": self.input_fone.text().strip() or client.get("phone") or "",
+            "cnpj": client.get("cnpj") or "",
+        }
+        obs = self.input_obs.toPlainText().strip()
+        return req, client_payload, obs, self._canvas_json
+
+    def _resolve_pdf_output_folder(self, require_configured_folder: bool = True) -> str:
         folder = res.pdf_folder.strip()
-        if not folder:
+        if folder:
+            return folder
+
+        if require_configured_folder:
             raise RuntimeError(
                 "Defina a pasta de PDFs nas Configurações antes de enviar a requisição pelo WhatsApp."
             )
 
+        folder = os.path.join(tempfile.gettempdir(), "requisicoes-pdf")
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
+    def _generate_pdf_file(
+        self,
+        req: dict,
+        client: dict | None,
+        obs: str,
+        canvas_json: str,
+        *,
+        require_configured_folder: bool,
+    ) -> str:
         try:
             from ..services.pdf_generator import generate_pdf, HAS_REPORTLAB
         except ImportError as exc:
@@ -969,13 +1042,89 @@ class RequisitionForm(QWidget):
         if not HAS_REPORTLAB:
             raise RuntimeError("A geração de PDF está indisponível porque o ReportLab não está instalado.")
 
+        folder = self._resolve_pdf_output_folder(require_configured_folder=require_configured_folder)
+        return generate_pdf(req, client, obs or req.get("obs") or "", folder, canvas_json)
+
+    def _generate_saved_pdf(self, req: dict) -> str:
         client = {
             "code": req.get("client_code") or "",
             "name": req.get("client_name") or "",
             "phone": req.get("phone") or "",
         }
         canvas_json = (req.get("canvas") or {}).get("json_data") or "{}"
-        return generate_pdf(req, client, req.get("obs") or "", folder, canvas_json)
+        return self._generate_pdf_file(
+            req,
+            client,
+            req.get("obs") or "",
+            canvas_json,
+            require_configured_folder=True,
+        )
+
+    def _generate_current_pdf(self) -> str:
+        req, client, obs, canvas_json = self._build_current_pdf_payload()
+        return self._generate_pdf_file(
+            req,
+            client,
+            obs,
+            canvas_json,
+            require_configured_folder=False,
+        )
+
+    def _print_pdf_file(self, pdf_path: str) -> bool:
+        try:
+            from PySide6.QtCore import QRect, QSize
+            from PySide6.QtGui import QPageLayout, QPainter
+            from PySide6.QtPdf import QPdfDocument
+            from PySide6.QtPrintSupport import QPrintDialog, QPrinter
+        except ImportError as exc:
+            raise RuntimeError("A seleção de impressora não está disponível neste ambiente.") from exc
+
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setDocName(f"Requisicao {self.input_ped.text().strip() or '000000'}")
+        printer.setPageOrientation(QPageLayout.Orientation.Landscape)
+
+        dialog = QPrintDialog(printer, self)
+        dialog.setWindowTitle("Imprimir requisição")
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+
+        document = QPdfDocument(self)
+        load_result = document.load(pdf_path)
+        if int(load_result) != 0:
+            raise RuntimeError("Não foi possível abrir o PDF da requisição para impressão.")
+        if document.pageCount() <= 0:
+            raise RuntimeError("O PDF da requisição não possui páginas para imprimir.")
+
+        painter = QPainter()
+        if not painter.begin(printer):
+            raise RuntimeError("Não foi possível iniciar a impressão na impressora selecionada.")
+
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+            for page_index in range(document.pageCount()):
+                if page_index:
+                    printer.newPage()
+
+                page_size = document.pagePointSize(page_index)
+                target_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+
+                width = max(1, int((page_size.width() / 72.0) * printer.resolution()))
+                height = max(1, int((page_size.height() / 72.0) * printer.resolution()))
+                image = document.render(page_index, QSize(width, height))
+                if image.isNull():
+                    raise RuntimeError(f"Não foi possível renderizar a página {page_index + 1} para impressão.")
+
+                scaled_size = image.size()
+                scaled_size.scale(target_rect.size(), Qt.AspectRatioMode.KeepAspectRatio)
+                x = target_rect.x() + max(0, (target_rect.width() - scaled_size.width()) // 2)
+                y = target_rect.y() + max(0, (target_rect.height() - scaled_size.height()) // 2)
+                painter.drawImage(QRect(x, y, scaled_size.width(), scaled_size.height()), image)
+        finally:
+            painter.end()
+
+        return True
 
     # ── Calculadora de Peso ───────────────────────────────────────────────────
     def _open_weight_calculator(self):
