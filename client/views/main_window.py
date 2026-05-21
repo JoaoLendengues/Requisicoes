@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self._threads: list = []
         self._unread_count = 0
         self._listener: NotificationListener | None = None
+        self._shown_notif_ids: set[int] = set()  # IDs já exibidos como toast
         self._setup_ui()
         self._setup_statusbar()
         self.setWindowTitle("Sistema de Requisições - Ferragens Pinheiro")
@@ -427,24 +428,37 @@ class MainWindow(QMainWindow):
         self._notif_timer.start()
 
     def _sync_badge(self):
-        """Sincroniza o badge de notificações com o banco de dados."""
+        """Sincroniza badge e exibe toasts para notificações perdidas."""
         thread, worker = _run_in_thread(
-            api.notification_unread_count,
-            on_result=lambda r: self._update_badge(r.get("count", 0)),
+            api.list_notifications,
+            on_result=self._handle_sync,
             on_error=lambda _: None,
         )
         self._threads.append((thread, worker))
+
+    def _handle_sync(self, notifications: list):
+        """Atualiza badge e exibe toast para notificações ainda não mostradas."""
+        count = len(notifications)
+        self._update_badge(count)
+
+        for n in notifications:
+            nid = n.get("id")
+            if nid and nid not in self._shown_notif_ids:
+                self._shown_notif_ids.add(nid)
+                self._toast_manager.show(n, on_action=self._on_toast_action)
 
     def _update_badge(self, count: int):
         self._unread_count = count
         self.sidebar.set_notification_count(count)
 
     def _on_notification(self, data: dict):
+        # Registra o ID para não repetir toast no próximo sync
+        nid = data.get("id")
+        if nid:
+            self._shown_notif_ids.add(nid)
         self._unread_count += 1
         self.sidebar.set_notification_count(self._unread_count)
         self._toast_manager.show(data, on_action=self._on_toast_action)
-        # Sincroniza com o banco para garantir contagem exata
-        self._sync_badge()
 
     def _on_toast_action(self, req_id):
         if req_id:
@@ -474,6 +488,7 @@ class MainWindow(QMainWindow):
 
     def _reset_badge(self):
         self._unread_count = 0
+        self._shown_notif_ids.clear()
         self.sidebar.set_notification_count(0)
 
     # ── Escala ───────────────────────────────────────────────────────────────
