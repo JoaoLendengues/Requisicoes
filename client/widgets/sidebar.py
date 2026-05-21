@@ -17,6 +17,13 @@ SIDEBAR_ICON_DIRS = [
     os.path.join(os.path.dirname(__file__), "..", "assets", "sidebar_icons"),
 ]
 
+# ── Caches de ícones ───────────────────────────────────────────────────────────
+# Sobrevivem ao longo de toda a sessão para que rebuilds (toggle de tema,
+# troca de escala) não repitam scans de rede bloqueantes.
+_dir_listing_cache: dict[str, list[str] | None] = {}   # dir -> nomes de arquivos (ou None se falhou)
+_icon_path_cache:   dict[str, str]              = {}   # icon_key -> caminho absoluto (ou "")
+_pixmap_cache:      dict[tuple, "QPixmap"]      = {}   # (icon_key, side_px) -> QPixmap
+
 SIDEBAR_ICON_ALIASES = {
     "notificacoes": ["notificacoes", "notificações", "notificacao", "notificação", "sino", "bell"],
     "nova":         ["nova requisicao", "nova requisição", "requisicao", "requisição", "nova"],
@@ -56,12 +63,23 @@ def _normalize_icon_name(value: str) -> str:
 
 
 def _find_sidebar_icon_path(icon_key: str) -> str:
+    # Cache de caminho: não re-escaneia diretórios para ícones já resolvidos
+    if icon_key in _icon_path_cache:
+        return _icon_path_cache[icon_key]
+
     aliases = [_normalize_icon_name(a) for a in SIDEBAR_ICON_ALIASES.get(icon_key, [icon_key])]
+    found = ""
 
     for directory in SIDEBAR_ICON_DIRS:
-        try:
-            filenames = os.listdir(directory)
-        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+        # Cache de listagem: cada diretório é lido no máximo uma vez por sessão
+        if directory not in _dir_listing_cache:
+            try:
+                _dir_listing_cache[directory] = os.listdir(directory)
+            except (FileNotFoundError, NotADirectoryError, PermissionError, OSError):
+                _dir_listing_cache[directory] = None
+
+        filenames = _dir_listing_cache[directory]
+        if filenames is None:
             continue
 
         fallback = ""
@@ -73,28 +91,47 @@ def _find_sidebar_icon_path(icon_key: str) -> str:
             full_path = os.path.join(directory, filename)
             for alias in aliases:
                 if normalized_name == alias:
-                    return full_path
+                    found = full_path
+                    break
                 if alias and alias in normalized_name:
                     fallback = fallback or full_path
+            if found:
+                break
+        if found:
+            break
         if fallback:
-            return fallback
+            found = fallback
+            break
 
-    return ""
+    _icon_path_cache[icon_key] = found
+    return found
 
 
 def _load_sidebar_pixmap(icon_key: str, scale: float, size: int | None = None) -> QPixmap:
+    side = size or max(18, int(20 * scale))
+    cache_key = (icon_key, side)
+
+    # Cache de pixmap: não recarrega/reescala imagens já processadas
+    if cache_key in _pixmap_cache:
+        return _pixmap_cache[cache_key]
+
     path = _find_sidebar_icon_path(icon_key)
     if not path:
+        _pixmap_cache[cache_key] = QPixmap()
         return QPixmap()
+
     pixmap = QPixmap(path)
     if pixmap.isNull():
-        return pixmap
-    side = size or max(18, int(20 * scale))
-    return pixmap.scaled(
+        _pixmap_cache[cache_key] = QPixmap()
+        return QPixmap()
+
+    result = pixmap.scaled(
         side, side,
         Qt.AspectRatioMode.KeepAspectRatio,
         Qt.TransformationMode.SmoothTransformation,
     )
+    _pixmap_cache[cache_key] = result
+    return result
 
 
 def _apply_sidebar_icon(button: QPushButton, icon_key: str, scale: float):
