@@ -129,9 +129,9 @@ class MainWindow(QMainWindow):
         )
         self.ar_view = ProductionView(
             self.scale,
-            destinations=("A&R",),
-            title="A&&R",
-            subtitle="Acompanhamento operacional das requisições enviadas para a A&&R.",
+            destinations=("A&R"),
+            title="A&R",
+            subtitle="Acompanhamento operacional das requisições enviadas para a A&R.",
         )
         self.user_center_view = UserCenterView(self.scale)
         self.settings_view = SettingsView(self.scale)
@@ -304,7 +304,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "A tela da A&&R é restrita a administradores e produção.",
+                "A tela da A&R é restrita a administradores e produção.",
             )
             self._highlight_current_page()
             return
