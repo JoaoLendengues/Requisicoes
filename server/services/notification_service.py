@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from ..models.notification import Notification
+from ..models.production_machine import ProductionMachine
 from ..models.requisition import Requisition, RequisitionStatus
 from ..models.user import User, Role
 from . import sse_manager
@@ -144,6 +145,10 @@ def notify_vendor(
     Retorna lista vazia se o evento for desconhecido.
     """
     _eventos = {
+        "aguardando_na_fila": (
+            "Requisicao em Fila",
+            f"PED #{req.ped_number} aguardando disponibilidade da producao.",
+        ),
         "em_producao": (
             "Requisição em Produção ⚙️",
             f"PED #{req.ped_number} foi recebida pela produção.",
@@ -178,6 +183,31 @@ def notify_vendor(
     notifs += _notify_admins_gerentes(db, event, title, msg, req.id, ids_ja_notificados)
 
     return notifs
+
+
+def notify_machine_status_change(
+    db: Session,
+    machine: ProductionMachine,
+    actor: User,
+) -> list[Notification]:
+    usuarios = (
+        db.query(User)
+        .filter(User.is_active == True)
+        .all()
+    )
+
+    status_value = getattr(machine.status, "value", machine.status)
+    status_label = "Funcionando" if str(status_value) == "funcionando" else "Manutencao"
+    title = "Status de Maquina Atualizado"
+    message = (
+        f"{machine.destination} - {machine.name} agora esta em {status_label}. "
+        f"Alterado por {actor.name}."
+    )
+
+    return [
+        _create(db, user.id, "machine_status", title, message, None)
+        for user in usuarios
+    ]
 
 
 def stuck_requisition_events(db: Session) -> list[dict]:

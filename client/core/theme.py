@@ -57,6 +57,7 @@ _LIGHT: dict = {
     "STATUS_COLORS": {
         "em_andamento":           "#2D7FF9",
         "aguardando_recebimento": "#F3A01B",
+        "aguardando_na_fila":     "#C7790A",
         "em_producao":            "#0057D8",
         "cancelada":              "#D64545",
     },
@@ -128,6 +129,7 @@ _DARK: dict = {
     "STATUS_COLORS": {
         "em_andamento":           "#60A5FA",
         "aguardando_recebimento": "#FBBF24",
+        "aguardando_na_fila":     "#F59E0B",
         "em_producao":            "#3B82F6",
         "cancelada":              "#EF4444",
     },
@@ -160,6 +162,7 @@ _DARK: dict = {
 STATUS_LABELS: dict = {
     "em_andamento":           "Em Andamento",
     "aguardando_recebimento": "Aguardando Recebimento",
+    "aguardando_na_fila":     "Aguardando na Fila",
     "em_producao":            "Em Producao",
     "cancelada":              "Cancelada",
 }

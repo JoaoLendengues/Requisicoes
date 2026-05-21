@@ -125,6 +125,8 @@ class RequisitionResponse(BaseModel):
     weight: float
     obs: Optional[str] = None
     status: RequisitionStatus
+    production_destination: Optional[str] = None
+    production_machine: Optional[str] = None
     finalized_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime

@@ -485,6 +485,7 @@ class HistoryView(QWidget):
                         color_map = {
                             "em_andamento": theme.PRIMARY_HOVER,
                             "aguardando_recebimento": theme.WARNING,
+                            "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
                             "em_producao": theme.PRIMARY,
                             "cancelada": theme.DANGER,
                         }

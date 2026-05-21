@@ -6,9 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .database import Base, engine
-from .models import client, notification, product, requisition, user  # garante registro dos modelos no SQLAlchemy
+from .models import client, notification, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
 from .routers import auth, clients, notifications, products, requisitions, users
-from .seed import seed_admin
+from .seed import seed_admin, seed_production_machines
 from .services.runtime_monitor import record_exception, record_request
 
 
@@ -22,6 +22,8 @@ def _migrate():
         "ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP",
         "ALTER TABLE requisitions ADD COLUMN obs TEXT",
+        "ALTER TABLE requisitions ADD COLUMN production_destination TEXT",
+        "ALTER TABLE requisitions ADD COLUMN production_machine TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",
         "UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL",
@@ -31,6 +33,8 @@ def _migrate():
         "UPDATE requisitions SET status = 'em_producao' WHERE UPPER(status) = 'EM_FABRICACAO'",
         "UPDATE requisitions SET status = 'aguardando_recebimento' "
         "WHERE status = 'em_producao' AND finalized_at IS NULL",
+        "UPDATE requisitions SET status = 'aguardando_na_fila' "
+        "WHERE status = 'em_producao' AND production_machine IS NULL AND finalized_at IS NOT NULL",
     ]
     for stmt in stmts:
         try:
@@ -45,6 +49,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _migrate()
     seed_admin()
+    seed_production_machines()
     yield
 
 
