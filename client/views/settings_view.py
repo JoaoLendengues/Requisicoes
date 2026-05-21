@@ -45,17 +45,8 @@ def _make_card(
     card.setObjectName("settingsCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    bg = background or theme.CARD_BG
-    border = f"1px solid {border_color}" if border_color else "none"
-    hover = hover_background or bg
-    card.setStyleSheet(
-        f"QFrame#settingsCard {{"
-        f"  background:{bg}; border:{border}; border-radius:{radius}px;"
-        f"}}"
-        f"QFrame#settingsCard:hover {{"
-        f"  background:{hover}; border:{border};"
-        f"}}"
-    )
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#settingsCard {{ border-radius:{radius}px; }}")
     _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
@@ -64,8 +55,7 @@ def _section(title: str, scale: float) -> QLabel:
     cleaned = title.lstrip("⚙️🌐🎨📥📦 ").strip()
     lbl = QLabel(cleaned)
     lbl.setStyleSheet(
-        f"color:{theme.TEXT_DARK}; font-size:{max(10,int(12*scale))}pt;"
-        f"font-weight:800; padding-top:4px;"
+        f"font-size:{max(10,int(12*scale))}pt; font-weight:800; padding-top:4px;"
     )
     return lbl
 
@@ -74,7 +64,9 @@ def _separator() -> QFrame:
     sep = QFrame()
     sep.setFrameShape(QFrame.Shape.NoFrame)
     sep.setFixedHeight(4)
-    sep.setStyleSheet(f"background:{theme.BORDER_COLOR}; border:none; border-radius:2px;")
+    sep.setProperty("theme_bg", "separator")
+    sep.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    sep.setStyleSheet("border:none; border-radius:2px;")
     return sep
 
 
@@ -178,14 +170,15 @@ class SettingsView(QWidget):
 
         title = QLabel("Configurações")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Preferências locais, conexão com o servidor e rotinas de importação do sistema."
         )
         subtitle.setWordWrap(True)
+        subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
+            f"font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -203,18 +196,18 @@ class SettingsView(QWidget):
                                        max(14, int(16 * s)), max(10, int(12 * s)))
         info_layout.setSpacing(max(2, int(3 * s)))
         date_hint = QLabel("DATA ATUAL")
+        date_hint.setProperty("muted", "1")
         date_hint.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
-            f"background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;"
         )
         self.date_label = QLabel(_format_header_date())
         self.date_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
-            f"background:transparent;"
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
         )
         self.updated_label = QLabel("Preferências do sistema")
+        self.updated_label.setProperty("muted", "1")
         self.updated_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
@@ -222,26 +215,26 @@ class SettingsView(QWidget):
         header.addWidget(info_card, 0, Qt.AlignmentFlag.AlignTop)
         root_layout.addLayout(header)
 
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(
+        self._page_scroll = QScrollArea(self)
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(
             f"QScrollArea {{ border:none; background:{page_bg}; }}"
         )
-        scroll.viewport().setStyleSheet(
+        self._page_scroll.viewport().setStyleSheet(
             f"background:{page_bg}; border:none;"
         )
-        root_layout.addWidget(scroll)
+        root_layout.addWidget(self._page_scroll)
 
-        container = QWidget()
-        container.setObjectName("settingsContainer")
-        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        container.setStyleSheet(
+        self._page_content = QWidget()
+        self._page_content.setObjectName("settingsContainer")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(
             f"QWidget#settingsContainer {{ background:{page_bg}; }}"
         )
-        scroll.setWidget(container)
+        self._page_scroll.setWidget(self._page_content)
 
-        outer = QVBoxLayout(container)
+        outer = QVBoxLayout(self._page_content)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(max(16,int(18*s)))
 
@@ -286,8 +279,9 @@ class SettingsView(QWidget):
         grid.addWidget(self.btn_test, 0, 2)
 
         self.lbl_conn_status = QLabel("")
+        self.lbl_conn_status.setProperty("muted", "1")
         self.lbl_conn_status.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
         )
         grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
         layout.addLayout(grid)
@@ -328,14 +322,15 @@ class SettingsView(QWidget):
         scale_row.addStretch()
         layout.addLayout(scale_row)
 
-        screen_info = QLabel(
+        self.screen_info = QLabel(
             f"Resolução detectada: {res.screen_width}×{res.screen_height}  |  "
             f"DPI: {res.dpi:.0f}  |  Recomendado: {res.recommended_label}"
         )
-        screen_info.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        self.screen_info.setProperty("muted", "1")
+        self.screen_info.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
         )
-        layout.addWidget(screen_info)
+        layout.addWidget(self.screen_info)
 
         self._create_import_section(
             layout=layout,
@@ -364,12 +359,11 @@ class SettingsView(QWidget):
         )
 
         layout.addSpacing(4)
-        btn_save = QPushButton("💾 Salvar configurações")
-        btn_save.setText("SALVAR CONFIGURACOES")
-        btn_save.setFixedHeight(max(38,int(44*s)))
-        btn_save.setStyleSheet(_primary_action_btn_style(s))
-        btn_save.clicked.connect(self._save)
-        layout.addWidget(btn_save, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.btn_save = QPushButton("SALVAR CONFIGURACOES")
+        self.btn_save.setFixedHeight(max(38,int(44*s)))
+        self.btn_save.setStyleSheet(_primary_action_btn_style(s))
+        self.btn_save.clicked.connect(self._save)
+        layout.addWidget(self.btn_save, alignment=Qt.AlignmentFlag.AlignLeft)
 
         outer.addWidget(card)
         outer.addStretch()
@@ -428,6 +422,7 @@ class SettingsView(QWidget):
         self._import_ui[kind] = {
             "input": input_path,
             "button": btn_import,
+            "browse": btn_browse,
             "button_text": button_text,
             "progress": progress_bar,
             "log": txt_log,
@@ -453,9 +448,9 @@ class SettingsView(QWidget):
     def _lbl(self, text: str, scale: float, color: str = None,
              italic: bool = False) -> QLabel:
         lbl = QLabel(text)
-        c = color or theme.TEXT_MEDIUM
+        lbl.setProperty("muted", "1")
         fs = max(8, int(9 * scale))
-        style = f"color:{c}; font-size:{fs}pt;"
+        style = f"font-size:{fs}pt;"
         if italic:
             style += " font-style:italic;"
         lbl.setStyleSheet(style)
@@ -605,3 +600,41 @@ class SettingsView(QWidget):
         current = self._import_threads.get(kind)
         if current == (thread, worker):
             self._import_threads.pop(kind, None)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#settingsView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#settingsContainer {{ background:{bg}; }}")
+        self.input_url.setStyleSheet(_field_style(s))
+        self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_save.setStyleSheet(_primary_action_btn_style(s))
+        for btn in self._scale_btns.values():
+            checked = btn.isChecked()
+            btn.setStyleSheet(
+                f"QPushButton {{"
+                f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+                f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
+                f"  padding:0 {max(10, int(14*s))}px;"
+                f"  font-size:{max(8, int(9*s))}pt; font-weight:700;"
+                f"}}"
+                f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{theme.PRIMARY}; }}"
+                f"QPushButton:checked {{"
+                f"  background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY};"
+                f"}}"
+            )
+        for ui in self._import_ui.values():
+            ui["input"].setStyleSheet(_field_style(s))
+            ui["button"].setStyleSheet(_primary_action_btn_style(s))
+            ui["browse"].setStyleSheet(_flat_secondary_btn_style(s))
+            ui["progress"].setStyleSheet(
+                f"QProgressBar {{ border:none; border-radius:4px;"
+                f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
+                f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
+            )
+            ui["log"].setStyleSheet(
+                f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
+                f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
+            )

@@ -460,4 +460,10 @@ def global_style() -> str:
         f"QMenu::item {{ padding:8px 12px; border-radius:6px; }}"
         f"QMenu::item:selected {{ background:{SELECTION_BG}; color:{TEXT_DARK}; }}"  # noqa: F821
         f"QStatusBar {{ background:{FOOTER_BG}; color:{TEXT_WHITE}; }}"  # noqa: F821
+        # ── Propriedades dinâmicas — permitem auto-tema sem rebuild ──────────────
+        f"QFrame[theme_bg='card'] {{ background:{CARD_BG}; border:none; }}"  # noqa: F821
+        f"QFrame[theme_bg='card_bordered'] {{ background:{CARD_BG}; border:1px solid {BORDER_COLOR}; }}"  # noqa: F821
+        f"QFrame[theme_bg='separator'] {{ background:{BORDER_COLOR}; border:none; }}"  # noqa: F821
+        f"QLabel[muted='1'] {{ color:{TEXT_MEDIUM}; background:transparent; }}"  # noqa: F821
+        f"QLabel[accent='1'] {{ color:{PRIMARY}; background:transparent; }}"  # noqa: F821
     )

@@ -80,16 +80,8 @@ def _make_shadow_card(
     card.setObjectName("dashboardCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    border = f"1px solid {border_color}" if border_color else "none"
-    hover = hover_background or background
-    card.setStyleSheet(
-        f"QFrame#dashboardCard {{"
-        f"  background:{background}; border:{border}; border-radius:{radius}px;"
-        f"}}"
-        f"QFrame#dashboardCard:hover {{"
-        f"  background:{hover}; border:{border};"
-        f"}}"
-    )
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#dashboardCard {{ border-radius:{radius}px; }}")
     _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
@@ -206,9 +198,7 @@ class DashboardView(QWidget):
         page_bg = theme.CONTENT_BG
         self.setObjectName("dashboardView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(
-            f"QWidget#dashboardView {{ background:{page_bg}; }}"
-        )
+        self.setStyleSheet(f"QWidget#dashboardView {{ background:{page_bg}; }}")
         root = QVBoxLayout(self)
         root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
                                 max(18, int(24 * s)), max(18, int(24 * s)))
@@ -220,15 +210,12 @@ class DashboardView(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Painel de Produção")
-        title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
-        )
+        title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
         subtitle = QLabel(
             "Visão executiva da operação industrial com indicadores, alertas e ritmo de produção."
         )
-        subtitle.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
-        )
+        subtitle.setProperty("muted", "1")
+        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
         subtitle.setWordWrap(True)
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -250,19 +237,13 @@ class DashboardView(QWidget):
         info_layout.setSpacing(max(2, int(3 * s)))
 
         date_hint = QLabel("DATA ATUAL")
-        date_hint.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
-            f"background:transparent;"
-        )
+        date_hint.setProperty("muted", "1")
+        date_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;")
         self.date_label = QLabel(_format_header_date())
-        self.date_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
-            f"background:transparent;"
-        )
+        self.date_label.setStyleSheet(f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;")
         self.updated_label = QLabel("Atualizando dados...")
-        self.updated_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
-        )
+        self.updated_label.setProperty("muted", "1")
+        self.updated_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
@@ -288,26 +269,20 @@ class DashboardView(QWidget):
         )
         root.addWidget(self.error_label)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(
-            f"QScrollArea {{ border:none; background:{page_bg}; }}"
-        )
-        scroll.viewport().setStyleSheet(
-            f"background:{page_bg}; border:none;"
-        )
-        root.addWidget(scroll, 1)
+        self._page_scroll = QScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{page_bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{page_bg}; border:none;")
+        root.addWidget(self._page_scroll, 1)
 
-        content = QWidget()
-        content.setObjectName("dashboardContent")
-        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        content.setStyleSheet(
-            f"QWidget#dashboardContent {{ background:{page_bg}; }}"
-        )
-        scroll.setWidget(content)
+        self._page_content = QWidget()
+        self._page_content.setObjectName("dashboardContent")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(f"QWidget#dashboardContent {{ background:{page_bg}; }}")
+        self._page_scroll.setWidget(self._page_content)
 
-        layout = QVBoxLayout(content)
+        layout = QVBoxLayout(self._page_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(max(16, int(18 * s)))
 
@@ -414,24 +389,20 @@ class DashboardView(QWidget):
 
         value_label = QLabel("-")
         value_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(20, int(26 * s))}pt;"
-            f"font-weight:800; background:transparent; border:none;"
+            f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
         )
         value_label.setWordWrap(True)
 
         title_label = QLabel(title)
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt;"
-            f"font-weight:700; background:transparent; border:none;"
+            f"font-size:{max(9, int(11 * s))}pt; font-weight:700; background:transparent; border:none;"
         )
 
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
-        helper_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;"
-            f"background:transparent; border:none;"
-        )
+        helper_label.setProperty("muted", "1")
+        helper_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent; border:none;")
 
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
@@ -502,16 +473,13 @@ class DashboardView(QWidget):
 
         title_label = QLabel(title)
         title_label.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{theme.TEXT_DARK}; background:transparent;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
 
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
-        subtitle_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt;"
-            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
-        )
+        subtitle_label.setProperty("muted", "1")
+        subtitle_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
 
         layout.addWidget(accent)
         layout.addWidget(title_label)
@@ -827,3 +795,56 @@ class DashboardView(QWidget):
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         item.setForeground(QColor(theme.TEXT_MEDIUM))
         table.setItem(0, 0, item)
+
+    def _apply_table_style(self, table: QTableWidget) -> None:
+        s = self.scale
+        table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
+            f"  color:{theme.BORDER_COLOR}; border-radius:14px;"
+            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.TEXT_DARK}; }}"
+        )
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        table.setPalette(pal)
+        table.viewport().setAutoFillBackground(True)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#dashboardView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#dashboardContent {{ background:{bg}; }}")
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )
+        for tbl in [
+            getattr(self, "top_vendors_table", None),
+            getattr(self, "alerts_table", None),
+            getattr(self, "recent_table", None),
+        ]:
+            if tbl is not None:
+                self._apply_table_style(tbl)
+        for lbl in self._metric_labels.values():
+            lbl.setStyleSheet(
+                f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
+            )

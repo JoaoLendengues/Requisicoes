@@ -110,17 +110,8 @@ def _make_card(
     card.setObjectName("productionCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    bg = background or theme.CARD_BG
-    border = f"1px solid {border_color}" if border_color else "none"
-    hover = hover_background or bg
-    card.setStyleSheet(
-        f"QFrame#productionCard {{"
-        f"  background:{bg}; border:{border}; border-radius:{radius}px;"
-        f"}}"
-        f"QFrame#productionCard:hover {{"
-        f"  background:{hover}; border:{border};"
-        f"}}"
-    )
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#productionCard {{ border-radius:{radius}px; }}")
     _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
@@ -293,17 +284,17 @@ class ProductionView(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}")
-        root.addWidget(scroll)
+        self._page_scroll = QScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}")
+        root.addWidget(self._page_scroll)
 
-        container = QWidget()
-        container.setStyleSheet(f"background:{theme.CONTENT_BG};")
-        scroll.setWidget(container)
+        self._page_content = QWidget()
+        self._page_content.setStyleSheet(f"background:{theme.CONTENT_BG};")
+        self._page_scroll.setWidget(self._page_content)
 
-        layout = QVBoxLayout(container)
+        layout = QVBoxLayout(self._page_content)
         layout.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)), max(18, int(24 * s)), max(18, int(24 * s)))
         layout.setSpacing(max(14, int(18 * s)))
 
@@ -313,10 +304,11 @@ class ProductionView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
 
         title = QLabel(self.page_title)
-        title.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
         subtitle = QLabel(self.page_subtitle)
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;")
+        subtitle.setProperty("muted", "1")
+        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
@@ -330,11 +322,13 @@ class ProductionView(QWidget):
         info_layout.setSpacing(max(2, int(3 * s)))
 
         date_hint = QLabel("DATA ATUAL")
-        date_hint.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        date_hint.setProperty("muted", "1")
+        date_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
         self.date_label = QLabel(_format_header_date())
-        self.date_label.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;")
+        self.date_label.setStyleSheet(f"font-size:{max(13, int(16 * s))}pt; font-weight:800;")
         self.updated_label = QLabel("Atualizando dados...")
-        self.updated_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;")
+        self.updated_label.setProperty("muted", "1")
+        self.updated_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
         info_layout.addWidget(self.updated_label)
@@ -389,11 +383,18 @@ class ProductionView(QWidget):
         machine_title_col = QVBoxLayout()
         machine_title_col.setSpacing(max(3, int(4 * s)))
 
+<<<<<<< HEAD
         machine_title = QLabel("Máquinas")
         machine_title.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(12, int(14 * s))}pt; font-weight:800;")
         machine_subtitle = QLabel("Selecione a requisição de cada card para finalizar ou devolver para a fila.")
+=======
+        machine_title = QLabel("Maquinas")
+        machine_title.setStyleSheet(f"font-size:{max(12, int(14 * s))}pt; font-weight:800;")
+        machine_subtitle = QLabel("Selecione a requisicao de cada card para finalizar ou devolver para a fila.")
+>>>>>>> ab3c7371db9f7ab14a6cd098ffab3bfab817e55c
         machine_subtitle.setWordWrap(True)
-        machine_subtitle.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;")
+        machine_subtitle.setProperty("muted", "1")
+        machine_subtitle.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
         machine_title_col.addWidget(machine_title)
         machine_title_col.addWidget(machine_subtitle)
         machines_header.addLayout(machine_title_col, 1)
@@ -448,17 +449,18 @@ class ProductionView(QWidget):
 
         value_label = QLabel("0")
         value_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(20, int(26 * s))}pt; font-weight:800;"
+            f"font-size:{max(20, int(26 * s))}pt; font-weight:800;"
         )
         title_label = QLabel(title_text)
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt; font-weight:700;"
+            f"font-size:{max(9, int(11 * s))}pt; font-weight:700;"
         )
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
+        helper_label.setProperty("muted", "1")
         helper_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;"
+            f"font-size:{max(7, int(8 * s))}pt;"
         )
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
@@ -494,7 +496,7 @@ class ProductionView(QWidget):
 
         title_row = QHBoxLayout()
         title = QLabel(title_text)
-        title.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"font-size:{max(10, int(12 * s))}pt; font-weight:800;")
         count = QLabel("0")
         count.setAlignment(Qt.AlignmentFlag.AlignCenter)
         count.setMinimumWidth(max(28, int(34 * s)))
@@ -508,7 +510,8 @@ class ProductionView(QWidget):
 
         subtitle = QLabel(subtitle_text)
         subtitle.setWordWrap(True)
-        subtitle.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;")
+        subtitle.setProperty("muted", "1")
+        subtitle.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
         layout.addLayout(title_row)
         layout.addWidget(subtitle)
 
@@ -685,8 +688,14 @@ class ProductionView(QWidget):
         s = self.scale
 
         if not self._machines_data:
+<<<<<<< HEAD
             empty = QLabel("Nenhuma máquina cadastrada para este destino.")
             empty.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:600;")
+=======
+            empty = QLabel("Nenhuma maquina cadastrada para este destino.")
+            empty.setProperty("muted", "1")
+            empty.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt; font-weight:600;")
+>>>>>>> ab3c7371db9f7ab14a6cd098ffab3bfab817e55c
             self.machines_grid.addWidget(empty, 0, 0)
             return
 
@@ -720,7 +729,7 @@ class ProductionView(QWidget):
 
         title = QLabel(str(machine.get("name") or "Máquina"))
         title.setWordWrap(True)
-        title.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"font-size:{max(9, int(11 * s))}pt; font-weight:800;")
         layout.addWidget(title)
 
         stats_grid = QGridLayout()
@@ -733,8 +742,14 @@ class ProductionView(QWidget):
 
         status_row = QHBoxLayout()
         status_row.setSpacing(max(8, int(10 * s)))
+<<<<<<< HEAD
         status_label = QLabel("Status da Máquina")
         status_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+=======
+        status_label = QLabel("Status da Maquina")
+        status_label.setProperty("muted", "1")
+        status_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+>>>>>>> ab3c7371db9f7ab14a6cd098ffab3bfab817e55c
         status_combo = QComboBox()
         for value, text in MACHINE_STATUS_OPTIONS:
             status_combo.addItem(text, value)
@@ -797,10 +812,11 @@ class ProductionView(QWidget):
         layout.setSpacing(max(2, int(3 * s)))
 
         title = QLabel(title_text.upper())
-        title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(6, int(7 * s))}pt; font-weight:700;")
+        title.setProperty("muted", "1")
+        title.setStyleSheet(f"font-size:{max(6, int(7 * s))}pt; font-weight:700;")
         value = QLabel(value_text)
         value.setWordWrap(True)
-        value.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt; font-weight:800;")
+        value.setStyleSheet(f"font-size:{max(9, int(11 * s))}pt; font-weight:800;")
         layout.addWidget(title)
         layout.addWidget(value)
         return box
@@ -1071,3 +1087,43 @@ class ProductionView(QWidget):
     def _after_action(self, success_message: str):
         self.refresh()
         self._show_info(success_message)
+
+    def _apply_table_style(self, table: QTableWidget) -> None:
+        s = self.scale
+        table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
+            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
+        )
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
+        table.setPalette(pal)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#productionView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ background:{bg}; border:none; }}")
+        self._page_content.setStyleSheet(f"background:{bg};")
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        for panel in (self.waiting_receipt_panel, self.waiting_queue_panel):
+            self._apply_table_style(panel["table"])
+        for card in self._machine_cards.values():
+            self._apply_table_style(card["table"])
+            card["combo"].setStyleSheet(_machine_combo_style(s))
