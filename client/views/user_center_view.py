@@ -47,19 +47,6 @@ ROLE_OPTIONS = [
 ROLE_LABELS = {value: label for label, value in ROLE_OPTIONS}
 ROLE_LABELS["entrega"] = "INDÚSTRIA"
 
-DASH_BG = "#F4F7FB"
-DASH_SURFACE = "#FFFFFF"
-DASH_PRIMARY = "#1E3A5F"
-DASH_SECONDARY = "#27496D"
-DASH_DANGER = "#DC2626"
-DASH_SUCCESS = "#16A34A"
-DASH_WARNING = "#F59E0B"
-DASH_TEXT = "#0F172A"
-DASH_MUTED = "#64748B"
-DASH_BORDER = "#E2E8F0"
-DASH_ROW_ALT = "#F8FBFF"
-
-
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
@@ -88,7 +75,7 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
     shadow.setOffset(0, y_offset)
-    color = QColor(DASH_TEXT)
+    color = QColor(theme.TEXT_DARK)
     color.setAlpha(alpha)
     shadow.setColor(color)
     widget.setGraphicsEffect(shadow)
@@ -105,7 +92,7 @@ def _make_card(
     card.setObjectName("userCenterCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    bg = background or DASH_SURFACE
+    bg = background or theme.CARD_BG
     border = f"1px solid {border_color}" if border_color else "none"
     hover = hover_background or bg
     card.setStyleSheet(
@@ -124,11 +111,11 @@ def _flat_secondary_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{DASH_SURFACE}; color:{DASH_PRIMARY};"
-        f"  border:1px solid {DASH_BORDER}; outline:none; border-radius:14px;"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{DASH_ROW_ALT}; border-color:{_rgba(DASH_PRIMARY, 70)}; }}"
+        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
         f"QPushButton:pressed {{ background:#E7EEF7; }}"
         f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
     )
@@ -138,10 +125,10 @@ def _primary_action_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{DASH_PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  background:{theme.PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{DASH_SECONDARY}; }}"
+        f"QPushButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
         f"QPushButton:pressed {{ background:#152D49; }}"
         f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
     )
@@ -151,7 +138,7 @@ def _danger_action_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{DASH_DANGER}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  background:{theme.DANGER}; color:#FFFFFF; border:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
         f"QPushButton:hover {{ background:#B91C1C; }}"
@@ -164,16 +151,16 @@ def _field_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QLineEdit, QComboBox {{"
-        f"  background:{DASH_SURFACE}; border:1px solid {DASH_BORDER}; border-radius:14px;"
-        f"  padding:9px 12px; font-size:{fs}pt; color:{DASH_TEXT};"
-        f"  selection-background-color:{_rgba(DASH_PRIMARY, 24)}; selection-color:{DASH_TEXT};"
+        f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:14px;"
+        f"  padding:9px 12px; font-size:{fs}pt; color:{theme.TEXT_DARK};"
+        f"  selection-background-color:{_rgba(theme.PRIMARY, 24)}; selection-color:{theme.TEXT_DARK};"
         f"}}"
-        f"QLineEdit {{ placeholder-text-color:{DASH_MUTED}; }}"
-        f"QLineEdit:focus, QComboBox:focus {{ border:1px solid {_rgba(DASH_PRIMARY, 88)}; }}"
+        f"QLineEdit {{ placeholder-text-color:{theme.TEXT_MEDIUM}; }}"
+        f"QLineEdit:focus, QComboBox:focus {{ border:1px solid {_rgba(theme.PRIMARY, 88)}; }}"
         f"QComboBox::drop-down {{ border:none; width:24px; }}"
         f"QComboBox QAbstractItemView {{"
-        f"  background:{DASH_SURFACE}; color:{DASH_TEXT}; border:1px solid {DASH_BORDER};"
-        f"  selection-background-color:{_rgba(DASH_PRIMARY, 18)}; selection-color:{DASH_TEXT};"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; border:1px solid {theme.BORDER_COLOR};"
+        f"  selection-background-color:{_rgba(theme.PRIMARY, 18)}; selection-color:{theme.TEXT_DARK};"
         f"}}"
     )
 
@@ -242,7 +229,7 @@ class UserCenterView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = DASH_BG
+        page_bg = theme.CONTENT_BG
         self.setObjectName("userCenterView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
@@ -259,14 +246,14 @@ class UserCenterView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Central de Usuários")
         title.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Importe usuários, ajuste níveis de acesso e mantenha senhas e cadastros em dia."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(8, int(10 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -277,10 +264,10 @@ class UserCenterView(QWidget):
 
         info_card = _make_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(16, int(18 * s)),
-            hover_background=DASH_SURFACE,
+            hover_background=theme.CARD_BG,
         )
         info_layout = QVBoxLayout(info_card)
         info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
@@ -289,17 +276,17 @@ class UserCenterView(QWidget):
 
         date_hint = QLabel("DATA ATUAL")
         date_hint.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
             f"background:transparent;"
         )
         self.date_label = QLabel(_format_header_date())
         self.date_label.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
             f"background:transparent;"
         )
         self.updated_label = QLabel("Pronto para atualizar")
         self.updated_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
@@ -319,8 +306,8 @@ class UserCenterView(QWidget):
         self.error_label.hide()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
-            f"background:{_rgba(DASH_DANGER, 18)}; color:{DASH_DANGER};"
-            f"border:1px solid {_rgba(DASH_DANGER, 48)}; border-radius:16px;"
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         root.addWidget(self.error_label)
@@ -360,10 +347,10 @@ class UserCenterView(QWidget):
         s = self.scale
         card = _make_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
@@ -373,19 +360,19 @@ class UserCenterView(QWidget):
         accent = QFrame()
         accent.setFixedHeight(max(4, int(5 * s)))
         accent.setStyleSheet(
-            f"background:{DASH_SECONDARY}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:{theme.PRIMARY_HOVER}; border:none; border-radius:{max(2, int(3 * s))}px;"
         )
         title = QLabel("IMPORTAÇÃO DE USUÁRIOS")
         title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{DASH_TEXT}; background:transparent;"
+            f"color:{theme.TEXT_DARK}; background:transparent;"
         )
         helper = QLabel(
             "Arquivo esperado: usuarios.ods na pasta base, com colunas Código, Nome, Contato e Setor."
         )
         helper.setWordWrap(True)
         helper.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;"
         )
         layout.addWidget(accent)
         layout.addWidget(title)
@@ -414,8 +401,8 @@ class UserCenterView(QWidget):
         self.import_progress.setVisible(False)
         self.import_progress.setStyleSheet(
             f"QProgressBar {{ border:none; border-radius:4px;"
-            f"background:{DASH_ROW_ALT}; text-align:center; font-size:{max(8, int(9 * s))}pt; }}"
-            f"QProgressBar::chunk {{ background:{DASH_PRIMARY}; border-radius:3px; }}"
+            f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8, int(9 * s))}pt; }}"
+            f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
         )
         layout.addWidget(self.import_progress)
 
@@ -424,8 +411,8 @@ class UserCenterView(QWidget):
         self.import_log.setMaximumHeight(max(100, int(120 * s)))
         self.import_log.hide()
         self.import_log.setStyleSheet(
-            f"background:{DASH_ROW_ALT}; border:none; border-radius:12px;"
-            f"font-size:{max(8, int(9 * s))}pt; color:{DASH_TEXT}; padding:6px;"
+            f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
+            f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
         )
         layout.addWidget(self.import_log)
         return card
@@ -434,10 +421,10 @@ class UserCenterView(QWidget):
         s = self.scale
         card = _make_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
@@ -449,7 +436,7 @@ class UserCenterView(QWidget):
         title = QLabel("LISTA DE USUÁRIOS")
         title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{DASH_TEXT}; background:transparent;"
+            f"color:{theme.TEXT_DARK}; background:transparent;"
         )
         header.addWidget(title)
         header.addStretch()
@@ -491,27 +478,27 @@ class UserCenterView(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         self.table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:none; outline:none; background:{DASH_SURFACE};"
-            f"  alternate-background-color:{DASH_ROW_ALT}; color:{DASH_TEXT};"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
             f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{DASH_PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
             f"QTableWidget::item {{"
-            f"  background:{DASH_SURFACE}; color:{DASH_TEXT};"
-            f"  padding:7px 6px; border-bottom:1px solid {_rgba(DASH_PRIMARY, 18)};"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
             f"}}"
-            f"QTableWidget::item:selected {{ background:{_rgba(DASH_PRIMARY, 18)}; color:{DASH_TEXT}; }}"
-            f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; color:{DASH_TEXT}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
         )
         pal = self.table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(DASH_SURFACE))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(DASH_ROW_ALT))
-        pal.setColor(QPalette.ColorRole.Text, QColor(DASH_TEXT))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(DASH_TEXT))
-        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(DASH_PRIMARY, 40)))
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
         self.table.setPalette(pal)
         self.table.viewport().setAutoFillBackground(True)
         layout.addWidget(self.table, 1)
@@ -521,10 +508,10 @@ class UserCenterView(QWidget):
         s = self.scale
         card = _make_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
@@ -534,14 +521,14 @@ class UserCenterView(QWidget):
         title = QLabel("CADASTRO INDIVIDUAL")
         title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{DASH_TEXT}; background:transparent;"
+            f"color:{theme.TEXT_DARK}; background:transparent;"
         )
         helper = QLabel(
             "Deixe a senha em branco para criar o usuário em primeiro acesso. No cadastro existente, só preencha a senha se quiser alterá-la."
         )
         helper.setWordWrap(True)
         helper.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;"
         )
         layout.addWidget(title)
         layout.addWidget(helper)
@@ -552,7 +539,7 @@ class UserCenterView(QWidget):
 
         self.form_status = QLabel("Novo usuário")
         self.form_status.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(8, int(9 * s))}pt; font-weight:700;"
+            f"color:{theme.PRIMARY}; font-size:{max(8, int(9 * s))}pt; font-weight:700;"
         )
         layout.addWidget(self.form_status)
 
@@ -568,7 +555,7 @@ class UserCenterView(QWidget):
         self.check_active = QCheckBox("Usuário ativo")
         self.check_active.setChecked(True)
         self.check_active.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(8, int(9 * s))}pt;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(8, int(9 * s))}pt;"
         )
 
         self.combo_role = QComboBox()
@@ -628,7 +615,7 @@ class UserCenterView(QWidget):
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text.upper())
         label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
         )
         return label
 

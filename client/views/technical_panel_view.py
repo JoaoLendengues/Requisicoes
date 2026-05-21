@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..api import client as api
+from ..core import theme
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
     format_header_date as _format_header_date,
@@ -21,17 +22,6 @@ from ..core.datetime_utils import (
 )
 from ..core.session import session
 from .dashboard_view import (
-    DASH_BG,
-    DASH_BORDER,
-    DASH_DANGER,
-    DASH_MUTED,
-    DASH_PRIMARY,
-    DASH_SECONDARY,
-    DASH_SLATE,
-    DASH_SUCCESS,
-    DASH_SURFACE,
-    DASH_TEXT,
-    DASH_WARNING,
     _flat_secondary_btn_style,
     _make_shadow_card,
     _rgba,
@@ -90,7 +80,7 @@ class TechnicalPanelView(QWidget):
         s = self.scale
         self.setObjectName("technicalPanelView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"QWidget#technicalPanelView {{ background:{DASH_BG}; }}")
+        self.setStyleSheet(f"QWidget#technicalPanelView {{ background:{theme.CONTENT_BG}; }}")
 
         root = QVBoxLayout(self)
         root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
@@ -104,14 +94,14 @@ class TechnicalPanelView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Painel Técnico")
         title.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Monitoramento rápido da aplicação, do banco de dados e da disponibilidade operacional."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(8, int(10 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -122,10 +112,10 @@ class TechnicalPanelView(QWidget):
 
         info_card = _make_shadow_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(16, int(18 * s)),
-            hover_background=DASH_SURFACE,
+            hover_background=theme.CARD_BG,
         )
         info_layout = QVBoxLayout(info_card)
         info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
@@ -134,17 +124,17 @@ class TechnicalPanelView(QWidget):
 
         date_hint = QLabel("DATA ATUAL")
         date_hint.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
             f"background:transparent;"
         )
         self.date_label = QLabel(_format_header_date())
         self.date_label.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
             f"background:transparent;"
         )
         self.updated_label = QLabel("Atualizando dados...")
         self.updated_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
@@ -163,8 +153,8 @@ class TechnicalPanelView(QWidget):
         self.error_label.hide()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
-            f"background:{_rgba(DASH_DANGER, 18)}; color:{DASH_DANGER};"
-            f"border:1px solid {_rgba(DASH_DANGER, 48)}; border-radius:16px;"
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         root.addWidget(self.error_label)
@@ -172,14 +162,14 @@ class TechnicalPanelView(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{DASH_BG}; }}")
-        scroll.viewport().setStyleSheet(f"background:{DASH_BG}; border:none;")
+        scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{theme.CONTENT_BG}; }}")
+        scroll.viewport().setStyleSheet(f"background:{theme.CONTENT_BG}; border:none;")
         root.addWidget(scroll, 1)
 
         content = QWidget()
         content.setObjectName("technicalPanelContent")
         content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        content.setStyleSheet(f"QWidget#technicalPanelContent {{ background:{DASH_BG}; }}")
+        content.setStyleSheet(f"QWidget#technicalPanelContent {{ background:{theme.CONTENT_BG}; }}")
         scroll.setWidget(content)
 
         layout = QVBoxLayout(content)
@@ -194,13 +184,13 @@ class TechnicalPanelView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("system_online", DASH_SUCCESS, "Sistema Online/Offline", "Status atual de disponibilidade da aplicação."),
-            ("requisitions_today", DASH_SECONDARY, "Requisições hoje", "Requisições registradas no dia atual."),
-            ("average_response_ms", DASH_SLATE, "Tempo médio de resposta", "Média das respostas HTTP processadas hoje."),
-            ("last_backup_at", DASH_WARNING, "Último backup", "Horário mais recente de backup localizado no ambiente."),
-            ("database_connected", DASH_SUCCESS, "Banco de dados conectado?", "Verificação instantânea de acesso ao banco."),
-            ("available_space_bytes", DASH_PRIMARY, "Espaço disponível", "Espaço livre no armazenamento principal da aplicação."),
-            ("error_count_today", DASH_DANGER, "Quantidade de erros hoje", "Total de respostas com erro registradas hoje."),
+            ("system_online", theme.SUCCESS, "Sistema Online/Offline", "Status atual de disponibilidade da aplicação."),
+            ("requisitions_today", theme.PRIMARY_HOVER, "Requisições hoje", "Requisições registradas no dia atual."),
+            ("average_response_ms", theme.BORDER_COLOR, "Tempo médio de resposta", "Média das respostas HTTP processadas hoje."),
+            ("last_backup_at", theme.WARNING, "Último backup", "Horário mais recente de backup localizado no ambiente."),
+            ("database_connected", theme.SUCCESS, "Banco de dados conectado?", "Verificação instantânea de acesso ao banco."),
+            ("available_space_bytes", theme.PRIMARY, "Espaço disponível", "Espaço livre no armazenamento principal da aplicação."),
+            ("error_count_today", theme.DANGER, "Quantidade de erros hoje", "Total de respostas com erro registradas hoje."),
         ]
 
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
@@ -212,10 +202,10 @@ class TechnicalPanelView(QWidget):
 
         info_note = _make_shadow_card(
             s,
-            DASH_SURFACE,
-            border_color=DASH_BORDER,
+            theme.CARD_BG,
+            border_color=theme.BORDER_COLOR,
             radius=max(18, int(20 * s)),
-            hover_background=DASH_SURFACE,
+            hover_background=theme.CARD_BG,
         )
         info_note_layout = QVBoxLayout(info_note)
         info_note_layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
@@ -224,7 +214,7 @@ class TechnicalPanelView(QWidget):
 
         note_title = QLabel("Leitura tecnica")
         note_title.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
         )
         note_body = QLabel(
             "Este painel mostra indicadores operacionais em tempo real. Último backup pode aparecer como "
@@ -232,7 +222,7 @@ class TechnicalPanelView(QWidget):
         )
         note_body.setWordWrap(True)
         note_body.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(8, int(9 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(9 * s))}pt;"
         )
         info_note_layout.addWidget(note_title)
         info_note_layout.addWidget(note_body)
@@ -240,7 +230,7 @@ class TechnicalPanelView(QWidget):
         layout.addStretch()
         layout.addWidget(
             self._build_metric_card(
-                DASH_PRIMARY,
+                theme.PRIMARY,
                 "Usuários logados",
                 "Usuários conectados no momento e horário do último login.",
                 "connected_users",
@@ -259,10 +249,10 @@ class TechnicalPanelView(QWidget):
         s = self.scale
         card = _make_shadow_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         if prominent:
             card.setMinimumHeight(max(180, int(210 * s)))
@@ -287,21 +277,21 @@ class TechnicalPanelView(QWidget):
         value_label = QLabel("-")
         value_label.setWordWrap(True)
         value_label.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(24, int(32 * s)) if prominent else max(18, int(24 * s))}pt;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(24, int(32 * s)) if prominent else max(18, int(24 * s))}pt;"
             f"font-weight:800; background:transparent; border:none;"
         )
 
         title_label = QLabel(title)
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(10, int(13 * s)) if prominent else max(9, int(11 * s))}pt;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(10, int(13 * s)) if prominent else max(9, int(11 * s))}pt;"
             f"font-weight:700; background:transparent; border:none;"
         )
 
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
         helper_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
             f"background:transparent; border:none;"
         )
 
@@ -309,7 +299,7 @@ class TechnicalPanelView(QWidget):
         detail_label.setWordWrap(True)
         detail_label.hide()
         detail_label.setStyleSheet(
-            f"color:{DASH_SLATE}; font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
+            f"color:{theme.BORDER_COLOR}; font-size:{max(8, int(9 * s)) if prominent else max(7, int(8 * s))}pt;"
             f"background:transparent; border:none; line-height:1.35;"
         )
 

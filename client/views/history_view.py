@@ -26,18 +26,6 @@ from ..core.datetime_utils import (
 )
 
 
-DASH_BG = "#F4F7FB"
-DASH_SURFACE = "#FFFFFF"
-DASH_PRIMARY = "#1E3A5F"
-DASH_SECONDARY = "#27496D"
-DASH_DANGER = "#DC2626"
-DASH_WARNING = "#F59E0B"
-DASH_SLATE = "#334155"
-DASH_TEXT = "#0F172A"
-DASH_MUTED = "#64748B"
-DASH_BORDER = "#E2E8F0"
-DASH_ROW_ALT = "#F8FBFF"
-
 COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS"]
 
 
@@ -50,7 +38,7 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
     shadow.setOffset(0, y_offset)
-    color = QColor(DASH_TEXT)
+    color = QColor(theme.TEXT_DARK)
     color.setAlpha(alpha)
     shadow.setColor(color)
     widget.setGraphicsEffect(shadow)
@@ -67,7 +55,7 @@ def _make_card(
     card.setObjectName("historyCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    bg = background or DASH_SURFACE
+    bg = background or theme.CARD_BG
     border = f"1px solid {border_color}" if border_color else "none"
     hover = hover_background or bg
     card.setStyleSheet(
@@ -86,11 +74,11 @@ def _flat_secondary_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{DASH_SURFACE}; color:{DASH_PRIMARY};"
-        f"  border:1px solid {DASH_BORDER}; outline:none; border-radius:14px;"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{DASH_ROW_ALT}; border-color:{_rgba(DASH_PRIMARY, 70)}; }}"
+        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
         f"QPushButton:pressed {{ background:#E7EEF7; }}"
         f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
     )
@@ -100,10 +88,10 @@ def _primary_action_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{DASH_PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  background:{theme.PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{DASH_SECONDARY}; }}"
+        f"QPushButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
         f"QPushButton:pressed {{ background:#152D49; }}"
         f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
     )
@@ -113,16 +101,16 @@ def _field_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QLineEdit, QComboBox {{"
-        f"  background:{DASH_SURFACE}; border:1px solid {DASH_BORDER}; border-radius:14px;"
-        f"  padding:9px 12px; font-size:{fs}pt; color:{DASH_TEXT};"
-        f"  selection-background-color:{_rgba(DASH_PRIMARY, 24)}; selection-color:{DASH_TEXT};"
+        f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:14px;"
+        f"  padding:9px 12px; font-size:{fs}pt; color:{theme.TEXT_DARK};"
+        f"  selection-background-color:{_rgba(theme.PRIMARY, 24)}; selection-color:{theme.TEXT_DARK};"
         f"}}"
-        f"QLineEdit {{ placeholder-text-color:{DASH_MUTED}; }}"
-        f"QLineEdit:focus, QComboBox:focus {{ border:1px solid {_rgba(DASH_PRIMARY, 88)}; }}"
+        f"QLineEdit {{ placeholder-text-color:{theme.TEXT_MEDIUM}; }}"
+        f"QLineEdit:focus, QComboBox:focus {{ border:1px solid {_rgba(theme.PRIMARY, 88)}; }}"
         f"QComboBox::drop-down {{ border:none; width:24px; }}"
         f"QComboBox QAbstractItemView {{"
-        f"  background:{DASH_SURFACE}; color:{DASH_TEXT}; border:1px solid {DASH_BORDER};"
-        f"  selection-background-color:{_rgba(DASH_PRIMARY, 18)}; selection-color:{DASH_TEXT};"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; border:1px solid {theme.BORDER_COLOR};"
+        f"  selection-background-color:{_rgba(theme.PRIMARY, 18)}; selection-color:{theme.TEXT_DARK};"
         f"}}"
     )
 
@@ -166,7 +154,7 @@ class HistoryView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = DASH_BG
+        page_bg = theme.CONTENT_BG
         self.setObjectName("historyView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
@@ -185,14 +173,14 @@ class HistoryView(QWidget):
 
         title = QLabel("Histórico / Busca")
         title.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Consulta operacional de requisições por status, pedido, cliente, obra e vendedor."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(8, int(10 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -203,10 +191,10 @@ class HistoryView(QWidget):
 
         info_card = _make_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(16, int(18 * s)),
-            hover_background=DASH_SURFACE,
+            hover_background=theme.CARD_BG,
         )
         info_layout = QVBoxLayout(info_card)
         info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
@@ -215,17 +203,17 @@ class HistoryView(QWidget):
 
         date_hint = QLabel("DATA ATUAL")
         date_hint.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
             f"background:transparent;"
         )
         self.date_label = QLabel(_format_header_date())
         self.date_label.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
             f"background:transparent;"
         )
         self.updated_label = QLabel("Pronto para consultar")
         self.updated_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
@@ -245,18 +233,18 @@ class HistoryView(QWidget):
         self.error_label.hide()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
-            f"background:{_rgba(DASH_DANGER, 18)}; color:{DASH_DANGER};"
-            f"border:1px solid {_rgba(DASH_DANGER, 48)}; border-radius:16px;"
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         root.addWidget(self.error_label)
 
         filter_card = _make_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         filter_layout = QVBoxLayout(filter_card)
         filter_layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
@@ -266,21 +254,21 @@ class HistoryView(QWidget):
         filter_accent = QFrame()
         filter_accent.setFixedHeight(max(4, int(5 * s)))
         filter_accent.setStyleSheet(
-            f"background:{DASH_SECONDARY}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:{theme.PRIMARY_HOVER}; border:none; border-radius:{max(2, int(3 * s))}px;"
         )
         filter_layout.addWidget(filter_accent)
 
         filter_title = QLabel("Filtros de Busca")
         filter_title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{DASH_TEXT}; background:transparent;"
+            f"color:{theme.TEXT_DARK}; background:transparent;"
         )
         filter_subtitle = QLabel(
             "Refine a consulta por status e pesquise por pedido, cliente ou obra."
         )
         filter_subtitle.setWordWrap(True)
         filter_subtitle.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; color:{DASH_MUTED}; background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM}; background:transparent;"
         )
         filter_layout.addWidget(filter_title)
         filter_layout.addWidget(filter_subtitle)
@@ -292,7 +280,7 @@ class HistoryView(QWidget):
         status_col.setSpacing(max(6, int(8 * s)))
         status_label = QLabel("STATUS")
         status_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         self.combo_status = QComboBox()
         self.combo_status.addItem("Todos os status", "")
@@ -307,7 +295,7 @@ class HistoryView(QWidget):
         search_col.setSpacing(max(6, int(8 * s)))
         search_label = QLabel("BUSCA")
         search_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("Buscar por PED, cliente ou obra...")
@@ -344,10 +332,10 @@ class HistoryView(QWidget):
 
         results_card = _make_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         results_layout = QVBoxLayout(results_card)
         results_layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
@@ -357,19 +345,19 @@ class HistoryView(QWidget):
         results_accent = QFrame()
         results_accent.setFixedHeight(max(4, int(5 * s)))
         results_accent.setStyleSheet(
-            f"background:{DASH_PRIMARY}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:{theme.PRIMARY}; border:none; border-radius:{max(2, int(3 * s))}px;"
         )
         results_layout.addWidget(results_accent)
 
         results_title = QLabel("Resultados")
         results_title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{DASH_TEXT}; background:transparent;"
+            f"color:{theme.TEXT_DARK}; background:transparent;"
         )
         results_subtitle = QLabel("Duplo clique para abrir a requisição selecionada.")
         results_subtitle.setWordWrap(True)
         results_subtitle.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; color:{DASH_MUTED}; background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM}; background:transparent;"
         )
         results_layout.addWidget(results_title)
         results_layout.addWidget(results_subtitle)
@@ -401,27 +389,27 @@ class HistoryView(QWidget):
         self.table.setColumnWidth(5, max(150, int(180 * s)))
         self.table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:none; outline:none; background:{DASH_SURFACE};"
-            f"  alternate-background-color:{DASH_ROW_ALT}; color:{DASH_TEXT};"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
             f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{DASH_PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
             f"QTableWidget::item {{"
-            f"  background:{DASH_SURFACE}; color:{DASH_TEXT};"
-            f"  padding:7px 6px; border-bottom:1px solid {_rgba(DASH_PRIMARY, 18)};"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
             f"}}"
-            f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; color:{DASH_TEXT}; }}"
-            f"QTableWidget::item:selected {{ background:{_rgba(DASH_PRIMARY, 18)}; color:{DASH_TEXT}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
         )
         pal = self.table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(DASH_SURFACE))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(DASH_ROW_ALT))
-        pal.setColor(QPalette.ColorRole.Text, QColor(DASH_TEXT))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(DASH_TEXT))
-        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(DASH_PRIMARY, 40)))
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
         self.table.setPalette(pal)
         self.table.viewport().setAutoFillBackground(True)
         self.table.setMinimumHeight(max(300, int(360 * s)))
@@ -495,12 +483,12 @@ class HistoryView(QWidget):
                         badge = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         color_map = {
-                            "em_andamento": DASH_SECONDARY,
-                            "aguardando_recebimento": DASH_WARNING,
-                            "em_producao": DASH_PRIMARY,
-                            "cancelada": DASH_DANGER,
+                            "em_andamento": theme.PRIMARY_HOVER,
+                            "aguardando_recebimento": theme.WARNING,
+                            "em_producao": theme.PRIMARY,
+                            "cancelada": theme.DANGER,
                         }
-                        color = color_map.get(status, DASH_SLATE)
+                        color = color_map.get(status, theme.BORDER_COLOR)
                         badge.setStyleSheet(
                             f"background:{_rgba(color, 30)}; color:{color}; border-radius:999px;"
                             f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
