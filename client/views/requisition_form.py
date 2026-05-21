@@ -1178,7 +1178,11 @@ class RequisitionForm(QWidget):
 
                 page_size = document.pagePointSize(page_index)
                 target_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
-                painter.fillRect(target_rect, Qt.GlobalColor.white)
+                target_x = int(round(target_rect.x()))
+                target_y = int(round(target_rect.y()))
+                target_width = max(1, int(round(target_rect.width())))
+                target_height = max(1, int(round(target_rect.height())))
+                painter.fillRect(QRect(target_x, target_y, target_width, target_height), Qt.GlobalColor.white)
 
                 width = max(1, int((page_size.width() / 72.0) * 300))
                 height = max(1, int((page_size.height() / 72.0) * 300))
@@ -1187,9 +1191,9 @@ class RequisitionForm(QWidget):
                     raise RuntimeError(f"Não foi possível renderizar a página {page_index + 1} para impressão.")
 
                 scaled_size = image.size()
-                scaled_size.scale(target_rect.size(), Qt.AspectRatioMode.KeepAspectRatio)
-                x = target_rect.x() + max(0, (target_rect.width() - scaled_size.width()) // 2)
-                y = target_rect.y() + max(0, (target_rect.height() - scaled_size.height()) // 2)
+                scaled_size.scale(target_width, target_height, Qt.AspectRatioMode.KeepAspectRatio)
+                x = target_x + max(0, (target_width - scaled_size.width()) // 2)
+                y = target_y + max(0, (target_height - scaled_size.height()) // 2)
                 painter.drawImage(QRect(x, y, scaled_size.width(), scaled_size.height()), image)
         finally:
             if painter.isActive():
