@@ -51,6 +51,32 @@ def _create(
     return n
 
 
+# ── Helpers internos ─────────────────────────────────────────────────────────
+
+def _notify_admins_gerentes(
+    db: Session,
+    type_: str,
+    title: str,
+    message: str,
+    req_id: int | None,
+    exclude_ids: set[int] | None = None,
+) -> list[Notification]:
+    """Cria notificações para todos os admins e gerentes ativos."""
+    usuarios = (
+        db.query(User)
+        .filter(
+            User.role.in_([Role.ADMIN, Role.GERENTE]),
+            User.is_active == True,
+        )
+        .all()
+    )
+    return [
+        _create(db, u.id, type_, title, message, req_id)
+        for u in usuarios
+        if u.id not in (exclude_ids or set())
+    ]
+
+
 # ── API pública ───────────────────────────────────────────────────────────────
 
 def dispatch(notifications: list[Notification]) -> None:
@@ -68,7 +94,7 @@ def notify_production_team(
     destino: str,
 ) -> list[Notification]:
     """
-    Notifica a equipe de produção quando uma requisição é enviada.
+    Notifica a equipe de produção + admins/gerentes quando uma requisição é enviada.
     Roteia para PRODUCAO, INDUSTRIA ou ambos conforme o destino.
     """
     dest = destino.upper()
@@ -86,16 +112,17 @@ def notify_production_team(
     )
 
     destino_label = destino.strip() or "Produção"
-    return [
-        _create(
-            db, u.id,
-            "nova_requisicao",
-            "Nova Requisição para Produção",
-            f"PED #{req.ped_number} — {req.client_name or 'cliente'} → {destino_label}.",
-            req.id,
-        )
-        for u in usuarios
-    ]
+    type_   = "nova_requisicao"
+    title   = "Nova Requisição para Produção"
+    message = f"PED #{req.ped_number} — {req.client_name or 'cliente'} → {destino_label}."
+
+    notifs = [_create(db, u.id, type_, title, message, req.id) for u in usuarios]
+
+    # Admins e gerentes também recebem
+    ids_ja_notificados = {u.id for u in usuarios}
+    notifs += _notify_admins_gerentes(db, type_, title, message, req.id, ids_ja_notificados)
+
+    return notifs
 
 
 def notify_vendor(
@@ -103,14 +130,11 @@ def notify_vendor(
     req: Requisition,
     event: str,
     reason: str = "",
-) -> Notification | None:
+) -> list[Notification]:
     """
-    Notifica o vendedor da requisição sobre uma mudança de status.
-    Retorna None se o vendedor não estiver definido ou o evento for desconhecido.
+    Notifica o vendedor + admins/gerentes sobre uma mudança de status.
+    Retorna lista vazia se o evento for desconhecido.
     """
-    if not req.vendor_id:
-        return None
-
     _eventos = {
         "em_producao": (
             "Requisição em Produção ⚙️",
@@ -131,10 +155,21 @@ def notify_vendor(
     }
 
     if event not in _eventos:
-        return None
+        return []
 
     title, msg = _eventos[event]
-    return _create(db, req.vendor_id, event, title, msg, req.id)
+    notifs: list[Notification] = []
+    ids_ja_notificados: set[int] = set()
+
+    # Notifica o vendedor se definido
+    if req.vendor_id:
+        notifs.append(_create(db, req.vendor_id, event, title, msg, req.id))
+        ids_ja_notificados.add(req.vendor_id)
+
+    # Admins e gerentes também recebem
+    notifs += _notify_admins_gerentes(db, event, title, msg, req.id, ids_ja_notificados)
+
+    return notifs
 
 
 def stuck_requisition_events(db: Session) -> list[dict]:

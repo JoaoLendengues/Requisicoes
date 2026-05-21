@@ -776,30 +776,21 @@ def update_status(
     ))
 
     # Cria notificações dentro da mesma transação
-    notifications = []
+    notifications: list = []
     if prod:
         action = prod["action"]
         if action == _PROD_SEND:
             notifications.extend(build_production_sent(db, req, prod["target"]))
         elif action == _PROD_RECEIVED:
-            n = build_vendor_event(db, req, "em_producao")
-            if n:
-                notifications.append(n)
+            notifications.extend(build_vendor_event(db, req, "em_producao"))
         elif action == _PROD_FINISHED:
-            n = build_vendor_event(db, req, "finalizada")
-            if n:
-                notifications.append(n)
+            notifications.extend(build_vendor_event(db, req, "finalizada"))
         elif action == _PROD_CANCELED:
-            n = build_vendor_event(db, req, "prod_cancelada", prod.get("reason", ""))
-            if n:
-                notifications.append(n)
+            notifications.extend(build_vendor_event(db, req, "prod_cancelada", prod.get("reason", "")))
     elif new_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
-        # Vendedor enviou para produção direto pelo status — notifica equipe de produção
         notifications.extend(build_production_sent(db, req, ""))
     elif new_status == RequisitionStatus.CANCELADA:
-        n = build_vendor_event(db, req, "cancelada")
-        if n:
-            notifications.append(n)
+        notifications.extend(build_vendor_event(db, req, "cancelada"))
 
     db.commit()
     push_all(notifications)
@@ -864,11 +855,21 @@ def cancel_requisition(
         changed_by_id=current_user.id,
     ))
 
-    notifications = []
+    notifications: list = []
     if req.vendor_id != current_user.id:
-        n = build_vendor_event(db, req, "cancelada")
-        if n:
-            notifications.append(n)
+        notifications.extend(build_vendor_event(db, req, "cancelada"))
+    else:
+        # Mesmo que o vendedor cancele a própria req, admins/gerentes são notificados
+        from ..services.notification_service import _notify_admins_gerentes
+        notifications.extend(
+            _notify_admins_gerentes(
+                db, "cancelada",
+                "Requisição Cancelada ❌",
+                f"PED #{req.ped_number} foi cancelada.",
+                req.id,
+                exclude_ids={current_user.id},
+            )
+        )
 
     db.commit()
     push_all(notifications)
