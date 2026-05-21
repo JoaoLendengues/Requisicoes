@@ -16,6 +16,7 @@ from ..models.requisition import (
 )
 from ..models.user import User, Role
 from ..schemas.dashboard import (
+    DashboardMachineUsageItem,
     DashboardReceiptAlertItem,
     DashboardRecentRequisitionItem,
     DashboardStatsResponse,
@@ -816,7 +817,79 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
     )
 
 
-def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardResponse:
+def _build_machine_usage_rows(
+    reqs: list[Requisition],
+    machines: list[ProductionMachine],
+    destination: str,
+) -> list[DashboardMachineUsageItem]:
+    normalized_destination = _canonical_destination(destination)
+    destination_machines = [
+        machine
+        for machine in machines
+        if _canonical_destination(machine.destination) == normalized_destination
+    ]
+    usage: dict[str, dict] = {
+        str(machine.name): {
+            "machine": machine,
+            "finished_count": 0,
+            "in_production_count": 0,
+            "durations": [],
+        }
+        for machine in destination_machines
+    }
+
+    for req in reqs:
+        if _current_production_destination(req) != normalized_destination:
+            continue
+
+        current_machine = _current_production_machine(req)
+        if req.status == RequisitionStatus.EM_PRODUCAO and current_machine in usage:
+            usage[current_machine]["in_production_count"] += 1
+
+        for cycle in _all_finished_cycles(req):
+            if _canonical_destination(cycle.get("target")) != normalized_destination:
+                continue
+            machine_name = str(cycle.get("machine") or "").strip()
+            if machine_name not in usage:
+                continue
+            usage[machine_name]["finished_count"] += 1
+            production_seconds = cycle.get("production_time_seconds")
+            if isinstance(production_seconds, int):
+                usage[machine_name]["durations"].append(max(0, production_seconds))
+
+    rows: list[DashboardMachineUsageItem] = []
+    for machine in destination_machines:
+        machine_name = str(machine.name)
+        stats = usage[machine_name]
+        durations = stats["durations"]
+        average_seconds = None
+        if durations:
+            average_seconds = int(sum(durations) / len(durations))
+
+        rows.append(
+            DashboardMachineUsageItem(
+                machine_name=machine_name,
+                total_operations=int(stats["finished_count"]),
+                in_production_count=int(stats["in_production_count"]),
+                average_seconds=average_seconds,
+                machine_status=getattr(machine.status, "value", machine.status) or "",
+            )
+        )
+
+    rows.sort(
+        key=lambda item: (
+            -int(item.total_operations or 0),
+            -int(item.in_production_count or 0),
+            _normalize_text(item.machine_name),
+        )
+    )
+    return rows
+
+
+def _build_management_dashboard(
+    reqs: list[Requisition],
+    machines: list[ProductionMachine],
+) -> ManagementDashboardResponse:
     now = datetime.utcnow()
     today = now.date()
     one_hour_ago = now - timedelta(hours=1)
@@ -918,6 +991,17 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
     if completion_durations:
         average_seconds = int(sum(completion_durations) / len(completion_durations))
 
+    top_machines_industria = _build_machine_usage_rows(
+        reqs,
+        machines,
+        _DESTINATION_PINHEIRO,
+    )
+    top_machines_ar = _build_machine_usage_rows(
+        reqs,
+        machines,
+        _DESTINATION_AR,
+    )
+
     return ManagementDashboardResponse(
         generated_at=now,
         stats=DashboardStatsResponse(
@@ -933,6 +1017,8 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
         top_vendors=top_vendors,
         receipt_alerts=receipt_alerts[:10],
         recent_requisitions=recent_requisitions[:12],
+        top_machines_ar=top_machines_ar,
+        top_machines_industria=top_machines_industria,
     )
 
 
@@ -1133,7 +1219,16 @@ def get_management_dashboard(
         .order_by(Requisition.created_at.desc())
         .all()
     )
-    return _build_management_dashboard(reqs)
+    machines = (
+        db.query(ProductionMachine)
+        .order_by(
+            ProductionMachine.destination.asc(),
+            ProductionMachine.sort_order.asc(),
+            ProductionMachine.id.asc(),
+        )
+        .all()
+    )
+    return _build_management_dashboard(reqs, machines)
 
 
 @router.get("/order-center/summary", response_model=OrderCenterResponse)

@@ -158,6 +158,24 @@ def _format_waiting_minutes(minutes: object) -> str:
     return f"{days}d {remaining_hours:02d}h"
 
 
+def _machine_status_label(value: object) -> str:
+    status = str(value or "").strip().casefold()
+    if status == "funcionando":
+        return "Funcionando"
+    if status == "manutencao":
+        return "Manutencao"
+    return str(value or "-") or "-"
+
+
+def _machine_status_color(value: object) -> str:
+    status = str(value or "").strip().casefold()
+    if status == "funcionando":
+        return theme.SUCCESS
+    if status == "manutencao":
+        return theme.WARNING
+    return theme.BORDER_COLOR
+
+
 class DashWorker(QObject):
     result = Signal(object)
     error = Signal(str)
@@ -341,6 +359,28 @@ class DashboardView(QWidget):
             1,
         )
         layout.addLayout(secondary_row)
+
+        machine_row = QHBoxLayout()
+        machine_row.setSpacing(max(12, int(16 * s)))
+        machine_row.addWidget(
+            self._build_section_card(
+                "MAQUINAS QUE MAIS OPERAM - A&R",
+                "Ranking das maquinas da A&R por volume de operacoes finalizadas.",
+                self._build_top_machines_ar_table(),
+                theme.PRIMARY_HOVER,
+            ),
+            1,
+        )
+        machine_row.addWidget(
+            self._build_section_card(
+                "MAQUINAS QUE MAIS OPERAM - INDUSTRIA",
+                "Ranking das maquinas da Industria por volume de operacoes finalizadas.",
+                self._build_top_machines_industria_table(),
+                theme.PRIMARY,
+            ),
+            1,
+        )
+        layout.addLayout(machine_row)
 
         layout.addWidget(
             self._build_section_card(
@@ -555,6 +595,22 @@ class DashboardView(QWidget):
         self.recent_table.setMinimumHeight(max(260, int(300 * self.scale)))
         return self.recent_table
 
+    def _build_top_machines_ar_table(self) -> QTableWidget:
+        self.top_machines_ar_table = self._create_table(
+            ["#", "MAQUINA", "OPERACOES", "EM PRODUCAO", "TEMPO MEDIO", "STATUS"],
+            {1},
+        )
+        self.top_machines_ar_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        return self.top_machines_ar_table
+
+    def _build_top_machines_industria_table(self) -> QTableWidget:
+        self.top_machines_industria_table = self._create_table(
+            ["#", "MAQUINA", "OPERACOES", "EM PRODUCAO", "TEMPO MEDIO", "STATUS"],
+            {1},
+        )
+        self.top_machines_industria_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        return self.top_machines_industria_table
+
     def refresh(self):
         self._set_loading(True)
         self.error_label.hide()
@@ -608,6 +664,16 @@ class DashboardView(QWidget):
 
         self._fill_top_vendors_table(payload.get("top_vendors") or [])
         self._fill_alerts_table(payload.get("receipt_alerts") or [])
+        self._fill_top_machines_table(
+            self.top_machines_ar_table,
+            payload.get("top_machines_ar") or [],
+            "Nenhuma maquina da A&R encontrada.",
+        )
+        self._fill_top_machines_table(
+            self.top_machines_industria_table,
+            payload.get("top_machines_industria") or [],
+            "Nenhuma maquina da Industria encontrada.",
+        )
         self._fill_recent_table(payload.get("recent_requisitions") or [])
 
     def _fill_top_vendors_table(self, rows: object):
@@ -660,6 +726,51 @@ class DashboardView(QWidget):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
+
+    def _fill_top_machines_table(
+        self,
+        table: QTableWidget,
+        rows: object,
+        empty_message: str,
+    ):
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, empty_message)
+            return
+
+        for index, row in enumerate(items, start=1):
+            if not isinstance(row, dict):
+                continue
+
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(index),
+                str(row.get("machine_name") or "-"),
+                str(row.get("total_operations") or 0),
+                str(row.get("in_production_count") or 0),
+                _format_duration(row.get("average_seconds")),
+                str(row.get("machine_status") or "-"),
+            ]
+
+            for col, value in enumerate(values):
+                if col == 5:
+                    machine_status = str(row.get("machine_status") or "")
+                    color = _machine_status_color(machine_status)
+                    label = QLabel(_machine_status_label(machine_status))
+                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    label.setStyleSheet(
+                        f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                        f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
+                    )
+                    table.setCellWidget(line, col, label)
+                else:
+                    item = QTableWidgetItem(value)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    table.setItem(line, col, item)
 
     def _fill_recent_table(self, rows: object):
         table = self.recent_table
