@@ -20,6 +20,7 @@ from ..schemas.dashboard import (
     DashboardStatsResponse,
     DashboardVendorItem,
     ManagementDashboardResponse,
+    TechnicalPanelLoggedUserResponse,
     TechnicalPanelResponse,
     TechnicalPanelStatsResponse,
 )
@@ -40,7 +41,7 @@ from ..dependencies import (
     require_order_center_access,
 )
 from ..services.runtime_monitor import snapshot as runtime_snapshot
-from ..services.sse_manager import connected_users_count
+from ..services.sse_manager import connected_user_ids
 
 router = APIRouter(prefix="/requisitions", tags=["Requisições"])
 
@@ -679,6 +680,27 @@ def _database_connected(db: Session) -> bool:
         return False
 
 
+def _logged_users_snapshot(db: Session) -> list[TechnicalPanelLoggedUserResponse]:
+    user_ids = connected_user_ids()
+    if not user_ids:
+        return []
+
+    users = (
+        db.query(User)
+        .filter(User.id.in_(user_ids))
+        .order_by(User.name.asc())
+        .all()
+    )
+    return [
+        TechnicalPanelLoggedUserResponse(
+            id=user.id,
+            name=user.name,
+            last_login_at=user.last_login_at,
+        )
+        for user in users
+    ]
+
+
 @router.get("/technical-panel/summary", response_model=TechnicalPanelResponse)
 def get_technical_panel_summary(
     db: Session = Depends(get_db),
@@ -687,6 +709,7 @@ def get_technical_panel_summary(
     now = datetime.utcnow()
     today_start = datetime(now.year, now.month, now.day)
     stats = runtime_snapshot()
+    logged_users = _logged_users_snapshot(db)
 
     requisitions_today = (
         db.query(Requisition)
@@ -698,7 +721,7 @@ def get_technical_panel_summary(
         generated_at=now,
         stats=TechnicalPanelStatsResponse(
             system_online=True,
-            connected_users=connected_users_count(),
+            connected_users=len(logged_users),
             requisitions_today=requisitions_today,
             average_response_ms=stats.get("average_response_ms"),
             last_backup_at=_find_latest_backup_at(),
@@ -706,6 +729,7 @@ def get_technical_panel_summary(
             available_space_bytes=_available_space_bytes(),
             error_count_today=int(stats.get("error_count_today") or 0),
         ),
+        logged_users=logged_users,
     )
 
 

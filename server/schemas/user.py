@@ -51,6 +51,7 @@ class UserResponse(BaseModel):
     sector: Optional[str]
     must_change_password: bool
     is_active: bool
+    last_login_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -20,6 +20,7 @@ def _migrate():
     stmts = [
         "ALTER TABLE users ADD COLUMN sector TEXT",
         "ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP",
         "ALTER TABLE requisitions ADD COLUMN obs TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",

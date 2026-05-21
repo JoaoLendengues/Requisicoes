@@ -80,6 +80,7 @@ class TechnicalPanelView(QWidget):
         self.scale = scale
         self._threads: list[tuple[QThread, QObject]] = []
         self._metric_labels: dict[str, QLabel] = {}
+        self._metric_details: dict[str, QLabel] = {}
         self._setup_ui()
         if session.can_access_technical_panel:
             self.refresh()
@@ -193,7 +194,7 @@ class TechnicalPanelView(QWidget):
 
         card_defs = [
             ("system_online", DASH_SUCCESS, "Sistema Online/Offline", "Status atual de disponibilidade da aplicacao."),
-            ("connected_users", DASH_PRIMARY, "Usuarios conectados", "Usuarios com conexao ativa no sistema."),
+            ("connected_users", DASH_PRIMARY, "Usuarios logados", "Usuarios conectados no momento e horario do ultimo login."),
             ("requisitions_today", DASH_SECONDARY, "Requisicoes hoje", "Requisicoes registradas no dia atual."),
             ("average_response_ms", DASH_SLATE, "Tempo medio de resposta", "Media das respostas HTTP processadas hoje."),
             ("last_backup_at", DASH_WARNING, "Ultimo backup", "Horario mais recente de backup localizado no ambiente."),
@@ -269,6 +270,14 @@ class TechnicalPanelView(QWidget):
             f"background:transparent; border:none;"
         )
 
+        detail_label = QLabel("")
+        detail_label.setWordWrap(True)
+        detail_label.hide()
+        detail_label.setStyleSheet(
+            f"color:{DASH_SLATE}; font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; border:none; line-height:1.35;"
+        )
+
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
         accent_line.setStyleSheet(
@@ -278,10 +287,12 @@ class TechnicalPanelView(QWidget):
         layout.addWidget(value_label)
         layout.addWidget(title_label)
         layout.addWidget(helper_label)
+        layout.addWidget(detail_label)
         layout.addStretch()
         layout.addWidget(accent_line)
 
         self._metric_labels[key] = value_label
+        self._metric_details[key] = detail_label
         return card
 
     def refresh(self):
@@ -331,6 +342,7 @@ class TechnicalPanelView(QWidget):
         self._set_metric("system_online", "Online" if stats.get("system_online") else "Offline")
         self._set_metric("connected_users", str(stats.get("connected_users") or 0))
         self._set_metric("requisitions_today", str(stats.get("requisitions_today") or 0))
+        self._set_metric_detail("connected_users", self._format_logged_users(payload.get("logged_users")))
 
         average_response = stats.get("average_response_ms")
         self._set_metric(
@@ -351,3 +363,25 @@ class TechnicalPanelView(QWidget):
         label = self._metric_labels.get(key)
         if label is not None:
             label.setText(value)
+
+    def _set_metric_detail(self, key: str, value: str):
+        label = self._metric_details.get(key)
+        if label is None:
+            return
+        text = str(value or "").strip()
+        label.setText(text)
+        label.setVisible(bool(text))
+
+    def _format_logged_users(self, rows: object) -> str:
+        users = rows if isinstance(rows, list) else []
+        if not users:
+            return "Nenhum usuario conectado."
+
+        lines: list[str] = []
+        for row in users:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or "Usuario")
+            last_login = _format_datetime(row.get("last_login_at"))
+            lines.append(f"{name} | ultimo login: {last_login}")
+        return "\n".join(lines)

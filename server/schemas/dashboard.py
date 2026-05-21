@@ -61,6 +61,13 @@ class TechnicalPanelStatsResponse(BaseModel):
     error_count_today: int
 
 
+class TechnicalPanelLoggedUserResponse(BaseModel):
+    id: int
+    name: str
+    last_login_at: Optional[datetime] = None
+
+
 class TechnicalPanelResponse(BaseModel):
     generated_at: datetime
     stats: TechnicalPanelStatsResponse
+    logged_users: list[TechnicalPanelLoggedUserResponse]
