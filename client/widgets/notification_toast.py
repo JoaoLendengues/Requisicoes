@@ -1,10 +1,10 @@
 """
 Sistema de toasts de notificação.
 
-NotificationToast  — card flutuante com slide + fade simultâneos,
+NotificationToast  — card flutuante com slide (da direita) + fade simultâneos,
                      barra de countdown e pausa automática ao hover.
                      Usa os tokens TOAST_* de theme.py (suporte a dark mode).
-ToastManager       — empilha múltiplos toasts no canto inferior direito.
+ToastManager       — fila sequencial: um toast de cada vez, com pausa entre eles.
 """
 from PySide6.QtCore import (
     QEasingCurve, QParallelAnimationGroup, QPoint, QPropertyAnimation,
@@ -20,10 +20,10 @@ from ..core import theme
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-DISPLAY_MS  = 6_000
-TOAST_WIDTH = 360
-MARGIN      = 20
-SPACING     = 10
+DISPLAY_MS   = 6_000   # tempo que o toast fica visível
+TOAST_WIDTH  = 360
+MARGIN       = 20      # margem do canto da tela
+_SLIDE_OVER  = 70      # deslocamento inicial fora do canto (entrada da direita)
 
 _ICONS: dict[str, str] = {
     "nova_requisicao":   "🏭",
@@ -43,13 +43,23 @@ _ACCENT: dict[str, str] = {
     "requisicao_parada": "#D97706",
 }
 
-_DEFAULT_ACCENT = "#2563EB"
+_ACCENT_HOVER: dict[str, str] = {
+    "nova_requisicao":   "#1D4ED8",
+    "em_producao":       "#15803D",
+    "finalizada":        "#15803D",
+    "cancelada":         "#B91C1C",
+    "prod_cancelada":    "#B45309",
+    "requisicao_parada": "#B45309",
+}
+
+_DEFAULT_ACCENT       = "#2563EB"
+_DEFAULT_ACCENT_HOVER = "#1D4ED8"
 
 
 # ── Toast individual ──────────────────────────────────────────────────────────
 
 class NotificationToast(QFrame):
-    """Card flutuante com animação de entrada/saída (slide + fade) e hover-pause."""
+    """Card flutuante: entra deslizando da direita, sai pelo mesmo lado."""
 
     dismissed      = Signal()
     action_clicked = Signal(object)
@@ -68,8 +78,9 @@ class NotificationToast(QFrame):
         self._req_id    = data.get("requisition_id")
         self._group:    QParallelAnimationGroup | None = None
         self._remaining = DISPLAY_MS
+        self._type      = data.get("type", "")
 
-        accent = _ACCENT.get(data.get("type", ""), _DEFAULT_ACCENT)
+        accent = _ACCENT.get(self._type, _DEFAULT_ACCENT)
         self._build(data, accent)
         self._add_shadow()
 
@@ -93,7 +104,7 @@ class NotificationToast(QFrame):
         )
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 12, 14, 10)
+        root.setContentsMargins(16, 13, 14, 10)
         root.setSpacing(4)
 
         # ── Cabeçalho: ícone + título + timestamp + fechar ──
@@ -162,21 +173,21 @@ class NotificationToast(QFrame):
         self._bar_anim.setEasingCurve(QEasingCurve.Type.Linear)
 
     def _add_shadow(self):
-        # Extrai RGB do token TOAST_SHADOW para usar em QColor
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 44, 109, 30 if not theme.is_dark else 120))
-        shadow.setOffset(0, 4)
+        shadow.setBlurRadius(28)
+        shadow.setColor(QColor(0, 44, 109, 40 if not theme.is_dark else 150))
+        shadow.setOffset(0, 6)
         self.setGraphicsEffect(shadow)
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def show_at(self, x: int, y: int):
+        """Exibe o toast com animação de entrada: desliza da direita + fade in."""
         self.adjustSize()
         h = self.sizeHint().height()
 
-        start_pos = QPoint(x, y + h + 24)
-        end_pos   = QPoint(x, y)
+        end_pos   = QPoint(x, y - h)
+        start_pos = QPoint(x + _SLIDE_OVER, y - h)
 
         self.move(start_pos)
         self.show()
@@ -185,13 +196,13 @@ class NotificationToast(QFrame):
         slide = QPropertyAnimation(self, b"pos")
         slide.setStartValue(start_pos)
         slide.setEndValue(end_pos)
-        slide.setDuration(340)
+        slide.setDuration(380)
         slide.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         fade = QPropertyAnimation(self, b"windowOpacity")
         fade.setStartValue(0.0)
         fade.setEndValue(1.0)
-        fade.setDuration(340)
+        fade.setDuration(300)
         fade.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         self._group = QParallelAnimationGroup(self)
@@ -204,6 +215,7 @@ class NotificationToast(QFrame):
         self._dismiss_timer.start(DISPLAY_MS)
 
     def _slide_out(self):
+        """Saída: desliza para a direita + fade out simultâneos."""
         self._dismiss_timer.stop()
         self._bar_anim.stop()
         if self._group:
@@ -213,14 +225,14 @@ class NotificationToast(QFrame):
 
         slide = QPropertyAnimation(self, b"pos")
         slide.setStartValue(cur)
-        slide.setEndValue(QPoint(cur.x(), cur.y() + self.height() + 24))
-        slide.setDuration(240)
+        slide.setEndValue(QPoint(cur.x() + _SLIDE_OVER + TOAST_WIDTH // 4, cur.y()))
+        slide.setDuration(220)
         slide.setEasingCurve(QEasingCurve.Type.InCubic)
 
         fade = QPropertyAnimation(self, b"windowOpacity")
         fade.setStartValue(self.windowOpacity())
         fade.setEndValue(0.0)
-        fade.setDuration(240)
+        fade.setDuration(200)
         fade.setEasingCurve(QEasingCurve.Type.InCubic)
 
         self._group = QParallelAnimationGroup(self)
@@ -261,40 +273,56 @@ class NotificationToast(QFrame):
         super().mousePressEvent(event)
 
 
-# ── Gerenciador de pilha ──────────────────────────────────────────────────────
+# ── Gerenciador sequencial ────────────────────────────────────────────────────
 
 class ToastManager:
-    """Empilha toasts no canto inferior direito da janela pai."""
+    """
+    Fila de toasts sequenciais: exibe um de cada vez no canto inferior direito.
+    Aguarda um intervalo entre o fim de um toast e o início do próximo.
+    """
+
+    _GAP_MS = 380   # pausa entre toasts consecutivos (ms)
 
     def __init__(self, parent):
-        self._parent = parent
-        self._stack: list[NotificationToast] = []
+        self._parent   = parent
+        self._queue:   list[tuple[dict, object]] = []   # (data, on_action)
+        self._current: NotificationToast | None  = None
+
+        self._gap_timer = QTimer()
+        self._gap_timer.setSingleShot(True)
+        self._gap_timer.timeout.connect(self._show_next)
+
+    # ── API pública ───────────────────────────────────────────────────────────
 
     def show(self, data: dict, on_action=None):
+        """Enfileira um toast; exibe imediatamente se não houver nenhum ativo."""
+        self._queue.append((data, on_action))
+        if self._current is None and not self._gap_timer.isActive():
+            self._show_next()
+
+    # ── Internos ──────────────────────────────────────────────────────────────
+
+    def _target_pos(self) -> tuple[int, int]:
+        """Retorna (x, y_bottom) do canto inferior direito da janela pai."""
+        parent = self._parent
+        br = parent.mapToGlobal(parent.rect().bottomRight())
+        x = br.x() - TOAST_WIDTH - MARGIN
+        y = br.y() - MARGIN
+        return x, y
+
+    def _show_next(self):
+        if not self._queue:
+            return
+        data, on_action = self._queue.pop(0)
         toast = NotificationToast(data, parent=None)
-        toast.dismissed.connect(lambda t=toast: self._remove(t))
+        toast.dismissed.connect(self._on_dismissed)
         if on_action:
             toast.action_clicked.connect(on_action)
-        self._stack.append(toast)
-        self._reposition()
+        self._current = toast
+        x, y = self._target_pos()
+        toast.show_at(x, y)
 
-    def _reposition(self):
-        parent       = self._parent
-        bottom_right = parent.mapToGlobal(parent.rect().bottomRight())
-        x = bottom_right.x() - TOAST_WIDTH - MARGIN
-        y = bottom_right.y() - MARGIN
-
-        for toast in reversed(self._stack):
-            toast.adjustSize()
-            h = toast.sizeHint().height()
-            y -= h
-            if not toast.isVisible():
-                toast.show_at(x, y)
-            else:
-                toast.move(x, y)
-            y -= SPACING
-
-    def _remove(self, toast: NotificationToast):
-        if toast in self._stack:
-            self._stack.remove(toast)
-        self._reposition()
+    def _on_dismissed(self):
+        self._current = None
+        if self._queue:
+            self._gap_timer.start(self._GAP_MS)

@@ -21,7 +21,7 @@ from ..core import theme
 # ── Constantes ────────────────────────────────────────────────────────────────
 
 DRAWER_WIDTH = 400
-ANIM_MS      = 260
+ANIM_MS      = 280
 
 _ICONS: dict[str, str] = {
     "nova_requisicao":   "🏭",
@@ -138,18 +138,20 @@ class NotificationDrawer(QWidget):
         self._overlay.setGeometry(0, 0, parent.width(), parent.height())
         self._overlay.hide()
 
-        # Drawer
+        # Drawer container
         self.setFixedWidth(DRAWER_WIDTH)
+        self.setObjectName("notifDrawer")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
-            f"QWidget {{ background: {theme.DRAWER_BG}; }}"
+            f"QWidget#notifDrawer {{ background: {theme.DRAWER_BG}; }}"
             f"QFrame {{ border: none; }}"
         )
 
-        # Sombra lateral (esquerda)
+        # Sombra lateral esquerda
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(28)
-        shadow.setColor(QColor(0, 44, 109, 40 if not theme.is_dark else 160))
-        shadow.setOffset(-6, 0)
+        shadow.setBlurRadius(32)
+        shadow.setColor(QColor(0, 44, 109, 50 if not theme.is_dark else 200))
+        shadow.setOffset(-8, 0)
         self.setGraphicsEffect(shadow)
 
         root = QVBoxLayout(self)
@@ -160,7 +162,7 @@ class NotificationDrawer(QWidget):
         self._build_list(root)
         self._build_footer(root)
 
-        # Animações
+        # Animações deslizamento
         self._anim_open = QPropertyAnimation(self, b"pos", self)
         self._anim_open.setDuration(ANIM_MS)
         self._anim_open.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -175,47 +177,84 @@ class NotificationDrawer(QWidget):
         self.hide()
 
     def _build_header(self, root: QVBoxLayout):
+        # Barra de acento no topo
+        accent_bar = QFrame()
+        accent_bar.setObjectName("drawerAccent")
+        accent_bar.setFixedHeight(3)
+        accent_bar.setStyleSheet(
+            f"QFrame#drawerAccent {{ background: {theme.PRIMARY}; border: none; }}"
+        )
+        root.addWidget(accent_bar)
+
+        # Cabeçalho
         header = QWidget()
-        header.setFixedHeight(60)
+        header.setObjectName("drawerHeader")
+        header.setFixedHeight(62)
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         header.setStyleSheet(
-            f"background: {theme.DRAWER_HEADER};"
-            f"border-bottom: 1px solid {theme.DRAWER_BORDER};"
+            f"QWidget#drawerHeader {{"
+            f"  background: {theme.DRAWER_HEADER};"
+            f"  border-bottom: 1px solid {theme.DRAWER_BORDER};"
+            f"}}"
         )
         hlay = QHBoxLayout(header)
-        hlay.setContentsMargins(20, 0, 14, 0)
+        hlay.setContentsMargins(18, 0, 14, 0)
         hlay.setSpacing(10)
 
-        title = QLabel("🔔  Notificações")
-        title.setStyleSheet(
-            f"color: {theme.DRAWER_TITLE};"
-            f"font-size: 11pt; font-weight: 700;"
-            f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
-            f"background: transparent;"
-        )
-        hlay.addWidget(title, 1)
+        # Ícone + título + badge de contagem
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        title_row.setContentsMargins(0, 0, 0, 0)
 
+        bell = QLabel("🔔")
+        bell.setStyleSheet("font-size: 15px; background: transparent;")
+        title_row.addWidget(bell)
+
+        title = QLabel("Notificações")
+        title.setStyleSheet(
+            f"color: {theme.DRAWER_TITLE}; font-size: 11pt; font-weight: 700;"
+            f"background: transparent;"
+            f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+        )
+        title_row.addWidget(title)
+
+        count = len(self._notifications)
+        if count:
+            badge = QLabel(str(count))
+            badge.setStyleSheet(
+                f"background: {theme.DANGER}; color: #fff; border-radius: 9px;"
+                f"padding: 1px 7px; font-size: 8pt; font-weight: 700;"
+                f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+            )
+            title_row.addWidget(badge)
+
+        hlay.addLayout(title_row, 1)
+
+        # Botão "Marcar todas" — estilo ghost
         if self._notifications:
             btn_all = QPushButton("Marcar todas")
             btn_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn_all.setStyleSheet(
                 f"QPushButton {{"
-                f"  background: {theme.PRIMARY}; color: {theme.TEXT_WHITE};"
-                f"  border: none; border-radius: 6px;"
-                f"  padding: 5px 12px; font-size: 8pt; font-weight: 600;"
+                f"  background: transparent; color: {theme.PRIMARY};"
+                f"  border: 1px solid {theme.PRIMARY}; border-radius: 6px;"
+                f"  padding: 4px 11px; font-size: 8pt; font-weight: 600;"
                 f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
                 f"}}"
-                f"QPushButton:hover {{ background: {theme.PRIMARY_HOVER}; }}"
+                f"QPushButton:hover {{ background: {theme.SELECTION_BG}; }}"
             )
             btn_all.clicked.connect(self._on_mark_all)
             hlay.addWidget(btn_all)
 
+        # Botão fechar
         btn_close = QPushButton("✕")
-        btn_close.setFixedSize(28, 28)
+        btn_close.setFixedSize(30, 30)
         btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_close.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent; color: {theme.TEXT_LABEL};"
-            f"  border: none; border-radius: 14px; font-size: 13px;"
+            f"  border: none; border-radius: 15px; font-size: 13px;"
+            f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
             f"}}"
             f"QPushButton:hover {{"
             f"  background: {theme.BORDER_COLOR}; color: {theme.TEXT_DARK};"
@@ -233,10 +272,10 @@ class NotificationDrawer(QWidget):
         scroll.setStyleSheet(
             f"QScrollArea {{ border: none; background: {theme.DRAWER_BG}; }}"
             f"QScrollBar:vertical {{"
-            f"  width: 5px; background: transparent; margin: 0;"
+            f"  width: 6px; background: transparent; margin: 4px 2px;"
             f"}}"
             f"QScrollBar::handle:vertical {{"
-            f"  background: {theme.DRAWER_SCROLL}; border-radius: 2px; min-height: 28px;"
+            f"  background: {theme.DRAWER_SCROLL}; border-radius: 3px; min-height: 32px;"
             f"}}"
             f"QScrollBar::handle:vertical:hover {{ background: {theme.BORDER_COLOR}; }}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}"
@@ -244,20 +283,17 @@ class NotificationDrawer(QWidget):
         )
 
         container = QWidget()
-        container.setStyleSheet(f"background: {theme.DRAWER_BG};")
+        container.setObjectName("drawerListContainer")
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        container.setStyleSheet(
+            f"QWidget#drawerListContainer {{ background: {theme.DRAWER_BG}; }}"
+        )
         vlay = QVBoxLayout(container)
-        vlay.setContentsMargins(14, 14, 14, 14)
-        vlay.setSpacing(8)
+        vlay.setContentsMargins(14, 16, 14, 16)
+        vlay.setSpacing(10)
 
         if not self._notifications:
-            lbl = QLabel("Nenhuma notificação não lida  🎉")
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setStyleSheet(
-                f"color: {theme.TEXT_LABEL}; font-size: 10pt;"
-                f"padding: 60px 20px; background: transparent;"
-                f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
-            )
-            vlay.addWidget(lbl)
+            self._build_empty_state(vlay)
         else:
             for n in self._notifications:
                 vlay.addWidget(self._make_card(n))
@@ -266,20 +302,70 @@ class NotificationDrawer(QWidget):
         scroll.setWidget(container)
         root.addWidget(scroll, 1)
 
+    def _build_empty_state(self, vlay: QVBoxLayout):
+        """Estado vazio: ícone grande + textos centralizados."""
+        wrapper = QWidget()
+        wrapper_lay = QVBoxLayout(wrapper)
+        wrapper_lay.setContentsMargins(20, 60, 20, 60)
+        wrapper_lay.setSpacing(10)
+        wrapper_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        emoji_lbl = QLabel("🎉")
+        emoji_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        emoji_lbl.setStyleSheet(
+            "font-size: 42px; background: transparent;"
+        )
+        wrapper_lay.addWidget(emoji_lbl)
+
+        title_lbl = QLabel("Tudo em dia!")
+        title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_lbl.setStyleSheet(
+            f"color: {theme.DRAWER_TITLE}; font-size: 13pt; font-weight: 700;"
+            f"background: transparent;"
+            f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+        )
+        wrapper_lay.addWidget(title_lbl)
+
+        sub_lbl = QLabel("Não há notificações não lidas no momento.")
+        sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub_lbl.setWordWrap(True)
+        sub_lbl.setStyleSheet(
+            f"color: {theme.DRAWER_MUTED}; font-size: 9pt;"
+            f"background: transparent;"
+            f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+        )
+        wrapper_lay.addWidget(sub_lbl)
+
+        vlay.addWidget(wrapper)
+
     def _build_footer(self, root: QVBoxLayout):
         count = len(self._notifications)
         if not count:
             return
+
         s = "notificação não lida" if count == 1 else "notificações não lidas"
-        footer = QLabel(f"{count} {s}")
-        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        footer = QWidget()
+        footer.setObjectName("drawerFooter")
+        footer.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         footer.setStyleSheet(
-            f"background: {theme.DRAWER_HEADER};"
+            f"QWidget#drawerFooter {{"
+            f"  background: {theme.DRAWER_HEADER};"
+            f"  border-top: 1px solid {theme.DRAWER_BORDER};"
+            f"}}"
+        )
+        flay = QHBoxLayout(footer)
+        flay.setContentsMargins(18, 10, 18, 10)
+        flay.setSpacing(8)
+
+        count_lbl = QLabel(f"{count} {s}")
+        count_lbl.setStyleSheet(
             f"color: {theme.TEXT_LABEL}; font-size: 8pt;"
-            f"padding: 8px;"
-            f"border-top: 1px solid {theme.DRAWER_BORDER};"
+            f"background: transparent;"
             f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
         )
+        flay.addWidget(count_lbl, 1)
+
         root.addWidget(footer)
 
     def _make_card(self, n: dict) -> QFrame:
@@ -287,47 +373,62 @@ class NotificationDrawer(QWidget):
         accent = _ACCENT.get(ntype, _DEFAULT_ACCENT)
 
         card = QFrame()
+        card.setObjectName("drawerNotifCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        hover_bg = theme.SURFACE_SOFT
+
         card.setStyleSheet(
-            f"QFrame {{"
+            f"QFrame#drawerNotifCard {{"
             f"  background: {theme.DRAWER_CARD};"
-            f"  border: 1px solid {theme.DRAWER_BORDER};"
-            f"  border-left: 4px solid {accent};"
-            f"  border-radius: 8px;"
+            f"  border: 1px solid {theme.DRAWER_BORDER} !important;"
+            f"  border-left: 4px solid {accent} !important;"
+            f"  border-radius: 10px;"
             f"}}"
-            f"QLabel {{ background: transparent; }}"
+            f"QFrame#drawerNotifCard:hover {{"
+            f"  background: {hover_bg};"
+            f"  border-color: {accent} !important;"
+            f"}}"
+            f"QLabel {{ background: transparent; border: none !important; }}"
+            f"QPushButton {{ background: transparent; }}"
         )
 
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(12, 10, 12, 10)
-        lay.setSpacing(5)
+        lay.setContentsMargins(14, 12, 12, 11)
+        lay.setSpacing(6)
 
-        # ── Linha superior: ícone + título + ponto + timestamp ──
+        # ── Linha superior: ícone + título + dot + timestamp ──
         top = QHBoxLayout()
         top.setSpacing(8)
         top.setContentsMargins(0, 0, 0, 0)
 
         icon_lbl = QLabel(_ICONS.get(ntype, "🔔"))
-        icon_lbl.setStyleSheet("font-size: 15px;")
-        icon_lbl.setFixedWidth(22)
+        icon_lbl.setStyleSheet("font-size: 16px; background: transparent; border: none;")
+        icon_lbl.setFixedWidth(24)
         top.addWidget(icon_lbl)
 
         title_lbl = QLabel(n.get("title", ""))
         title_lbl.setStyleSheet(
             f"font-weight: 700; font-size: 9pt; color: {theme.DRAWER_TITLE};"
+            f"background: transparent; border: none;"
             f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
         )
         title_lbl.setWordWrap(True)
         top.addWidget(title_lbl, 1)
 
+        # Dot colorido de não lida
         dot = QLabel("●")
-        dot.setStyleSheet(f"color: {accent}; font-size: 7px;")
+        dot.setStyleSheet(
+            f"color: {accent}; font-size: 9px; background: transparent; border: none;"
+        )
         top.addWidget(dot)
 
         ts = _relative_time(n.get("created_at"))
         if ts:
             ts_lbl = QLabel(ts)
             ts_lbl.setStyleSheet(
-                f"color: {theme.DRAWER_MUTED}; font-size: 7pt;"
+                f"color: {theme.DRAWER_MUTED}; font-size: 7pt; background: transparent; border: none;"
                 f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
             )
             top.addWidget(ts_lbl)
@@ -340,8 +441,9 @@ class NotificationDrawer(QWidget):
             msg_lbl = QLabel(msg)
             msg_lbl.setStyleSheet(
                 f"color: {theme.DRAWER_BODY}; font-size: 8pt;"
+                f"background: transparent; border: none;"
                 f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
-                f"padding-left: 30px;"
+                f"padding-left: 32px;"
             )
             msg_lbl.setWordWrap(True)
             lay.addWidget(msg_lbl)
@@ -353,11 +455,11 @@ class NotificationDrawer(QWidget):
         if nid or req_id:
             btns = QHBoxLayout()
             btns.setSpacing(6)
-            btns.setContentsMargins(30, 2, 0, 0)
+            btns.setContentsMargins(32, 2, 0, 0)
             btns.addStretch()
 
             if nid:
-                btn_read = QPushButton("Marcar como lida")
+                btn_read = QPushButton("✓  Marcar lida")
                 btn_read.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 btn_read.setStyleSheet(
                     f"QPushButton {{"
@@ -367,23 +469,24 @@ class NotificationDrawer(QWidget):
                     f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
                     f"}}"
                     f"QPushButton:hover {{"
-                    f"  color: {theme.TEXT_MEDIUM}; border-color: {theme.TEXT_LABEL};"
+                    f"  color: {theme.SUCCESS}; border-color: {theme.SUCCESS};"
+                    f"  background: transparent;"
                     f"}}"
                 )
                 btn_read.clicked.connect(lambda checked=False, i=nid: self._on_mark_one(i))
                 btns.addWidget(btn_read)
 
             if req_id:
-                btn_open = QPushButton("Abrir requisição")
+                btn_open = QPushButton("Abrir  →")
                 btn_open.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 btn_open.setStyleSheet(
                     f"QPushButton {{"
-                    f"  background: {theme.SELECTION_BG}; color: {theme.PRIMARY};"
-                    f"  border: 1px solid {theme.PRIMARY_LIGHT}; border-radius: 5px;"
+                    f"  background: {theme.PRIMARY}; color: #fff;"
+                    f"  border: none; border-radius: 5px;"
                     f"  padding: 3px 10px; font-size: 7pt; font-weight: 600;"
                     f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
                     f"}}"
-                    f"QPushButton:hover {{ background: #ccdcff; }}"
+                    f"QPushButton:hover {{ background: {theme.PRIMARY_HOVER}; }}"
                 )
                 btn_open.clicked.connect(lambda checked=False, rid=req_id: self._on_open(rid))
                 btns.addWidget(btn_open)
