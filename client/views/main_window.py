@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
     QScrollArea, QLabel, QGraphicsOpacityEffect,
 )
-from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation
+from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate
 
 from ..core import theme
 from ..core.dialogs import ask_confirmation
@@ -535,28 +535,171 @@ class MainWindow(QMainWindow):
 
     # ── Escala ───────────────────────────────────────────────────────────────
 
-    def _build_replacement_window(self) -> "MainWindow":
-        current_page = self.stack.currentIndex()
-        window_geometry = self.geometry()
-        was_maximized = self.isMaximized()
-        was_fullscreen = self.isFullScreen()
+    def _capture_form_state(self) -> dict:
+        client = self.form_view.client_search.get_selected()
+        lock_message = ""
+        if hasattr(self.form_view, "lock_label") and self.form_view.lock_label.isVisible():
+            lock_message = self.form_view.lock_label.text()
+        return {
+            "req_id": self.form_view.req_id,
+            "data": self.form_view.get_form_data(),
+            "client": dict(client) if client else None,
+            "client_text": self.form_view.client_search.input.text(),
+            "canvas_json": self.form_view._canvas_json,
+            "status": getattr(self.form_view.status_badge, "_status", "em_andamento"),
+            "locked": not self.form_view.input_ped.isEnabled(),
+            "lock_message": lock_message,
+        }
 
-        new_win = MainWindow()
-        if new_win.isVisible():
-            new_win.hide()
+    def _restore_form_state(self, state: dict) -> None:
+        data = state.get("data") or {}
+        client = state.get("client")
+        client_text = state.get("client_text") or ""
 
-        new_win.stack.setCurrentIndex(current_page)
-        new_win._highlight_current_page()
+        self.form_view.req_id = state.get("req_id")
+        self.form_view.input_ped.setText((data.get("ped_number") or "").strip())
+        self.form_view.input_obra.setText(data.get("obra") or "")
+        self.form_view._set_phone_text(data.get("phone") or "")
+        self.form_view.input_address.setText(data.get("delivery_address") or "")
 
-        if was_fullscreen:
-            new_win.showFullScreen()
-        elif was_maximized:
-            new_win.showMaximized()
+        delivery = data.get("delivery_date")
+        if delivery:
+            qd = QDate.fromString(str(delivery)[:10], "yyyy-MM-dd")
+            if qd.isValid():
+                self.form_view.input_prazo.setDate(qd)
+
+        self.form_view.chk_retirada.setChecked(bool(data.get("retirada")))
+        self.form_view.chk_entrega.setChecked(bool(data.get("entrega")))
+        self.form_view.item_table.set_items(data.get("items", []))
+        self.form_view.input_obs.setPlainText(data.get("obs") or "")
+        self.form_view._canvas_json = state.get("canvas_json") or "{}"
+        self.form_view._update_canvas_preview()
+        self.form_view.status_badge.set_status(state.get("status") or "em_andamento")
+
+        search = self.form_view.client_search
+        search.input.blockSignals(True)
+        search.input.setText(client_text)
+        search.input.blockSignals(False)
+        search._selected = dict(client) if client else None
+
+        if state.get("locked"):
+            self.form_view._set_form_locked(True, state.get("lock_message") or "")
         else:
-            new_win.setGeometry(window_geometry)
-            new_win.show()
+            self.form_view._set_form_locked(False)
 
-        return new_win
+    def _capture_settings_state(self) -> dict:
+        selected_scale = next(
+            (label for label, btn in self.settings_view._scale_btns.items() if btn.isChecked()),
+            res.scale_label,
+        )
+        return {
+            "url": self.settings_view.input_url.text(),
+            "ods_path": self.settings_view.input_ods_path.text(),
+            "products_path": self.settings_view.input_products_path.text(),
+            "scale_label": selected_scale,
+        }
+
+    def _restore_settings_state(self, state: dict) -> None:
+        self.settings_view.input_url.setText(state.get("url") or "")
+        self.settings_view.input_ods_path.setText(state.get("ods_path") or "")
+        self.settings_view.input_products_path.setText(state.get("products_path") or "")
+        selected_scale = state.get("scale_label")
+        for label, btn in self.settings_view._scale_btns.items():
+            btn.setChecked(label == selected_scale)
+
+    def _capture_user_center_state(self) -> dict:
+        return {
+            "import_path": self.user_center_view.input_import_path.text(),
+            "search": self.user_center_view.search_input.text(),
+            "selected_user_id": self.user_center_view._selected_user_id,
+            "form_status": self.user_center_view.form_status.text(),
+            "code": self.user_center_view.input_code.text(),
+            "name": self.user_center_view.input_name.text(),
+            "contact": self.user_center_view.input_contact.text(),
+            "sector": self.user_center_view.input_sector.text(),
+            "role": self.user_center_view.combo_role.currentData(),
+            "password": self.user_center_view.input_password.text(),
+            "password_confirm": self.user_center_view.input_password_confirm.text(),
+            "active": self.user_center_view.check_active.isChecked(),
+            "disable_enabled": self.user_center_view.btn_disable.isEnabled(),
+        }
+
+    def _restore_user_center_state(self, state: dict) -> None:
+        self.user_center_view.input_import_path.setText(state.get("import_path") or "")
+        self.user_center_view.search_input.setText(state.get("search") or "")
+        self.user_center_view._selected_user_id = state.get("selected_user_id")
+        self.user_center_view.form_status.setText(state.get("form_status") or "Novo usuário")
+        self.user_center_view.input_code.setText(state.get("code") or "")
+        self.user_center_view.input_name.setText(state.get("name") or "")
+        self.user_center_view.input_contact.setText(state.get("contact") or "")
+        self.user_center_view.input_sector.setText(state.get("sector") or "")
+        role = state.get("role")
+        role_index = self.user_center_view.combo_role.findData(role)
+        if role_index >= 0:
+            self.user_center_view.combo_role.setCurrentIndex(role_index)
+        self.user_center_view.input_password.setText(state.get("password") or "")
+        self.user_center_view.input_password_confirm.setText(state.get("password_confirm") or "")
+        self.user_center_view.check_active.setChecked(bool(state.get("active")))
+        self.user_center_view.btn_disable.setEnabled(bool(state.get("disable_enabled")))
+
+    def _capture_ui_state(self) -> dict:
+        current_page = self.stack.currentIndex()
+        state = {"current_page": current_page}
+        if current_page == PAGE_FORM:
+            state["form"] = self._capture_form_state()
+        elif current_page == PAGE_HISTORY:
+            state["history"] = {
+                "status": self.history_view.combo_status.currentData() or "",
+                "search": self.history_view.input_search.text(),
+            }
+        elif current_page == PAGE_SETTINGS:
+            state["settings"] = self._capture_settings_state()
+        elif current_page == PAGE_USER_CENTER:
+            state["user_center"] = self._capture_user_center_state()
+        return state
+
+    def _restore_ui_state(self, state: dict) -> None:
+        current_page = state.get("current_page", PAGE_FORM)
+        self.stack.setCurrentIndex(current_page)
+        self._highlight_current_page()
+        self.sidebar.set_notification_count(self._unread_count)
+        self.sidebar.refresh_user()
+        self.form_view.refresh_logged_user()
+        self._setup_statusbar()
+
+        if current_page == PAGE_HISTORY:
+            history_state = state.get("history") or {}
+            status = history_state.get("status") or ""
+            search = history_state.get("search") or ""
+            combo_index = max(0, self.history_view.combo_status.findData(status))
+            self.history_view.combo_status.setCurrentIndex(combo_index)
+            self.history_view.input_search.setText(search)
+            self.history_view.refresh()
+        elif current_page == PAGE_DASHBOARD:
+            self.dashboard_view.refresh()
+        elif current_page == PAGE_TECHNICAL:
+            self.technical_panel_view.refresh()
+        elif current_page == PAGE_ORDER_CENTER:
+            self.order_center_view.refresh()
+        elif current_page == PAGE_PRODUCTION:
+            self.production_view.refresh()
+        elif current_page == PAGE_USER_CENTER:
+            self.user_center_view.refresh()
+            self._restore_user_center_state(state.get("user_center") or {})
+        elif current_page == PAGE_SETTINGS:
+            self._restore_settings_state(state.get("settings") or {})
+        elif current_page == PAGE_FORM:
+            self._restore_form_state(state.get("form") or {})
+
+    def _build_replacement_window(self) -> "MainWindow":
+        state = self._capture_ui_state()
+        old_central = self.takeCentralWidget()
+        if old_central is not None:
+            old_central.deleteLater()
+        self.scale = res.scale
+        self._setup_ui()
+        self._restore_ui_state(state)
+        return self
 
     def _start_theme_transition(self, previous_frame):
         if previous_frame.isNull():
@@ -597,12 +740,8 @@ class MainWindow(QMainWindow):
         res.save(dark_mode=dark)
         theme.set_dark(dark)
         QApplication.instance().setStyleSheet(theme.global_style())
-        self._notif_timer.stop()
-        if self._listener:
-            self._listener.stop()
-        new_win = self._build_replacement_window()
-        new_win._start_theme_transition(previous_frame)
-        self.close()
+        self._build_replacement_window()
+        self._start_theme_transition(previous_frame)
 
     def _on_scale_changed(self, _new_scale: float):
         """Reconstrói a janela principal com a nova escala sem reiniciar o processo.
@@ -610,11 +749,7 @@ class MainWindow(QMainWindow):
         A sessão do usuário é mantida (singleton). Uma nova MainWindow é criada
         já lendo res.scale atualizado, e a janela atual é fechada em seguida.
         """
-        self._notif_timer.stop()
-        if self._listener:
-            self._listener.stop()
-        new_win = self._build_replacement_window()
-        self.close()
+        self._build_replacement_window()
 
     # ── Logout ───────────────────────────────────────────────────────────────
 
