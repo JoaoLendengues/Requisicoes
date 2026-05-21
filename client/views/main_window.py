@@ -1,8 +1,8 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
-    QScrollArea,
+    QScrollArea, QLabel, QGraphicsOpacityEffect,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation
 
 from ..core import theme
 from ..core.dialogs import ask_confirmation
@@ -42,6 +42,8 @@ class MainWindow(QMainWindow):
         self._unread_count = 0
         self._listener: NotificationListener | None = None
         self._shown_notif_ids: set[int] = set()   # evita toast duplicado
+        self._theme_transition_overlay: QLabel | None = None
+        self._theme_transition_anim: QPropertyAnimation | None = None
         self._setup_ui()
         self._setup_statusbar()
         self.setWindowTitle("Sistema de Requisições - Ferragens Pinheiro")
@@ -533,17 +535,73 @@ class MainWindow(QMainWindow):
 
     # ── Escala ───────────────────────────────────────────────────────────────
 
+    def _build_replacement_window(self) -> "MainWindow":
+        current_page = self.stack.currentIndex()
+        window_geometry = self.geometry()
+        was_maximized = self.isMaximized()
+        was_fullscreen = self.isFullScreen()
+
+        new_win = MainWindow()
+        if new_win.isVisible():
+            new_win.hide()
+
+        new_win.stack.setCurrentIndex(current_page)
+        new_win._highlight_current_page()
+
+        if was_fullscreen:
+            new_win.showFullScreen()
+        elif was_maximized:
+            new_win.showMaximized()
+        else:
+            new_win.setGeometry(window_geometry)
+            new_win.show()
+
+        return new_win
+
+    def _start_theme_transition(self, previous_frame):
+        if previous_frame.isNull():
+            return
+
+        overlay = QLabel(self)
+        overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        overlay.setScaledContents(True)
+        overlay.setPixmap(previous_frame)
+        overlay.setGeometry(self.rect())
+        overlay.raise_()
+        overlay.show()
+
+        effect = QGraphicsOpacityEffect(overlay)
+        effect.setOpacity(1.0)
+        overlay.setGraphicsEffect(effect)
+
+        anim = QPropertyAnimation(effect, b"opacity", overlay)
+        anim.setDuration(260)
+        anim.setStartValue(1.0)
+        anim.setEndValue(0.0)
+        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        def _cleanup():
+            overlay.deleteLater()
+            self._theme_transition_overlay = None
+            self._theme_transition_anim = None
+
+        anim.finished.connect(_cleanup)
+        self._theme_transition_overlay = overlay
+        self._theme_transition_anim = anim
+        anim.start()
+
     def _on_theme_toggle(self, dark: bool):
         """Salva preferência, aplica tema e reconstrói a janela."""
         from PySide6.QtWidgets import QApplication
+        previous_frame = self.grab()
         res.save(dark_mode=dark)
         theme.set_dark(dark)
         QApplication.instance().setStyleSheet(theme.global_style())
         self._notif_timer.stop()
         if self._listener:
             self._listener.stop()
-        new_win = MainWindow()
-        new_win.show()
+        new_win = self._build_replacement_window()
+        new_win._start_theme_transition(previous_frame)
         self.close()
 
     def _on_scale_changed(self, _new_scale: float):
@@ -555,8 +613,7 @@ class MainWindow(QMainWindow):
         self._notif_timer.stop()
         if self._listener:
             self._listener.stop()
-        new_win = MainWindow()
-        new_win.show()
+        new_win = self._build_replacement_window()
         self.close()
 
     # ── Logout ───────────────────────────────────────────────────────────────
