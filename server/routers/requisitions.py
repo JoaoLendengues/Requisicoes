@@ -92,6 +92,30 @@ def _get_or_404(db: Session, req_id: int) -> Requisition:
     return req
 
 
+def _find_duplicate_ped_number(
+    db: Session,
+    ped_number: str,
+    exclude_req_id: int | None = None,
+) -> Requisition | None:
+    q = db.query(Requisition).filter(Requisition.ped_number == ped_number)
+    if exclude_req_id is not None:
+        q = q.filter(Requisition.id != exclude_req_id)
+    return q.order_by(Requisition.created_at.desc(), Requisition.id.desc()).first()
+
+
+def _ensure_unique_ped_number(
+    db: Session,
+    ped_number: str,
+    exclude_req_id: int | None = None,
+):
+    duplicate = _find_duplicate_ped_number(db, ped_number, exclude_req_id)
+    if duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"O numero de PED {ped_number} ja esta salvo em outra requisicao.",
+        )
+
+
 def _sum_item_weights(items: Optional[list]) -> float:
     return sum((item.weight or 0.0) for item in (items or []))
 
@@ -647,6 +671,7 @@ def create_requisition(
     current_user: User = Depends(require_creator),
 ):
     items_data = data.items
+    _ensure_unique_ped_number(db, data.ped_number)
     req = Requisition(
         **data.model_dump(exclude={"items", "weight"}),
         vendor_id=current_user.id,
@@ -692,6 +717,8 @@ def update_requisition(
     if not _can_edit_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
     _ensure_editable(req)
+    ped_number = data.ped_number if data.ped_number is not None else req.ped_number
+    _ensure_unique_ped_number(db, ped_number, exclude_req_id=req.id)
 
     for k, v in data.model_dump(exclude_unset=True, exclude={"items", "weight"}).items():
         setattr(req, k, v)
@@ -728,6 +755,12 @@ def update_status(
         raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
     old_status = req.status
     prod = _parse_production_note(data.note)
+    is_sending_to_production = (
+        (prod and prod["action"] == _PROD_SEND)
+        or (not prod and data.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO)
+    )
+    if is_sending_to_production:
+        _ensure_unique_ped_number(db, req.ped_number, exclude_req_id=req.id)
     if prod:
         _apply_production_transition(req, data)
     else:
