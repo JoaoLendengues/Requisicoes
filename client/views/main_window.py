@@ -48,6 +48,7 @@ class MainWindow(QMainWindow):
             height = max(700, int(800 * self.scale))
             self.resize(width, height)
         self._toast_manager = ToastManager(self)
+        self._refresh_session_profile()
         self._start_notification_listener()
 
     def _setup_ui(self):
