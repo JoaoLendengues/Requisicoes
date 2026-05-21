@@ -118,7 +118,7 @@ def _ensure_destination_access(current_user: User, destination: str):
     if not _user_can_access_destination(current_user, destination):
         raise HTTPException(
             status_code=403,
-            detail="Sem permissao para acessar este destino de producao",
+            detail="Sem permissão para acessar este destino de produção",
         )
 
 
@@ -149,7 +149,7 @@ def _ensure_unique_ped_number(
     if duplicate:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"O numero de PED {ped_number} ja esta salvo em outra requisicao.",
+            detail=f"O número de PED {ped_number} já está salvo em outra requisição.",
         )
 
 
@@ -261,7 +261,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         ):
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisiÃ§Ãµes aguardando recebimento podem entrar na fila",
+                detail="Somente requisições aguardando recebimento podem entrar na fila",
             )
         req.status = RequisitionStatus.AGUARDANDO_NA_FILA
         req.finalized_at = req.finalized_at or datetime.utcnow()
@@ -276,17 +276,17 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         ):
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisiÃ§Ãµes aguardando recebimento ou em fila podem entrar em producao",
+                detail="Somente requisições aguardando recebimento ou em fila podem entrar em produção",
             )
         if not machine:
             raise HTTPException(
                 status_code=400,
-                detail="Informe a maquina de destino para iniciar a producao",
+                detail="Informe a máquina de destino para iniciar a produção",
             )
         if req.status == RequisitionStatus.EM_PRODUCAO and req.production_machine:
             raise HTTPException(
                 status_code=400,
-                detail="Esta requisicao ja esta vinculada a uma maquina",
+                detail="Esta requisição já está vinculada a uma máquina",
             )
         req.status = RequisitionStatus.EM_PRODUCAO
         req.finalized_at = req.finalized_at or datetime.utcnow()
@@ -297,7 +297,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         if req.status != RequisitionStatus.EM_PRODUCAO:
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisiÃ§Ãµes em producao podem voltar para a fila",
+                detail="Somente requisições em produção podem voltar para a fila",
             )
         req.status = RequisitionStatus.AGUARDANDO_NA_FILA
         req.production_machine = None
@@ -1307,7 +1307,7 @@ def update_production_machine_status(
         .first()
     )
     if not machine:
-        raise HTTPException(status_code=404, detail="Maquina nao encontrada")
+        raise HTTPException(status_code=404, detail="Máquina não encontrada")
 
     _ensure_destination_access(current_user, machine.destination)
 
@@ -1366,7 +1366,7 @@ def get_requisition(
 ):
     req = _get_or_404(db, req_id)
     if not _can_view_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para visualizar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para visualizar esta requisição")
     return req
 
 
@@ -1379,7 +1379,7 @@ def update_requisition(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_editable(req)
     ped_number = data.ped_number if data.ped_number is not None else req.ped_number
     _ensure_unique_ped_number(db, ped_number, exclude_req_id=req.id)
@@ -1416,7 +1416,7 @@ def update_status(
 
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
     old_status = req.status
     prod = _parse_production_note(data.note)
     is_sending_to_production = (
@@ -1474,7 +1474,7 @@ def update_canvas(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_editable(req)
     if req.canvas:
         req.canvas.json_data = data.json_data
@@ -1493,7 +1493,7 @@ def attach_nf(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_editable(req)
     req.nf_attachment = nf_path
     db.commit()
@@ -1513,7 +1513,7 @@ def cancel_requisition(
 
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para cancelar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para cancelar esta requisição")
     old_status = req.status
     req.status = RequisitionStatus.CANCELADA
     db.add(StatusHistory(

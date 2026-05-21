@@ -47,7 +47,7 @@ PROD_CANCELED = "CANCELADA"
 
 MACHINE_STATUS_OPTIONS = (
     ("funcionando", "Funcionando"),
-    ("manutencao", "Manutencao"),
+    ("manutencao", "Manutenção"),
 )
 
 _ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
@@ -56,14 +56,14 @@ _ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons
 def _destination_card_meta_dict() -> dict:
     return {
         "A&R": {
-            "title": "A&R",
-            "helper": "Fluxo operacional da producao da A&R.",
+            "title": "A&&R",
+            "helper": "Fluxo operacional da produção da A&&R.",
             "accent": theme.PRIMARY_HOVER,
             "icon": "producao_ar.png",
         },
         "Pinheiro Indústria": {
-            "title": "Pinheiro Industria",
-            "helper": "Fluxo operacional da Pinheiro Industria.",
+            "title": "Pinheiro Indústria",
+            "helper": "Fluxo operacional da Pinheiro Indústria.",
             "accent": theme.PRIMARY,
             "icon": "producao_pinheiro_industria.png",
         },
@@ -271,7 +271,7 @@ class ProductionView(QWidget):
         self.destinations = tuple(_normalize_destination(dest) for dest in configured_destinations)
         self.destination = self.destinations[0] if self.destinations else "A&R"
         self.page_title = title or self.destination
-        self.page_subtitle = subtitle or "Acompanhamento operacional da producao."
+        self.page_subtitle = subtitle or "Acompanhamento operacional da produção."
         self.dialog_title = self.page_title
         self._threads: list[tuple[QThread, QObject]] = []
         self._stage_rows: dict[str, list[dict]] = {
@@ -352,13 +352,13 @@ class ProductionView(QWidget):
         counts = QGridLayout()
         counts.setHorizontalSpacing(max(12, int(16 * s)))
         counts.setVerticalSpacing(max(12, int(16 * s)))
-        self.summary_waiting_receipt = self._build_summary_card("Aguardando Recebimento", theme.WARNING, "Pedidos enviados e ainda nao recebidos.")
+        self.summary_waiting_receipt = self._build_summary_card("Aguardando Recebimento", theme.WARNING, "Pedidos enviados e ainda não recebidos.")
         self.summary_waiting_queue = self._build_summary_card(
             "Aguardando na Fila",
             theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
-            "Pedidos recebidos e aguardando maquina.",
+            "Pedidos recebidos e aguardando máquina.",
         )
-        self.summary_in_production = self._build_summary_card("Em Producao", theme.PRIMARY, "Pedidos atualmente rodando em alguma maquina.")
+        self.summary_in_production = self._build_summary_card("Em Produção", theme.PRIMARY, "Pedidos atualmente rodando em alguma máquina.")
         counts.addWidget(self.summary_waiting_receipt["card"], 0, 0)
         counts.addWidget(self.summary_waiting_queue["card"], 0, 1)
         counts.addWidget(self.summary_in_production["card"], 0, 2)
@@ -369,16 +369,16 @@ class ProductionView(QWidget):
         self.waiting_receipt_panel = self._build_stage_panel(
             WAITING_RECEIPT_STAGE,
             "Aguardando Recebimento",
-            "Confirmar recebimento e decidir o proximo passo.",
+            "Confirmar recebimento e decidir o próximo passo.",
             ["PED", "CLIENTE", "OBRA", "ENVIADA EM"],
             "Receber",
         )
         self.waiting_queue_panel = self._build_stage_panel(
             WAITING_QUEUE_STAGE,
             "Aguardando na Fila",
-            "Pedidos aguardando liberacao de maquina.",
+            "Pedidos aguardando liberação de máquina.",
             ["PED", "CLIENTE", "OBRA", "FILA DESDE"],
-            "Enviar para Maquina",
+            "Enviar para Máquina",
         )
         stages_row.addWidget(self.waiting_receipt_panel["card"], 1)
         stages_row.addWidget(self.waiting_queue_panel["card"], 1)
@@ -389,9 +389,9 @@ class ProductionView(QWidget):
         machine_title_col = QVBoxLayout()
         machine_title_col.setSpacing(max(3, int(4 * s)))
 
-        machine_title = QLabel("Maquinas")
+        machine_title = QLabel("Máquinas")
         machine_title.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(12, int(14 * s))}pt; font-weight:800;")
-        machine_subtitle = QLabel("Selecione a requisicao de cada card para finalizar ou devolver para a fila.")
+        machine_subtitle = QLabel("Selecione a requisição de cada card para finalizar ou devolver para a fila.")
         machine_subtitle.setWordWrap(True)
         machine_subtitle.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt;")
         machine_title_col.addWidget(machine_title)
@@ -623,7 +623,7 @@ class ProductionView(QWidget):
 
     def _on_refresh_result(self, payload: object):
         if not isinstance(payload, dict):
-            self._show_error("Resposta invalida ao carregar a producao.")
+            self._show_error("Resposta inválida ao carregar a produção.")
             return
 
         stats = payload.get("stats") or {}
@@ -685,7 +685,7 @@ class ProductionView(QWidget):
         s = self.scale
 
         if not self._machines_data:
-            empty = QLabel("Nenhuma maquina cadastrada para este destino.")
+            empty = QLabel("Nenhuma máquina cadastrada para este destino.")
             empty.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:600;")
             self.machines_grid.addWidget(empty, 0, 0)
             return
@@ -718,7 +718,7 @@ class ProductionView(QWidget):
         accent.setStyleSheet(f"background:{accent_color}; border:none; border-radius:{max(2, int(3 * s))}px;")
         layout.addWidget(accent)
 
-        title = QLabel(str(machine.get("name") or "Maquina"))
+        title = QLabel(str(machine.get("name") or "Máquina"))
         title.setWordWrap(True)
         title.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * s))}pt; font-weight:800;")
         layout.addWidget(title)
@@ -726,14 +726,14 @@ class ProductionView(QWidget):
         stats_grid = QGridLayout()
         stats_grid.setHorizontalSpacing(max(10, int(12 * s)))
         stats_grid.setVerticalSpacing(max(8, int(10 * s)))
-        stats_grid.addWidget(self._machine_stat_block("Quantidade em Producao", str(machine.get("quantity_in_production") or 0)), 0, 0)
+        stats_grid.addWidget(self._machine_stat_block("Quantidade em Produção", str(machine.get("quantity_in_production") or 0)), 0, 0)
         stats_grid.addWidget(self._machine_stat_block("Finalizadas", str(machine.get("finalized_count") or 0)), 0, 1)
-        stats_grid.addWidget(self._machine_stat_block("Tempo Medio", _format_duration(machine.get("average_seconds"))), 1, 0, 1, 2)
+        stats_grid.addWidget(self._machine_stat_block("Tempo Médio", _format_duration(machine.get("average_seconds"))), 1, 0, 1, 2)
         layout.addLayout(stats_grid)
 
         status_row = QHBoxLayout()
         status_row.setSpacing(max(8, int(10 * s)))
-        status_label = QLabel("Status da Maquina")
+        status_label = QLabel("Status da Máquina")
         status_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
         status_combo = QComboBox()
         for value, text in MACHINE_STATUS_OPTIONS:
@@ -844,8 +844,8 @@ class ProductionView(QWidget):
         normalized = friendly.casefold()
         if normalized in {"not found", "404: not found"} or "not found" in normalized:
             friendly = (
-                "O servidor da API ainda nao carregou o novo fluxo de producao.\n\n"
-                "Reinicie o servidor e abra novamente a tela de producao."
+                "O servidor da API ainda não carregou o novo fluxo de produção.\n\n"
+                "Reinicie o servidor e abra novamente a tela de produção."
             )
         QMessageBox.critical(self, self.dialog_title, friendly)
 
@@ -868,30 +868,30 @@ class ProductionView(QWidget):
     def _open_selected_stage(self, stage: str):
         req = self._selected_stage_row(stage)
         if not req:
-            self._show_info("Selecione uma requisicao primeiro.")
+            self._show_info("Selecione uma requisição primeiro.")
             return
         self.open_requisition.emit(int(req["id"]))
 
     def _open_selected_machine(self, machine_id: int):
         req, _machine = self._selected_machine_row(machine_id)
         if not req:
-            self._show_info("Selecione uma requisicao no card da maquina.")
+            self._show_info("Selecione uma requisição no card da máquina.")
             return
         self.open_requisition.emit(int(req["id"]))
 
     def _receive_selected(self):
         req = self._selected_stage_row(WAITING_RECEIPT_STAGE)
         if not req:
-            self._show_info("Selecione uma requisicao em aguardando recebimento.")
+            self._show_info("Selecione uma requisição em aguardando recebimento.")
             return
 
         box = QMessageBox(self)
         box.setWindowTitle("Confirmar Recebimento")
         box.setIcon(QMessageBox.Icon.Question)
-        box.setText("Como deseja encaminhar esta requisicao apos o recebimento?")
+        box.setText("Como deseja encaminhar esta requisição após o recebimento?")
         btn_queue = box.addButton("Aguardando na fila", QMessageBox.ButtonRole.AcceptRole)
-        btn_machine = box.addButton("Em producao", QMessageBox.ButtonRole.AcceptRole)
-        btn_cancel = box.addButton("Cancelar requisicao", QMessageBox.ButtonRole.DestructiveRole)
+        btn_machine = box.addButton("Em produção", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = box.addButton("Cancelar requisição", QMessageBox.ButtonRole.DestructiveRole)
         box.addButton("Fechar", QMessageBox.ButtonRole.RejectRole)
         apply_message_box_theme(box)
         box.exec()
@@ -910,19 +910,19 @@ class ProductionView(QWidget):
             int(req["id"]),
             "aguardando_na_fila",
             _build_production_note(PROD_QUEUED, self.destination),
-            success_message="Requisicao movida para aguardando na fila.",
+            success_message="Requisição movida para aguardando na fila.",
         )
 
     def _pick_machine(self) -> str | None:
         machine_names = [str(machine.get("name") or "") for machine in self._machines_data if machine.get("name")]
         if not machine_names:
-            self._show_error("Nao ha maquinas cadastradas para este destino.")
+            self._show_error("Não há máquinas cadastradas para este destino.")
             return None
 
         machine_name, ok = QInputDialog.getItem(
             self,
-            "Selecionar Maquina",
-            "Escolha a maquina de destino:",
+            "Selecionar Máquina",
+            "Escolha a máquina de destino:",
             machine_names,
             0,
             False,
@@ -941,20 +941,20 @@ class ProductionView(QWidget):
             int(req["id"]),
             "em_producao",
             _build_production_note(PROD_STARTED, self.destination, machine=machine_name),
-            success_message=f"Requisicao enviada para {machine_name}.",
+            success_message=f"Requisição enviada para {machine_name}.",
         )
 
     def _send_queue_selected_to_machine(self):
         req = self._selected_stage_row(WAITING_QUEUE_STAGE)
         if not req:
-            self._show_info("Selecione uma requisicao na grade aguardando na fila.")
+            self._show_info("Selecione uma requisição na grade aguardando na fila.")
             return
         self._start_production(req)
 
     def _cancel_selected_stage(self, stage: str):
         req = self._selected_stage_row(stage)
         if not req:
-            self._show_info("Selecione uma requisicao primeiro.")
+            self._show_info("Selecione uma requisição primeiro.")
             return
         self._cancel_to_progress(req)
 
@@ -968,20 +968,20 @@ class ProductionView(QWidget):
             int(req["id"]),
             "em_andamento",
             _build_production_note(PROD_CANCELED, self.destination, reason=reason),
-            success_message="Requisicao devolvida para em andamento.",
+            success_message="Requisição devolvida para em andamento.",
         )
 
     def _finish_selected_machine(self, machine_id: int):
         req, machine = self._selected_machine_row(machine_id)
         if not req or not machine:
-            self._show_info("Selecione uma requisicao em producao dentro do card da maquina.")
+            self._show_info("Selecione uma requisição em produção dentro do card da máquina.")
             return
         if not ask_confirmation(
             self,
-            "Finalizar Producao",
-            "Deseja finalizar a producao desta requisicao?",
+            "Finalizar Produção",
+            "Deseja finalizar a produção desta requisição?",
             yes_text="Sim",
-            no_text="Nao",
+            no_text="Não",
         ):
             return
 
@@ -990,20 +990,20 @@ class ProductionView(QWidget):
             int(req["id"]),
             "em_andamento",
             _build_production_note(PROD_FINISHED, self.destination, machine=str(machine.get("name") or "")),
-            success_message="Requisicao finalizada em producao.",
+            success_message="Requisição finalizada em produção.",
         )
 
     def _return_selected_machine_to_queue(self, machine_id: int):
         req, machine = self._selected_machine_row(machine_id)
         if not req or not machine:
-            self._show_info("Selecione uma requisicao em producao dentro do card da maquina.")
+            self._show_info("Selecione uma requisição em produção dentro do card da máquina.")
             return
         if not ask_confirmation(
             self,
             "Devolver para Fila",
-            "Deseja devolver esta requisicao para aguardando na fila?",
+            "Deseja devolver esta requisição para aguardando na fila?",
             yes_text="Sim",
-            no_text="Nao",
+            no_text="Não",
         ):
             return
 
@@ -1012,7 +1012,7 @@ class ProductionView(QWidget):
             int(req["id"]),
             "aguardando_na_fila",
             _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=str(machine.get("name") or "")),
-            success_message="Requisicao devolvida para aguardando na fila.",
+            success_message="Requisição devolvida para aguardando na fila.",
         )
 
     def _update_machine_status(self, machine_id: int, combo: QComboBox):
@@ -1021,20 +1021,20 @@ class ProductionView(QWidget):
         card = self._machine_cards.get(machine_id) or {}
         current_status = str((card.get("machine") or {}).get("status") or "")
         if current_status == status_value:
-            self._show_info("O status da maquina ja esta definido dessa forma.")
+            self._show_info("O status da máquina já está definido dessa forma.")
             return
         self._run_action(
             api.update_production_machine_status,
             machine_id,
             status_value,
-            success_message=f"Status da maquina atualizado para {status_label}.",
+            success_message=f"Status da máquina atualizado para {status_label}.",
         )
 
     def _ask_cancel_reason(self) -> str | None:
         while True:
             reason, ok = QInputDialog.getMultiLineText(
                 self,
-                "Cancelar Requisicao",
+                "Cancelar Requisição",
                 "Informe o motivo do cancelamento:",
             )
             if not ok:
@@ -1044,7 +1044,7 @@ class ProductionView(QWidget):
             if len(normalized) < 10:
                 QMessageBox.warning(
                     self,
-                    "Motivo Invalido",
+                    "Motivo Inválido",
                     "O motivo do cancelamento precisa ter pelo menos 10 letras.",
                 )
                 continue

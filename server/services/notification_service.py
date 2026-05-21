@@ -146,8 +146,8 @@ def notify_vendor(
     """
     _eventos = {
         "aguardando_na_fila": (
-            "Requisicao em Fila",
-            f"PED #{req.ped_number} aguardando disponibilidade da producao.",
+            "Requisição em Fila",
+            f"PED #{req.ped_number} aguardando disponibilidade da produção.",
         ),
         "em_producao": (
             "Requisição em Produção ⚙️",
@@ -197,10 +197,10 @@ def notify_machine_status_change(
     )
 
     status_value = getattr(machine.status, "value", machine.status)
-    status_label = "Funcionando" if str(status_value) == "funcionando" else "Manutencao"
-    title = "Status de Maquina Atualizado"
+    status_label = "Funcionando" if str(status_value) == "funcionando" else "Manutenção"
+    title = "Status de Máquina Atualizado"
     message = (
-        f"{machine.destination} - {machine.name} agora esta em {status_label}. "
+        f"{machine.destination} - {machine.name} agora está em {status_label}. "
         f"Alterado por {actor.name}."
     )
 

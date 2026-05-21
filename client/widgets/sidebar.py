@@ -44,7 +44,7 @@ NAV_ITEMS = [
     ("tecnico",   "PAINEL TÉCNICO",     "tecnico"),
     ("pedidos",   "CENTRAL DE PEDIDOS", "pedidos"),
     ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "producao"),
-    ("ar",        "A&R",                "producao"),
+    ("ar",        "A&&R",               "producao"),
     ("historico", "HISTÓRICO / BUSCA",  "historico"),
     ("usuarios",  "CENTRAL DE USUÁRIOS","usuarios"),
 ]

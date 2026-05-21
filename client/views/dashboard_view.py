@@ -163,7 +163,7 @@ def _machine_status_label(value: object) -> str:
     if status == "funcionando":
         return "Funcionando"
     if status == "manutencao":
-        return "Manutencao"
+        return "Manutenção"
     return str(value or "-") or "-"
 
 
@@ -324,7 +324,7 @@ class DashboardView(QWidget):
             ("pedidos_finalizados_hoje", theme.SUCCESS, "Finalizados Hoje", "Finalizações registradas no dia."),
             ("requisicoes_feitas_no_dia", theme.PRIMARY_HOVER, "Requisições do Dia", "Novas requisições criadas hoje."),
             ("producao_pinheiro_industria", theme.PRIMARY, "Produção Pinheiro Indústria", "Fila ativa enviada para esse destino."),
-            ("producao_ar", theme.PRIMARY_HOVER, "Produção da A&R", "Fila ativa enviada para esse destino."),
+            ("producao_ar", theme.PRIMARY_HOVER, "Produção da A&&R", "Fila ativa enviada para esse destino."),
             ("pedidos_sem_confirmacao_1h", theme.WARNING, "Sem Confirmação", "Aguardando retorno há mais de 1 hora."),
             ("tempo_medio_finalizacao_segundos", theme.BORDER_COLOR, "Tempo Médio de Finalização", "Média entre recebimento e finalização."),
         ]
@@ -364,8 +364,8 @@ class DashboardView(QWidget):
         machine_row.setSpacing(max(12, int(16 * s)))
         machine_row.addWidget(
             self._build_section_card(
-                "MAQUINAS QUE MAIS OPERAM - A&R",
-                "Ranking das maquinas da A&R por volume de operacoes finalizadas.",
+                "MÁQUINAS QUE MAIS OPERAM - A&&R",
+                "Ranking das máquinas da A&&R por volume de operações finalizadas.",
                 self._build_top_machines_ar_table(),
                 theme.PRIMARY_HOVER,
             ),
@@ -373,8 +373,8 @@ class DashboardView(QWidget):
         )
         machine_row.addWidget(
             self._build_section_card(
-                "MAQUINAS QUE MAIS OPERAM - INDUSTRIA",
-                "Ranking das maquinas da Industria por volume de operacoes finalizadas.",
+                "MÁQUINAS QUE MAIS OPERAM - INDÚSTRIA",
+                "Ranking das máquinas da Indústria por volume de operações finalizadas.",
                 self._build_top_machines_industria_table(),
                 theme.PRIMARY,
             ),
@@ -573,7 +573,7 @@ class DashboardView(QWidget):
 
     def _build_top_vendors_table(self) -> QTableWidget:
         self.top_vendors_table = self._create_table(
-            ["#", "VENDEDOR", "REQUISICOES"],
+            ["#", "VENDEDOR", "REQUISIÇÕES"],
             {1},
         )
         self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
@@ -589,7 +589,7 @@ class DashboardView(QWidget):
 
     def _build_recent_table(self) -> QTableWidget:
         self.recent_table = self._create_table(
-            ["PED", "CLIENTE", "VENDEDOR", "EMISSAO", "STATUS", "DESTINO"],
+            ["PED", "CLIENTE", "VENDEDOR", "EMISSÃO", "STATUS", "DESTINO"],
             {2, 4},
         )
         self.recent_table.setMinimumHeight(max(260, int(300 * self.scale)))
@@ -597,7 +597,7 @@ class DashboardView(QWidget):
 
     def _build_top_machines_ar_table(self) -> QTableWidget:
         self.top_machines_ar_table = self._create_table(
-            ["#", "MAQUINA", "OPERACOES", "EM PRODUCAO", "TEMPO MEDIO", "STATUS"],
+            ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
             {1},
         )
         self.top_machines_ar_table.setMinimumHeight(max(260, int(300 * self.scale)))
@@ -605,7 +605,7 @@ class DashboardView(QWidget):
 
     def _build_top_machines_industria_table(self) -> QTableWidget:
         self.top_machines_industria_table = self._create_table(
-            ["#", "MAQUINA", "OPERACOES", "EM PRODUCAO", "TEMPO MEDIO", "STATUS"],
+            ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
             {1},
         )
         self.top_machines_industria_table.setMinimumHeight(max(260, int(300 * self.scale)))
@@ -667,12 +667,12 @@ class DashboardView(QWidget):
         self._fill_top_machines_table(
             self.top_machines_ar_table,
             payload.get("top_machines_ar") or [],
-            "Nenhuma maquina da A&R encontrada.",
+            "Nenhuma máquina da A&R encontrada.",
         )
         self._fill_top_machines_table(
             self.top_machines_industria_table,
             payload.get("top_machines_industria") or [],
-            "Nenhuma maquina da Industria encontrada.",
+            "Nenhuma máquina da Indústria encontrada.",
         )
         self._fill_recent_table(payload.get("recent_requisitions") or [])
 

@@ -26,18 +26,18 @@ from ..core.datetime_utils import (
 )
 
 
-COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS", "PRODUCAO", "MAQUINA"]
+COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS", "PRODUÇÃO", "MÁQUINA"]
 
 PRODUCTION_OPTIONS = (
-    ("Todas as producoes", ""),
+    ("Todas as produções", ""),
     ("A&R", "A&R"),
-    ("Pinheiro Industria", "Pinheiro Industria"),
+    ("Pinheiro Indústria", "Pinheiro Indústria"),
 )
 
 STATUS_LABELS = {
     **theme.STATUS_LABELS,
-    "finalizada_producao": "Finalizada na Producao",
-    "cancelada_producao": "Cancelada na Producao",
+    "finalizada_producao": "Finalizada na Produção",
+    "cancelada_producao": "Cancelada na Produção",
 }
 
 
@@ -307,7 +307,7 @@ class HistoryView(QWidget):
             f"color:{theme.TEXT_DARK}; background:transparent;"
         )
         filter_subtitle = QLabel(
-            "Refine a consulta por status, producao e maquina, ou pesquise por pedido, cliente ou obra."
+            "Refine a consulta por status, produção e máquina, ou pesquise por pedido, cliente ou obra."
         )
         filter_subtitle.setWordWrap(True)
         filter_subtitle.setStyleSheet(
@@ -336,7 +336,7 @@ class HistoryView(QWidget):
 
         production_col = QVBoxLayout()
         production_col.setSpacing(max(6, int(8 * s)))
-        production_label = QLabel("PRODUCAO")
+        production_label = QLabel("PRODUÇÃO")
         production_label.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
@@ -351,7 +351,7 @@ class HistoryView(QWidget):
 
         machine_col = QVBoxLayout()
         machine_col.setSpacing(max(6, int(8 * s)))
-        machine_label = QLabel("MAQUINA")
+        machine_label = QLabel("MÁQUINA")
         machine_label.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
@@ -525,7 +525,7 @@ class HistoryView(QWidget):
     def _cleanup_thread(self, thread: QThread, worker: QObject):
         self._threads = [pair for pair in self._threads if pair != (thread, worker)]
 
-    def _reset_machine_filter(self, placeholder: str = "Todas as maquinas"):
+    def _reset_machine_filter(self, placeholder: str = "Todas as máquinas"):
         self.combo_machine.blockSignals(True)
         self.combo_machine.clear()
         self.combo_machine.addItem(placeholder, "")
@@ -544,7 +544,7 @@ class HistoryView(QWidget):
         self.error_label.hide()
         self.combo_machine.blockSignals(True)
         self.combo_machine.clear()
-        self.combo_machine.addItem("Carregando maquinas...", "")
+        self.combo_machine.addItem("Carregando máquinas...", "")
         self.combo_machine.setCurrentIndex(0)
         self.combo_machine.blockSignals(False)
         self.combo_machine.setEnabled(False)
@@ -573,7 +573,7 @@ class HistoryView(QWidget):
 
         self.combo_machine.blockSignals(True)
         self.combo_machine.clear()
-        self.combo_machine.addItem("Todas as maquinas", "")
+        self.combo_machine.addItem("Todas as máquinas", "")
         for machine_name in machines if isinstance(machines, list) else []:
             if not isinstance(machine_name, str):
                 continue
@@ -588,9 +588,9 @@ class HistoryView(QWidget):
         current_destination = str(self.combo_production.currentData() or "")
         if current_destination != destination:
             return
-        self._reset_machine_filter("Todas as maquinas")
+        self._reset_machine_filter("Todas as máquinas")
         self.error_label.setText(
-            f"Nao foi possivel carregar as maquinas da producao selecionada.\n\n{message}"
+            f"Não foi possível carregar as máquinas da produção selecionada.\n\n{message}"
         )
         self.error_label.show()
 
