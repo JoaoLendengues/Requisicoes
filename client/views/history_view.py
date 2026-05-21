@@ -55,17 +55,8 @@ def _make_card(
     card.setObjectName("historyCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    bg = background or theme.CARD_BG
-    border = f"1px solid {border_color}" if border_color else "none"
-    hover = hover_background or bg
-    card.setStyleSheet(
-        f"QFrame#historyCard {{"
-        f"  background:{bg}; border:{border}; border-radius:{radius}px;"
-        f"}}"
-        f"QFrame#historyCard:hover {{"
-        f"  background:{hover}; border:{border};"
-        f"}}"
-    )
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#historyCard {{ border-radius:{radius}px; }}")
     _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
@@ -173,14 +164,15 @@ class HistoryView(QWidget):
 
         title = QLabel("Histórico / Busca")
         title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Consulta operacional de requisições por status, pedido, cliente, obra e vendedor."
         )
         subtitle.setWordWrap(True)
+        subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt;"
+            f"font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -202,18 +194,18 @@ class HistoryView(QWidget):
         info_layout.setSpacing(max(2, int(3 * s)))
 
         date_hint = QLabel("DATA ATUAL")
+        date_hint.setProperty("muted", "1")
         date_hint.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
-            f"background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;"
         )
         self.date_label = QLabel(_format_header_date())
         self.date_label.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
-            f"background:transparent;"
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
         )
         self.updated_label = QLabel("Pronto para consultar")
+        self.updated_label.setProperty("muted", "1")
         self.updated_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
@@ -260,15 +252,15 @@ class HistoryView(QWidget):
 
         filter_title = QLabel("Filtros de Busca")
         filter_title.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{theme.TEXT_DARK}; background:transparent;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
         filter_subtitle = QLabel(
             "Refine a consulta por status e pesquise por pedido, cliente ou obra."
         )
         filter_subtitle.setWordWrap(True)
+        filter_subtitle.setProperty("muted", "1")
         filter_subtitle.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         filter_layout.addWidget(filter_title)
         filter_layout.addWidget(filter_subtitle)
@@ -279,8 +271,9 @@ class HistoryView(QWidget):
         status_col = QVBoxLayout()
         status_col.setSpacing(max(6, int(8 * s)))
         status_label = QLabel("STATUS")
+        status_label.setProperty("muted", "1")
         status_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         self.combo_status = QComboBox()
         self.combo_status.addItem("Todos os status", "")
@@ -294,8 +287,9 @@ class HistoryView(QWidget):
         search_col = QVBoxLayout()
         search_col.setSpacing(max(6, int(8 * s)))
         search_label = QLabel("BUSCA")
+        search_label.setProperty("muted", "1")
         search_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("Buscar por PED, cliente ou obra...")
@@ -351,13 +345,13 @@ class HistoryView(QWidget):
 
         results_title = QLabel("Resultados")
         results_title.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-            f"color:{theme.TEXT_DARK}; background:transparent;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
         results_subtitle = QLabel("Duplo clique para abrir a requisição selecionada.")
         results_subtitle.setWordWrap(True)
+        results_subtitle.setProperty("muted", "1")
         results_subtitle.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         results_layout.addWidget(results_title)
         results_layout.addWidget(results_subtitle)
@@ -521,3 +515,46 @@ class HistoryView(QWidget):
         self.combo_status.setCurrentIndex(0)
         self.input_search.clear()
         self.refresh()
+
+    def _apply_table_style(self) -> None:
+        s = self.scale
+        self.table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
+            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
+        )
+        pal = self.table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
+        self.table.setPalette(pal)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#historyView {{ background:{bg}; }}")
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )
+        self.combo_status.setStyleSheet(_field_style(s))
+        self.input_search.setStyleSheet(_field_style(s))
+        self.search_btn.setStyleSheet(_primary_action_btn_style(s))
+        self.clear_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self._apply_table_style()
