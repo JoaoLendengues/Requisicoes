@@ -619,6 +619,10 @@ class OrderCenterView(QWidget):
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setMinimumHeight(max(34, int(40 * s)))
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
+        if key == "atrasados":
+            header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+            table.setColumnWidth(4, max(210, int(240 * s)))
+            table.verticalHeader().setDefaultSectionSize(max(36, int(42 * s)))
 
         table.setStyleSheet(
             f"QTableWidget {{"

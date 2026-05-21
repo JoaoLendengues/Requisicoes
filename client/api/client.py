@@ -130,6 +130,7 @@ def list_requisitions(
     search: str = "",
     skip: int = 0,
     limit: int = 50,
+    emission_date: str = "",
     production_destination: str = "",
     production_machine: str = "",
     invoiced: bool | None = None,
@@ -140,6 +141,8 @@ def list_requisitions(
             params["status"] = status
         if search:
             params["search"] = search
+        if emission_date:
+            params["emission_date"] = emission_date
         if production_destination:
             params["production_destination"] = production_destination
         if production_machine:

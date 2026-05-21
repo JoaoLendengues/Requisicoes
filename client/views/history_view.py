@@ -1,8 +1,9 @@
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import QDate, QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDateEdit,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -48,6 +49,8 @@ INVOICED_OPTIONS = (
     ("SIM", "sim"),
     ("NÃO", "nao"),
 )
+
+ALL_DATES_SENTINEL = QDate(2000, 1, 1)
 
 STATUS_LABELS = {
     **theme.STATUS_LABELS,
@@ -118,15 +121,15 @@ def _primary_action_btn_style(scale: float) -> str:
 def _field_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
-        f"QLineEdit, QComboBox {{"
+        f"QLineEdit, QComboBox, QDateEdit {{"
         f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:14px;"
         f"  padding:9px 12px; font-size:{fs}pt; color:{theme.TEXT_DARK};"
         f"  selection-background-color:{_rgba(theme.PRIMARY, 24)}; selection-color:{theme.TEXT_DARK};"
         f"}}"
         f"QLineEdit {{ placeholder-text-color:{theme.TEXT_MEDIUM}; }}"
-        f"QLineEdit:focus, QComboBox:focus {{ border:1px solid {_rgba(theme.PRIMARY, 88)}; }}"
-        f"QComboBox::drop-down {{ border:none; width:24px; }}"
-        f"QComboBox QAbstractItemView {{"
+        f"QLineEdit:focus, QComboBox:focus, QDateEdit:focus {{ border:1px solid {_rgba(theme.PRIMARY, 88)}; }}"
+        f"QComboBox::drop-down, QDateEdit::drop-down {{ border:none; width:24px; }}"
+        f"QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{"
         f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; border:1px solid {theme.BORDER_COLOR};"
         f"  selection-background-color:{_rgba(theme.PRIMARY, 18)}; selection-color:{theme.TEXT_DARK};"
         f"}}"
@@ -142,6 +145,7 @@ class HistoryWorker(QObject):
         self,
         status: str = "",
         search: str = "",
+        emission_date: str = "",
         production_destination: str = "",
         production_machine: str = "",
         invoiced: str = "",
@@ -149,6 +153,7 @@ class HistoryWorker(QObject):
         super().__init__()
         self.status = status
         self.search = search
+        self.emission_date = emission_date
         self.production_destination = production_destination
         self.production_machine = production_machine
         self.invoiced = invoiced
@@ -165,6 +170,7 @@ class HistoryWorker(QObject):
                     self.status,
                     self.search,
                     limit=100,
+                    emission_date=self.emission_date,
                     production_destination=self.production_destination,
                     production_machine=self.production_machine,
                     invoiced=invoiced_value,
@@ -350,6 +356,23 @@ class HistoryView(QWidget):
         status_col.addWidget(status_label)
         status_col.addWidget(self.combo_status)
 
+        date_col = QVBoxLayout()
+        date_col.setSpacing(max(6, int(8 * s)))
+        date_label = QLabel("DATA")
+        date_label.setStyleSheet(
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+        )
+        self.input_date = QDateEdit(ALL_DATES_SENTINEL)
+        self.input_date.setMinimumDate(ALL_DATES_SENTINEL)
+        self.input_date.setDate(ALL_DATES_SENTINEL)
+        self.input_date.setSpecialValueText("Todas as datas")
+        self.input_date.setDisplayFormat("dd/MM/yyyy")
+        self.input_date.setCalendarPopup(True)
+        self.input_date.setFixedHeight(max(38, int(44 * s)))
+        self.input_date.setStyleSheet(_field_style(s))
+        date_col.addWidget(date_label)
+        date_col.addWidget(self.input_date)
+
         invoiced_col = QVBoxLayout()
         invoiced_col.setSpacing(max(6, int(8 * s)))
         invoiced_label = QLabel("FATURADO")
@@ -426,6 +449,7 @@ class HistoryView(QWidget):
         buttons_col.addLayout(buttons_row)
 
         controls.addLayout(status_col, 1)
+        controls.addLayout(date_col, 1)
         controls.addLayout(invoiced_col, 1)
         controls.addLayout(production_col, 1)
         controls.addLayout(machine_col, 1)
@@ -533,6 +557,7 @@ class HistoryView(QWidget):
         self._set_loading(True)
         self.error_label.hide()
         status = self.combo_status.currentData() or ""
+        emission_date = self._selected_emission_date()
         invoiced = self.combo_invoiced.currentData() or ""
         production_destination = self.combo_production.currentData() or ""
         production_machine = self.combo_machine.currentData() or ""
@@ -541,6 +566,7 @@ class HistoryView(QWidget):
         worker = HistoryWorker(
             status,
             search,
+            emission_date,
             production_destination,
             production_machine,
             invoiced,
@@ -560,6 +586,12 @@ class HistoryView(QWidget):
 
     def _cleanup_thread(self, thread: QThread, worker: QObject):
         self._threads = [pair for pair in self._threads if pair != (thread, worker)]
+
+    def _selected_emission_date(self) -> str:
+        selected = self.input_date.date()
+        if selected == self.input_date.minimumDate():
+            return ""
+        return selected.toString("yyyy-MM-dd")
 
     def _reset_machine_filter(self, placeholder: str = "Todas as máquinas"):
         self.combo_machine.blockSignals(True)
@@ -635,6 +667,7 @@ class HistoryView(QWidget):
         self.search_btn.setEnabled(not loading)
         self.clear_btn.setEnabled(not loading)
         self.combo_status.setEnabled(not loading)
+        self.input_date.setEnabled(not loading)
         self.combo_invoiced.setEnabled(not loading)
         self.combo_production.setEnabled(not loading)
         if not loading:
@@ -731,6 +764,7 @@ class HistoryView(QWidget):
 
     def _clear_filters(self):
         self.combo_status.setCurrentIndex(0)
+        self.input_date.setDate(self.input_date.minimumDate())
         self.combo_invoiced.setCurrentIndex(0)
         self.combo_production.setCurrentIndex(0)
         self._reset_machine_filter()
@@ -775,6 +809,7 @@ class HistoryView(QWidget):
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         self.combo_status.setStyleSheet(_field_style(s))
+        self.input_date.setStyleSheet(_field_style(s))
         self.combo_invoiced.setStyleSheet(_field_style(s))
         self.combo_production.setStyleSheet(_field_style(s))
         self.combo_machine.setStyleSheet(_field_style(s))
