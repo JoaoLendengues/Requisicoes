@@ -2,7 +2,7 @@ import os
 import unicodedata
 
 from PySide6.QtCore import Qt, Signal, QSize, QPoint, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QCursor, QIcon, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from ..core import theme
