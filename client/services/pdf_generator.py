@@ -319,9 +319,11 @@ def _draw_header(
     """Cabe?alho completo: logo | contato | requisi??o | data/vendedor | PED"""
 
     sep_gap = 6
+    block_gap = 6
     logo_w = w * 0.27
-    contact_w = w * 0.20
-    ped_w = w * 0.19
+    side_w = w * 0.20
+    contact_w = side_w
+    ped_w = side_w
 
     logo_path = _resolve_logo_path()
     logo_area_x = x
@@ -348,7 +350,8 @@ def _draw_header(
     sep_x = x + logo_w + sep_gap
     _line(pdf, sep_x, y + 6, sep_x, y + h - 6, C_BORDER, lw=1.0)
 
-    contact_x = sep_x + sep_gap + 10
+    contact_area_x = sep_x + sep_gap + 8
+    contact_x = contact_area_x + 8
     icon_r = 2.8
     line_h = 13
     lines = [
@@ -361,20 +364,21 @@ def _draw_header(
     for (label,) in lines:
         _small_dot(pdf, contact_x + icon_r, ty + 3.5, icon_r, C_BRAND)
         _txt(pdf, label, contact_x + icon_r * 2 + 5, ty, 7.1, C_TEXT,
-             max_w=contact_w - 12)
+             max_w=contact_w - 22)
         ty -= line_h
 
-    title_x = contact_x + contact_w + 4
     ped_x = x + w - ped_w
-    title_w = max(ped_x - title_x - 4, 120)
+    title_x = contact_area_x + contact_w + block_gap
+    title_right = ped_x - block_gap
+    title_w = max(title_right - title_x, 120)
     group_center = title_x + title_w / 2
-    group_w = min(title_w * 0.74, 175)
+    group_w = min(title_w * 0.70, 170)
     _txt(pdf, "REQUISI\u00c7\u00c3O", group_center, y + h - 28, 26,
          C_BRAND, bold=True, align="center")
 
     emission = _fmt_date(req.get("emission_date"), datetime.now().strftime("%d/%m/%Y"))
-    date_cx = group_center - group_w * 0.24
-    vendor_cx = group_center + group_w * 0.24
+    date_cx = group_center - group_w * 0.25
+    vendor_cx = group_center + group_w * 0.25
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
     _txt(pdf, "Data", date_cx, y + 18, 7, C_TEXT_SOFT, align="center")
     _txt(pdf, vendor_name, vendor_cx, y + 30, 10, C_TEXT, bold=True,
