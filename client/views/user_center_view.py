@@ -61,6 +61,22 @@ def _rgba(color: str, alpha: int) -> str:
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 
+def _format_contact_text(raw: str) -> str:
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())[:11]
+    if not digits:
+        return ""
+    if len(digits) <= 2:
+        return f"({digits}"
+    formatted = f"({digits[:2]})"
+    if len(digits) >= 3:
+        formatted += f" {digits[2]}"
+    if len(digits) >= 4:
+        formatted += f" {digits[3:7]}"
+    if len(digits) >= 8:
+        formatted += f"-{digits[7:11]}"
+    return formatted
+
+
 def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
@@ -546,6 +562,9 @@ class UserCenterView(QWidget):
         self.input_code = self._input()
         self.input_name = self._input()
         self.input_contact = self._input()
+        self.input_contact.setPlaceholderText("(61) 9 9999-9999")
+        self.input_contact.setMaxLength(16)
+        self.input_contact.textEdited.connect(self._on_contact_edited)
         self.input_sector = self._input()
         self.input_password = self._input(password=True)
         self.input_password_confirm = self._input(password=True)
@@ -615,6 +634,18 @@ class UserCenterView(QWidget):
             f"color:{DASH_MUTED}; font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
         )
         return label
+
+    def _on_contact_edited(self, text: str):
+        self._set_contact_text(text)
+
+    def _set_contact_text(self, raw: str):
+        formatted = _format_contact_text(raw)
+        if self.input_contact.text() == formatted:
+            return
+        self.input_contact.blockSignals(True)
+        self.input_contact.setText(formatted)
+        self.input_contact.setCursorPosition(len(formatted))
+        self.input_contact.blockSignals(False)
 
     def refresh(self):
         self._set_loading(True)
@@ -699,7 +730,7 @@ class UserCenterView(QWidget):
             values = [
                 str(user.get("code") or "-"),
                 str(user.get("name") or "-"),
-                str(user.get("whatsapp") or "-"),
+                _format_contact_text(str(user.get("whatsapp") or "")) or "-",
                 str(user.get("sector") or "-"),
                 ROLE_LABELS.get(str(user.get("role") or ""), str(user.get("role") or "-")),
                 "Ativo" if user.get("is_active") else "Inativo",
@@ -820,7 +851,7 @@ class UserCenterView(QWidget):
         )
         self.input_code.setText(str(user.get("code") or ""))
         self.input_name.setText(str(user.get("name") or ""))
-        self.input_contact.setText(str(user.get("whatsapp") or ""))
+        self._set_contact_text(str(user.get("whatsapp") or ""))
         self.input_sector.setText(str(user.get("sector") or ""))
         role = str(user.get("role") or "vendedor")
         if role == "entrega":
@@ -835,14 +866,22 @@ class UserCenterView(QWidget):
     def _save_user(self):
         code = self.input_code.text().strip()
         name = self.input_name.text().strip()
-        contact = self.input_contact.text().strip()
+        contact = _format_contact_text(self.input_contact.text().strip())
         sector = self.input_sector.text().strip()
         role = self.combo_role.currentData()
         password = self.input_password.text()
         password_confirm = self.input_password_confirm.text()
+        contact_digits = "".join(ch for ch in contact if ch.isdigit())
 
         if not code or not name:
             QMessageBox.warning(self, "Central de usuarios", "Informe ao menos codigo e nome.")
+            return
+        if contact and len(contact_digits) != 11:
+            QMessageBox.warning(
+                self,
+                "Central de usuarios",
+                "Informe o contato no formato (61) 9 9999-9999.",
+            )
             return
         if password != password_confirm:
             QMessageBox.warning(self, "Central de usuarios", "A confirmacao da senha nao confere.")
@@ -850,6 +889,8 @@ class UserCenterView(QWidget):
         if password and len(password.strip()) < 6:
             QMessageBox.warning(self, "Central de usuarios", "A senha precisa ter pelo menos 6 caracteres.")
             return
+
+        self._set_contact_text(contact)
 
         payload = {
             "code": code,

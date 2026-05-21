@@ -824,8 +824,15 @@ class RequisitionForm(QWidget):
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
         lbl_qr_txt.setText("🔳 QR CODE\nVendedor")
+        self.lbl_qr_contact = QLabel("")
+        self.lbl_qr_contact.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_qr_contact.setWordWrap(True)
+        self.lbl_qr_contact.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(7,int(8*s))}pt; border:none;"
+        )
         qr_col.addWidget(self.qr_label)
         qr_col.addWidget(lbl_qr_txt)
+        qr_col.addWidget(self.lbl_qr_contact)
         sig_layout.addLayout(qr_col, 1)
 
         layout.addWidget(sig_card, 1)
@@ -834,6 +841,11 @@ class RequisitionForm(QWidget):
 
     # ── QR Code ───────────────────────────────────────────────────────────────
     def _generate_qr(self):
+        if hasattr(self, "lbl_qr_contact"):
+            self.lbl_qr_contact.setText(_format_phone_text(session.whatsapp) or "Sem contato cadastrado")
+        if not hasattr(self, "qr_label"):
+            return
+        self.qr_label.clear()
         if not HAS_QR or not session.whatsapp:
             return
         try:
@@ -851,6 +863,10 @@ class RequisitionForm(QWidget):
             self.qr_label.setPixmap(pix)
         except Exception:
             pass
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._generate_qr()
 
     # ── WhatsApp do cliente ───────────────────────────────────────────────────
     def _send_whatsapp_client(self):
