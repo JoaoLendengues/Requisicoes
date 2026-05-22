@@ -65,7 +65,7 @@ _LIGHT: dict = {
     },
 
     # ── Tokens: Toast de notificação ──────────────────────────────────────────
-    "TOAST_BG":          "#F1F4F8",       # fundo do card (ligeiramente mais escuro que branco)
+    "TOAST_BG":          "#E7ECF3",       # fundo do card (mais escuro para contraste)
     "TOAST_BORDER":      "#D9E1EC",       # borda externa
     "TOAST_TITLE":       "#1E2A3A",       # texto do título
     "TOAST_BODY":        "#6B778C",       # texto da mensagem
