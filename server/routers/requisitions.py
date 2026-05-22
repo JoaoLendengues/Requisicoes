@@ -3,7 +3,7 @@ from sqlalchemy import or_, text
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 import shutil
 import unicodedata
@@ -64,6 +64,8 @@ _LOAD_OPTS = [
     selectinload(Requisition.vendor),
 ]
 
+_LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo or timezone.utc
+
 _PROD_NOTE_PREFIX = "PRODUCAO"
 _PROD_SEND = "ENVIADA"
 _PROD_RECEIVED = "RECEBIDA"
@@ -80,6 +82,42 @@ def _normalize_text(value: object) -> str:
     normalized = unicodedata.normalize("NFKD", str(value or ""))
     ascii_text = normalized.encode("ascii", "ignore").decode()
     return ascii_text.strip().casefold()
+
+
+def _parse_local_emission_datetime(value: object) -> datetime | None:
+    if value is None or value == "":
+        return None
+
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime.combine(value, time.min)
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(_LOCAL_TIMEZONE)
+
+
+def _matches_emission_period(req: Requisition, start: date | None, end: date | None) -> bool:
+    local_dt = _parse_local_emission_datetime(req.emission_date)
+    if local_dt is None:
+        return not start and not end
+
+    local_day = local_dt.date()
+    if start and local_day < start:
+        return False
+    if end and local_day > end:
+        return False
+    return True
 
 
 def _normalize_machine_name(value: object) -> str:
@@ -1227,22 +1265,6 @@ def list_requisitions(
         q = q.filter(Requisition.client_id == client_id)
     if vendor_id:
         q = q.filter(Requisition.vendor_id == vendor_id)
-    if emission_date_start:
-        day_start = datetime(
-            emission_date_start.year,
-            emission_date_start.month,
-            emission_date_start.day,
-        )
-        q = q.filter(
-            Requisition.emission_date >= day_start,
-        )
-    if emission_date_end:
-        day_end = datetime(
-            emission_date_end.year,
-            emission_date_end.month,
-            emission_date_end.day,
-        ) + timedelta(days=1)
-        q = q.filter(Requisition.emission_date < day_end)
     if search:
         search_term = f"%{search.strip()}%"
         q = q.join(Requisition.client).filter(or_(
@@ -1253,8 +1275,14 @@ def list_requisitions(
         ))
 
     # Vendedor e gerente só veem as próprias requisições
-    reqs = q.order_by(Requisition.created_at.desc()).all()
+    reqs = q.order_by(Requisition.emission_date.desc(), Requisition.created_at.desc()).all()
     visible = _filter_requisitions_for_user(reqs, current_user)
+
+    if emission_date_start or emission_date_end:
+        visible = [
+            req for req in visible
+            if _matches_emission_period(req, emission_date_start, emission_date_end)
+        ]
 
     if production_destination:
         normalized_destination = _canonical_destination(production_destination)
