@@ -418,7 +418,7 @@ def _draw_header(
     title_shift = min(30, title_w * 0.12)
     group_center = title_x + title_w / 2 - title_shift
     group_w = min(title_w * 0.70, 170)
-    _txt(pdf, "REQUISI\u00c7\u00c3O", group_center, y + h - 28, 26,
+    _txt(pdf, "REQUISI\u00c7\u00c3O", group_center, y + h - 24, 26,
          C_BRAND, bold=True, align="center")
 
     emission = _fmt_date(req.get("emission_date"), datetime.now().strftime("%d/%m/%Y"))
