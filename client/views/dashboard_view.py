@@ -834,6 +834,26 @@ class DashboardView(QWidget):
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
 
+    def _refresh_machine_status_labels(self, table: QTableWidget) -> None:
+        """Re-estiliza os QLabel de STATUS embutidos nas células da tabela de máquinas."""
+        status_col = 5
+        for row in range(table.rowCount()):
+            widget = table.cellWidget(row, status_col)
+            if isinstance(widget, QLabel):
+                raw = widget.text()
+                if raw == "Funcionando":
+                    machine_status = "funcionando"
+                elif raw == "Manutenção":
+                    machine_status = "manutencao"
+                else:
+                    machine_status = ""
+                color = _machine_status_color(machine_status)
+                widget.setStyleSheet(
+                    f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                    f"font-weight:700; padding:4px 10px;"
+                    f"font-size:{max(7, int(8 * self.scale))}pt;"
+                )
+
     def apply_theme(self) -> None:
         s = self.scale
         bg = theme.CONTENT_BG
@@ -850,10 +870,18 @@ class DashboardView(QWidget):
         for tbl in [
             getattr(self, "top_vendors_table", None),
             getattr(self, "alerts_table", None),
+            getattr(self, "top_machines_ar_table", None),
+            getattr(self, "top_machines_industria_table", None),
             getattr(self, "recent_table", None),
         ]:
             if tbl is not None:
                 self._apply_table_style(tbl)
+        for tbl in [
+            getattr(self, "top_machines_ar_table", None),
+            getattr(self, "top_machines_industria_table", None),
+        ]:
+            if tbl is not None:
+                self._refresh_machine_status_labels(tbl)
         for lbl in self._metric_labels.values():
             lbl.setStyleSheet(
                 f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
