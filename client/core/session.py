@@ -100,8 +100,8 @@ class UserSession:
 
     @property
     def filters_own_requisitions(self) -> bool:
-        """Vendedor vê apenas suas próprias requisições no histórico e na central."""
-        return self.role == "vendedor"
+        """Todos os perfis veem todas as requisições."""
+        return False
 
     # ── Ações sobre requisições ───────────────────────────────────────────────
 
