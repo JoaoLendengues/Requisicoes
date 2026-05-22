@@ -129,7 +129,7 @@ class MainWindow(QMainWindow):
         )
         self.ar_view = ProductionView(
             self.scale,
-            destinations=("A&R"),
+            destinations=("A&R",),
             title="A&R",
             subtitle="Acompanhamento operacional das requisições enviadas para a A&R.",
         )
