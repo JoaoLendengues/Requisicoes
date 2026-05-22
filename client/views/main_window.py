@@ -22,6 +22,7 @@ from .order_center_view import OrderCenterView
 from .production_view import ProductionView
 from .settings_view import SettingsView
 from .user_center_view import UserCenterView
+from .feedback_view import FeedbackView
 
 
 PAGE_FORM = 0
@@ -33,6 +34,7 @@ PAGE_PINHEIRO_INDUSTRIA = 5
 PAGE_AR = 6
 PAGE_USER_CENTER = 7
 PAGE_SETTINGS = 8
+PAGE_FEEDBACK = 9
 
 
 class MainWindow(QMainWindow):
@@ -135,6 +137,7 @@ class MainWindow(QMainWindow):
         )
         self.user_center_view = UserCenterView(self.scale)
         self.settings_view = SettingsView(self.scale)
+        self.feedback_view = FeedbackView(self.scale)
 
         self.stack.addWidget(self.form_view)
         self.stack.addWidget(self.history_view)
@@ -145,6 +148,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.ar_view)
         self.stack.addWidget(self.user_center_view)
         self.stack.addWidget(self.settings_view)
+        self.stack.addWidget(self.feedback_view)
 
         self.history_view.open_requisition.connect(
             lambda req_id: self._open_requisition(req_id, "history")
@@ -241,6 +245,7 @@ class MainWindow(QMainWindow):
             "ar": PAGE_AR,
             "usuarios": PAGE_USER_CENTER,
             "config": PAGE_SETTINGS,
+            "feedback": PAGE_FEEDBACK,
         }
         page = mapping.get(key, PAGE_FORM)
 
@@ -332,6 +337,9 @@ class MainWindow(QMainWindow):
         if page == PAGE_SETTINGS and session.can_access_settings:
             self.settings_view.refresh_operational_settings()
 
+        if page == PAGE_FEEDBACK:
+            self.feedback_view.refresh()
+
         self.stack.setCurrentIndex(page)
 
     def _confirm_new_requisition(self) -> bool:
@@ -359,6 +367,7 @@ class MainWindow(QMainWindow):
             PAGE_AR: "ar",
             PAGE_USER_CENTER: "usuarios",
             PAGE_SETTINGS: "config",
+            PAGE_FEEDBACK: "feedback",
         }
         self.sidebar._highlight(mapping.get(self.stack.currentIndex(), "nova"))
 
@@ -698,6 +707,10 @@ class MainWindow(QMainWindow):
             state["settings"] = self._capture_settings_state()
         elif current_page == PAGE_USER_CENTER:
             state["user_center"] = self._capture_user_center_state()
+        elif current_page == PAGE_FEEDBACK:
+            state["feedback"] = {
+                "text": self.feedback_view.input_feedback.toPlainText(),
+            }
         return state
 
     def _restore_ui_state(self, state: dict) -> None:
@@ -734,6 +747,10 @@ class MainWindow(QMainWindow):
             self._restore_settings_state(state.get("settings") or {})
         elif current_page == PAGE_FORM:
             self._restore_form_state(state.get("form") or {})
+        elif current_page == PAGE_FEEDBACK:
+            feedback_state = state.get("feedback") or {}
+            self.feedback_view.input_feedback.setPlainText(feedback_state.get("text") or "")
+            self.feedback_view.refresh()
 
     def _build_replacement_window(self) -> "MainWindow":
         state = self._capture_ui_state()
@@ -844,6 +861,7 @@ class MainWindow(QMainWindow):
         self.ar_view.apply_theme()
         self.user_center_view.apply_theme()
         self.settings_view.apply_theme()
+        self.feedback_view.apply_theme()
         self._setup_statusbar()
 
     def _get_current_view(self):
@@ -852,7 +870,7 @@ class MainWindow(QMainWindow):
             self.form_view, self.history_view, self.dashboard_view,
             self.technical_panel_view, self.order_center_view,
             self.pinheiro_industria_view, self.ar_view,
-            self.user_center_view, self.settings_view,
+            self.user_center_view, self.settings_view, self.feedback_view,
         ]
         idx = self.stack.currentIndex()
         return views[idx] if 0 <= idx < len(views) else None
@@ -899,7 +917,7 @@ class MainWindow(QMainWindow):
             self.form_view, self.history_view, self.dashboard_view,
             self.technical_panel_view, self.order_center_view,
             self.pinheiro_industria_view, self.ar_view,
-            self.user_center_view, self.settings_view,
+            self.user_center_view, self.settings_view, self.feedback_view,
         ):
             if view is not current:
                 view.apply_theme()

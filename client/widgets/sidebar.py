@@ -34,6 +34,7 @@ SIDEBAR_ICON_ALIASES = {
     "historico":    ["historico", "histórico", "busca", "historico busca", "histórico busca"],
     "usuarios":     ["usuarios", "usuários", "usuario", "usuário", "central de usuarios", "central de usuários"],
     "config":       ["configuracoes", "configurações", "config", "ajustes"],
+    "feedback":     ["feedback", "feedbacks", "sugestao", "sugestoes", "bugs", "elogios", "problemas"],
     "usuario":      ["usuario", "usuário", "perfil"],
     "sair":         ["sair", "logout"],
 }
@@ -46,10 +47,12 @@ NAV_ITEMS = [
     ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "producao"),
     ("ar",        "A&&R",               "producao"),
     ("historico", "HISTÓRICO / BUSCA",  "historico"),
+    ("feedback",  "FEEDBACKS",          "feedback"),
     ("usuarios",  "CENTRAL DE USUÁRIOS","usuarios"),
 ]
 
 BOTTOM_NAV_ITEMS = [
+    ("feedback", "FEEDBACKS", "feedback"),
     ("config", "CONFIGURAÇÕES", "config"),
 ]
 
