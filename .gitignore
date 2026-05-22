@@ -17,6 +17,9 @@ arquivos/
 *.pdf
 *.xlsm
 
+# Preferências locais do cliente (tema, escala, etc.) — não versionar
+client/settings.json
+
 # IDE
 .vscode/settings.json
 .idea/
