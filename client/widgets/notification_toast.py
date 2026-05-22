@@ -113,15 +113,15 @@ class NotificationToast(QFrame):
 
     def _build(self, data: dict, accent: str):
         self.setFixedWidth(TOAST_WIDTH)
+        self.setObjectName("toastCard")
         self.setStyleSheet(
-            f"QFrame {{"
+            f"QFrame#toastCard {{"
             f"  background: {theme.TOAST_BG};"
-            f"  border: 1px solid {theme.TOAST_BORDER};"
-            f"  border-left: 4px solid {accent};"
+            f"  border: none;"
             f"  border-radius: 12px;"
             f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
             f"}}"
-            f"QLabel {{ background: transparent; }}"
+            f"QLabel {{ background: transparent; border: none; }}"
         )
 
         root = QVBoxLayout(self)
@@ -178,20 +178,9 @@ class NotificationToast(QFrame):
             msg_lbl.setWordWrap(True)
             root.addWidget(msg_lbl)
 
-        # ── Barra de countdown ──
-        root.addSpacing(6)
-        self._bar = QFrame()
-        self._bar.setFixedHeight(2)
-        self._bar.setStyleSheet(
-            f"background: {accent}; border-radius: 1px; border: none;"
-        )
-        root.addWidget(self._bar)
-
-        self._bar_anim = QPropertyAnimation(self._bar, b"maximumWidth")
-        self._bar_anim.setStartValue(TOAST_WIDTH - 30)
-        self._bar_anim.setEndValue(0)
-        self._bar_anim.setDuration(DISPLAY_MS)
-        self._bar_anim.setEasingCurve(QEasingCurve.Type.Linear)
+        # Sem barra inferior para manter o popup limpo/sem linhas.
+        self._bar = None
+        self._bar_anim = None
 
     def _add_shadow(self):
         shadow = QGraphicsDropShadowEffect(self)
@@ -231,14 +220,16 @@ class NotificationToast(QFrame):
         self._group.addAnimation(fade)
         self._group.start()
 
-        self._bar_anim.start()
+        if self._bar_anim is not None:
+            self._bar_anim.start()
         self._remaining = DISPLAY_MS
         self._dismiss_timer.start(DISPLAY_MS)
 
     def _slide_out(self):
         """Saída: desliza para a direita + fade out simultâneos."""
         self._dismiss_timer.stop()
-        self._bar_anim.stop()
+        if self._bar_anim is not None:
+            self._bar_anim.stop()
         if self._group:
             self._group.stop()
 
@@ -274,11 +265,13 @@ class NotificationToast(QFrame):
         if remaining > 0:
             self._remaining = remaining
         self._dismiss_timer.stop()
-        self._bar_anim.pause()
+        if self._bar_anim is not None:
+            self._bar_anim.pause()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self._bar_anim.resume()
+        if self._bar_anim is not None:
+            self._bar_anim.resume()
         if self._remaining > 100:
             self._dismiss_timer.start(self._remaining)
         else:
