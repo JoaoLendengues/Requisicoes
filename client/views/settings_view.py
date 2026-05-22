@@ -1,10 +1,7 @@
-import os
-
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QFrame, QGraphicsDropShadowEffect,
-    QMessageBox, QProgressBar, QTextEdit,
-    QFileDialog, QSpinBox,
+    QMessageBox, QSpinBox,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QColor
@@ -110,36 +107,6 @@ def _field_style(scale: float) -> str:
     )
 
 
-class ImportWorker(QObject):
-    progress = Signal(str, int, int, str)
-    finished = Signal(str, object)
-    error = Signal(str, str)
-
-    def __init__(self, kind: str, path: str):
-        super().__init__()
-        self.kind = kind
-        self.path = path
-
-    def run(self):
-        try:
-            if self.kind == "clients":
-                from ..services.client_importer import import_clients as import_fn
-            elif self.kind == "products":
-                from ..services.product_importer import import_products as import_fn
-            else:
-                raise ValueError(f"Tipo de importação inválido: {self.kind}")
-
-            result = import_fn(
-                self.path,
-                on_progress=lambda current, total, msg: self.progress.emit(
-                    self.kind, current, total, msg
-                ),
-            )
-            self.finished.emit(self.kind, result)
-        except Exception as exc:
-            self.error.emit(self.kind, str(exc))
-
-
 class SettingsApiWorker(QObject):
     result = Signal(str, object)
     error = Signal(str, str)
@@ -157,7 +124,7 @@ class SettingsApiWorker(QObject):
             elif self.action == "save_operational":
                 result = api.update_operational_settings(self.payload)
             else:
-                raise ValueError(f"Ação inválida: {self.action}")
+                raise ValueError(f"Acao invalida: {self.action}")
             self.result.emit(self.action, result)
         except api.APIError as exc:
             self.error.emit(self.action, exc.detail)
@@ -173,13 +140,11 @@ class SettingsView(QWidget):
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
-        self._import_threads: dict[str, tuple[QThread, ImportWorker]] = {}
         self._threads: list[tuple[QThread, QObject]] = []
-        self._import_ui: dict[str, dict] = {}
         self._pending_save_context: dict | None = None
         self._setup_ui()
-        self._apply_permissions()
-        self.refresh_operational_settings(silent=True)
+        if session.settings_show_billing:
+            self.refresh_operational_settings(silent=True)
 
     def _setup_ui(self):
         s = self.scale
@@ -204,14 +169,10 @@ class SettingsView(QWidget):
         title.setStyleSheet(
             f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
-        subtitle = QLabel(
-            "Preferências locais, conexão com o servidor e rotinas de importação do sistema."
-        )
+        subtitle = QLabel("Preferencias e configuracoes do sistema.")
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(
-            f"font-size:{max(8, int(10 * s))}pt;"
-        )
+        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
@@ -236,7 +197,7 @@ class SettingsView(QWidget):
         self.date_label.setStyleSheet(
             f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
         )
-        self.updated_label = QLabel("Preferências do sistema")
+        self.updated_label = QLabel("Preferencias do sistema")
         self.updated_label.setProperty("muted", "1")
         self.updated_label.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
@@ -268,15 +229,14 @@ class SettingsView(QWidget):
 
         outer = QVBoxLayout(self._page_content)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(max(16,int(18*s)))
+        outer.setSpacing(max(16, int(18 * s)))
 
-        title = QLabel("⚙️ CONFIGURAÇÕES")
-        title.setStyleSheet(
+        page_title = QLabel("CONFIGURACOES")
+        page_title.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
         )
-        outer.addWidget(title)
-
-        title.hide()
+        outer.addWidget(page_title)
+        page_title.hide()
 
         card = _make_card(
             s,
@@ -285,42 +245,51 @@ class SettingsView(QWidget):
             radius=max(18, int(20 * s)),
             hover_background=theme.CARD_BG,
         )
-
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(16,int(20*s)), max(14,int(18*s)),
-                                   max(16,int(20*s)), max(14,int(18*s)))
-        layout.setSpacing(max(12,int(16*s)))
+        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                   max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(12, int(16 * s)))
 
-        layout.addWidget(_section("🌐 Conexão com o Servidor", s))
-        layout.addWidget(_separator())
+        # ── Conexão com o Servidor (admin only) ──────────────────────────────
+        self._conn_section = QWidget()
+        conn_vl = QVBoxLayout(self._conn_section)
+        conn_vl.setContentsMargins(0, 0, 0, 0)
+        conn_vl.setSpacing(max(8, int(10 * s)))
 
-        grid = QGridLayout()
-        grid.setSpacing(max(8,int(10*s)))
+        conn_vl.addWidget(_section("Conexao com o Servidor", s))
+        conn_vl.addWidget(_separator())
 
-        grid.addWidget(self._lbl("URL do servidor:", s), 0, 0)
+        conn_grid = QGridLayout()
+        conn_grid.setSpacing(max(8, int(10 * s)))
+
+        conn_grid.addWidget(self._lbl("URL do servidor:", s), 0, 0)
         self.input_url = QLineEdit(res.server_url)
-        self.input_url.setFixedHeight(max(38,int(44*s)))
+        self.input_url.setFixedHeight(max(38, int(44 * s)))
         self.input_url.setStyleSheet(_field_style(s))
         self.input_url.setPlaceholderText("http://192.168.1.100:5000")
         self.input_url.setReadOnly(True)
-        self.input_url.setToolTip("A URL do servidor é fixa e não pode ser alterada nesta tela.")
-        grid.addWidget(self.input_url, 0, 1)
+        self.input_url.setToolTip("A URL do servidor e fixa e nao pode ser alterada nesta tela.")
+        conn_grid.addWidget(self.input_url, 0, 1)
 
-        self.btn_test = QPushButton("Testar conexão")
-        self.btn_test.setFixedHeight(max(38,int(44*s)))
+        self.btn_test = QPushButton("Testar conexao")
+        self.btn_test.setFixedHeight(max(38, int(44 * s)))
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_test.clicked.connect(self._test_connection)
-        grid.addWidget(self.btn_test, 0, 2)
+        conn_grid.addWidget(self.btn_test, 0, 2)
 
         self.lbl_conn_status = QLabel("")
         self.lbl_conn_status.setProperty("muted", "1")
         self.lbl_conn_status.setStyleSheet(
             f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
         )
-        grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
-        layout.addLayout(grid)
+        conn_grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
+        conn_vl.addLayout(conn_grid)
 
-        layout.addWidget(_section("🎨 Aparência", s))
+        layout.addWidget(self._conn_section)
+        self._conn_section.setVisible(session.settings_show_connection)
+
+        # ── Aparência (todos) ─────────────────────────────────────────────────
+        layout.addWidget(_section("Aparencia", s))
         layout.addWidget(_separator())
 
         scale_row = QHBoxLayout()
@@ -354,7 +323,7 @@ class SettingsView(QWidget):
         layout.addLayout(scale_row)
 
         self.screen_info = QLabel(
-            f"Resolução detectada: {res.screen_width}×{res.screen_height}  |  "
+            f"Resolucao detectada: {res.screen_width}x{res.screen_height}  |  "
             f"DPI: {res.dpi:.0f}  |  Recomendado: {res.recommended_label}"
         )
         self.screen_info.setProperty("muted", "1")
@@ -363,8 +332,14 @@ class SettingsView(QWidget):
         )
         layout.addWidget(self.screen_info)
 
-        layout.addWidget(_section("Alertas de Faturamento", s))
-        layout.addWidget(_separator())
+        # ── Alertas de Faturamento (admin + gerente) ──────────────────────────
+        self._billing_section = QWidget()
+        billing_vl = QVBoxLayout(self._billing_section)
+        billing_vl.setContentsMargins(0, 0, 0, 0)
+        billing_vl.setSpacing(max(8, int(10 * s)))
+
+        billing_vl.addWidget(_section("Alertas de Faturamento", s))
+        billing_vl.addWidget(_separator())
 
         billing_grid = QGridLayout()
         billing_grid.setSpacing(max(8, int(10 * s)))
@@ -385,34 +360,12 @@ class SettingsView(QWidget):
             f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
         )
         billing_grid.addWidget(self.operational_status, 1, 1, 1, 2)
-        layout.addLayout(billing_grid)
+        billing_vl.addLayout(billing_grid)
 
-        self._create_import_section(
-            layout=layout,
-            kind="clients",
-            title="📥 Importação de Clientes (ODS/Excel)",
-            description=(
-                "Planilha com colunas: Código, Nome, CPF/CNPJ "
-                "(novos clientes são criados; existentes são atualizados)."
-            ),
-            default_path=res._read_file().get(
-                "ods_path", r"Z:\REQUISIÇÕES (VENDAS)\relacao_cadastros.ods"
-            ),
-            button_text="Importar Clientes",
-        )
+        layout.addWidget(self._billing_section)
+        self._billing_section.setVisible(session.settings_show_billing)
 
-        self._create_import_section(
-            layout=layout,
-            kind="products",
-            title="📦 Importação de Produtos (ODS/Excel)",
-            description=(
-                "Planilha com colunas como Código e Nome/Descrição. "
-                "Os produtos são importados em lote e ficam disponíveis para lookup na requisição."
-            ),
-            default_path=self._default_products_path(),
-            button_text="Importar Produtos",
-        )
-
+        # ── Atualizações do Sistema (todos) ───────────────────────────────────
         layout.addWidget(_section("Atualizacoes do Sistema", s))
         layout.addWidget(_separator())
 
@@ -443,114 +396,16 @@ class SettingsView(QWidget):
         )
         layout.addWidget(self._update_status_label)
 
+        # ── Botão Salvar ──────────────────────────────────────────────────────
         layout.addSpacing(4)
         self.btn_save = QPushButton("SALVAR CONFIGURACOES")
-        self.btn_save.setFixedHeight(max(38,int(44*s)))
+        self.btn_save.setFixedHeight(max(38, int(44 * s)))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_save.clicked.connect(self._save)
         layout.addWidget(self.btn_save, alignment=Qt.AlignmentFlag.AlignLeft)
 
         outer.addWidget(card)
         outer.addStretch()
-
-    def _create_import_section(self, layout: QVBoxLayout, kind: str, title: str,
-                               description: str, default_path: str, button_text: str):
-        s = self.scale
-        layout.addWidget(_section(title, s))
-        layout.addWidget(_separator())
-        layout.addWidget(self._lbl(description, s, color=theme.TEXT_MEDIUM, italic=False))
-
-        path_row = QHBoxLayout()
-        path_row.addWidget(self._lbl("Arquivo:", s))
-
-        input_path = QLineEdit(default_path)
-        input_path.setFixedHeight(max(38,int(44*s)))
-        input_path.setStyleSheet(_field_style(s))
-        path_row.addWidget(input_path, 1)
-
-        btn_browse = QPushButton("...")
-        btn_browse.setFixedSize(max(38,int(44*s)), max(38,int(44*s)))
-        btn_browse.setStyleSheet(_flat_secondary_btn_style(s))
-        btn_browse.setToolTip("Navegar...")
-        btn_browse.clicked.connect(lambda: self._browse_import_path(kind))
-        path_row.addWidget(btn_browse)
-        layout.addLayout(path_row)
-
-        import_row = QHBoxLayout()
-        btn_import = QPushButton(button_text)
-        btn_import.setFixedHeight(max(38,int(44*s)))
-        btn_import.setStyleSheet(_primary_action_btn_style(s))
-        btn_import.clicked.connect(lambda: self._start_import(kind))
-        import_row.addWidget(btn_import)
-
-        progress_bar = QProgressBar()
-        progress_bar.setFixedHeight(max(18,int(22*s)))
-        progress_bar.setVisible(False)
-        progress_bar.setStyleSheet(
-            f"QProgressBar {{ border:none; border-radius:4px;"
-            f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
-            f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
-        )
-        import_row.addWidget(progress_bar, 1)
-        layout.addLayout(import_row)
-
-        txt_log = QTextEdit()
-        txt_log.setReadOnly(True)
-        txt_log.setMaximumHeight(max(100,int(120*s)))
-        txt_log.setVisible(False)
-        txt_log.setStyleSheet(
-            f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
-            f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
-        )
-        layout.addWidget(txt_log)
-
-        self._import_ui[kind] = {
-            "input": input_path,
-            "button": btn_import,
-            "browse": btn_browse,
-            "button_text": button_text,
-            "progress": progress_bar,
-            "log": txt_log,
-        }
-
-        if kind == "clients":
-            self.input_ods_path = input_path
-        elif kind == "products":
-            self.input_products_path = input_path
-
-    def _apply_permissions(self):
-        self.input_url.setReadOnly(True)
-        self.input_url.setToolTip("A URL do servidor é fixa e não pode ser alterada nesta tela.")
-
-        if session.is_admin:
-            return
-
-        admin_only_message = "Somente administradores podem alterar esta configuração."
-        self.input_pending_invoice_days.setEnabled(False)
-        self.input_pending_invoice_days.setToolTip(admin_only_message)
-
-        for kind in ("clients", "products"):
-            ui = self._import_ui.get(kind)
-            if not ui:
-                continue
-            ui["input"].setReadOnly(True)
-            ui["input"].setToolTip(admin_only_message)
-            ui["button"].setEnabled(False)
-            ui["button"].setToolTip(admin_only_message)
-            ui["browse"].setEnabled(False)
-            ui["browse"].setToolTip(admin_only_message)
-
-    def _default_products_path(self) -> str:
-        settings_data = res._read_file()
-        saved_products_path = settings_data.get("products_path")
-        if saved_products_path:
-            return saved_products_path
-
-        clients_path = settings_data.get("ods_path", "")
-        if clients_path:
-            return os.path.join(os.path.dirname(clients_path), "produtos.ods")
-
-        return r"Z:\REQUISIÇÕES (VENDAS)\produtos.ods"
 
     def _lbl(self, text: str, scale: float, color: str = None,
              italic: bool = False) -> QLabel:
@@ -564,6 +419,8 @@ class SettingsView(QWidget):
         return lbl
 
     def refresh_operational_settings(self, silent: bool = False):
+        if not session.settings_show_billing:
+            return
         if not silent:
             self.operational_status.setText("Sincronizando prazo de alerta com o servidor...")
         self._start_api_worker("load_operational")
@@ -661,151 +518,56 @@ class SettingsView(QWidget):
         s = self.scale
         if ok:
             self.lbl_conn_status.setText("Servidor online e respondendo")
-            self.lbl_conn_status.setStyleSheet(f"color:{theme.SUCCESS}; font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            self.lbl_conn_status.setStyleSheet(
+                f"color:{theme.SUCCESS}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
+            )
         else:
-            self.lbl_conn_status.setText("Não foi possível conectar ao servidor")
-            self.lbl_conn_status.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            self.lbl_conn_status.setText("Nao foi possivel conectar ao servidor")
+            self.lbl_conn_status.setStyleSheet(
+                f"color:{theme.DANGER}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
+            )
         self.btn_test.setEnabled(True)
-        self.btn_test.setText("Testar conexão")
+        self.btn_test.setText("Testar conexao")
 
     def _save(self):
-        url = self.input_url.text().strip()
-        clients_path = self.input_ods_path.text().strip()
-        products_path = self.input_products_path.text().strip()
-        pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
-
         selected_label = next(
             (lbl for lbl, btn in self._scale_btns.items() if btn.isChecked()),
             "100%",
         )
-        font_scale_value = selected_label
+        scale_changed = (selected_label != res._user_scale)
 
-        scale_changed = (font_scale_value != res._user_scale)
-
-        res.save(
-            server_url=url,
-            font_scale=font_scale_value,
-            ods_path=clients_path,
-            products_path=products_path,
-            pending_invoice_alert_days=pending_invoice_alert_days,
-        )
-        self._pending_save_context = {"scale_changed": scale_changed}
-        self._set_save_busy(True)
-        self.operational_status.setText("Salvando prazo de alerta no servidor...")
-        self._start_api_worker(
-            "save_operational",
-            {"pending_invoice_alert_days": pending_invoice_alert_days},
-        )
-        return
-
-        if scale_changed:
-            QMessageBox.information(
-                self,
-                "Salvo",
-                "Configurações salvas.\nA interface será recarregada com a nova escala.",
+        if session.settings_show_billing:
+            # Admin / Gerente: salva aparência + prazo de faturamento no servidor
+            pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
+            res.save(
+                font_scale=selected_label,
+                pending_invoice_alert_days=pending_invoice_alert_days,
             )
-            self.scale_changed.emit(res.scale)
+            self._pending_save_context = {"scale_changed": scale_changed}
+            self._set_save_busy(True)
+            self.operational_status.setText("Salvando prazo de alerta no servidor...")
+            self._start_api_worker(
+                "save_operational",
+                {"pending_invoice_alert_days": pending_invoice_alert_days},
+            )
         else:
+            # Demais roles: salva apenas aparência localmente
+            res.save(font_scale=selected_label)
             current = local_now()
             self.date_label.setText(_format_header_date(current))
             self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
-            QMessageBox.information(self, "Salvo", "Configurações salvas.")
-
-    def _browse_import_path(self, kind: str):
-        if not session.is_admin:
-            QMessageBox.warning(self, "Acesso negado", "Somente administradores podem alterar este caminho.")
-            return
-        title = (
-            "Selecionar planilha de clientes"
-            if kind == "clients"
-            else "Selecionar planilha de produtos"
-        )
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            title,
-            "",
-            "Planilhas (*.ods *.xlsx *.xlsm *.xls)",
-            options=QFileDialog.Option.DontUseNativeDialog,
-        )
-        if path:
-            self._import_ui[kind]["input"].setText(path)
-
-    def _start_import(self, kind: str):
-        if not session.is_admin:
-            QMessageBox.warning(self, "Acesso negado", "Somente administradores podem executar esta importação.")
-            return
-        path = self._import_ui[kind]["input"].text().strip()
-        if not path:
-            QMessageBox.warning(self, "Atenção", "Informe o caminho do arquivo.")
-            return
-
-        current = self._import_threads.get(kind)
-        if current and current[0].isRunning():
-            QMessageBox.information(
-                self,
-                "Importação em andamento",
-                "Essa importação ainda está em execução. Aguarde a conclusão.",
-            )
-            return
-
-        self._set_import_busy(kind, True)
-
-        worker = ImportWorker(kind, path)
-        thread = QThread()
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
-        worker.progress.connect(self._on_progress)
-        worker.finished.connect(self._on_import_done)
-        worker.error.connect(self._on_import_error)
-        worker.finished.connect(lambda *_: thread.quit())
-        worker.error.connect(lambda *_: thread.quit())
-        self._import_threads[kind] = (thread, worker)
-        worker.finished.connect(lambda *_: worker.deleteLater())
-        worker.error.connect(lambda *_: worker.deleteLater())
-        thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(
-            lambda k=kind, t=thread, w=worker: self._cleanup_import_thread(k, t, w)
-        )
-        thread.start()
-
-    def _set_import_busy(self, kind: str, busy: bool):
-        ui = self._import_ui[kind]
-        ui["button"].setEnabled(not busy)
-        ui["button"].setText("Importando..." if busy else ui["button_text"])
-        ui["progress"].setVisible(True if busy else ui["progress"].isVisible())
-        if busy:
-            ui["progress"].setMaximum(3)
-            ui["progress"].setValue(0)
-            ui["progress"].setFormat("")
-            ui["log"].setVisible(False)
-
-    def _on_progress(self, kind: str, current: int, total: int, msg: str):
-        ui = self._import_ui[kind]
-        ui["progress"].setVisible(True)
-        ui["progress"].setMaximum(total if total > 0 else 3)
-        ui["progress"].setValue(current)
-        ui["progress"].setFormat(msg)
-
-    def _on_import_done(self, kind: str, result):
-        ui = self._import_ui[kind]
-        ui["button"].setEnabled(True)
-        ui["button"].setText(ui["button_text"])
-        ui["progress"].setVisible(True)
-        ui["progress"].setValue(ui["progress"].maximum())
-        ui["log"].setVisible(True)
-        ui["log"].setPlainText(result.summary())
-
-    def _on_import_error(self, kind: str, msg: str):
-        ui = self._import_ui[kind]
-        ui["button"].setEnabled(True)
-        ui["button"].setText(ui["button_text"])
-        ui["progress"].setVisible(False)
-        ui["log"].setVisible(True)
-        ui["log"].setPlainText(f"Erro:\n{msg}")
+            if scale_changed:
+                QMessageBox.information(
+                    self,
+                    "Salvo",
+                    "Configuracoes salvas.\nA interface sera recarregada com a nova escala.",
+                )
+                self.scale_changed.emit(res.scale)
+            else:
+                QMessageBox.information(self, "Salvo", "Configuracoes salvas.")
 
     def _check_updates(self) -> None:
         from ..updater import UpdateChecker
-        from ..widgets.update_dialog import UpdateAvailableDialog
 
         self.btn_check_update.setEnabled(False)
         self.btn_check_update.setText("Verificando...")
@@ -848,11 +610,6 @@ class SettingsView(QWidget):
             f"color:{theme.DANGER};"
         )
 
-    def _cleanup_import_thread(self, kind: str, thread: QThread, worker: ImportWorker):
-        current = self._import_threads.get(kind)
-        if current == (thread, worker):
-            self._import_threads.pop(kind, None)
-
     def apply_theme(self) -> None:
         s = self.scale
         bg = theme.CONTENT_BG
@@ -861,11 +618,12 @@ class SettingsView(QWidget):
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
         self._page_content.setStyleSheet(f"QWidget#settingsContainer {{ background:{bg}; }}")
         self.input_url.setStyleSheet(_field_style(s))
-        self.input_pending_invoice_days.setStyleSheet(_field_style(s))
+        if session.settings_show_billing:
+            self.input_pending_invoice_days.setStyleSheet(_field_style(s))
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
+        self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
         for btn in self._scale_btns.values():
-            checked = btn.isChecked()
             btn.setStyleSheet(
                 f"QPushButton {{"
                 f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
@@ -877,17 +635,4 @@ class SettingsView(QWidget):
                 f"QPushButton:checked {{"
                 f"  background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY};"
                 f"}}"
-            )
-        for ui in self._import_ui.values():
-            ui["input"].setStyleSheet(_field_style(s))
-            ui["button"].setStyleSheet(_primary_action_btn_style(s))
-            ui["browse"].setStyleSheet(_flat_secondary_btn_style(s))
-            ui["progress"].setStyleSheet(
-                f"QProgressBar {{ border:none; border-radius:4px;"
-                f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
-                f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
-            )
-            ui["log"].setStyleSheet(
-                f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
-                f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
             )

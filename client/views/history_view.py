@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.session import session
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -150,6 +151,7 @@ class HistoryWorker(QObject):
         production_destination: str = "",
         production_machine: str = "",
         invoiced: str = "",
+        created_by_user_id: int | None = None,
     ):
         super().__init__()
         self.status = status
@@ -159,6 +161,7 @@ class HistoryWorker(QObject):
         self.production_destination = production_destination
         self.production_machine = production_machine
         self.invoiced = invoiced
+        self.created_by_user_id = created_by_user_id
 
     def run(self):
         try:
@@ -177,6 +180,7 @@ class HistoryWorker(QObject):
                     production_destination=self.production_destination,
                     production_machine=self.production_machine,
                     invoiced=invoiced_value,
+                    created_by_user_id=self.created_by_user_id,
                 )
             )
         except Exception as exc:
@@ -601,6 +605,7 @@ class HistoryView(QWidget):
             production_destination,
             production_machine,
             invoiced,
+            created_by_user_id=session.user_id if session.filters_own_requisitions else None,
         )
         thread = QThread()
         worker.moveToThread(thread)

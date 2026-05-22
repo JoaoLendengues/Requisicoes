@@ -181,31 +181,25 @@ class MainWindow(QMainWindow):
             orders_btn = self.sidebar._nav_btns.get("pedidos")
             if orders_btn:
                 orders_btn.setEnabled(False)
-                orders_btn.setToolTip("Acesso restrito a administradores, gerentes e vendedores")
+                orders_btn.setToolTip("Acesso restrito a administradores, gerentes, vendedores, A&R e Indústria")
 
-        visible_production_destinations = set(session.visible_production_destinations)
+        if not session.can_access_industria:
+            pinheiro_btn = self.sidebar._nav_btns.get("pinheiro_industria")
+            if pinheiro_btn:
+                pinheiro_btn.setEnabled(False)
+                pinheiro_btn.setToolTip("Acesso restrito a administradores, gerentes e Indústria")
 
-        pinheiro_btn = self.sidebar._nav_btns.get("pinheiro_industria")
-        if pinheiro_btn and "Pinheiro Indústria" not in visible_production_destinations:
-            pinheiro_btn.setEnabled(False)
-            pinheiro_btn.setToolTip("Acesso restrito a administradores, indústria e entrega")
-
-        ar_btn = self.sidebar._nav_btns.get("ar")
-        if ar_btn and "A&R" not in visible_production_destinations:
-            ar_btn.setEnabled(False)
-            ar_btn.setToolTip("Acesso restrito a administradores e produção")
+        if not session.can_access_ar:
+            ar_btn = self.sidebar._nav_btns.get("ar")
+            if ar_btn:
+                ar_btn.setEnabled(False)
+                ar_btn.setToolTip("Acesso restrito a administradores, gerentes e A&R")
 
         if not session.can_manage_users:
             users_btn = self.sidebar._nav_btns.get("usuarios")
             if users_btn:
                 users_btn.setEnabled(False)
                 users_btn.setToolTip("Acesso restrito a administradores")
-
-        if not session.can_access_settings:
-            settings_btn = self.sidebar._nav_btns.get("config")
-            if settings_btn:
-                settings_btn.setEnabled(False)
-                settings_btn.setToolTip("Acesso restrito a administradores")
 
     def _setup_statusbar(self):
         bar = self.statusBar()
@@ -287,29 +281,29 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "A Central de Pedidos é restrita a administradores, gerentes e vendedores.",
+                "A Central de Pedidos é restrita a administradores, gerentes, vendedores, A&R e Indústria.",
             )
             self._highlight_current_page()
             return
 
-        if page == PAGE_PINHEIRO_INDUSTRIA and "Pinheiro Indústria" in set(session.visible_production_destinations):
+        if page == PAGE_PINHEIRO_INDUSTRIA and session.can_access_industria:
             self.pinheiro_industria_view.refresh()
         elif page == PAGE_PINHEIRO_INDUSTRIA:
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "A tela da Pinheiro Indústria é restrita a administradores, indústria e entrega.",
+                "A tela da Pinheiro Indústria é restrita a administradores, gerentes e Indústria.",
             )
             self._highlight_current_page()
             return
 
-        if page == PAGE_AR and "A&R" in set(session.visible_production_destinations):
+        if page == PAGE_AR and session.can_access_ar:
             self.ar_view.refresh()
         elif page == PAGE_AR:
             QMessageBox.warning(
                 self,
                 "Acesso negado",
-                "A tela da A&R é restrita a administradores e produção.",
+                "A tela da A&R é restrita a administradores, gerentes e A&R.",
             )
             self._highlight_current_page()
             return
@@ -639,21 +633,20 @@ class MainWindow(QMainWindow):
             (label for label, btn in self.settings_view._scale_btns.items() if btn.isChecked()),
             res.scale_label,
         )
-        return {
-            "url": self.settings_view.input_url.text(),
-            "ods_path": self.settings_view.input_ods_path.text(),
-            "products_path": self.settings_view.input_products_path.text(),
-            "pending_invoice_alert_days": self.settings_view.input_pending_invoice_days.value(),
-            "scale_label": selected_scale,
-        }
+        state = {"scale_label": selected_scale}
+        if hasattr(self.settings_view, "input_url"):
+            state["url"] = self.settings_view.input_url.text()
+        if hasattr(self.settings_view, "input_pending_invoice_days"):
+            state["pending_invoice_alert_days"] = self.settings_view.input_pending_invoice_days.value()
+        return state
 
     def _restore_settings_state(self, state: dict) -> None:
-        self.settings_view.input_url.setText(state.get("url") or "")
-        self.settings_view.input_ods_path.setText(state.get("ods_path") or "")
-        self.settings_view.input_products_path.setText(state.get("products_path") or "")
-        self.settings_view.input_pending_invoice_days.setValue(
-            int(state.get("pending_invoice_alert_days") or 1)
-        )
+        if hasattr(self.settings_view, "input_url"):
+            self.settings_view.input_url.setText(state.get("url") or "")
+        if hasattr(self.settings_view, "input_pending_invoice_days"):
+            self.settings_view.input_pending_invoice_days.setValue(
+                int(state.get("pending_invoice_alert_days") or 1)
+            )
         selected_scale = state.get("scale_label")
         for label, btn in self.settings_view._scale_btns.items():
             btn.setChecked(label == selected_scale)

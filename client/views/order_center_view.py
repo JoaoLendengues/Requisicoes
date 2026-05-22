@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.session import session
 from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import (
     format_date as _format_date,
@@ -166,7 +167,8 @@ class OrderCenterWorker(QObject):
 
     def run(self):
         try:
-            self.result.emit(api.get_order_center())
+            user_id = session.user_id if session.filters_own_requisitions else None
+            self.result.emit(api.get_order_center(created_by_user_id=user_id))
         except api.APIError as exc:
             self.error.emit(exc.detail)
         except Exception as exc:

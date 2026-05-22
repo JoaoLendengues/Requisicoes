@@ -135,6 +135,7 @@ def list_requisitions(
     production_destination: str = "",
     production_machine: str = "",
     invoiced: bool | None = None,
+    created_by_user_id: int | None = None,
 ) -> list:
     with _cli() as client:
         params: dict = {"skip": skip, "limit": limit}
@@ -152,6 +153,8 @@ def list_requisitions(
             params["production_machine"] = production_machine
         if invoiced is not None:
             params["invoiced"] = invoiced
+        if created_by_user_id is not None:
+            params["created_by_user_id"] = created_by_user_id
         return _check(client.get("/requisitions/", params=params))
 
 
@@ -165,9 +168,12 @@ def get_technical_panel_summary() -> dict:
         return _check(client.get("/requisitions/technical-panel/summary"))
 
 
-def get_order_center() -> dict:
+def get_order_center(created_by_user_id: int | None = None) -> dict:
     with _cli() as client:
-        return _check(client.get("/requisitions/order-center/summary"))
+        params: dict = {}
+        if created_by_user_id is not None:
+            params["created_by_user_id"] = created_by_user_id
+        return _check(client.get("/requisitions/order-center/summary", params=params))
 
 
 def get_operational_settings() -> dict:

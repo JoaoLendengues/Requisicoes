@@ -39,9 +39,13 @@ class UserSession:
     def logout(self):
         self._reset()
 
+    # ── Estado de autenticação ────────────────────────────────────────────────
+
     @property
     def is_logged_in(self) -> bool:
         return bool(self.token)
+
+    # ── Grupos de role ────────────────────────────────────────────────────────
 
     @property
     def is_admin(self) -> bool:
@@ -52,12 +56,15 @@ class UserSession:
         return self.role in ("admin", "gerente")
 
     @property
-    def is_industry(self) -> bool:
-        return self.role in ("industria", "entrega")
+    def is_view_only(self) -> bool:
+        """A&R e Indústria sempre abrem formulários em modo somente leitura."""
+        return self.role in ("ar", "industria", "entrega")
 
     @property
     def is_production_team(self) -> bool:
-        return self.role in ("producao", "industria", "entrega")
+        return self.role in ("ar", "industria", "entrega")
+
+    # ── Acesso às telas ───────────────────────────────────────────────────────
 
     @property
     def can_access_dashboard(self) -> bool:
@@ -69,38 +76,82 @@ class UserSession:
 
     @property
     def can_access_order_center(self) -> bool:
-        return self.role in ("admin", "gerente", "vendedor")
+        """Todos os roles acessam a Central de Pedidos."""
+        return self.role in ("admin", "gerente", "vendedor", "ar", "industria", "entrega")
 
     @property
-    def can_access_production(self) -> bool:
-        return self.role in ("admin", "producao", "industria", "entrega")
+    def can_access_ar(self) -> bool:
+        """Tela da A&R: admin, gerente e role A&R."""
+        return self.role in ("admin", "gerente", "ar", "entrega")
+
+    @property
+    def can_access_industria(self) -> bool:
+        """Tela da Pinheiro Indústria: admin, gerente e role Indústria."""
+        return self.role in ("admin", "gerente", "industria")
 
     @property
     def can_access_settings(self) -> bool:
-        return self.role == "admin"
+        """Todos acessam configurações (com seções diferentes por role)."""
+        return True
 
     @property
     def can_manage_users(self) -> bool:
         return self.role == "admin"
 
     @property
+    def filters_own_requisitions(self) -> bool:
+        """Vendedor vê apenas suas próprias requisições no histórico e na central."""
+        return self.role == "vendedor"
+
+    # ── Ações sobre requisições ───────────────────────────────────────────────
+
+    @property
     def can_create(self) -> bool:
-        return self.role in ("admin", "vendedor", "gerente", "producao", "industria", "entrega")
+        return True  # Todos acessam o formulário; A&R e Indústria em modo leitura
 
     @property
     def can_update_status(self) -> bool:
-        return True
+        return self.role in ("admin", "gerente", "vendedor")
+
+    # ── Destinos de produção visíveis ─────────────────────────────────────────
 
     @property
     def visible_production_destinations(self) -> tuple[str, ...]:
-        if self.role == "producao":
+        if self.role in ("ar", "entrega"):
             return ("A&R",)
-        if self.is_industry:
+        if self.role == "industria":
             return ("Pinheiro Indústria",)
-        return ("A&R", "Pinheiro Indústria")
+        if self.role in ("admin", "gerente"):
+            return ("A&R", "Pinheiro Indústria")
+        return ()  # vendedor não acessa telas de produção
 
-    def should_open_requisition_read_only(self, source: str) -> bool:
-        return self.is_production_team and source in ("history", "production")
+    # ── Modo de abertura do formulário ────────────────────────────────────────
+
+    def should_open_requisition_read_only(self, source: str = "") -> bool:
+        """A&R e Indústria sempre abrem requisições em modo somente leitura."""
+        return self.is_view_only
+
+    # ── Seções visíveis nas Configurações ─────────────────────────────────────
+
+    @property
+    def settings_show_connection(self) -> bool:
+        """Conexão com servidor: somente admin."""
+        return self.role == "admin"
+
+    @property
+    def settings_show_billing(self) -> bool:
+        """Alertas de faturamento: admin e gerente."""
+        return self.role in ("admin", "gerente")
+
+    @property
+    def settings_show_appearance(self) -> bool:
+        """Aparência (escala): todos."""
+        return True
+
+    @property
+    def settings_show_updates(self) -> bool:
+        """Atualizações: todos."""
+        return True
 
 
 session = UserSession()
