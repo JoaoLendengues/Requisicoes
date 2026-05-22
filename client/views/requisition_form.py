@@ -916,7 +916,7 @@ class RequisitionForm(QWidget):
         preview_layout.addWidget(btn_canvas)
         self.btn_canvas = btn_canvas
 
-        btn_canvas_view = QPushButton("Visualizar Desenho")
+        btn_canvas_view = QPushButton("🖼️ Visualizar Desenho")
         btn_canvas_view.setFixedHeight(max(30, int(34*s)))
         btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))
         btn_canvas_view.clicked.connect(self._open_canvas_viewer)
