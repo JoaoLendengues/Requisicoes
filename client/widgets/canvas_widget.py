@@ -87,6 +87,11 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
         item.setPen(pen)
 
+    elif t == "ruler_measure_line":
+        item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
+        item.setPen(pen)
+        item.setData(0, {"type": "ruler_measure_line"})
+
     elif t == "rect":
         item = QGraphicsRectItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
@@ -111,6 +116,14 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setDefaultTextColor(QColor(d.get("color", "#000000")))
         font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
         item.setFont(font)
+
+    elif t == "ruler_measure_text":
+        item = QGraphicsTextItem(d.get("text", ""))
+        item.setPos(QPointF(d["x"], d["y"]))
+        item.setDefaultTextColor(QColor(d.get("color", "#000000")))
+        font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
+        item.setFont(font)
+        item.setData(0, {"type": "ruler_measure_text"})
 
     elif t == "image":
         path = d.get("path", "")
@@ -600,14 +613,102 @@ class DrawingScene(QGraphicsScene):
         path.lineTo(right)
         return path
 
+    def _ruler_pen(self, cosmetic: bool = True) -> QPen:
+        pen = QPen(QColor(theme.PRIMARY), float(max(1, self.cw.pen_width)))
+        pen.setCosmetic(cosmetic)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        return pen
+
+    def _format_ruler_text(self, start: QPointF, end: QPointF) -> tuple[str, float]:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        dist = math.hypot(dx, dy)
+        dx_mm = dx / self.RULER_PX_PER_MM
+        dy_mm = dy / self.RULER_PX_PER_MM
+        dist_mm = dist / self.RULER_PX_PER_MM
+        dx_cm = dx_mm / 10.0
+        dy_cm = dy_mm / 10.0
+        dist_cm = dist_mm / 10.0
+        dx_m = dx_mm / 1000.0
+        dy_m = dy_mm / 1000.0
+        dist_m = dist_mm / 1000.0
+        text = (
+            f"Dist: {dist_mm:.1f} mm ({dist_cm:.2f} cm | {dist_m:.3f} m)   "
+            f"dX: {dx_mm:.1f} mm ({dx_cm:.2f} cm | {dx_m:.3f} m)   "
+            f"dY: {dy_mm:.1f} mm ({dy_cm:.2f} cm | {dy_m:.3f} m)"
+        )
+        return text, dist_mm
+
+    @staticmethod
+    def _format_fixed_measure(dist_mm: float) -> str:
+        abs_dist = abs(dist_mm)
+        if abs_dist >= 1000.0:
+            return f"{(dist_mm / 1000.0):.3f} m"
+        if abs_dist >= 10.0:
+            return f"{(dist_mm / 10.0):.2f} cm"
+        return f"{dist_mm:.1f} mm"
+
+    def _commit_ruler_measure(self, start: QPointF, end: QPointF):
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+        text, dist_mm = self._format_ruler_text(start, end)
+        _ = text  # mantém o cálculo completo centralizado para régua dinâmica.
+
+        line_item = QGraphicsLineItem(start.x(), start.y(), end.x(), end.y())
+        line_item.setPen(self._ruler_pen(cosmetic=True))
+        line_item.setZValue(9000)
+        line_item.setData(0, {"type": "ruler_measure_line"})
+        line_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(line_item)
+
+        label = self._format_fixed_measure(dist_mm)
+        text_item = QGraphicsTextItem(label)
+        text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+        text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+        text_item.setZValue(9001)
+        text_item.setData(0, {"type": "ruler_measure_text"})
+        mid_x = (start.x() + end.x()) / 2.0
+        mid_y = (start.y() + end.y()) / 2.0
+        text_item.setPos(QPointF(mid_x + 8.0, mid_y - 22.0))
+        text_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(text_item)
+
+        self.cw._push_undo(line_item)
+        self.cw._push_undo(text_item)
+        self.cw.changed.emit()
+
+    def commit_ruler_overlay(self):
+        if self._ruler_line_item is None:
+            return
+        line = self._ruler_line_item.line()
+        start = QPointF(line.x1(), line.y1())
+        end = QPointF(line.x2(), line.y2())
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+        self._commit_ruler_measure(start, end)
+
+    def _sync_ruler_visuals(self):
+        if self._ruler_line_item is not None:
+            self._ruler_line_item.setPen(self._ruler_pen(cosmetic=True))
+        for item in self.items():
+            meta = item.data(0) or {}
+            if isinstance(meta, dict) and meta.get("type") == "ruler_measure_line" and isinstance(item, QGraphicsLineItem):
+                item.setPen(self._ruler_pen(cosmetic=True))
+
     def _ensure_ruler_items(self):
         if self._ruler_line_item is None:
-            ruler_pen = QPen(QColor(theme.PRIMARY), 1.4)
-            ruler_pen.setCosmetic(True)
-            ruler_pen.setStyle(Qt.PenStyle.DashLine)
-            self._ruler_line_item = self.addLine(0, 0, 0, 0, ruler_pen)
+            self._ruler_line_item = self.addLine(0, 0, 0, 0, self._ruler_pen(cosmetic=True))
             self._ruler_line_item.setZValue(10000)
             self._ruler_line_item.setData(0, {"type": "ruler_overlay"})
+        else:
+            self._ruler_line_item.setPen(self._ruler_pen(cosmetic=True))
 
         if self._ruler_text_item is None:
             self._ruler_text_item = QGraphicsTextItem("")
@@ -623,23 +724,8 @@ class DrawingScene(QGraphicsScene):
             return
 
         self._ruler_line_item.setLine(start.x(), start.y(), end.x(), end.y())
-        dx = end.x() - start.x()
-        dy = end.y() - start.y()
-        dist = math.hypot(dx, dy)
-        dx_mm = dx / self.RULER_PX_PER_MM
-        dy_mm = dy / self.RULER_PX_PER_MM
-        dist_mm = dist / self.RULER_PX_PER_MM
-        dx_cm = dx_mm / 10.0
-        dy_cm = dy_mm / 10.0
-        dist_cm = dist_mm / 10.0
-        dx_m = dx_mm / 1000.0
-        dy_m = dy_mm / 1000.0
-        dist_m = dist_mm / 1000.0
-        self._ruler_text_item.setPlainText(
-            f"Dist: {dist_mm:.1f} mm ({dist_cm:.2f} cm | {dist_m:.3f} m)   "
-            f"dX: {dx_mm:.1f} mm ({dx_cm:.2f} cm | {dx_m:.3f} m)   "
-            f"dY: {dy_mm:.1f} mm ({dy_cm:.2f} cm | {dy_m:.3f} m)"
-        )
+        text, _dist_mm = self._format_ruler_text(start, end)
+        self._ruler_text_item.setPlainText(text)
         mid_x = (start.x() + end.x()) / 2.0
         mid_y = (start.y() + end.y()) / 2.0
         self._ruler_text_item.setPos(QPointF(mid_x + 8.0, mid_y - 22.0))
@@ -836,6 +922,8 @@ class DrawingScene(QGraphicsScene):
         elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
             self._update_ruler(self._start, end)
+            if bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+                self._commit_ruler_measure(self._start, end)
 
         elif tool == Tool.ARROW and self._preview_item:
             end = self._constrain(self._start, pos) if shift else pos
@@ -1172,7 +1260,7 @@ class DrawingCanvas(QWidget):
         self.spin_width.setValue(self.pen_width)
         self.spin_width.setFixedWidth(max(56, int(68 * s)))
         self.spin_width.setFixedHeight(fh)
-        self.spin_width.valueChanged.connect(lambda v: setattr(self, "pen_width", v))
+        self.spin_width.valueChanged.connect(self._on_pen_width_changed)
         row1.addWidget(self.spin_width)
 
         row1.addSpacing(8)
@@ -1271,7 +1359,7 @@ class DrawingCanvas(QWidget):
 
         # Dica de teclado
         hint = QLabel(
-            "✨ U = régua  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ U = régua  |  Ctrl+Clique = fixar medição  |  F1 = fixar medição atual  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
@@ -1378,6 +1466,11 @@ class DrawingCanvas(QWidget):
         ft_action.triggered.connect(self.scene._enter_ft)
         self.addAction(ft_action)
 
+        fix_measure_action = QAction(self)
+        fix_measure_action.setShortcut(QKeySequence(Qt.Key.Key_F1))
+        fix_measure_action.triggered.connect(self.scene.commit_ruler_overlay)
+        self.addAction(fix_measure_action)
+
     # �"?�"? Ferramentas �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _set_tool(self, tool: Tool):
         self.tool = tool
@@ -1410,6 +1503,12 @@ class DrawingCanvas(QWidget):
                 f = item.font()
                 f.setPointSize(v)
                 item.setFont(f)
+        self.changed.emit()
+
+    def _on_pen_width_changed(self, v: int):
+        self.pen_width = v
+        if hasattr(self, "scene"):
+            self.scene._sync_ruler_visuals()
         self.changed.emit()
 
     def _pick_color(self):
@@ -1700,6 +1799,11 @@ class DrawingCanvas(QWidget):
 
         if isinstance(item, QGraphicsLineItem):
             ln = item.line()
+            if isinstance(meta, dict) and meta.get("type") == "ruler_measure_line":
+                return {"type": "ruler_measure_line",
+                        "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
+                        "pos_x": item.pos().x(), "pos_y": item.pos().y(),
+                        "pen": pen_data(item.pen()), "rotation": rot}
             return {"type": "line",
                     "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
                     "pos_x": item.pos().x(), "pos_y": item.pos().y(),
@@ -1730,6 +1834,13 @@ class DrawingCanvas(QWidget):
                     "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsTextItem):
+            if isinstance(meta, dict) and meta.get("type") == "ruler_measure_text":
+                return {"type": "ruler_measure_text",
+                        "x": item.pos().x(), "y": item.pos().y(),
+                        "text": item.toPlainText(),
+                        "color": item.defaultTextColor().name(),
+                        "font_size": item.font().pointSize(),
+                        "rotation": rot}
             return {"type": "text",
                     "x": item.pos().x(), "y": item.pos().y(),
                     "text": normalize_upper_text(item.toPlainText()),
