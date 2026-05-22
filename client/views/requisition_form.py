@@ -910,18 +910,23 @@ class RequisitionForm(QWidget):
         self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
 
         btn_canvas = QPushButton("✏️ Abrir Editor de Desenho")
-        btn_canvas.setFixedHeight(max(30, int(34*s)))
+        btn_canvas.setFixedHeight(max(28, int(32*s)))
         btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
         btn_canvas.clicked.connect(self._open_canvas_dialog)
-        preview_layout.addWidget(btn_canvas)
         self.btn_canvas = btn_canvas
 
         btn_canvas_view = QPushButton("🖼️ Visualizar Desenho")
-        btn_canvas_view.setFixedHeight(max(30, int(34*s)))
+        btn_canvas_view.setFixedHeight(max(28, int(32*s)))
         btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))
         btn_canvas_view.clicked.connect(self._open_canvas_viewer)
-        preview_layout.addWidget(btn_canvas_view)
         self.btn_canvas_view = btn_canvas_view
+
+        btn_canvas_row = QHBoxLayout()
+        btn_canvas_row.setContentsMargins(0, 0, 0, 0)
+        btn_canvas_row.setSpacing(max(8, int(10 * s)))
+        btn_canvas_row.addWidget(btn_canvas, 1)
+        btn_canvas_row.addWidget(btn_canvas_view, 1)
+        preview_layout.addLayout(btn_canvas_row)
 
         row.addWidget(preview_card, 1)
         return wrapper
