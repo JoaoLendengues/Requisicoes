@@ -171,7 +171,7 @@ class MainWindow(QMainWindow):
 
         # ── Visibilidade dos botões da sidebar por perfil ─────────────────────
         nav_visible = {
-            "nova":               not session.is_view_only,
+            "nova":               True,  # todos veem; A&R e Indústria em leitura
             "dashboard":          session.can_access_dashboard,
             "tecnico":            session.can_access_technical_panel,
             "pedidos":            session.can_access_order_center,
@@ -233,7 +233,6 @@ class MainWindow(QMainWindow):
         # Guards defensivos — botões já estão ocultos para roles sem acesso,
         # mas mantemos a verificação como camada de segurança extra.
         guards = {
-            PAGE_FORM:               not session.is_view_only,
             PAGE_DASHBOARD:          session.can_access_dashboard,
             PAGE_TECHNICAL:          session.can_access_technical_panel,
             PAGE_ORDER_CENTER:       session.can_access_order_center,
@@ -245,6 +244,16 @@ class MainWindow(QMainWindow):
             return
 
         if key == "nova":
+            if session.is_view_only:
+                # A&R e Indústria: apenas visualização, sem resetar o formulário.
+                # Se nenhuma requisição estiver carregada, exibe aviso no form.
+                if not self.form_view.req_id:
+                    self.form_view._set_form_locked(
+                        True,
+                        "Selecione uma requisição no Histórico ou na Central de Pedidos para visualizar.",
+                    )
+                self.stack.setCurrentIndex(PAGE_FORM)
+                return
             if not self._confirm_new_requisition():
                 self.stack.setCurrentIndex(PAGE_FORM)
                 self.sidebar._highlight("nova")

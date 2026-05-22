@@ -100,8 +100,8 @@ class UserSession:
 
     @property
     def filters_own_requisitions(self) -> bool:
-        """Vendedor vê apenas suas próprias requisições no histórico e na central."""
-        return self.role == "vendedor"
+        """Todos os perfis veem todas as requisições."""
+        return False
 
     # ── Ações sobre requisições ───────────────────────────────────────────────
 
@@ -128,7 +128,10 @@ class UserSession:
     # ── Modo de abertura do formulário ────────────────────────────────────────
 
     def should_open_requisition_read_only(self, source: str = "") -> bool:
-        """A&R e Indústria sempre abrem requisições em modo somente leitura."""
+        """A&R e Indústria têm acesso total na Central de Pedidos;
+        em qualquer outra origem (histórico, sidebar) abrem em leitura."""
+        if source == "order_center":
+            return False
         return self.is_view_only
 
     # ── Seções visíveis nas Configurações ─────────────────────────────────────
