@@ -42,6 +42,8 @@ class Tool(Enum):
     ARROW    = "arrow"
     CURVE    = "curve"
     TRIANGLE = "triangle"
+    PENTAGON = "pentagon"
+    HEXAGON  = "hexagon"
     RECT     = "rect"
     ELLIPSE  = "ellipse"
     TEXT     = "text"
@@ -203,7 +205,7 @@ class DrawingScene(QGraphicsScene):
     FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
     FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
     # Snap to endpoints
-    SNAP_RADIUS    = 12    # raio de detecção em px de tela (constante com zoom)
+    SNAP_RADIUS    = 18    # raio de detecção em px de tela (constante com zoom)
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
@@ -480,6 +482,26 @@ class DrawingScene(QGraphicsScene):
         path.closeSubpath()
         return path
 
+    def _regular_polygon_path(self, start: QPointF, end: QPointF, sides: int) -> QPainterPath:
+        """Poligono regular inscrito no retangulo definido por start/end."""
+        if sides < 3:
+            return QPainterPath()
+        r = QRectF(start, end).normalized()
+        cx, cy = r.center().x(), r.center().y()
+        rx = max(1.0, r.width() / 2.0)
+        ry = max(1.0, r.height() / 2.0)
+
+        pts = []
+        for i in range(sides):
+            ang = -math.pi / 2.0 + (2.0 * math.pi * i / sides)
+            pts.append(QPointF(cx + rx * math.cos(ang), cy + ry * math.sin(ang)))
+
+        path = QPainterPath(pts[0])
+        for p in pts[1:]:
+            path.lineTo(p)
+        path.closeSubpath()
+        return path
+
     def _arrow_path(self, start: QPointF, end: QPointF) -> QPainterPath:
         """Seta predefinida: haste + duas abas na ponta final."""
         dx = end.x() - start.x()
@@ -513,6 +535,7 @@ class DrawingScene(QGraphicsScene):
     def mousePressEvent(self, event):
         tool = self.cw.tool
         pos  = event.scenePos()
+        self.cw._last_click_scene_pos = QPointF(pos.x(), pos.y())
 
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
@@ -624,11 +647,23 @@ class DrawingScene(QGraphicsScene):
             self._preview_item.setPen(self._pen())
             self.addItem(self._preview_item)
 
+        elif tool == Tool.PENTAGON:
+            self._preview_item = QGraphicsPathItem(self._regular_polygon_path(self._start, pos, 5))
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
+
+        elif tool == Tool.HEXAGON:
+            self._preview_item = QGraphicsPathItem(self._regular_polygon_path(self._start, pos, 6))
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
+
         elif tool == Tool.RECT:
             self._preview_item = self.addRect(QRectF(pos, pos), self._pen())
 
         elif tool == Tool.ELLIPSE:
             self._preview_item = self.addEllipse(QRectF(pos, pos), self._pen())
+
+        event.accept()
 
     def mouseMoveEvent(self, event):
         tool = self.cw.tool
@@ -666,9 +701,16 @@ class DrawingScene(QGraphicsScene):
             self._path_item.setPath(self._painter_path)
 
         elif tool == Tool.LINE and self._preview_item:
-            end = self._constrain(self._start, pos) if shift else pos
+            snap = self._find_snap(pos)
+            if snap is not None:
+                end = snap
+                self._snap_point = snap
+            else:
+                end = self._constrain(self._start, pos) if shift else pos
+                self._snap_point = None
             self._preview_item.setLine(self._start.x(), self._start.y(),
                                        end.x(), end.y())
+            self.update()
 
         elif tool == Tool.ARROW and self._preview_item:
             end = self._constrain(self._start, pos) if shift else pos
@@ -681,6 +723,12 @@ class DrawingScene(QGraphicsScene):
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             self._preview_item.setPath(self._triangle_path(self._start, pos))
+
+        elif tool == Tool.PENTAGON and self._preview_item:
+            self._preview_item.setPath(self._regular_polygon_path(self._start, pos, 5))
+
+        elif tool == Tool.HEXAGON and self._preview_item:
+            self._preview_item.setPath(self._regular_polygon_path(self._start, pos, 6))
 
         elif tool == Tool.RECT and self._preview_item:
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
@@ -715,12 +763,17 @@ class DrawingScene(QGraphicsScene):
 
         elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
             if tool == Tool.LINE:
-                if shift:
+                snap = self._find_snap(pos)
+                if snap is not None:
+                    end = snap
+                elif shift:
                     end = self._constrain(self._start, pos)
                 else:
                     end = pos
                 self._preview_item.setLine(self._start.x(), self._start.y(),
                                            end.x(), end.y())
+                self._snap_point = None
+                self.update()
             elif tool == Tool.ARROW:
                 end = self._constrain(self._start, pos) if shift else pos
                 self._preview_item.setPath(self._arrow_path(self._start, end))
@@ -748,6 +801,13 @@ class DrawingScene(QGraphicsScene):
             self._curve_end = None
 
         elif tool == Tool.TRIANGLE and self._preview_item:
+            item = self._preview_item
+            item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                          QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+            self.cw._push_undo(item)
+            self._preview_item = None
+
+        elif tool in (Tool.PENTAGON, Tool.HEXAGON) and self._preview_item:
             item = self._preview_item
             item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                           QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
@@ -902,6 +962,7 @@ class DrawingCanvas(QWidget):
         self._attached_pdf: str = ""
         self._clipboard_signature = ""
         self._paste_serial = 0
+        self._last_click_scene_pos: QPointF | None = None
         self._setup_ui()
 
     # ── UI ────────────────────────────────────────────────────────────────────
@@ -940,6 +1001,8 @@ class DrawingCanvas(QWidget):
             (Tool.ARROW,   "➡ Seta",      "A"),
             (Tool.CURVE,   "〰 Curva",    "C"),
             (Tool.TRIANGLE, "△ Triang.", "G"),
+            (Tool.PENTAGON, "⬟ Penta",    "N"),
+            (Tool.HEXAGON,  "⬢ Hexa",      "H"),
             (Tool.RECT,    "⬛ Ret.",     "R"),
             (Tool.ELLIPSE, "⭕ Elipse",   "E"),
             (Tool.TEXT,    "T Texto",     "T"),
@@ -1073,7 +1136,7 @@ class DrawingCanvas(QWidget):
 
         # ── Dica de teclado ──────────────────────────────────────────────────
         hint = QLabel(
-            "✨ Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
@@ -1139,6 +1202,8 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_A: Tool.ARROW,
             Qt.Key.Key_C: Tool.CURVE,
             Qt.Key.Key_G: Tool.TRIANGLE,
+            Qt.Key.Key_N: Tool.PENTAGON,
+            Qt.Key.Key_H: Tool.HEXAGON,
             Qt.Key.Key_R: Tool.RECT,
             Qt.Key.Key_E: Tool.ELLIPSE,
             Qt.Key.Key_T: Tool.TEXT,
@@ -1360,23 +1425,43 @@ class DrawingCanvas(QWidget):
             return
 
         if signature == self._clipboard_signature:
+            serial = self._paste_serial
             self._paste_serial += 1
         else:
             self._clipboard_signature = signature
             self._paste_serial = 1
-        offset = QPointF(20 * self._paste_serial, 20 * self._paste_serial)
+            serial = 0
+        offset = QPointF(20 * serial, 20 * serial)
 
         self.scene.clearSelection()
-        pasted = []
+        created = []
         for item_data in items_data:
             item = self._item_from_dict(item_data)
             if not item:
                 continue
+            created.append(item)
+
+        if not created:
+            return
+
+        bounds = QRectF()
+        for item in created:
+            sr = item.mapToScene(item.boundingRect()).boundingRect()
+            bounds = sr if bounds.isNull() else bounds.united(sr)
+
+        target = self._last_click_scene_pos or self.view.mapToScene(self.view.viewport().rect().center())
+        move = QPointF(
+            target.x() - bounds.center().x() + offset.x(),
+            target.y() - bounds.center().y() + offset.y(),
+        )
+
+        pasted = []
+        for item in created:
             item.setFlags(
                 QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                 QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
             )
-            item.moveBy(offset.x(), offset.y())
+            item.moveBy(move.x(), move.y())
             self.scene.addItem(item)
             item.setSelected(True)
             self._undo_stack.append(item)
