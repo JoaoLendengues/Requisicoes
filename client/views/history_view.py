@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QDateEdit,
+    QDateTimeEdit,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -152,11 +153,17 @@ def _calendar_btn_style(scale: float) -> str:
 class PeriodDateEdit(QDateEdit):
     def mousePressEvent(self, event) -> None:
         super().mousePressEvent(event)
+        QTimer.singleShot(0, self._prioritize_day_section)
         QTimer.singleShot(0, self._select_all_text)
 
     def focusInEvent(self, event) -> None:
         super().focusInEvent(event)
+        QTimer.singleShot(0, self._prioritize_day_section)
         QTimer.singleShot(0, self._select_all_text)
+
+    def stepBy(self, steps: int) -> None:
+        self._prioritize_day_section()
+        super().stepBy(steps)
 
     def keyPressEvent(self, event) -> None:
         if event.modifiers() in (
@@ -185,12 +192,14 @@ class PeriodDateEdit(QDateEdit):
         today = local_now().date()
         chosen = QDate(today.year, today.month, today.day).addDays(days)
         self.setDate(chosen)
+        self._prioritize_day_section()
         self._select_all_text()
 
     def _set_today_anchor(self, *, month: int | None = None, day: int | None = None) -> None:
         today = local_now().date()
         chosen = QDate(today.year, month or today.month, day or today.day)
         self.setDate(chosen)
+        self._prioritize_day_section()
         self._select_all_text()
 
     def _set_end_of_current_month(self) -> None:
@@ -198,12 +207,16 @@ class PeriodDateEdit(QDateEdit):
         chosen = QDate(today.year, today.month, 1)
         chosen = chosen.addMonths(1).addDays(-1)
         self.setDate(chosen)
+        self._prioritize_day_section()
         self._select_all_text()
 
     def _select_all_text(self) -> None:
         editor = self.lineEdit()
         if editor is not None:
             editor.selectAll()
+
+    def _prioritize_day_section(self) -> None:
+        self.setCurrentSection(QDateTimeEdit.Section.DaySection)
 
 
 class HistoryWorker(QObject):
@@ -725,6 +738,8 @@ class HistoryView(QWidget):
 
     def _focus_date_field(self, field: QDateEdit) -> None:
         field.setFocus(Qt.FocusReason.MouseFocusReason)
+        if isinstance(field, PeriodDateEdit):
+            field._prioritize_day_section()
         field.selectAll()
 
     def _set_date_today(self, field: QDateEdit) -> None:
