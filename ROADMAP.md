@@ -6,8 +6,16 @@ Registro de melhorias e ajustes a serem aplicados no decorrer do desenvolvimento
 
 ## Pendentes
 
+<<<<<<< Updated upstream
 ### 1. Calculadora de Peso
 Adicionar uma calculadora de peso acessível dentro do formulário de requisição.
+=======
+### Prioridade Alta
+- [ ] Ajustar filtro de datas da tela "HISTORICO/BUSCA" (esta puxando datas anteriores, nao somente a data selecionada)
+- [ ] Corrigir bug da tela de desenho: linha iniciando em ponto pre-definido
+- [ ] Ajustar contador de notificacoes na tela de notificacoes
+- [ ] Arrumar o fuso horario do sistema
+>>>>>>> Stashed changes
 
 - O resultado **não alimenta nenhum campo** da requisição — é apenas para controle pessoal dos vendedores.
 - Pensar no formato: botão flutuante, painel lateral ou dialog modal.
@@ -17,12 +25,31 @@ Adicionar uma calculadora de peso acessível dentro do formulário de requisiç�
 ### 3. Remover Peso Total da Segunda Grade
 Remover o campo/label **Peso Total** da segunda grade de informações da tela de Nova Requisição.
 
+<<<<<<< Updated upstream
 ---
 
 ### 4. Remover Peso da Tabela de Itens
 Remover a coluna **Peso** da segunda linha da tabela de itens da requisição.
 
 ---
+=======
+### Prioridade Alta
+- [ ] Implementar sistema de atualizacoes (publicar versoes no GitHub e gerar executavel com Inno Setup)
+- [ ] Refinar niveis de acesso
+- [ ] Implementar sistema de backup periodico do banco de dados
+
+### Prioridade Media
+- [ ] Melhorar personalizacao da tela de configuracao
+- [ ] Colocar emojis na impressao dos PDFs
+- [ ] No PDF, alinhar mais a esquerda o titulo "Requisicao", data e nome do vendedor, aproximando de telefones, email e SIA/TAGUATINGA
+- [ ] Implementar filtro por vendedor na tela "HISTORICO/BUSCA"
+- [ ] Polimento de experiencia de usuario e performance do sistema
+- [ ] Adicionar ferramenta Curva no editor de desenho, com atalho de teclado na letra "C"
+
+### Prioridade Baixa
+- [ ] Polimento geral do app
+- [ ] Revisao geral do codigo
+>>>>>>> Stashed changes
 
 ### 6. Código do Produto na Tabela de Itens
 Adicionar coluna **Código do Produto** ao lado da coluna **Posição** na tabela de itens.

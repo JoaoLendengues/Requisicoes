@@ -35,6 +35,7 @@ class Tool(Enum):
     PEN      = "pen"
     ERASER   = "eraser"
     LINE     = "line"
+    CURVE    = "curve"
     RECT     = "rect"
     ELLIPSE  = "ellipse"
     TEXT     = "text"
@@ -135,6 +136,9 @@ class DrawingScene(QGraphicsScene):
         self._preview_item: QGraphicsItem | None = None
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
+        self._curve_source_line: QGraphicsLineItem | None = None
+        self._curve_start: QPointF | None = None
+        self._curve_end: QPointF | None = None
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
 
         # Estado do Free Transform (Ctrl+T)
@@ -384,6 +388,28 @@ class DrawingScene(QGraphicsScene):
         return QPointF(start.x() + dist * math.cos(rad),
                        start.y() + dist * math.sin(rad))
 
+    def _build_quadratic_path(self, start: QPointF, control: QPointF, end: QPointF, steps: int = 24) -> QPainterPath:
+        """Aproxima uma curva quadrática em segmentos de linha para manter compatibilidade do JSON."""
+        path = QPainterPath(start)
+        for i in range(1, steps + 1):
+            t = i / steps
+            u = 1.0 - t
+            x = (u * u * start.x()) + (2 * u * t * control.x()) + (t * t * end.x())
+            y = (u * u * start.y()) + (2 * u * t * control.y()) + (t * t * end.y())
+            path.lineTo(QPointF(x, y))
+        return path
+
+    def _pick_curve_source_line(self, scene_pos: QPointF) -> QGraphicsLineItem | None:
+        """Escolhe a linha selecionada para curvar; fallback para linha sob o cursor."""
+        for item in self.selectedItems():
+            if isinstance(item, QGraphicsLineItem):
+                return item
+        for item in self.items(scene_pos):
+            if isinstance(item, QGraphicsLineItem):
+                item.setSelected(True)
+                return item
+        return None
+
     def mousePressEvent(self, event):
         tool = self.cw.tool
         pos  = event.scenePos()
@@ -447,14 +473,28 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._path_item)
 
         elif tool == Tool.LINE:
-            # Snap no ponto de início
-            snap = self._find_snap(pos)
-            if snap:
-                self._start = snap
             self._preview_item = self.addLine(
                 self._start.x(), self._start.y(),
                 self._start.x(), self._start.y(), self._pen()
             )
+
+        elif tool == Tool.CURVE:
+            source_line = self._pick_curve_source_line(pos)
+            if not source_line:
+                self._start = None
+                return
+
+            line = source_line.line()
+            self._curve_source_line = source_line
+            self._curve_start = source_line.mapToScene(line.p1())
+            self._curve_end = source_line.mapToScene(line.p2())
+            source_line.setVisible(False)
+
+            path = self._build_quadratic_path(self._curve_start, pos, self._curve_end)
+            curve_item = QGraphicsPathItem(path)
+            curve_item.setPen(source_line.pen())
+            self.addItem(curve_item)
+            self._preview_item = curve_item
 
         elif tool == Tool.RECT:
             self._preview_item = self.addRect(QRectF(pos, pos), self._pen())
@@ -509,6 +549,11 @@ class DrawingScene(QGraphicsScene):
                                        end.x(), end.y())
             self.update()   # atualiza o indicador de snap
 
+        elif tool == Tool.CURVE and self._preview_item and self._curve_start and self._curve_end:
+            self._preview_item.setPath(
+                self._build_quadratic_path(self._curve_start, pos, self._curve_end)
+            )
+
         elif tool == Tool.RECT and self._preview_item:
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
 
@@ -558,6 +603,23 @@ class DrawingScene(QGraphicsScene):
                           QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
             self.cw._push_undo(item)
             self._preview_item = None
+
+        elif tool == Tool.CURVE and self._preview_item and self._curve_source_line:
+            old_line = self._curve_source_line
+            self.removeItem(old_line)
+            if old_line in self.cw._undo_stack:
+                self.cw._undo_stack.remove(old_line)
+
+            item = self._preview_item
+            item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                          QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+            item.setSelected(True)
+            self.cw._push_undo(item)
+
+            self._preview_item = None
+            self._curve_source_line = None
+            self._curve_start = None
+            self._curve_end = None
 
         self._start = None
 
@@ -740,6 +802,7 @@ class DrawingCanvas(QWidget):
             (Tool.PEN,     "✏️ Caneta",   "P"),
             (Tool.ERASER,  "🧹 Borracha", "X"),
             (Tool.LINE,    "📏 Linha",    "L"),
+            (Tool.CURVE,   "〰 Curva",    "C"),
             (Tool.RECT,    "⬛ Ret.",     "R"),
             (Tool.ELLIPSE, "⭕ Elipse",   "E"),
             (Tool.TEXT,    "T Texto",     "T"),
@@ -873,7 +936,7 @@ class DrawingCanvas(QWidget):
 
         # ── Dica de teclado ──────────────────────────────────────────────────
         hint = QLabel(
-            "✨ Shift = traço reto  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  C = curva em linha selecionada  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
             "Enter / Esc = confirmar  |  2× clique = editar texto"
@@ -935,6 +998,7 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_P: Tool.PEN,
             Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
+            Qt.Key.Key_C: Tool.CURVE,
             Qt.Key.Key_R: Tool.RECT,
             Qt.Key.Key_E: Tool.ELLIPSE,
             Qt.Key.Key_T: Tool.TEXT,
