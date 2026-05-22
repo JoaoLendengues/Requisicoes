@@ -398,6 +398,53 @@ def _draw_image_fit(
         return False
 
 
+def _draw_centered_icon_label(
+    pdf: pdfcanvas.Canvas,
+    center_x: float,
+    baseline_y: float,
+    label: str,
+    *,
+    icon_names: tuple[str, ...],
+    font_size: float,
+    color,
+    max_w: float,
+    bold: bool = False,
+) -> None:
+    font = PDF_FONT_BOLD if bold else PDF_FONT_REGULAR
+    icon_path = _resolve_info_icon_path(*icon_names)
+    icon_size = min(8.0, max(6.5, font_size + 0.8))
+    icon_gap = 3.0
+    text_max_w = max_w
+    has_icon = bool(icon_path)
+
+    if has_icon:
+        text_max_w = max(12.0, max_w - icon_size - icon_gap)
+
+    fitted_label = _fit(label, font, font_size, text_max_w)
+    label_w = pdfmetrics.stringWidth(fitted_label, font, font_size)
+
+    if has_icon:
+        inline_w = min(max_w, icon_size + icon_gap + label_w)
+        left_x = center_x - inline_w / 2
+        icon_y = baseline_y - icon_size * 0.35
+        has_icon = _draw_image_fit(pdf, icon_path, left_x, icon_y, icon_size, icon_size)
+        if has_icon:
+            _txt(
+                pdf,
+                fitted_label,
+                left_x + icon_size + icon_gap,
+                baseline_y,
+                font_size,
+                color,
+                bold=bold,
+                align="left",
+                max_w=text_max_w,
+            )
+            return
+
+    _txt(pdf, fitted_label, center_x, baseline_y, font_size, color, bold=bold, align="center", max_w=max_w)
+
+
 def _grid(
     pdf: pdfcanvas.Canvas,
     x: float, y: float, w: float, h: float,
@@ -472,17 +519,30 @@ def _draw_header(
     contact_area_x = sep_x + sep_gap + 8
     contact_x = contact_area_x + 8
     icon_r = 2.8
+    contact_icon_size = 7.6
+    contact_gap = 4.0
     line_h = 13
     lines = [
-        (COMPANY_PHONES[0],),
-        (COMPANY_PHONES[1],),
-        (COMPANY_SITE,),
-        (COMPANY_LOCATION,),
+        (("TELEFONE", "TELEFONE 1", "FONE"), COMPANY_PHONES[0]),
+        (("TELEFONE", "TELEFONE 2", "FONE"), COMPANY_PHONES[1]),
+        (("SITE", "WEBSITE"), COMPANY_SITE),
+        (("LOCALIZAÇÃO", "LOCALIZACAO", "LOCAL"), COMPANY_LOCATION),
     ]
     ty = y + h - 12
-    for (label,) in lines:
-        _small_dot(pdf, contact_x + icon_r, ty + 3.5, icon_r, C_BRAND)
-        _txt(pdf, label, contact_x + icon_r * 2 + 5, ty, 7.1, C_TEXT,
+    for icon_names, label in lines:
+        icon_path = _resolve_info_icon_path(*icon_names)
+        has_icon = _draw_image_fit(
+            pdf,
+            icon_path,
+            contact_x,
+            ty + 0.5,
+            contact_icon_size,
+            contact_icon_size,
+        )
+        text_x = contact_x + contact_icon_size + contact_gap if has_icon else contact_x + icon_r * 2 + 5
+        if not has_icon:
+            _small_dot(pdf, contact_x + icon_r, ty + 3.5, icon_r, C_BRAND)
+        _txt(pdf, label, text_x, ty, 7.1, C_TEXT,
              max_w=contact_w - 22)
         ty -= line_h
 
@@ -501,10 +561,28 @@ def _draw_header(
     date_cx = group_center - group_w * 0.25 - meta_shift
     vendor_cx = group_center + group_w * 0.25 - meta_shift
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
-    _txt(pdf, "Data", date_cx, y + 18, 7, C_TEXT_SOFT, align="center")
+    _draw_centered_icon_label(
+        pdf,
+        date_cx,
+        y + 18,
+        "Data",
+        icon_names=("DATA",),
+        font_size=7,
+        color=C_TEXT_SOFT,
+        max_w=group_w * 0.40,
+    )
     _txt(pdf, vendor_name, vendor_cx, y + 30, 10, C_TEXT, bold=True,
          align="center", max_w=group_w * 0.52)
-    _txt(pdf, "Vendedor", vendor_cx, y + 18, 7, C_TEXT_SOFT, align="center")
+    _draw_centered_icon_label(
+        pdf,
+        vendor_cx,
+        y + 18,
+        "Vendedor",
+        icon_names=("VENDEDOR",),
+        font_size=7,
+        color=C_TEXT_SOFT,
+        max_w=group_w * 0.52,
+    )
 
     ped_h = h * 0.68
     ped_y = y + (h - ped_h) / 2
