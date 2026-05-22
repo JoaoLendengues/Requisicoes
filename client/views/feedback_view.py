@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -98,6 +99,9 @@ class FeedbackView(QWidget):
         compose_layout.setSpacing(8)
 
         self.compose_title = QLabel("Enviar feedback")
+        self.compose_title.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.compose_title.setFixedHeight(max(18, int(22 * self.scale)))
+        self.compose_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         compose_layout.addWidget(self.compose_title)
 
         self.input_feedback = QTextEdit()
