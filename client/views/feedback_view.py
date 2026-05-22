@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -80,29 +81,38 @@ class FeedbackView(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(10)
+        self.root_layout = QVBoxLayout(self)
+        self.root_layout.setContentsMargins(16, 16, 16, 16)
+        self.root_layout.setSpacing(10)
 
         self.title = QLabel("FEEDBACKS")
-        root.addWidget(self.title)
+        self.root_layout.addWidget(self.title)
 
         self.subtitle = QLabel("Problemas, elogios, bugs e sugestoes.")
         self.subtitle.setWordWrap(True)
-        root.addWidget(self.subtitle)
+        self.root_layout.addWidget(self.subtitle)
 
         self.compose_card = QFrame()
+        self.compose_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         compose_layout = QVBoxLayout(self.compose_card)
         compose_layout.setContentsMargins(12, 12, 12, 12)
         compose_layout.setSpacing(8)
 
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(0)
+
         self.compose_title = QLabel("Enviar feedback")
-        compose_layout.addWidget(self.compose_title)
+        self.compose_title.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.compose_title.setFixedHeight(max(18, int(22 * self.scale)))
+        self.compose_title.setFixedWidth(max(120, int(145 * self.scale)))
+        self.compose_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        title_row.addWidget(self.compose_title)
+        title_row.addStretch(1)
+        compose_layout.addLayout(title_row)
 
         self.input_feedback = QTextEdit()
         self.input_feedback.setPlaceholderText("Digite aqui seu feedback...")
-        self.input_feedback.setMinimumHeight(max(110, int(140 * self.scale)))
-        self.input_feedback.setMaximumHeight(max(150, int(170 * self.scale)))
         self.input_feedback.textChanged.connect(self._on_text_changed)
         compose_layout.addWidget(self.input_feedback)
 
@@ -115,7 +125,7 @@ class FeedbackView(QWidget):
         bottom_row.addWidget(self.btn_send)
         compose_layout.addLayout(bottom_row)
 
-        root.addWidget(self.compose_card)
+        self.root_layout.addWidget(self.compose_card)
 
         self.admin_card = QFrame()
         admin_layout = QVBoxLayout(self.admin_card)
@@ -139,14 +149,30 @@ class FeedbackView(QWidget):
         admin_actions.addWidget(self.btn_ack)
         admin_layout.addLayout(admin_actions)
 
-        root.addWidget(self.admin_card, 1)
+        self.root_layout.addWidget(self.admin_card, 1)
+        self.root_layout.addStretch(1)
         self._apply_role_visibility()
+        self._apply_compose_profile_layout()
         self.apply_theme()
 
     def _apply_role_visibility(self):
         is_admin = session.is_admin
         self.admin_card.setVisible(is_admin)
+        self.root_layout.setStretchFactor(self.admin_card, 1 if is_admin else 0)
         self.btn_ack.setEnabled(False)
+
+    def _apply_compose_profile_layout(self):
+        """
+        Mantém o formulário de envio no mesmo padrão visual para todos os perfis.
+        Apenas a lista de mensagens é exclusiva do administrador.
+        """
+        min_h = max(110, int(140 * self.scale))
+        max_h = max(150, int(170 * self.scale))
+        card_max_w = 1200
+
+        self.input_feedback.setMinimumHeight(min_h)
+        self.input_feedback.setMaximumHeight(max_h)
+        self.compose_card.setMaximumWidth(card_max_w)
 
     def _on_text_changed(self):
         text = self.input_feedback.toPlainText()
@@ -259,12 +285,13 @@ class FeedbackView(QWidget):
 
     def refresh(self):
         self._apply_role_visibility()
+        self._apply_compose_profile_layout()
         if session.is_admin:
             self._load_admin_feedbacks()
 
     def apply_theme(self):
         self.title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(12, int(16 * self.scale))}pt; font-weight:700;"
+            f"color:{theme.PRIMARY}; font-size:{max(18, int(24 * self.scale))}pt; font-weight:800;"
         )
         self.subtitle.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(9, int(11 * self.scale))}pt;"
@@ -273,7 +300,8 @@ class FeedbackView(QWidget):
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(10 * self.scale))}pt;"
         )
         self.compose_title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
+            f"background:transparent; border:none; color:{theme.TEXT_DARK};"
+            f"font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
         )
         self.admin_title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
