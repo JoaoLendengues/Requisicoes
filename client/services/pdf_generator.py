@@ -412,8 +412,8 @@ def _draw_centered_icon_label(
 ) -> None:
     font = PDF_FONT_BOLD if bold else PDF_FONT_REGULAR
     icon_path = _resolve_info_icon_path(*icon_names)
-    icon_size = min(11.5, max(8.5, font_size + 2.0))
-    icon_gap = 3.5
+    icon_size = min(14.5, max(11.0, font_size + 4.0))
+    icon_gap = 4.5
     text_max_w = max_w
     has_icon = bool(icon_path)
 
@@ -426,7 +426,7 @@ def _draw_centered_icon_label(
     if has_icon:
         inline_w = min(max_w, icon_size + icon_gap + label_w)
         left_x = center_x - inline_w / 2
-        icon_y = baseline_y - icon_size * 0.30
+        icon_y = baseline_y - icon_size * 0.24
         has_icon = _draw_image_fit(pdf, icon_path, left_x, icon_y, icon_size, icon_size)
         if has_icon:
             _txt(
@@ -519,8 +519,8 @@ def _draw_header(
     contact_area_x = sep_x + sep_gap + 8
     contact_x = contact_area_x + 8
     icon_r = 2.8
-    contact_icon_size = 7.6
-    contact_gap = 4.0
+    contact_icon_size = 11.5
+    contact_gap = 5.0
     line_h = 13
     lines = [
         (("TELEFONE", "TELEFONE 1", "FONE"), COMPANY_PHONES[0]),
@@ -535,7 +535,7 @@ def _draw_header(
             pdf,
             icon_path,
             contact_x,
-            ty + 0.5,
+            ty - 1.0,
             contact_icon_size,
             contact_icon_size,
         )
@@ -543,7 +543,7 @@ def _draw_header(
         if not has_icon:
             _small_dot(pdf, contact_x + icon_r, ty + 3.5, icon_r, C_BRAND)
         _txt(pdf, label, text_x, ty, 7.1, C_TEXT,
-             max_w=contact_w - 22)
+             max_w=contact_w - 28)
         ty -= line_h
 
     ped_x = x + w - ped_w
