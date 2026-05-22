@@ -10,7 +10,7 @@ from PySide6.QtCore import (
     QEasingCurve, QParallelAnimationGroup, QPoint, QPropertyAnimation,
     Qt, QTimer, Signal,
 )
-from PySide6.QtGui import QColor, QCursor
+from PySide6.QtGui import QColor, QCursor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
     QPushButton, QVBoxLayout,
@@ -116,11 +116,12 @@ class NotificationToast(QFrame):
     def _build(self, data: dict, accent: str):
         self.setFixedWidth(TOAST_WIDTH)
         self.setObjectName("toastCard")
+        self._corner_radius = 12
         self.setStyleSheet(
             f"QFrame#toastCard {{"
             f"  background: {theme.TOAST_BG};"
             f"  border: none;"
-            f"  border-radius: 12px;"
+            f"  border-radius: {self._corner_radius}px;"
             f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
             f"}}"
             f"QLabel {{ background: transparent; border: none; }}"
@@ -183,6 +184,7 @@ class NotificationToast(QFrame):
         # Sem barra inferior para manter o popup limpo/sem linhas.
         self._bar = None
         self._bar_anim = None
+        self._apply_rounded_mask()
 
     def _add_shadow(self):
         shadow = QGraphicsDropShadowEffect(self)
@@ -191,11 +193,23 @@ class NotificationToast(QFrame):
         shadow.setOffset(0, 6)
         self.setGraphicsEffect(shadow)
 
+    def _apply_rounded_mask(self):
+        rect = self.rect()
+        if rect.isNull():
+            return
+        path = QPainterPath()
+        path.addRoundedRect(float(rect.x()), float(rect.y()), float(rect.width()), float(rect.height()),
+                            float(self._corner_radius), float(self._corner_radius))
+        polygon = path.toFillPolygon().toPolygon()
+        if not polygon.isEmpty():
+            self.setMask(QRegion(polygon))
+
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def show_at(self, x: int, y: int):
         """Exibe o toast com animação de entrada: desliza da direita + fade in."""
         self.adjustSize()
+        self._apply_rounded_mask()
         h = self.sizeHint().height()
 
         end_pos   = QPoint(x, y - h)
@@ -259,6 +273,10 @@ class NotificationToast(QFrame):
         self.hide()
         self.dismissed.emit()
         self.deleteLater()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_rounded_mask()
 
     # ── Hover: pausa e retomada ───────────────────────────────────────────────
 
