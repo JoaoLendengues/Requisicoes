@@ -205,7 +205,7 @@ class DrawingScene(QGraphicsScene):
     FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
     FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
     # Snap to endpoints
-    SNAP_RADIUS    = 22    # raio de detecção em px de tela (constante com zoom)
+    SNAP_RADIUS    = 30    # raio de detecção em px de tela (constante com zoom)
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
