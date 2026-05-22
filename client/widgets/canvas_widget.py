@@ -40,6 +40,7 @@ class Tool(Enum):
     ERASER   = "eraser"
     LINE     = "line"
     CURVE    = "curve"
+    TRIANGLE = "triangle"
     RECT     = "rect"
     ELLIPSE  = "ellipse"
     TEXT     = "text"
@@ -176,7 +177,7 @@ class DrawingScene(QGraphicsScene):
         self._preview_item: QGraphicsItem | None = None
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
-        self._curve_source_line: QGraphicsLineItem | None = None
+        self._curve_source_item: QGraphicsItem | None = None
         self._curve_start: QPointF | None = None
         self._curve_end: QPointF | None = None
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
@@ -442,16 +443,41 @@ class DrawingScene(QGraphicsScene):
             path.lineTo(QPointF(x, y))
         return path
 
-    def _pick_curve_source_line(self, scene_pos: QPointF) -> QGraphicsLineItem | None:
-        """Escolhe a linha selecionada para curvar; fallback para linha sob o cursor."""
+    def _path_endpoints(self, item: QGraphicsPathItem) -> tuple[QPointF, QPointF] | None:
+        path = item.path()
+        if path.elementCount() < 2:
+            return None
+        e0 = path.elementAt(0)
+        en = path.elementAt(path.elementCount() - 1)
+        start = item.mapToScene(QPointF(e0.x, e0.y))
+        end = item.mapToScene(QPointF(en.x, en.y))
+        # Ignora caminhos fechados, pois início=fim e não há direção de curvatura útil.
+        if math.hypot(start.x() - end.x(), start.y() - end.y()) < 0.01:
+            return None
+        return (start, end)
+
+    def _pick_curve_source_item(self, scene_pos: QPointF) -> QGraphicsItem | None:
+        """Escolhe a linha/curva selecionada para curvar; fallback para item sob o cursor."""
         for item in self.selectedItems():
-            if isinstance(item, QGraphicsLineItem):
+            if isinstance(item, (QGraphicsLineItem, QGraphicsPathItem)):
                 return item
         for item in self.items(scene_pos):
-            if isinstance(item, QGraphicsLineItem):
+            if isinstance(item, (QGraphicsLineItem, QGraphicsPathItem)):
                 item.setSelected(True)
                 return item
         return None
+
+    def _triangle_path(self, start: QPointF, end: QPointF) -> QPainterPath:
+        """Triangulo isosceles dentro do retangulo definido por start/end."""
+        r = QRectF(start, end).normalized()
+        top = QPointF(r.center().x(), r.top())
+        left = QPointF(r.left(), r.bottom())
+        right = QPointF(r.right(), r.bottom())
+        path = QPainterPath(top)
+        path.lineTo(left)
+        path.lineTo(right)
+        path.closeSubpath()
+        return path
 
     def mousePressEvent(self, event):
         tool = self.cw.tool
@@ -523,22 +549,37 @@ class DrawingScene(QGraphicsScene):
             )
 
         elif tool == Tool.CURVE:
-            source_line = self._pick_curve_source_line(pos)
-            if not source_line:
+            source_item = self._pick_curve_source_item(pos)
+            if not source_item:
                 self._start = None
                 return
 
-            line = source_line.line()
-            self._curve_source_line = source_line
-            self._curve_start = source_line.mapToScene(line.p1())
-            self._curve_end = source_line.mapToScene(line.p2())
-            source_line.setVisible(False)
+            self._curve_source_item = source_item
+            if isinstance(source_item, QGraphicsLineItem):
+                line = source_item.line()
+                self._curve_start = source_item.mapToScene(line.p1())
+                self._curve_end = source_item.mapToScene(line.p2())
+                source_pen = source_item.pen()
+            else:
+                endpoints = self._path_endpoints(source_item)
+                if not endpoints:
+                    self._curve_source_item = None
+                    self._start = None
+                    return
+                self._curve_start, self._curve_end = endpoints
+                source_pen = source_item.pen()
+            source_item.setVisible(False)
 
             path = self._build_quadratic_path(self._curve_start, pos, self._curve_end)
             curve_item = QGraphicsPathItem(path)
-            curve_item.setPen(source_line.pen())
+            curve_item.setPen(source_pen)
             self.addItem(curve_item)
             self._preview_item = curve_item
+
+        elif tool == Tool.TRIANGLE:
+            self._preview_item = QGraphicsPathItem(self._triangle_path(self._start, pos))
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
 
         elif tool == Tool.RECT:
             self._preview_item = self.addRect(QRectF(pos, pos), self._pen())
@@ -582,21 +623,17 @@ class DrawingScene(QGraphicsScene):
             self._path_item.setPath(self._painter_path)
 
         elif tool == Tool.LINE and self._preview_item:
-            snap = self._find_snap(pos)
-            if snap:
-                end = snap
-                self._snap_point = snap
-            else:
-                end = self._constrain(self._start, pos) if shift else pos
-                self._snap_point = None
+            end = self._constrain(self._start, pos) if shift else pos
             self._preview_item.setLine(self._start.x(), self._start.y(),
                                        end.x(), end.y())
-            self.update()   # atualiza o indicador de snap
 
         elif tool == Tool.CURVE and self._preview_item and self._curve_start and self._curve_end:
             self._preview_item.setPath(
                 self._build_quadratic_path(self._curve_start, pos, self._curve_end)
             )
+
+        elif tool == Tool.TRIANGLE and self._preview_item:
+            self._preview_item.setPath(self._triangle_path(self._start, pos))
 
         elif tool == Tool.RECT and self._preview_item:
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
@@ -631,28 +668,23 @@ class DrawingScene(QGraphicsScene):
 
         elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE) and self._preview_item:
             if tool == Tool.LINE:
-                snap = self._find_snap(pos)
-                if snap:
-                    end = snap
-                elif shift:
+                if shift:
                     end = self._constrain(self._start, pos)
                 else:
                     end = pos
                 self._preview_item.setLine(self._start.x(), self._start.y(),
                                            end.x(), end.y())
-                self._snap_point = None
-                self.update()
             item = self._preview_item
             item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                           QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
             self.cw._push_undo(item)
             self._preview_item = None
 
-        elif tool == Tool.CURVE and self._preview_item and self._curve_source_line:
-            old_line = self._curve_source_line
-            self.removeItem(old_line)
-            if old_line in self.cw._undo_stack:
-                self.cw._undo_stack.remove(old_line)
+        elif tool == Tool.CURVE and self._preview_item and self._curve_source_item:
+            old_item = self._curve_source_item
+            self.removeItem(old_item)
+            if old_item in self.cw._undo_stack:
+                self.cw._undo_stack.remove(old_item)
 
             item = self._preview_item
             item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
@@ -661,9 +693,16 @@ class DrawingScene(QGraphicsScene):
             self.cw._push_undo(item)
 
             self._preview_item = None
-            self._curve_source_line = None
+            self._curve_source_item = None
             self._curve_start = None
             self._curve_end = None
+
+        elif tool == Tool.TRIANGLE and self._preview_item:
+            item = self._preview_item
+            item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                          QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+            self.cw._push_undo(item)
+            self._preview_item = None
 
         self._start = None
 
@@ -849,6 +888,7 @@ class DrawingCanvas(QWidget):
             (Tool.ERASER,  "🧹 Borracha", "X"),
             (Tool.LINE,    "📏 Linha",    "L"),
             (Tool.CURVE,   "〰 Curva",    "C"),
+            (Tool.TRIANGLE, "△ Triang.", "G"),
             (Tool.RECT,    "⬛ Ret.",     "R"),
             (Tool.ELLIPSE, "⭕ Elipse",   "E"),
             (Tool.TEXT,    "T Texto",     "T"),
@@ -907,7 +947,7 @@ class DrawingCanvas(QWidget):
         # Tamanho da fonte
         row1.addWidget(_lbl("Fonte:"))
         self.spin_font = QSpinBox()
-        self.spin_font.setRange(6, 96)
+        self.spin_font.setRange(6, 180)
         self.spin_font.setValue(self.font_size)
         self.spin_font.setSuffix(" pt")
         self.spin_font.setFixedWidth(max(58, int(68 * s)))
@@ -982,7 +1022,7 @@ class DrawingCanvas(QWidget):
 
         # ── Dica de teclado ──────────────────────────────────────────────────
         hint = QLabel(
-            "✨ Shift = traço reto  |  C = curva em linha selecionada  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  C = curva na linha/curva selecionada  |  G = triangulo  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
@@ -1046,6 +1086,7 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
             Qt.Key.Key_C: Tool.CURVE,
+            Qt.Key.Key_G: Tool.TRIANGLE,
             Qt.Key.Key_R: Tool.RECT,
             Qt.Key.Key_E: Tool.ELLIPSE,
             Qt.Key.Key_T: Tool.TEXT,
