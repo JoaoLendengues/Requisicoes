@@ -415,7 +415,7 @@ def _draw_header(
     title_x = contact_area_x + contact_w + block_gap
     title_right = ped_x - block_gap
     title_w = max(title_right - title_x, 120)
-    title_shift = min(18, title_w * 0.08)
+    title_shift = min(30, title_w * 0.12)
     group_center = title_x + title_w / 2 - title_shift
     group_w = min(title_w * 0.70, 170)
     _txt(pdf, "REQUISI\u00c7\u00c3O", group_center, y + h - 28, 26,
