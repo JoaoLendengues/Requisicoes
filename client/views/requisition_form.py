@@ -1662,6 +1662,7 @@ class RequisitionForm(QWidget):
         self.chk_retirada.setStyleSheet(chk_style)
         self.chk_entrega.setStyleSheet(chk_style)
         self.client_search.apply_theme(s)
+        self.item_table.apply_theme()
         self.btn_calc.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
