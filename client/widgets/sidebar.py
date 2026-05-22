@@ -52,6 +52,7 @@ NAV_ITEMS = [
 ]
 
 BOTTOM_NAV_ITEMS = [
+    ("feedback", "FEEDBACKS", "feedback"),
     ("config", "CONFIGURAÇÕES", "config"),
 ]
 
@@ -65,7 +66,6 @@ NAV_GROUPS = [
     [
         ("dashboard", "PAINEL GERENCIAL", "dashboard"),
         ("historico", "HISTÓRICO / BUSCA", "historico"),
-        ("feedback", "FEEDBACKS", "feedback"),
     ],
     [
         ("usuarios", "CENTRAL DE USUÁRIOS", "usuarios"),

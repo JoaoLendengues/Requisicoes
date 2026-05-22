@@ -4,3 +4,4 @@ from .product import Product
 from .requisition import Requisition, RequisitionItem, CanvasData, StatusHistory, RequisitionStatus
 from .notification import Notification
 from .production_machine import ProductionMachine, MachineOperationalStatus
+from .feedback import Feedback

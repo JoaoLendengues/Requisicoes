@@ -258,6 +258,21 @@ def mark_one_notification_read(notif_id: int) -> dict:
         return _check(client.patch(f"/notifications/{notif_id}/read"))
 
 
+def create_feedback(message: str) -> dict:
+    with _cli() as client:
+        return _check(client.post("/feedbacks/", json={"message": message}))
+
+
+def list_feedbacks() -> list:
+    with _cli() as client:
+        return _check(client.get("/feedbacks/"))
+
+
+def acknowledge_feedback(feedback_id: int) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/feedbacks/{feedback_id}/ack"))
+
+
 def health_check(server_url: str) -> bool:
     try:
         resp = httpx.get(f"{server_url.rstrip('/')}/health", timeout=5.0)
