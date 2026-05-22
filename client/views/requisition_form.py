@@ -359,6 +359,18 @@ class ClientSearchBox(QWidget):
         self.input.blockSignals(False)
         self._drop.hide()
 
+    def apply_theme(self, scale: float | None = None) -> None:
+        s = scale if scale is not None else self.scale
+        self.input.setStyleSheet(theme.input_style(s))
+        self._drop.setStyleSheet(
+            f"QListWidget {{ background:{theme.CARD_BG};"
+            f"border:2px solid {theme.PRIMARY}; border-radius:0 0 6px 6px;"
+            f"font-size:{max(9,int(10*s))}pt; outline:none; }}"
+            f"QListWidget::item {{ padding:7px 12px; color:{theme.TEXT_DARK}; }}"
+            f"QListWidget::item:hover, QListWidget::item:selected"
+            f" {{ background:{theme.PRIMARY}; color:#fff; }}"
+        )
+
 
 # ── Dialog do editor de desenho ───────────────────────────────────────────────
 class CanvasDialog(QDialog):
@@ -1642,6 +1654,14 @@ class RequisitionForm(QWidget):
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
             f"font-size:{max(9,int(11*s))}pt; padding:6px; background:{theme.INPUT_BG};"
         )
+        self.input_obra.setStyleSheet(theme.input_style(s))
+        self.input_prazo.setStyleSheet(theme.input_style(s))
+        self.input_fone.setStyleSheet(theme.input_style(s))
+        self.input_address.setStyleSheet(theme.input_style(s))
+        chk_style = f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
+        self.chk_retirada.setStyleSheet(chk_style)
+        self.chk_entrega.setStyleSheet(chk_style)
+        self.client_search.apply_theme(s)
         self.btn_calc.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
