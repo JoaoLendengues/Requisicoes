@@ -79,13 +79,24 @@ jobs:
           Set-Content -Path "client/version.py" -Value "CURRENT_VERSION = `"$v`"" -Encoding utf8
           Write-Host "client/version.py atualizado para $v"
 
-      # ── 6. Build com PyInstaller ─────────────────────────────────────────────
+      # ── 6. Build com PyInstaller (app principal) ─────────────────────────────
       - name: Build com PyInstaller
         shell: pwsh
         run: |
           pyinstaller requisicoes.spec --noconfirm
           Write-Host "Build concluido. Conteudo de dist/requisicoes:"
           Get-ChildItem dist/requisicoes | Select-Object Name, Length
+
+      # ── 6b. Build do update_helper (executável standalone) ───────────────────
+      - name: Build update_helper
+        shell: pwsh
+        run: |
+          pyinstaller update_helper.spec --noconfirm
+          Write-Host "update_helper gerado:"
+          Get-ChildItem dist/update_helper/ -ErrorAction SilentlyContinue | Select-Object Name, Length
+          # Copia para dentro de dist/requisicoes/ para ser incluído no ZIP e no instalador
+          Copy-Item "dist\update_helper\update_helper.exe" "dist\requisicoes\update_helper.exe" -Force
+          Write-Host "update_helper.exe copiado para dist/requisicoes/"
 
       # ── 7. Build do instalador com Inno Setup ────────────────────────────────
       - name: Build instalador (Inno Setup)
