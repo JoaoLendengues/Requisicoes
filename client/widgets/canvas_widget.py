@@ -1052,13 +1052,15 @@ class DrawingCanvas(QWidget):
         layout.addWidget(title)
 
         s  = self.scale
-        fh = max(24, int(28 * s))
+        fh = max(28, int(34 * s))
         fs = max(8, int(9 * s))
         lbl_style = f"color:{theme.TEXT_MEDIUM}; font-size:{fs}pt;"
 
         def _lbl(txt):
             l = QLabel(txt)
             l.setStyleSheet(lbl_style)
+            l.setMinimumHeight(fh)
+            l.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             return l
 
         # ── Linha 1: Ferramentas + Cor + Estilo + Fonte ───────────────────────
@@ -1108,7 +1110,7 @@ class DrawingCanvas(QWidget):
         self.spin_width = QSpinBox()
         self.spin_width.setRange(1, 20)
         self.spin_width.setValue(self.pen_width)
-        self.spin_width.setFixedWidth(max(44, int(52 * s)))
+        self.spin_width.setFixedWidth(max(56, int(68 * s)))
         self.spin_width.setFixedHeight(fh)
         self.spin_width.valueChanged.connect(lambda v: setattr(self, "pen_width", v))
         row1.addWidget(self.spin_width)
@@ -1119,7 +1121,7 @@ class DrawingCanvas(QWidget):
         row1.addWidget(_lbl("Linha:"))
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
-        self.combo_style.setFixedWidth(max(110, int(130 * s)))
+        self.combo_style.setFixedWidth(max(126, int(152 * s)))
         self.combo_style.addItem("─── Sólida",     Qt.PenStyle.SolidLine)
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
         self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
@@ -1137,7 +1139,7 @@ class DrawingCanvas(QWidget):
         self.spin_font.setRange(6, 180)
         self.spin_font.setValue(self.font_size)
         self.spin_font.setSuffix(" pt")
-        self.spin_font.setFixedWidth(max(58, int(68 * s)))
+        self.spin_font.setFixedWidth(max(76, int(92 * s)))
         self.spin_font.setFixedHeight(fh)
         self.spin_font.valueChanged.connect(self._on_font_size_changed)
         row1.addWidget(self.spin_font)
