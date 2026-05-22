@@ -629,8 +629,16 @@ class DrawingScene(QGraphicsScene):
         dx_mm = dx / self.RULER_PX_PER_MM
         dy_mm = dy / self.RULER_PX_PER_MM
         dist_mm = dist / self.RULER_PX_PER_MM
+        dx_cm = dx_mm / 10.0
+        dy_cm = dy_mm / 10.0
+        dist_cm = dist_mm / 10.0
+        dx_m = dx_mm / 1000.0
+        dy_m = dy_mm / 1000.0
+        dist_m = dist_mm / 1000.0
         self._ruler_text_item.setPlainText(
-            f"Dist: {dist_mm:.1f} mm   dX: {dx_mm:.1f} mm   dY: {dy_mm:.1f} mm"
+            f"Dist: {dist_mm:.1f} mm ({dist_cm:.2f} cm | {dist_m:.3f} m)   "
+            f"dX: {dx_mm:.1f} mm ({dx_cm:.2f} cm | {dx_m:.3f} m)   "
+            f"dY: {dy_mm:.1f} mm ({dy_cm:.2f} cm | {dy_m:.3f} m)"
         )
         mid_x = (start.x() + end.x()) / 2.0
         mid_y = (start.y() + end.y()) / 2.0
