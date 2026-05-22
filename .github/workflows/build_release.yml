@@ -95,9 +95,9 @@ jobs:
         run: |
           pyinstaller update_helper.spec --noconfirm
           Write-Host "update_helper gerado:"
-          Get-ChildItem dist/update_helper/ -ErrorAction SilentlyContinue | Select-Object Name, Length
-          # Copia para dentro de dist/requisicoes/ para ser incluído no ZIP e no instalador
-          Copy-Item "dist\update_helper\update_helper.exe" "dist\requisicoes\update_helper.exe" -Force
+          Get-ChildItem dist/ | Select-Object Name, Length
+          # Modo onefile: saída em dist\update_helper.exe (sem subpasta)
+          Copy-Item "dist\update_helper.exe" "dist\requisicoes\update_helper.exe" -Force
           Write-Host "update_helper.exe copiado para dist/requisicoes/"
 
       # ── 7. Build do instalador com Inno Setup ────────────────────────────────
