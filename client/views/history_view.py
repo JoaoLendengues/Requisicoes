@@ -1,4 +1,4 @@
-from PySide6.QtCore import QDate, QObject, QThread, Qt, Signal
+from PySide6.QtCore import QDate, QObject, QThread, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -147,6 +147,63 @@ def _calendar_btn_style(scale: float) -> str:
         f"QToolButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
         f"QToolButton:pressed {{ background:#152D49; }}"
     )
+
+
+class PeriodDateEdit(QDateEdit):
+    def mousePressEvent(self, event) -> None:
+        super().mousePressEvent(event)
+        QTimer.singleShot(0, self._select_all_text)
+
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        QTimer.singleShot(0, self._select_all_text)
+
+    def keyPressEvent(self, event) -> None:
+        if event.modifiers() in (
+            Qt.KeyboardModifier.NoModifier,
+            Qt.KeyboardModifier.ShiftModifier,
+        ):
+            key_text = (event.text() or "").strip().lower()
+            if key_text == "h":
+                self._set_relative_date(0)
+                return
+            if key_text == "o":
+                self._set_relative_date(-1)
+                return
+            if key_text == "i":
+                self._set_today_anchor(day=1)
+                return
+            if key_text == "f":
+                self._set_end_of_current_month()
+                return
+            if key_text == "a":
+                self._set_today_anchor(month=1, day=1)
+                return
+        super().keyPressEvent(event)
+
+    def _set_relative_date(self, days: int) -> None:
+        today = local_now().date()
+        chosen = QDate(today.year, today.month, today.day).addDays(days)
+        self.setDate(chosen)
+        self._select_all_text()
+
+    def _set_today_anchor(self, *, month: int | None = None, day: int | None = None) -> None:
+        today = local_now().date()
+        chosen = QDate(today.year, month or today.month, day or today.day)
+        self.setDate(chosen)
+        self._select_all_text()
+
+    def _set_end_of_current_month(self) -> None:
+        today = local_now().date()
+        chosen = QDate(today.year, today.month, 1)
+        chosen = chosen.addMonths(1).addDays(-1)
+        self.setDate(chosen)
+        self._select_all_text()
+
+    def _select_all_text(self) -> None:
+        editor = self.lineEdit()
+        if editor is not None:
+            editor.selectAll()
 
 
 class HistoryWorker(QObject):
@@ -383,21 +440,21 @@ class HistoryView(QWidget):
         today = local_now().date()
         today_qdate = QDate(today.year, today.month, today.day)
 
-        self.input_date_from = QDateEdit(ALL_DATES_SENTINEL)
+        self.input_date_from = PeriodDateEdit(ALL_DATES_SENTINEL)
         self.input_date_from.setMinimumDate(ALL_DATES_SENTINEL)
         self.input_date_from.setDate(today_qdate)
         self.input_date_from.setSpecialValueText("Data inicial")
         self.input_date_from.setDisplayFormat("dd/MM/yyyy")
-        self.input_date_from.setCalendarPopup(True)
+        self.input_date_from.setCalendarPopup(False)
         self.input_date_from.setFixedHeight(max(38, int(44 * s)))
         self.input_date_from.setStyleSheet(_field_style(s))
         self.btn_date_from = QToolButton()
         self.btn_date_from.setText("\U0001F4C5")
         self.btn_date_from.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_date_from.setToolTip("Alterar data inicial")
+        self.btn_date_from.setToolTip("Usar a data de hoje")
         self.btn_date_from.setFixedSize(max(38, int(42 * s)), max(38, int(44 * s)))
         self.btn_date_from.setStyleSheet(_calendar_btn_style(s))
-        self.btn_date_from.clicked.connect(lambda: self._focus_date_field(self.input_date_from))
+        self.btn_date_from.clicked.connect(lambda: self._set_date_today(self.input_date_from))
 
         until_label = QLabel("ATÉ")
         until_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -405,21 +462,21 @@ class HistoryView(QWidget):
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
 
-        self.input_date_to = QDateEdit(ALL_DATES_SENTINEL)
+        self.input_date_to = PeriodDateEdit(ALL_DATES_SENTINEL)
         self.input_date_to.setMinimumDate(ALL_DATES_SENTINEL)
         self.input_date_to.setDate(today_qdate)
         self.input_date_to.setSpecialValueText("Data final")
         self.input_date_to.setDisplayFormat("dd/MM/yyyy")
-        self.input_date_to.setCalendarPopup(True)
+        self.input_date_to.setCalendarPopup(False)
         self.input_date_to.setFixedHeight(max(38, int(44 * s)))
         self.input_date_to.setStyleSheet(_field_style(s))
         self.btn_date_to = QToolButton()
         self.btn_date_to.setText("\U0001F4C5")
         self.btn_date_to.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_date_to.setToolTip("Alterar data final")
+        self.btn_date_to.setToolTip("Usar a data de hoje")
         self.btn_date_to.setFixedSize(max(38, int(42 * s)), max(38, int(44 * s)))
         self.btn_date_to.setStyleSheet(_calendar_btn_style(s))
-        self.btn_date_to.clicked.connect(lambda: self._focus_date_field(self.input_date_to))
+        self.btn_date_to.clicked.connect(lambda: self._set_date_today(self.input_date_to))
 
         period_row.addWidget(self.input_date_from, 1)
         period_row.addWidget(self.btn_date_from)
@@ -661,13 +718,11 @@ class HistoryView(QWidget):
     def _focus_date_field(self, field: QDateEdit) -> None:
         field.setFocus(Qt.FocusReason.MouseFocusReason)
         field.selectAll()
-        try:
-            calendar = field.calendarWidget()
-            calendar.setSelectedDate(field.date())
-            calendar.show()
-            calendar.raise_()
-        except Exception:
-            pass
+
+    def _set_date_today(self, field: QDateEdit) -> None:
+        today = local_now().date()
+        field.setDate(QDate(today.year, today.month, today.day))
+        self._focus_date_field(field)
 
     def _reset_machine_filter(self, placeholder: str = "Todas as máquinas"):
         self.combo_machine.blockSignals(True)
