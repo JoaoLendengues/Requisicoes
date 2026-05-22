@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -133,6 +134,18 @@ def _field_style(scale: float) -> str:
         f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; border:1px solid {theme.BORDER_COLOR};"
         f"  selection-background-color:{_rgba(theme.PRIMARY, 18)}; selection-color:{theme.TEXT_DARK};"
         f"}}"
+    )
+
+
+def _calendar_btn_style(scale: float) -> str:
+    fs = max(11, int(13 * scale))
+    return (
+        f"QToolButton {{"
+        f"  background:{theme.PRIMARY}; color:#FFFFFF; border:none; border-radius:12px;"
+        f"  font-size:{fs}pt; font-weight:700; padding:0px 2px;"
+        f"}}"
+        f"QToolButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
+        f"QToolButton:pressed {{ background:#152D49; }}"
     )
 
 
@@ -367,15 +380,24 @@ class HistoryView(QWidget):
         )
         period_row = QHBoxLayout()
         period_row.setSpacing(max(6, int(8 * s)))
+        today = local_now().date()
+        today_qdate = QDate(today.year, today.month, today.day)
 
         self.input_date_from = QDateEdit(ALL_DATES_SENTINEL)
         self.input_date_from.setMinimumDate(ALL_DATES_SENTINEL)
-        self.input_date_from.setDate(ALL_DATES_SENTINEL)
+        self.input_date_from.setDate(today_qdate)
         self.input_date_from.setSpecialValueText("Data inicial")
         self.input_date_from.setDisplayFormat("dd/MM/yyyy")
         self.input_date_from.setCalendarPopup(True)
         self.input_date_from.setFixedHeight(max(38, int(44 * s)))
         self.input_date_from.setStyleSheet(_field_style(s))
+        self.btn_date_from = QToolButton()
+        self.btn_date_from.setText("\U0001F4C5")
+        self.btn_date_from.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_date_from.setToolTip("Alterar data inicial")
+        self.btn_date_from.setFixedSize(max(38, int(42 * s)), max(38, int(44 * s)))
+        self.btn_date_from.setStyleSheet(_calendar_btn_style(s))
+        self.btn_date_from.clicked.connect(lambda: self._focus_date_field(self.input_date_from))
 
         until_label = QLabel("ATÉ")
         until_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -385,16 +407,25 @@ class HistoryView(QWidget):
 
         self.input_date_to = QDateEdit(ALL_DATES_SENTINEL)
         self.input_date_to.setMinimumDate(ALL_DATES_SENTINEL)
-        self.input_date_to.setDate(ALL_DATES_SENTINEL)
+        self.input_date_to.setDate(today_qdate)
         self.input_date_to.setSpecialValueText("Data final")
         self.input_date_to.setDisplayFormat("dd/MM/yyyy")
         self.input_date_to.setCalendarPopup(True)
         self.input_date_to.setFixedHeight(max(38, int(44 * s)))
         self.input_date_to.setStyleSheet(_field_style(s))
+        self.btn_date_to = QToolButton()
+        self.btn_date_to.setText("\U0001F4C5")
+        self.btn_date_to.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_date_to.setToolTip("Alterar data final")
+        self.btn_date_to.setFixedSize(max(38, int(42 * s)), max(38, int(44 * s)))
+        self.btn_date_to.setStyleSheet(_calendar_btn_style(s))
+        self.btn_date_to.clicked.connect(lambda: self._focus_date_field(self.input_date_to))
 
         period_row.addWidget(self.input_date_from, 1)
+        period_row.addWidget(self.btn_date_from)
         period_row.addWidget(until_label)
         period_row.addWidget(self.input_date_to, 1)
+        period_row.addWidget(self.btn_date_to)
         period_col.addWidget(period_label)
         period_col.addLayout(period_row)
 
@@ -621,12 +652,22 @@ class HistoryView(QWidget):
     def _selected_emission_period(self) -> tuple[str, str] | None:
         start = self.input_date_from.date()
         end = self.input_date_to.date()
-        minimum = self.input_date_from.minimumDate()
-        if start != minimum and end != minimum and start > end:
+        if start > end:
             return None
-        start_value = "" if start == minimum else start.toString("yyyy-MM-dd")
-        end_value = "" if end == minimum else end.toString("yyyy-MM-dd")
+        start_value = start.toString("yyyy-MM-dd")
+        end_value = end.toString("yyyy-MM-dd")
         return start_value, end_value
+
+    def _focus_date_field(self, field: QDateEdit) -> None:
+        field.setFocus(Qt.FocusReason.MouseFocusReason)
+        field.selectAll()
+        try:
+            calendar = field.calendarWidget()
+            calendar.setSelectedDate(field.date())
+            calendar.show()
+            calendar.raise_()
+        except Exception:
+            pass
 
     def _reset_machine_filter(self, placeholder: str = "Todas as máquinas"):
         self.combo_machine.blockSignals(True)
@@ -704,6 +745,8 @@ class HistoryView(QWidget):
         self.combo_status.setEnabled(not loading)
         self.input_date_from.setEnabled(not loading)
         self.input_date_to.setEnabled(not loading)
+        self.btn_date_from.setEnabled(not loading)
+        self.btn_date_to.setEnabled(not loading)
         self.combo_invoiced.setEnabled(not loading)
         self.combo_production.setEnabled(not loading)
         if not loading:
@@ -800,8 +843,10 @@ class HistoryView(QWidget):
 
     def _clear_filters(self):
         self.combo_status.setCurrentIndex(0)
-        self.input_date_from.setDate(self.input_date_from.minimumDate())
-        self.input_date_to.setDate(self.input_date_to.minimumDate())
+        today = local_now().date()
+        current = QDate(today.year, today.month, today.day)
+        self.input_date_from.setDate(current)
+        self.input_date_to.setDate(current)
         self.combo_invoiced.setCurrentIndex(0)
         self.combo_production.setCurrentIndex(0)
         self._reset_machine_filter()
@@ -848,6 +893,8 @@ class HistoryView(QWidget):
         self.combo_status.setStyleSheet(_field_style(s))
         self.input_date_from.setStyleSheet(_field_style(s))
         self.input_date_to.setStyleSheet(_field_style(s))
+        self.btn_date_from.setStyleSheet(_calendar_btn_style(s))
+        self.btn_date_to.setStyleSheet(_calendar_btn_style(s))
         self.combo_invoiced.setStyleSheet(_field_style(s))
         self.combo_production.setStyleSheet(_field_style(s))
         self.combo_machine.setStyleSheet(_field_style(s))
