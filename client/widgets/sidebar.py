@@ -1,4 +1,4 @@
-import os
+﻿import os
 import unicodedata
 
 from PySide6.QtCore import Qt, Signal, QSize, QPoint, QPropertyAnimation, QEasingCurve
@@ -84,6 +84,14 @@ def _normalize_icon_name(value: str) -> str:
 
 
 def _find_sidebar_icon_path(icon_key: str) -> str:
+    if icon_key == "feedback":
+        forced_feedback_icon = os.path.join(
+            os.path.dirname(__file__), "..", "assets", "sidebar_icons", "feedback.png"
+        )
+        if os.path.exists(forced_feedback_icon):
+            _icon_path_cache[icon_key] = forced_feedback_icon
+            return forced_feedback_icon
+
     # Cache de caminho: não re-escaneia diretórios para ícones já resolvidos
     if icon_key in _icon_path_cache:
         return _icon_path_cache[icon_key]
