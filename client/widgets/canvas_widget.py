@@ -209,6 +209,7 @@ class DrawingScene(QGraphicsScene):
     FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
     # Snap to endpoints
     SNAP_RADIUS    = 30    # raio de detecção em px de tela (constante com zoom)
+    RULER_PX_PER_MM = 3.78
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
@@ -625,8 +626,11 @@ class DrawingScene(QGraphicsScene):
         dx = end.x() - start.x()
         dy = end.y() - start.y()
         dist = math.hypot(dx, dy)
+        dx_mm = dx / self.RULER_PX_PER_MM
+        dy_mm = dy / self.RULER_PX_PER_MM
+        dist_mm = dist / self.RULER_PX_PER_MM
         self._ruler_text_item.setPlainText(
-            f"Dist: {dist:.1f}px   dX: {dx:.1f}px   dY: {dy:.1f}px"
+            f"Dist: {dist_mm:.1f} mm   dX: {dx_mm:.1f} mm   dY: {dy_mm:.1f} mm"
         )
         mid_x = (start.x() + end.x()) / 2.0
         mid_y = (start.y() + end.y()) / 2.0
