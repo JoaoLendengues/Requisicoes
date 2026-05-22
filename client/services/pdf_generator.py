@@ -609,32 +609,55 @@ def _draw_info_bar_with_icons(
             label.replace(":", "").replace(" ", "_"),
         )
         icon_size = min(10.0, max(8.0, h * 0.24))
-        has_icon = _draw_image_fit(
-            pdf,
-            icon_path,
-            cx + (cw - icon_size) / 2,
-            y + h - icon_size - 4,
-            icon_size,
-            icon_size,
-        )
+        icon_gap = 3.0
+        label_size = 7.0
+        value_size = 9.5
+        phone_size = 10.0
+        value_y = y + 6
+        label_y = y + 16
+        phone_y = cy_center - 5
 
-        if has_icon:
-            value_y = y + 6
-            label_y = y + 16
-            phone_y = y + 9
-        else:
-            value_y = cy_center - 11
-            label_y = cy_center + 9
-            phone_y = cy_center - 5
+        has_icon = bool(icon_path)
 
         if value:
-            _txt(pdf, label, cx + cw / 2, label_y, 7,
-                 C_TEXT_SOFT, align="center", max_w=cw - 8)
-            _txt(pdf, value, cx + cw / 2, value_y, 9.5,
+            if has_icon:
+                max_label_w = max(12.0, cw - icon_size - icon_gap - 8)
+                fitted_label = _fit(label, PDF_FONT_REGULAR, label_size, max_label_w)
+                label_w = pdfmetrics.stringWidth(fitted_label, PDF_FONT_REGULAR, label_size)
+                inline_w = min(cw - 8, icon_size + icon_gap + label_w)
+                inline_x = cx + (cw - inline_w) / 2
+                icon_y = label_y - icon_size * 0.35
+                has_icon = _draw_image_fit(pdf, icon_path, inline_x, icon_y, icon_size, icon_size)
+                if has_icon:
+                    _txt(pdf, label, inline_x + icon_size + icon_gap, label_y, label_size,
+                         C_TEXT_SOFT, align="left", max_w=max_label_w)
+                else:
+                    _txt(pdf, label, cx + cw / 2, label_y, label_size,
+                         C_TEXT_SOFT, align="center", max_w=cw - 8)
+            else:
+                _txt(pdf, label, cx + cw / 2, label_y, label_size,
+                     C_TEXT_SOFT, align="center", max_w=cw - 8)
+
+            _txt(pdf, value, cx + cw / 2, value_y, value_size,
                  val_color, bold=True, align="center", max_w=cw - 8)
         else:
-            _txt(pdf, label, cx + cw / 2, phone_y, 10,
-                 val_color, bold=True, align="center", max_w=cw - 8)
+            if has_icon:
+                max_phone_w = max(12.0, cw - icon_size - icon_gap - 8)
+                fitted_phone = _fit(label, PDF_FONT_BOLD, phone_size, max_phone_w)
+                phone_w = pdfmetrics.stringWidth(fitted_phone, PDF_FONT_BOLD, phone_size)
+                inline_w = min(cw - 8, icon_size + icon_gap + phone_w)
+                inline_x = cx + (cw - inline_w) / 2
+                icon_y = phone_y - icon_size * 0.35
+                has_icon = _draw_image_fit(pdf, icon_path, inline_x, icon_y, icon_size, icon_size)
+                if has_icon:
+                    _txt(pdf, label, inline_x + icon_size + icon_gap, phone_y, phone_size,
+                         val_color, bold=True, align="left", max_w=max_phone_w)
+                else:
+                    _txt(pdf, label, cx + cw / 2, phone_y, phone_size,
+                         val_color, bold=True, align="center", max_w=cw - 8)
+            else:
+                _txt(pdf, label, cx + cw / 2, phone_y, phone_size,
+                     val_color, bold=True, align="center", max_w=cw - 8)
 
         cx += cw
 
