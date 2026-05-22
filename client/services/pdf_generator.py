@@ -412,8 +412,8 @@ def _draw_centered_icon_label(
 ) -> None:
     font = PDF_FONT_BOLD if bold else PDF_FONT_REGULAR
     icon_path = _resolve_info_icon_path(*icon_names)
-    icon_size = min(8.0, max(6.5, font_size + 0.8))
-    icon_gap = 3.0
+    icon_size = min(11.5, max(8.5, font_size + 2.0))
+    icon_gap = 3.5
     text_max_w = max_w
     has_icon = bool(icon_path)
 
@@ -426,7 +426,7 @@ def _draw_centered_icon_label(
     if has_icon:
         inline_w = min(max_w, icon_size + icon_gap + label_w)
         left_x = center_x - inline_w / 2
-        icon_y = baseline_y - icon_size * 0.35
+        icon_y = baseline_y - icon_size * 0.30
         has_icon = _draw_image_fit(pdf, icon_path, left_x, icon_y, icon_size, icon_size)
         if has_icon:
             _txt(
@@ -667,7 +667,7 @@ def _draw_info_bar_with_icons(
         ("PRAZO DE ENTREGA", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")), 0.24, C_TEXT),
         ("RETIRADA", "RETIRADA", _fmt_yes_no(req.get("retirada")), 0.18, C_BRAND),
         ("ENTREGA", "ENTREGA", _fmt_yes_no(req.get("entrega")), 0.18, C_BRAND),
-        ("TELEFONE DO VENDEDOR", vendor_phone, "", 0.25, C_GREEN),
+        ("TELEFONE DO VENDEDOR", "CONTATO DO VENDEDOR", vendor_phone, 0.25, C_GREEN),
         ("PESO (KG)", "PESO (KG):", _fmt_kg(weight_val), 0.15, C_TEXT),
     ]
 
@@ -686,14 +686,14 @@ def _draw_info_bar_with_icons(
             label.replace(":", ""),
             label.replace(":", "").replace(" ", "_"),
         )
-        icon_size = min(10.0, max(8.0, h * 0.24))
-        icon_gap = 3.0
-        label_size = 7.0
+        icon_size = min(12.0, max(9.5, h * 0.28))
+        icon_gap = 4.0
+        label_size = 7.1
         value_size = 9.5
-        phone_size = 10.0
-        value_y = y + 6
-        label_y = y + 16
-        phone_y = cy_center - 5
+        phone_size = 9.8
+        label_y = cy_center + 5
+        value_y = cy_center - 7
+        phone_y = value_y
 
         has_icon = bool(icon_path)
 
@@ -704,7 +704,7 @@ def _draw_info_bar_with_icons(
                 label_w = pdfmetrics.stringWidth(fitted_label, PDF_FONT_REGULAR, label_size)
                 inline_w = min(cw - 8, icon_size + icon_gap + label_w)
                 inline_x = cx + (cw - inline_w) / 2
-                icon_y = label_y - icon_size * 0.35
+                icon_y = label_y - icon_size * 0.30
                 has_icon = _draw_image_fit(pdf, icon_path, inline_x, icon_y, icon_size, icon_size)
                 if has_icon:
                     _txt(pdf, label, inline_x + icon_size + icon_gap, label_y, label_size,
@@ -725,7 +725,7 @@ def _draw_info_bar_with_icons(
                 phone_w = pdfmetrics.stringWidth(fitted_phone, PDF_FONT_BOLD, phone_size)
                 inline_w = min(cw - 8, icon_size + icon_gap + phone_w)
                 inline_x = cx + (cw - inline_w) / 2
-                icon_y = phone_y - icon_size * 0.35
+                icon_y = phone_y - icon_size * 0.30
                 has_icon = _draw_image_fit(pdf, icon_path, inline_x, icon_y, icon_size, icon_size)
                 if has_icon:
                     _txt(pdf, label, inline_x + icon_size + icon_gap, phone_y, phone_size,
