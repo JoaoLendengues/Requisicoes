@@ -893,8 +893,16 @@ class ProductionView(QWidget):
         btn_queue = box.addButton("Aguardando na fila", QMessageBox.ButtonRole.AcceptRole)
         btn_machine = box.addButton("Em produção", QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = box.addButton("Cancelar requisição", QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton("Fechar", QMessageBox.ButtonRole.RejectRole)
+        btn_close = box.addButton("Fechar", QMessageBox.ButtonRole.RejectRole)
         apply_message_box_theme(box)
+        # Evita corte de texto dos botões longos nessa confirmação.
+        btn_wide = max(150, int(170 * self.scale))
+        btn_narrow = max(120, int(132 * self.scale))
+        btn_queue.setMinimumWidth(btn_wide)
+        btn_cancel.setMinimumWidth(btn_wide)
+        btn_machine.setMinimumWidth(btn_narrow)
+        btn_close.setMinimumWidth(btn_narrow)
+        box.setMinimumWidth(max(580, int(640 * self.scale)))
         box.exec()
         clicked = box.clickedButton()
 
