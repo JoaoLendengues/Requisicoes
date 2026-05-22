@@ -521,6 +521,8 @@ def _draw_header(
     icon_r = 2.8
     contact_icon_size = 11.5
     contact_gap = 5.0
+    contact_text_size = 7.1
+    contact_icon_offset = max(3.0, (contact_icon_size - contact_text_size) / 2 + 0.8)
     line_h = 13
     lines = [
         (("TELEFONE", "TELEFONE 1", "FONE"), COMPANY_PHONES[0]),
@@ -535,14 +537,14 @@ def _draw_header(
             pdf,
             icon_path,
             contact_x,
-            ty - 1.0,
+            ty - contact_icon_offset,
             contact_icon_size,
             contact_icon_size,
         )
         text_x = contact_x + contact_icon_size + contact_gap if has_icon else contact_x + icon_r * 2 + 5
         if not has_icon:
             _small_dot(pdf, contact_x + icon_r, ty + 3.5, icon_r, C_BRAND)
-        _txt(pdf, label, text_x, ty, 7.1, C_TEXT,
+        _txt(pdf, label, text_x, ty, contact_text_size, C_TEXT,
              max_w=contact_w - 28)
         ty -= line_h
 
