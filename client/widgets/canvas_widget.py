@@ -1050,9 +1050,42 @@ class DrawingScene(QGraphicsScene):
                 self._exit_ft()
                 event.accept()
                 return
+
+        focus_item = self.focusItem()
+        if (
+            isinstance(focus_item, QGraphicsTextItem)
+            and focus_item.textInteractionFlags() != Qt.TextInteractionFlag.NoTextInteraction
+        ):
+            super().keyPressEvent(event)
+            return
+
+        step = 10.0 if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier) else 1.0
+        dx = 0.0
+        dy = 0.0
+        if event.key() == Qt.Key.Key_Left:
+            dx = -step
+        elif event.key() == Qt.Key.Key_Right:
+            dx = step
+        elif event.key() == Qt.Key.Key_Up:
+            dy = -step
+        elif event.key() == Qt.Key.Key_Down:
+            dy = step
+
+        if dx or dy:
+            selected = self.selectedItems()
+            if selected:
+                for item in selected:
+                    item.setPos(item.pos() + QPointF(dx, dy))
+                self.cw.changed.emit()
+                event.accept()
+                return
+
         if event.key() == Qt.Key.Key_Delete:
             for item in self.selectedItems():
                 self.removeItem(item)
+            self.cw.changed.emit()
+            event.accept()
+            return
         else:
             super().keyPressEvent(event)
 
