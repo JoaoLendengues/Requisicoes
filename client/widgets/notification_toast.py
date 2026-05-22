@@ -93,7 +93,7 @@ class NotificationToast(QFrame):
             | Qt.WindowType.WindowStaysOnTopHint,
         )
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.setWindowOpacity(0.0)
