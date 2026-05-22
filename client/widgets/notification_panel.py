@@ -13,7 +13,7 @@ from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, Signal
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (
     QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
-    QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from ..core import theme
@@ -323,8 +323,8 @@ class NotificationDrawer(QWidget):
         """Estado vazio: ícone grande + textos centralizados."""
         wrapper = QWidget()
         wrapper_lay = QVBoxLayout(wrapper)
-        wrapper_lay.setContentsMargins(20, 60, 20, 60)
-        wrapper_lay.setSpacing(10)
+        wrapper_lay.setContentsMargins(20, 46, 20, 36)
+        wrapper_lay.setSpacing(8)
         wrapper_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         emoji_lbl = QLabel("🎉")
@@ -343,9 +343,12 @@ class NotificationDrawer(QWidget):
         )
         wrapper_lay.addWidget(title_lbl)
 
-        sub_lbl = QLabel("Não há notificações não lidas no momento.")
+        sub_lbl = QLabel("Não há notificações\nnão lidas no momento.")
         sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub_lbl.setWordWrap(True)
+        sub_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        sub_lbl.setMaximumWidth(DRAWER_WIDTH - 84)
+        sub_lbl.setMinimumHeight(44)
         sub_lbl.setStyleSheet(
             f"color: {theme.DRAWER_MUTED}; font-size: 9pt;"
             f"background: transparent;"
