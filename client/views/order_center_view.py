@@ -1,13 +1,15 @@
-"""Central de pedidos com listas operacionais e acesso ao PDF do pedido finalizado."""
+"""Central de pedidos com listas operacionais, faturamento e acesso ao PDF."""
 
 import os
 import webbrowser
-from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -23,60 +25,96 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.dialogs import ask_confirmation
+from ..core.datetime_utils import (
+    format_date as _format_date,
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+    parse_datetime as _parse_datetime,
+)
 from ..core.resolution import res
 from ..services.pdf_generator import HAS_REPORTLAB, generate_pdf
 from .requisition_form import _run_in_thread
 
 
-def _make_card(scale: float, background: str = None) -> QFrame:
+_ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
+_METRIC_ICON_FILES = {
+    "pedidos_aguardando_recebimento": "aguardando_recebimento.png",
+    "pedidos_em_producao": "pedidos_em_producao.png",
+    "pedidos_aguardando_faturamento": "aguardando_recebimento.png",
+    "pedidos_faturados": "pedidos_concluidos.png",
+    "pedidos_cancelados": "pedidos_cancelados.png",
+    "pedidos_atrasados": "pedidos_atrasados.png",
+    "tempo_medio_producao_segundos": "tempo_medio_producao.png",
+}
+
+
+def _rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
+
+
+def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
+    shadow = QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur)
+    shadow.setOffset(0, y_offset)
+    color = QColor(theme.TEXT_DARK)
+    color.setAlpha(alpha)
+    shadow.setColor(color)
+    widget.setGraphicsEffect(shadow)
+
+
+def _make_card(
+    scale: float,
+    background: str | None = None,
+    border_color: str | None = None,
+    radius: int = 18,
+    hover_background: str | None = None,
+) -> QFrame:
     card = QFrame()
-    card.setStyleSheet(
-        f"background:{background or theme.CARD_BG}; border:none; border-radius:8px;"
-    )
+    card.setObjectName("orderCenterCard")
+    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#orderCenterCard {{ border-radius:{radius}px; }}")
+    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
 
+def _metric_icon_path(key: str) -> Path | None:
+    filename = _METRIC_ICON_FILES.get(key)
+    if not filename:
+        return None
+    path = _ICON_DIR / filename
+    return path if path.exists() else None
+
+
 def _flat_secondary_btn_style(scale: float) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
-        f"  border:none; outline:none; border-radius:8px;"
-        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
-        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
+        f"QPushButton:pressed {{ background:#E7EEF7; }}"
+        f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
     )
 
 
-def _parse_datetime(value: object) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
-    except ValueError:
-        return None
-
-
-def _format_datetime(value: object) -> str:
-    parsed = _parse_datetime(value)
-    if parsed is None:
-        return "-"
-    return parsed.strftime("%d/%m/%Y %H:%M")
-
-
-def _format_date(value: object) -> str:
-    if not value:
-        return "-"
-    text = str(value).strip()
-    if not text:
-        return "-"
-    if "T" in text:
-        return _format_datetime(text)[:10]
-    try:
-        return datetime.fromisoformat(text).strftime("%d/%m/%Y")
-    except ValueError:
-        return text[:10]
+def _primary_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
+        f"QPushButton:pressed {{ background:#152D49; }}"
+        f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
+    )
 
 
 def _format_duration(seconds: object) -> str:
@@ -147,7 +185,8 @@ class OrderCenterView(QWidget):
         self._rows: dict[str, list[dict]] = {
             "aguardando_recebimento": [],
             "em_producao": [],
-            "finalizados": [],
+            "aguardando_faturamento": [],
+            "faturados": [],
             "cancelados": [],
             "atrasados": [],
         }
@@ -157,47 +196,78 @@ class OrderCenterView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = "#B3D1FF"
+        page_bg = theme.CONTENT_BG
         self.setObjectName("orderCenterView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             f"QWidget#orderCenterView {{ background:{page_bg}; }}"
         )
         root = QVBoxLayout(self)
-        root.setContentsMargins(max(12, int(16 * s)), max(12, int(16 * s)),
-                                max(12, int(16 * s)), max(12, int(16 * s)))
-        root.setSpacing(max(10, int(12 * s)))
+        root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                max(18, int(24 * s)), max(18, int(24 * s)))
+        root.setSpacing(max(14, int(18 * s)))
 
         header = QHBoxLayout()
+        header.setSpacing(max(12, int(16 * s)))
         title_col = QVBoxLayout()
+        title_col.setSpacing(max(4, int(5 * s)))
 
-        title = QLabel("CENTRAL DE PEDIDOS")
+        title = QLabel("Central de Pedidos")
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
+            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Acompanhe pedidos por etapa, atrasos e finalizacoes em uma tela unica."
+            "Acompanhamento operacional dos pedidos por etapa, ritmo e pendências da produção."
         )
         subtitle.setWordWrap(True)
+        subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+            f"font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
 
-        right_col = QVBoxLayout()
-        self.updated_label = QLabel("Atualizando dados...")
-        self.updated_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.updated_label.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+        right_col = QHBoxLayout()
+        right_col.setSpacing(max(10, int(12 * s)))
+
+        info_card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(16, int(18 * s)),
+            hover_background=theme.CARD_BG,
         )
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
+                                       max(14, int(16 * s)), max(10, int(12 * s)))
+        info_layout.setSpacing(max(2, int(3 * s)))
+
+        date_hint = QLabel("DATA ATUAL")
+        date_hint.setProperty("muted", "1")
+        date_hint.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;"
+        )
+        self.date_label = QLabel(_format_header_date())
+        self.date_label.setStyleSheet(
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
+        )
+        self.updated_label = QLabel("Atualizando dados...")
+        self.updated_label.setProperty("muted", "1")
+        self.updated_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
+        )
+        self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        info_layout.addWidget(date_hint)
+        info_layout.addWidget(self.date_label)
+        info_layout.addWidget(self.updated_label)
+
         self.refresh_btn = QPushButton("ATUALIZAR")
-        self.refresh_btn.setFixedHeight(max(32, int(36 * s)))
+        self.refresh_btn.setFixedHeight(max(38, int(44 * s)))
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.refresh_btn.clicked.connect(self.refresh)
-        right_col.addWidget(self.updated_label)
-        right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignRight)
+        right_col.addWidget(info_card)
+        right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
         header.addLayout(right_col)
         root.addLayout(header)
 
@@ -205,122 +275,301 @@ class OrderCenterView(QWidget):
         self.error_label.hide()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
-            f"background:rgba(239, 68, 68, 0.12); color:{theme.DANGER};"
-            f"border:none; border-radius:8px;"
-            f"padding:10px 12px; font-size:{max(8, int(9 * s))}pt;"
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         root.addWidget(self.error_label)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(
+        self._page_scroll = QScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(
             f"QScrollArea {{ border:none; background:{page_bg}; }}"
         )
-        scroll.viewport().setStyleSheet(
+        self._page_scroll.viewport().setStyleSheet(
             f"background:{page_bg}; border:none;"
         )
-        root.addWidget(scroll, 1)
+        root.addWidget(self._page_scroll, 1)
 
-        content = QWidget()
-        content.setObjectName("orderCenterContent")
-        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        content.setStyleSheet(
+        self._page_content = QWidget()
+        self._page_content.setObjectName("orderCenterContent")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(
             f"QWidget#orderCenterContent {{ background:{page_bg}; }}"
         )
-        scroll.setWidget(content)
-        layout = QVBoxLayout(content)
+        self._page_scroll.setWidget(self._page_content)
+        layout = QVBoxLayout(self._page_content)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(max(12, int(14 * s)))
+        layout.setSpacing(max(16, int(18 * s)))
 
         metrics = QGridLayout()
-        metrics.setHorizontalSpacing(max(10, int(12 * s)))
-        metrics.setVerticalSpacing(max(10, int(12 * s)))
+        metrics.setHorizontalSpacing(max(12, int(16 * s)))
+        metrics.setVerticalSpacing(max(12, int(16 * s)))
+        for column in range(4):
+            metrics.setColumnStretch(column, 1)
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_aguardando_recebimento", theme.WARNING, "PEDIDOS AGUARDANDO RECEBIMENTO"),
-            ("pedidos_em_producao", theme.PRIMARY_HOVER, "PEDIDOS EM PRODUCAO"),
-            ("pedidos_finalizados", theme.SUCCESS, "PEDIDOS FINALIZADOS"),
-            ("pedidos_cancelados", theme.DANGER, "PEDIDOS CANCELADOS"),
-            ("pedidos_atrasados", theme.DANGER, "PEDIDOS ATRASADOS"),
-            ("tempo_medio_producao_segundos", theme.SIDEBAR_BG, "TEMPO MEDIO DE PRODUCAO"),
+            ("pedidos_aguardando_recebimento", theme.WARNING, "Aguardando Recebimento", "Pedidos pendentes de confirmação da produção."),
+            ("pedidos_em_producao", theme.PRIMARY, "Pedidos em Produção", "Ordens que já entraram na esteira produtiva."),
+            ("pedidos_finalizados", theme.SUCCESS, "Pedidos Finalizados", "Pedidos concluídos e prontos para consulta."),
+            ("pedidos_cancelados", theme.DANGER, "Pedidos Cancelados", "Cancelamentos registrados na operação."),
+            ("pedidos_atrasados", theme.DANGER, "Pedidos Atrasados", "Pedidos com prazo vencido e ainda abertos."),
+            ("tempo_medio_producao_segundos", theme.BORDER_COLOR, "Tempo Médio de Produção", "Indicador médio de conclusão da produção."),
         ]
-        for index, (key, color, title_text) in enumerate(card_defs):
-            metrics.addWidget(self._build_metric_card(color, title_text, key), index // 3, index % 3)
+        card_defs = [
+            (
+                "pedidos_aguardando_faturamento",
+                theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
+                "Aguardando Faturamento",
+                "Pedidos finalizados na producao e pendentes de faturamento.",
+            )
+            if item[0] == "pedidos_finalizados"
+            else item
+            for item in card_defs
+        ]
+        card_defs.insert(
+            3,
+            (
+                "pedidos_faturados",
+                theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+                "Pedidos Faturados",
+                "Pedidos ja faturados e disponiveis para consulta.",
+            ),
+        )
+        for index, (key, color, title_text, helper_text) in enumerate(card_defs):
+            metrics.addWidget(
+                self._build_metric_card(color, title_text, helper_text, key),
+                index // 4,
+                index % 4,
+            )
 
         grid_top = QGridLayout()
-        grid_top.setHorizontalSpacing(max(10, int(12 * s)))
-        grid_top.setVerticalSpacing(max(10, int(12 * s)))
+        grid_top.setHorizontalSpacing(max(12, int(16 * s)))
+        grid_top.setVerticalSpacing(max(12, int(16 * s)))
+        grid_top.setColumnStretch(0, 1)
+        grid_top.setColumnStretch(1, 1)
         layout.addLayout(grid_top)
         grid_top.addWidget(self._build_section("Pedidos aguardando recebimento", "aguardando_recebimento"), 0, 0)
-        grid_top.addWidget(self._build_section("Pedidos em producao", "em_producao"), 0, 1)
-        grid_top.addWidget(self._build_section("Pedidos finalizados", "finalizados", pdf_action=True), 1, 0)
-        grid_top.addWidget(self._build_section("Pedidos cancelados", "cancelados"), 1, 1)
-        layout.addWidget(self._build_section("Pedidos atrasados", "atrasados"))
+        grid_top.addWidget(self._build_section("Pedidos em produção", "em_producao"), 0, 1)
+        grid_top.addWidget(
+            self._build_section(
+                "Pedidos aguardando faturamento",
+                "aguardando_faturamento",
+                pdf_action=True,
+                invoice_action=True,
+            ),
+            1,
+            0,
+        )
+        grid_top.addWidget(self._build_section("Pedidos faturados", "faturados", pdf_action=True), 1, 1)
+        grid_top.addWidget(self._build_section("Pedidos cancelados", "cancelados"), 2, 0)
+        grid_top.addWidget(self._build_section("Pedidos atrasados", "atrasados"), 2, 1)
         layout.addStretch()
 
-    def _build_metric_card(self, color: str, title_text: str, key: str) -> QFrame:
+    def _build_metric_card(
+        self,
+        color: str,
+        title_text: str,
+        helper_text: str,
+        key: str,
+    ) -> QFrame:
         s = self.scale
-        card = _make_card(s, color)
+        card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(14, int(18 * s)), max(12, int(16 * s)),
-                                  max(14, int(18 * s)), max(12, int(16 * s)))
+        layout.setContentsMargins(max(16, int(20 * s)), max(15, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(6, int(8 * s)))
+
+        value = QLabel("-")
+        value.setStyleSheet(
+            f"font-size:{max(20, int(26 * s))}pt;"
+            f"font-weight:800; background:transparent; border:none;"
+        )
+        value.setWordWrap(True)
 
         title = QLabel(title_text)
         title.setWordWrap(True)
         title.setStyleSheet(
-            f"color:rgba(255,255,255,0.88); font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
+            f"font-size:{max(9, int(11 * s))}pt;"
+            f"font-weight:700; background:transparent; border:none;"
         )
 
-        value = QLabel("-")
-        value.setStyleSheet(
-            f"color:#fff; font-size:{max(20, int(24 * s))}pt; font-weight:bold;"
+        helper = QLabel(helper_text)
+        helper.setWordWrap(True)
+        helper.setProperty("muted", "1")
+        helper.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; border:none;"
         )
 
+        accent_line = QFrame()
+        accent_line.setFixedHeight(max(4, int(5 * s)))
+        accent_line.setStyleSheet(
+            f"background:{color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+
+        header_row = QHBoxLayout()
+        header_row.setSpacing(max(10, int(12 * s)))
+        header_row.addWidget(value, 1, Qt.AlignmentFlag.AlignTop)
+
+        icon_label = self._build_metric_icon_label(key)
+        if icon_label is not None:
+            header_row.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+
+        layout.addLayout(header_row)
         layout.addWidget(title)
-        layout.addWidget(value)
+        layout.addWidget(helper)
         layout.addStretch()
+        layout.addWidget(accent_line)
         self._metric_labels[key] = value
         return card
 
-    def _build_section(self, title_text: str, key: str, pdf_action: bool = False) -> QFrame:
+    def _build_metric_icon_label(self, key: str) -> QLabel | None:
+        icon_path = _metric_icon_path(key)
+        if icon_path is None:
+            return None
+
+        pixmap = QPixmap(str(icon_path))
+        if pixmap.isNull():
+            return None
+
+        size = max(52, int(62 * self.scale))
+        label = QLabel()
+        label.setFixedSize(size, size)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("background:transparent; border:none;")
+        label.setPixmap(
+            pixmap.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        return label
+
+    def _build_section(
+        self,
+        title_text: str,
+        key: str,
+        pdf_action: bool = False,
+        invoice_action: bool = False,
+    ) -> QFrame:
         s = self.scale
-        card = _make_card(s)
+        section_meta = {
+            "aguardando_recebimento": (
+                "Pedidos aguardando retorno e confirmação da produção.",
+                theme.WARNING,
+            ),
+            "em_producao": (
+                "Ordens em andamento com registro de recebimento na fabrica.",
+                theme.PRIMARY,
+            ),
+            "aguardando_faturamento": (
+                "Pedidos concluídos com PDF individual e tempo médio de produção.",
+                theme.SUCCESS,
+            ),
+            "faturados": (
+                "Pedidos faturados com consulta rÃ¡pida do PDF e histÃ³rico da operaÃ§Ã£o.",
+                theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+            ),
+            "cancelados": (
+                "Histórico de cancelamentos para consulta rápida da operação.",
+                theme.DANGER,
+            ),
+            "atrasados": (
+                "Pedidos fora do prazo para acompanhamento imediato.",
+                theme.BORDER_COLOR,
+            ),
+        }
+        section_meta["aguardando_faturamento"] = (
+            "Pedidos finalizados na producao e aguardando faturamento do vendedor.",
+            theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
+        )
+        section_meta["faturados"] = (
+            "Pedidos faturados com consulta rapida do PDF e historico da operacao.",
+            theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+        )
+        subtitle_text, accent_color = section_meta[key]
+
+        card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(14, int(16 * s)), max(12, int(14 * s)),
-                                  max(14, int(16 * s)), max(12, int(14 * s)))
-        layout.setSpacing(max(8, int(10 * s)))
+        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(10, int(12 * s)))
+
+        accent = QFrame()
+        accent.setFixedHeight(max(4, int(5 * s)))
+        accent.setStyleSheet(
+            f"background:{accent_color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+        layout.addWidget(accent)
 
         title_row = QHBoxLayout()
-        title = QLabel(title_text.upper())
+        title_col = QVBoxLayout()
+        title_col.setSpacing(max(2, int(3 * s)))
+        title = QLabel(title_text)
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
-        title_row.addWidget(title)
-        title_row.addStretch()
+        subtitle = QLabel(subtitle_text)
+        subtitle.setWordWrap(True)
+        subtitle.setProperty("muted", "1")
+        subtitle.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
+        )
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        title_row.addLayout(title_col, 1)
 
         btn_open = QPushButton("ABRIR PEDIDO")
-        btn_open.setFixedHeight(max(28, int(32 * s)))
+        btn_open.setFixedHeight(max(34, int(38 * s)))
         btn_open.setStyleSheet(_flat_secondary_btn_style(s))
         btn_open.clicked.connect(lambda: self._open_selected(key))
         title_row.addWidget(btn_open)
 
+        if invoice_action:
+            btn_invoice = QPushButton("FATURAR")
+            btn_invoice.setFixedHeight(max(34, int(38 * s)))
+            btn_invoice.setStyleSheet(_primary_action_btn_style(s))
+            btn_invoice.clicked.connect(self._mark_selected_invoiced)
+            title_row.addWidget(btn_invoice)
+
         if pdf_action:
             btn_pdf = QPushButton("VER PDF")
-            btn_pdf.setFixedHeight(max(28, int(32 * s)))
-            btn_pdf.setStyleSheet(theme.primary_btn_style(s))
-            btn_pdf.clicked.connect(self._open_selected_pdf)
+            btn_pdf.setFixedHeight(max(34, int(38 * s)))
+            btn_pdf.setStyleSheet(_primary_action_btn_style(s))
+            btn_pdf.clicked.connect(lambda _checked=False, section=key: self._open_selected_pdf(section))
             title_row.addWidget(btn_pdf)
 
         layout.addLayout(title_row)
 
+        previous_avg_label = getattr(self, "avg_finished_label", None)
         if pdf_action:
-            self.avg_finished_label = QLabel("Tempo medio: -")
+            self.avg_finished_label = QLabel("Tempo médio: -")
+            self.avg_finished_label.setProperty("muted", "1")
             self.avg_finished_label.setStyleSheet(
-                f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
+                f"font-size:{max(7, int(8 * s))}pt; font-weight:600;"
             )
             layout.addWidget(self.avg_finished_label)
+            if key != "aguardando_faturamento":
+                self.avg_finished_label.hide()
+                if previous_avg_label is not None:
+                    self.avg_finished_label = previous_avg_label
 
         table = self._create_table_for_section(key)
         self._tables[key] = table
@@ -331,7 +580,8 @@ class OrderCenterView(QWidget):
         headers_by_section = {
             "aguardando_recebimento": ["PED", "CLIENTE", "VENDEDOR", "ENTREGA", "AGUARDANDO"],
             "em_producao": ["PED", "CLIENTE", "VENDEDOR", "RECEBIDO EM", "DESTINO"],
-            "finalizados": ["PED", "CLIENTE", "FINALIZADO EM", "TEMPO", "DESTINO"],
+            "aguardando_faturamento": ["PED", "CLIENTE", "FINALIZADO EM", "TEMPO", "DESTINO"],
+            "faturados": ["PED", "CLIENTE", "FATURADO EM", "FINALIZADO EM", "DESTINO"],
             "cancelados": ["PED", "CLIENTE", "VENDEDOR", "CANCELADO EM"],
             "atrasados": ["PED", "CLIENTE", "ENTREGA", "ATRASO", "STATUS"],
         }
@@ -339,7 +589,8 @@ class OrderCenterView(QWidget):
         stretch_columns = {
             "aguardando_recebimento": {1, 2},
             "em_producao": {1, 2},
-            "finalizados": {1},
+            "aguardando_faturamento": {1},
+            "faturados": {1},
             "cancelados": {1, 2},
             "atrasados": {1},
         }
@@ -356,6 +607,7 @@ class OrderCenterView(QWidget):
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         table.doubleClicked.connect(lambda index, section=key: self._open_row(section, index.row()))
 
+        s = self.scale
         header = table.horizontalHeader()
         for col in range(len(headers)):
             mode = (
@@ -364,20 +616,42 @@ class OrderCenterView(QWidget):
                 else QHeaderView.ResizeMode.ResizeToContents
             )
             header.setSectionResizeMode(col, mode)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.setMinimumHeight(max(34, int(40 * s)))
+        table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
+        if key == "atrasados":
+            header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+            table.setColumnWidth(4, max(210, int(240 * s)))
+            table.verticalHeader().setDefaultSectionSize(max(36, int(42 * s)))
 
-        s = self.scale
         table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{theme.CARD_BG};"
-            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
+            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:7px;"
-            f"  font-weight:bold; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
-            f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
         )
+        # Sobrescreve a paleta do sistema (Windows ignora QSS em QTableView items).
+        # QPalette.Base = fundo das células normais.
+        # QPalette.AlternateBase = fundo das linhas alternadas.
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
+        table.setPalette(pal)
+        table.viewport().setAutoFillBackground(True)
         table.setMinimumHeight(max(220, int(240 * s)))
         return table
 
@@ -405,14 +679,15 @@ class OrderCenterView(QWidget):
         self.refresh_btn.setEnabled(not loading)
         if loading:
             self.updated_label.setText("Atualizando dados...")
+            self.date_label.setText(_format_header_date())
 
     def _show_error(self, message: str):
-        self.error_label.setText(f"Nao foi possivel carregar a central de pedidos.\n\n{message}")
+        self.error_label.setText(f"Não foi possível carregar a central de pedidos.\n\n{message}")
         self.error_label.show()
 
     def _populate(self, payload: object):
         if not isinstance(payload, dict):
-            self._show_error("Resposta invalida do servidor.")
+            self._show_error("Resposta inválida do servidor.")
             return
 
         stats = payload.get("stats") or {}
@@ -426,10 +701,12 @@ class OrderCenterView(QWidget):
             else:
                 label.setText(str(value if value is not None else 0))
 
-        self.updated_label.setText(f"Atualizado em {_format_datetime(payload.get('generated_at'))}")
+        current = _parse_datetime(payload.get("generated_at")) or local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
         if hasattr(self, "avg_finished_label"):
             self.avg_finished_label.setText(
-                f"Tempo medio: {_format_duration(stats.get('tempo_medio_producao_segundos'))}"
+                f"Tempo médio: {_format_duration(stats.get('tempo_medio_producao_segundos'))}"
             )
 
         for key in self._rows:
@@ -470,12 +747,20 @@ class OrderCenterView(QWidget):
                     _format_datetime(row_data.get("received_at")),
                     str(row_data.get("destination") or "-"),
                 ]
-            elif key == "finalizados":
+            elif key == "aguardando_faturamento":
                 values = [
                     str(row_data.get("ped_number") or "-"),
                     str(row_data.get("client_name") or "-"),
                     _format_datetime(row_data.get("finished_at")),
                     _format_duration(row_data.get("production_time_seconds")),
+                    str(row_data.get("destination") or "-"),
+                ]
+            elif key == "faturados":
+                values = [
+                    str(row_data.get("ped_number") or "-"),
+                    str(row_data.get("client_name") or "-"),
+                    _format_datetime(row_data.get("invoiced_at")),
+                    _format_datetime(row_data.get("finished_at")),
                     str(row_data.get("destination") or "-"),
                 ]
             elif key == "cancelados":
@@ -499,10 +784,19 @@ class OrderCenterView(QWidget):
                     status = str(row_data.get("status") or "")
                     badge = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    color = theme.STATUS_COLORS.get(status, theme.TEXT_MEDIUM)
+                    color_map = {
+                        "em_andamento": theme.PRIMARY_HOVER,
+                        "aguardando_recebimento": theme.WARNING,
+                        "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
+                        "aguardando_faturamento": theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
+                        "em_producao": theme.PRIMARY,
+                        "faturado": theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+                        "cancelada": theme.DANGER,
+                    }
+                    color = color_map.get(status, theme.BORDER_COLOR)
                     badge.setStyleSheet(
-                        f"background:{color}; color:{theme.TEXT_WHITE}; border-radius:8px;"
-                        f"font-weight:600; padding:3px 8px; font-size:{max(7, int(8 * self.scale))}pt;"
+                        f"background:{_rgba(color, 30)}; color:{color}; border-radius:999px;"
+                        f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
                     table.setCellWidget(row, col, badge)
                 else:
@@ -515,6 +809,7 @@ class OrderCenterView(QWidget):
         table.setSpan(0, 0, 1, table.columnCount())
         item = QTableWidgetItem(message)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item.setForeground(QColor(theme.TEXT_MEDIUM))
         table.setItem(0, 0, item)
 
     def _selected_row(self, key: str) -> dict | None:
@@ -537,13 +832,13 @@ class OrderCenterView(QWidget):
             return
         self.open_requisition.emit(int(row["id"]))
 
-    def _open_selected_pdf(self):
-        row = self._selected_row("finalizados")
+    def _open_selected_pdf(self, key: str):
+        row = self._selected_row(key)
         if not row:
             QMessageBox.information(
                 self,
                 "Central de pedidos",
-                "Selecione um pedido finalizado para visualizar o PDF.",
+                "Selecione um pedido para visualizar o PDF.",
             )
             return
 
@@ -556,13 +851,94 @@ class OrderCenterView(QWidget):
         )
         self._threads.append((thread, worker))
 
+    def _mark_selected_invoiced(self):
+        row = self._selected_row("aguardando_faturamento")
+        if not row:
+            QMessageBox.information(
+                self,
+                "Central de pedidos",
+                "Selecione um pedido aguardando faturamento.",
+            )
+            return
+
+        ped_number = str(row.get("ped_number") or "").strip() or "sem PED"
+        if not ask_confirmation(
+            self,
+            "Faturar pedido",
+            f"Confirma o faturamento do pedido {ped_number}?",
+            yes_text="Faturar",
+            no_text="Cancelar",
+        ):
+            return
+
+        req_id = int(row["id"])
+        thread, worker = _run_in_thread(
+            api.update_status,
+            req_id,
+            "faturado",
+            on_result=lambda _req, ped=ped_number: self._after_mark_invoiced(ped),
+            on_error=lambda msg: QMessageBox.critical(self, "Central de pedidos", msg),
+        )
+        self._threads.append((thread, worker))
+
+    def _after_mark_invoiced(self, ped_number: str):
+        QMessageBox.information(
+            self,
+            "Central de pedidos",
+            f"Pedido {ped_number} marcado como faturado.",
+        )
+        self.refresh()
+
+    def _apply_table_style(self, table: QTableWidget) -> None:
+        s = self.scale
+        table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
+            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
+        )
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
+        table.setPalette(pal)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#orderCenterView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#orderCenterContent {{ background:{bg}; }}")
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )
+        for table in self._tables.values():
+            self._apply_table_style(table)
+
     def _open_pdf_for_requisition(self, req: dict):
         folder = res.pdf_folder.strip()
         if not folder:
             QMessageBox.warning(
                 self,
                 "Central de pedidos",
-                "Defina a pasta de PDFs nas configuracoes antes de abrir o arquivo.",
+                "Defina a pasta de PDFs nas configurações antes de abrir o arquivo.",
             )
             return
 
@@ -570,7 +946,7 @@ class OrderCenterView(QWidget):
             QMessageBox.warning(
                 self,
                 "Central de pedidos",
-                "A geracao de PDF nao esta disponivel neste ambiente.",
+                "A geração de PDF não está disponível neste ambiente.",
             )
             return
 
@@ -586,7 +962,7 @@ class OrderCenterView(QWidget):
             QMessageBox.critical(
                 self,
                 "Central de pedidos",
-                f"Nao foi possivel gerar o PDF deste pedido.\n\n{exc}",
+                f"Não foi possível gerar o PDF deste pedido.\n\n{exc}",
             )
             return
 
@@ -599,5 +975,5 @@ class OrderCenterView(QWidget):
             QMessageBox.information(
                 self,
                 "Central de pedidos",
-                f"PDF gerado em:\n{pdf_path}\n\nNao foi possivel abrir automaticamente: {exc}",
+                f"PDF gerado em:\n{pdf_path}\n\nNão foi possível abrir automaticamente: {exc}",
             )

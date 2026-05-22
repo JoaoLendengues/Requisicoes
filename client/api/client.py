@@ -125,14 +125,30 @@ def bulk_import_products(items: list) -> dict:
         return _check(client.post("/products/import/bulk", json=items, timeout=120))
 
 
-def list_requisitions(status: str = "", search: str = "",
-                      skip: int = 0, limit: int = 50) -> list:
+def list_requisitions(
+    status: str = "",
+    search: str = "",
+    skip: int = 0,
+    limit: int = 50,
+    emission_date: str = "",
+    production_destination: str = "",
+    production_machine: str = "",
+    invoiced: bool | None = None,
+) -> list:
     with _cli() as client:
         params: dict = {"skip": skip, "limit": limit}
         if status:
             params["status"] = status
         if search:
             params["search"] = search
+        if emission_date:
+            params["emission_date"] = emission_date
+        if production_destination:
+            params["production_destination"] = production_destination
+        if production_machine:
+            params["production_machine"] = production_machine
+        if invoiced is not None:
+            params["invoiced"] = invoiced
         return _check(client.get("/requisitions/", params=params))
 
 
@@ -141,9 +157,44 @@ def get_management_dashboard() -> dict:
         return _check(client.get("/requisitions/dashboard/summary"))
 
 
+def get_technical_panel_summary() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/technical-panel/summary"))
+
+
 def get_order_center() -> dict:
     with _cli() as client:
         return _check(client.get("/requisitions/order-center/summary"))
+
+
+def get_operational_settings() -> dict:
+    with _cli() as client:
+        return _check(client.get("/system-settings/operational"))
+
+
+def update_operational_settings(data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.patch("/system-settings/operational", json=data))
+
+
+def get_production_summary(destination: str) -> dict:
+    with _cli() as client:
+        return _check(
+            client.get(
+                "/requisitions/production/summary",
+                params={"destination": destination},
+            )
+        )
+
+
+def get_production_machines(destination: str) -> list:
+    with _cli() as client:
+        return _check(
+            client.get(
+                "/requisitions/production/machines",
+                params={"destination": destination},
+            )
+        )
 
 
 def get_requisition(req_id: int) -> dict:
@@ -169,12 +220,42 @@ def update_status(req_id: int, status: str, note: str = "") -> dict:
         ))
 
 
+def update_production_machine_status(machine_id: int, status: str) -> dict:
+    with _cli() as client:
+        return _check(
+            client.patch(
+                f"/requisitions/production/machines/{machine_id}/status",
+                json={"status": status},
+            )
+        )
+
+
 def update_canvas(req_id: int, json_data: str) -> dict:
     with _cli() as client:
         return _check(client.patch(
             f"/requisitions/{req_id}/canvas",
             json={"json_data": json_data},
         ))
+
+
+def notification_unread_count() -> dict:
+    with _cli() as client:
+        return _check(client.get("/notifications/count"))
+
+
+def list_notifications() -> list:
+    with _cli() as client:
+        return _check(client.get("/notifications/"))
+
+
+def mark_all_notifications_read() -> dict:
+    with _cli() as client:
+        return _check(client.patch("/notifications/read-all"))
+
+
+def mark_one_notification_read(notif_id: int) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/notifications/{notif_id}/read"))
 
 
 def health_check(server_url: str) -> bool:

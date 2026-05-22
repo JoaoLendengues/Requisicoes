@@ -2,22 +2,60 @@ import os
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
-    QLabel, QLineEdit, QPushButton, QSlider, QFrame,
+    QLabel, QLineEdit, QPushButton, QFrame, QGraphicsDropShadowEffect,
     QMessageBox, QProgressBar, QTextEdit,
-    QFileDialog,
+    QFileDialog, QSpinBox,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
+from PySide6.QtGui import QColor
 
 from ..core import theme
-from ..core.resolution import res
+from ..core.datetime_utils import (
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+)
+from ..core.resolution import res, SCALE_STEPS
 from ..api import client as api
 
 
+def _rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
+
+
+def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
+    shadow = QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur)
+    shadow.setOffset(0, y_offset)
+    color = QColor(theme.TEXT_DARK)
+    color.setAlpha(alpha)
+    shadow.setColor(color)
+    widget.setGraphicsEffect(shadow)
+
+
+def _make_card(
+    scale: float,
+    background: str | None = None,
+    border_color: str | None = None,
+    radius: int = 18,
+    hover_background: str | None = None,
+) -> QFrame:
+    card = QFrame()
+    card.setObjectName("settingsCard")
+    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#settingsCard {{ border-radius:{radius}px; }}")
+    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
+    return card
+
+
 def _section(title: str, scale: float) -> QLabel:
-    lbl = QLabel(title)
+    cleaned = title.lstrip("⚙️🌐🎨📥📦 ").strip()
+    lbl = QLabel(cleaned)
     lbl.setStyleSheet(
-        f"color:{theme.PRIMARY}; font-size:{max(11,int(13*scale))}pt;"
-        f"font-weight:bold; padding-top:8px;"
+        f"font-size:{max(10,int(12*scale))}pt; font-weight:800; padding-top:4px;"
     )
     return lbl
 
@@ -26,20 +64,48 @@ def _separator() -> QFrame:
     sep = QFrame()
     sep.setFrameShape(QFrame.Shape.NoFrame)
     sep.setFixedHeight(4)
-    sep.setStyleSheet("background:transparent; border:none;")
+    sep.setProperty("theme_bg", "separator")
+    sep.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    sep.setStyleSheet("border:none; border-radius:2px;")
     return sep
 
 
 def _flat_secondary_btn_style(scale: float) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
-        f"  border:none; outline:none; border-radius:8px;"
-        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
-        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
+        f"QPushButton:pressed {{ background:#E7EEF7; }}"
+        f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
+    )
+
+
+def _primary_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
+        f"QPushButton:pressed {{ background:#152D49; }}"
+        f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
+    )
+
+
+def _field_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QLineEdit, QTextEdit, QSpinBox {{"
+        f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:14px;"
+        f"  padding:9px 12px; font-size:{fs}pt; color:{theme.TEXT_DARK};"
+        f"  selection-background-color:{_rgba(theme.PRIMARY, 24)}; selection-color:{theme.TEXT_DARK};"
+        f"}}"
+        f"QLineEdit {{ placeholder-text-color:{theme.TEXT_MEDIUM}; }}"
     )
 
 
@@ -73,6 +139,33 @@ class ImportWorker(QObject):
             self.error.emit(self.kind, str(exc))
 
 
+class SettingsApiWorker(QObject):
+    result = Signal(str, object)
+    error = Signal(str, str)
+    finished = Signal()
+
+    def __init__(self, action: str, payload: dict | None = None):
+        super().__init__()
+        self.action = action
+        self.payload = payload or {}
+
+    def run(self):
+        try:
+            if self.action == "load_operational":
+                result = api.get_operational_settings()
+            elif self.action == "save_operational":
+                result = api.update_operational_settings(self.payload)
+            else:
+                raise ValueError(f"Ação inválida: {self.action}")
+            self.result.emit(self.action, result)
+        except api.APIError as exc:
+            self.error.emit(self.action, exc.detail)
+        except Exception as exc:
+            self.error.emit(self.action, str(exc))
+        finally:
+            self.finished.emit()
+
+
 class SettingsView(QWidget):
     scale_changed = Signal(float)
 
@@ -80,42 +173,100 @@ class SettingsView(QWidget):
         super().__init__(parent)
         self.scale = scale
         self._import_threads: dict[str, tuple[QThread, ImportWorker]] = {}
+        self._threads: list[tuple[QThread, QObject]] = []
         self._import_ui: dict[str, dict] = {}
+        self._pending_save_context: dict | None = None
         self._setup_ui()
+        self.refresh_operational_settings(silent=True)
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = "#B3D1FF"
+        page_bg = theme.CONTENT_BG
         self.setObjectName("settingsView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             f"QWidget#settingsView {{ background:{page_bg}; }}"
         )
 
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                       max(18, int(24 * s)), max(18, int(24 * s)))
+        root_layout.setSpacing(max(14, int(18 * s)))
+
+        header = QHBoxLayout()
+        header.setSpacing(max(12, int(16 * s)))
+        title_col = QVBoxLayout()
+        title_col.setSpacing(max(4, int(5 * s)))
+
+        title = QLabel("Configurações")
+        title.setStyleSheet(
+            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+        )
+        subtitle = QLabel(
+            "Preferências locais, conexão com o servidor e rotinas de importação do sistema."
+        )
+        subtitle.setWordWrap(True)
+        subtitle.setProperty("muted", "1")
+        subtitle.setStyleSheet(
+            f"font-size:{max(8, int(10 * s))}pt;"
+        )
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        header.addLayout(title_col, 1)
+
+        info_card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(16, int(18 * s)),
+            hover_background=theme.CARD_BG,
+        )
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
+                                       max(14, int(16 * s)), max(10, int(12 * s)))
+        info_layout.setSpacing(max(2, int(3 * s)))
+        date_hint = QLabel("DATA ATUAL")
+        date_hint.setProperty("muted", "1")
+        date_hint.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;"
+        )
+        self.date_label = QLabel(_format_header_date())
+        self.date_label.setStyleSheet(
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
+        )
+        self.updated_label = QLabel("Preferências do sistema")
+        self.updated_label.setProperty("muted", "1")
+        self.updated_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
+        )
+        info_layout.addWidget(date_hint)
+        info_layout.addWidget(self.date_label)
+        info_layout.addWidget(self.updated_label)
+        header.addWidget(info_card, 0, Qt.AlignmentFlag.AlignTop)
+        root_layout.addLayout(header)
+
+        self._page_scroll = QScrollArea(self)
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(
             f"QScrollArea {{ border:none; background:{page_bg}; }}"
         )
-        scroll.viewport().setStyleSheet(
+        self._page_scroll.viewport().setStyleSheet(
             f"background:{page_bg}; border:none;"
         )
-        root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.addWidget(scroll)
+        root_layout.addWidget(self._page_scroll)
 
-        container = QWidget()
-        container.setObjectName("settingsContainer")
-        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        container.setStyleSheet(
+        self._page_content = QWidget()
+        self._page_content.setObjectName("settingsContainer")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(
             f"QWidget#settingsContainer {{ background:{page_bg}; }}"
         )
-        scroll.setWidget(container)
+        self._page_scroll.setWidget(self._page_content)
 
-        outer = QVBoxLayout(container)
-        outer.setContentsMargins(max(12,int(16*s)), max(12,int(16*s)),
-                                  max(12,int(16*s)), max(12,int(16*s)))
-        outer.setSpacing(max(10,int(14*s)))
+        outer = QVBoxLayout(self._page_content)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(max(16,int(18*s)))
 
         title = QLabel("⚙️ CONFIGURAÇÕES")
         title.setStyleSheet(
@@ -123,15 +274,20 @@ class SettingsView(QWidget):
         )
         outer.addWidget(title)
 
-        card = QFrame()
-        card.setStyleSheet(
-            f"background:{theme.CARD_BG}; border:none; border-radius:8px;"
+        title.hide()
+
+        card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
         )
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(16,int(24*s)), max(16,int(20*s)),
-                                   max(16,int(24*s)), max(16,int(20*s)))
-        layout.setSpacing(max(10,int(14*s)))
+        layout.setContentsMargins(max(16,int(20*s)), max(14,int(18*s)),
+                                   max(16,int(20*s)), max(14,int(18*s)))
+        layout.setSpacing(max(12,int(16*s)))
 
         layout.addWidget(_section("🌐 Conexão com o Servidor", s))
         layout.addWidget(_separator())
@@ -141,19 +297,22 @@ class SettingsView(QWidget):
 
         grid.addWidget(self._lbl("URL do servidor:", s), 0, 0)
         self.input_url = QLineEdit(res.server_url)
-        self.input_url.setFixedHeight(max(30,int(36*s)))
-        self.input_url.setStyleSheet(theme.input_style(s))
+        self.input_url.setFixedHeight(max(38,int(44*s)))
+        self.input_url.setStyleSheet(_field_style(s))
         self.input_url.setPlaceholderText("http://192.168.1.100:5000")
         grid.addWidget(self.input_url, 0, 1)
 
         self.btn_test = QPushButton("Testar conexão")
-        self.btn_test.setFixedHeight(max(30,int(36*s)))
+        self.btn_test.setFixedHeight(max(38,int(44*s)))
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_test.clicked.connect(self._test_connection)
         grid.addWidget(self.btn_test, 0, 2)
 
         self.lbl_conn_status = QLabel("")
-        self.lbl_conn_status.setStyleSheet(f"font-size:{max(9,int(10*s))}pt;")
+        self.lbl_conn_status.setProperty("muted", "1")
+        self.lbl_conn_status.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
         grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
         layout.addLayout(grid)
 
@@ -161,59 +320,71 @@ class SettingsView(QWidget):
         layout.addWidget(_separator())
 
         scale_row = QHBoxLayout()
+        scale_row.setSpacing(max(6, int(8 * s)))
         scale_row.addWidget(self._lbl("Escala da interface:", s))
 
-        self.slider_scale = QSlider(Qt.Orientation.Horizontal)
-        self.slider_scale.setRange(70, 150)
-        self.slider_scale.setValue(int(res.scale * 100))
-        self.slider_scale.setTickInterval(10)
-        self.slider_scale.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.slider_scale.setFixedWidth(max(180,int(220*s)))
-        self.slider_scale.valueChanged.connect(self._on_scale_change)
+        self._scale_btns: dict[str, QPushButton] = {}
+        active_label = res.scale_label
+        for label, factor in SCALE_STEPS:
+            hint = ""
+            if factor is None:
+                hint = f"  ({res.recommended_label})"
+            btn = QPushButton(f"{label}{hint}")
+            btn.setCheckable(True)
+            btn.setChecked(label == active_label)
+            btn.setFixedHeight(max(32, int(36 * s)))
+            btn.setStyleSheet(
+                f"QPushButton {{"
+                f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+                f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
+                f"  padding:0 {max(10, int(14*s))}px;"
+                f"  font-size:{max(8, int(9*s))}pt; font-weight:700;"
+                f"}}"
+                f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{theme.PRIMARY}; }}"
+                f"QPushButton:checked {{"
+                f"  background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY};"
+                f"}}"
+            )
+            btn.clicked.connect(lambda checked=False, lbl=label: self._on_scale_btn(lbl))
+            scale_row.addWidget(btn)
+            self._scale_btns[label] = btn
 
-        self.lbl_scale_val = QLabel(f"{int(res.scale * 100)}%")
-        self.lbl_scale_val.setFixedWidth(40)
-        self.lbl_scale_val.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-weight:bold; font-size:{max(10,int(12*s))}pt;"
-        )
-        scale_row.addWidget(self.slider_scale)
-        scale_row.addWidget(self.lbl_scale_val)
         scale_row.addStretch()
         layout.addLayout(scale_row)
 
-        screen_info = QLabel(
+        self.screen_info = QLabel(
             f"Resolução detectada: {res.screen_width}×{res.screen_height}  |  "
-            f"DPI: {res.dpi:.0f}  |  Escala automática: {res.auto_scale:.2f}×"
+            f"DPI: {res.dpi:.0f}  |  Recomendado: {res.recommended_label}"
         )
-        screen_info.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8,int(9*s))}pt; font-style:italic;"
+        self.screen_info.setProperty("muted", "1")
+        self.screen_info.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
         )
-        layout.addWidget(screen_info)
+        layout.addWidget(self.screen_info)
 
-        layout.addWidget(_section("📄 PDF Automático", s))
+        layout.addWidget(_section("Alertas de Faturamento", s))
         layout.addWidget(_separator())
 
-        layout.addWidget(self._lbl(
-            "Pasta onde os PDFs serão salvos automaticamente ao salvar uma requisição.",
-            s, color=theme.TEXT_LIGHT, italic=True
-        ))
+        billing_grid = QGridLayout()
+        billing_grid.setSpacing(max(8, int(10 * s)))
 
-        pdf_row = QHBoxLayout()
-        pdf_row.addWidget(self._lbl("Pasta de PDFs:", s))
+        billing_grid.addWidget(self._lbl("Dias para notificar gerente:", s), 0, 0)
+        self.input_pending_invoice_days = QSpinBox()
+        self.input_pending_invoice_days.setRange(1, 3650)
+        self.input_pending_invoice_days.setValue(
+            int(res._read_file().get("pending_invoice_alert_days", 1) or 1)
+        )
+        self.input_pending_invoice_days.setFixedHeight(max(38, int(44 * s)))
+        self.input_pending_invoice_days.setStyleSheet(_field_style(s))
+        billing_grid.addWidget(self.input_pending_invoice_days, 0, 1)
 
-        self.input_pdf_folder = QLineEdit(res._read_file().get("pdf_folder", ""))
-        self.input_pdf_folder.setPlaceholderText(r"Ex.: Z:\REQUISIÇÕES (VENDAS)\PDFs")
-        self.input_pdf_folder.setFixedHeight(max(30, int(36 * s)))
-        self.input_pdf_folder.setStyleSheet(theme.input_style(s))
-        pdf_row.addWidget(self.input_pdf_folder, 1)
-
-        btn_browse_pdf = QPushButton("...")
-        btn_browse_pdf.setFixedSize(max(30, int(36 * s)), max(30, int(36 * s)))
-        btn_browse_pdf.setStyleSheet(_flat_secondary_btn_style(s))
-        btn_browse_pdf.setToolTip("Selecionar pasta...")
-        btn_browse_pdf.clicked.connect(self._browse_pdf_folder)
-        pdf_row.addWidget(btn_browse_pdf)
-        layout.addLayout(pdf_row)
+        self.operational_status = QLabel("Sincronizando prazo de alerta com o servidor...")
+        self.operational_status.setProperty("muted", "1")
+        self.operational_status.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
+        billing_grid.addWidget(self.operational_status, 1, 1, 1, 2)
+        layout.addLayout(billing_grid)
 
         self._create_import_section(
             layout=layout,
@@ -242,11 +413,11 @@ class SettingsView(QWidget):
         )
 
         layout.addSpacing(4)
-        btn_save = QPushButton("💾 Salvar configurações")
-        btn_save.setFixedHeight(max(36,int(42*s)))
-        btn_save.setStyleSheet(theme.primary_btn_style(s))
-        btn_save.clicked.connect(self._save)
-        layout.addWidget(btn_save, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.btn_save = QPushButton("SALVAR CONFIGURACOES")
+        self.btn_save.setFixedHeight(max(38,int(44*s)))
+        self.btn_save.setStyleSheet(_primary_action_btn_style(s))
+        self.btn_save.clicked.connect(self._save)
+        layout.addWidget(self.btn_save, alignment=Qt.AlignmentFlag.AlignLeft)
 
         outer.addWidget(card)
         outer.addStretch()
@@ -256,18 +427,18 @@ class SettingsView(QWidget):
         s = self.scale
         layout.addWidget(_section(title, s))
         layout.addWidget(_separator())
-        layout.addWidget(self._lbl(description, s, color=theme.TEXT_LIGHT, italic=True))
+        layout.addWidget(self._lbl(description, s, color=theme.TEXT_MEDIUM, italic=False))
 
         path_row = QHBoxLayout()
         path_row.addWidget(self._lbl("Arquivo:", s))
 
         input_path = QLineEdit(default_path)
-        input_path.setFixedHeight(max(30,int(36*s)))
-        input_path.setStyleSheet(theme.input_style(s))
+        input_path.setFixedHeight(max(38,int(44*s)))
+        input_path.setStyleSheet(_field_style(s))
         path_row.addWidget(input_path, 1)
 
         btn_browse = QPushButton("...")
-        btn_browse.setFixedSize(max(30,int(36*s)), max(30,int(36*s)))
+        btn_browse.setFixedSize(max(38,int(44*s)), max(38,int(44*s)))
         btn_browse.setStyleSheet(_flat_secondary_btn_style(s))
         btn_browse.setToolTip("Navegar...")
         btn_browse.clicked.connect(lambda: self._browse_import_path(kind))
@@ -276,8 +447,8 @@ class SettingsView(QWidget):
 
         import_row = QHBoxLayout()
         btn_import = QPushButton(button_text)
-        btn_import.setFixedHeight(max(34,int(40*s)))
-        btn_import.setStyleSheet(theme.primary_btn_style(s))
+        btn_import.setFixedHeight(max(38,int(44*s)))
+        btn_import.setStyleSheet(_primary_action_btn_style(s))
         btn_import.clicked.connect(lambda: self._start_import(kind))
         import_row.addWidget(btn_import)
 
@@ -286,7 +457,7 @@ class SettingsView(QWidget):
         progress_bar.setVisible(False)
         progress_bar.setStyleSheet(
             f"QProgressBar {{ border:none; border-radius:4px;"
-            f"background:{theme.INPUT_BG}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
+            f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
             f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
         )
         import_row.addWidget(progress_bar, 1)
@@ -297,14 +468,15 @@ class SettingsView(QWidget):
         txt_log.setMaximumHeight(max(100,int(120*s)))
         txt_log.setVisible(False)
         txt_log.setStyleSheet(
-            f"background:{theme.INPUT_BG}; border:none; border-radius:6px;"
-            f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:4px;"
+            f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
+            f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
         )
         layout.addWidget(txt_log)
 
         self._import_ui[kind] = {
             "input": input_path,
             "button": btn_import,
+            "browse": btn_browse,
             "button_text": button_text,
             "progress": progress_bar,
             "log": txt_log,
@@ -330,16 +502,103 @@ class SettingsView(QWidget):
     def _lbl(self, text: str, scale: float, color: str = None,
              italic: bool = False) -> QLabel:
         lbl = QLabel(text)
-        c = color or theme.TEXT_MEDIUM
-        fs = max(9, int(11 * scale))
-        style = f"color:{c}; font-size:{fs}pt;"
+        lbl.setProperty("muted", "1")
+        fs = max(8, int(9 * scale))
+        style = f"font-size:{fs}pt;"
         if italic:
             style += " font-style:italic;"
         lbl.setStyleSheet(style)
         return lbl
 
-    def _on_scale_change(self, value: int):
-        self.lbl_scale_val.setText(f"{value}%")
+    def refresh_operational_settings(self, silent: bool = False):
+        if not silent:
+            self.operational_status.setText("Sincronizando prazo de alerta com o servidor...")
+        self._start_api_worker("load_operational")
+
+    def _start_api_worker(self, action: str, payload: dict | None = None):
+        worker = SettingsApiWorker(action, payload)
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.result.connect(self._on_api_result)
+        worker.error.connect(self._on_api_error)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        thread.start()
+        self._threads.append((thread, worker))
+
+    def _cleanup_thread(self, thread: QThread, worker: QObject):
+        self._threads = [pair for pair in self._threads if pair != (thread, worker)]
+
+    def _on_api_result(self, action: str, payload: object):
+        if action == "load_operational":
+            data = payload if isinstance(payload, dict) else {}
+            days = int(data.get("pending_invoice_alert_days") or 1)
+            self.input_pending_invoice_days.setValue(days)
+            self.operational_status.setText(
+                f"Prazo sincronizado com o servidor: {days} dia(s)."
+            )
+            res.save(pending_invoice_alert_days=days)
+            return
+
+        if action == "save_operational":
+            self._finish_save(True)
+
+    def _on_api_error(self, action: str, message: str):
+        if action == "load_operational":
+            self.operational_status.setText(
+                "Nao foi possivel sincronizar com o servidor. Usando valor local."
+            )
+            return
+
+        if action == "save_operational":
+            self._finish_save(False, message)
+
+    def _set_save_busy(self, busy: bool):
+        self.btn_save.setEnabled(not busy)
+        self.btn_save.setText("SALVANDO..." if busy else "SALVAR CONFIGURACOES")
+
+    def _finish_save(self, remote_ok: bool, error_message: str = ""):
+        context = self._pending_save_context or {}
+        scale_changed = bool(context.get("scale_changed"))
+        current = local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
+        self._set_save_busy(False)
+
+        if remote_ok:
+            self.operational_status.setText(
+                f"Prazo sincronizado com o servidor: {self.input_pending_invoice_days.value()} dia(s)."
+            )
+            if scale_changed:
+                QMessageBox.information(
+                    self,
+                    "Salvo",
+                    "Configuracoes salvas.\nA interface sera recarregada com a nova escala.",
+                )
+                self.scale_changed.emit(res.scale)
+            else:
+                QMessageBox.information(self, "Salvo", "Configuracoes salvas.")
+        else:
+            self.operational_status.setText(
+                "Nao foi possivel salvar o prazo no servidor. O valor local foi mantido."
+            )
+            message = (
+                "As configuracoes locais foram salvas, mas o prazo de alerta "
+                "de faturamento nao foi salvo no servidor.\n\n"
+                f"{error_message}"
+            )
+            QMessageBox.warning(self, "Atencao", message)
+            if scale_changed:
+                self.scale_changed.emit(res.scale)
+
+        self._pending_save_context = None
+
+    def _on_scale_btn(self, label: str):
+        for lbl, btn in self._scale_btns.items():
+            btn.setChecked(lbl == label)
 
     def _test_connection(self):
         url = self.input_url.text().strip()
@@ -349,32 +608,57 @@ class SettingsView(QWidget):
         s = self.scale
         if ok:
             self.lbl_conn_status.setText("Servidor online e respondendo")
-            self.lbl_conn_status.setStyleSheet(f"color:{theme.SUCCESS}; font-size:{max(9,int(10*s))}pt;")
+            self.lbl_conn_status.setStyleSheet(f"color:{theme.SUCCESS}; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         else:
             self.lbl_conn_status.setText("Não foi possível conectar ao servidor")
-            self.lbl_conn_status.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(9,int(10*s))}pt;")
+            self.lbl_conn_status.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         self.btn_test.setEnabled(True)
         self.btn_test.setText("Testar conexão")
 
     def _save(self):
         url = self.input_url.text().strip()
-        scale = self.slider_scale.value() / 100.0
         clients_path = self.input_ods_path.text().strip()
         products_path = self.input_products_path.text().strip()
-        pdf_folder = self.input_pdf_folder.text().strip()
+        pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
+
+        # Descobre qual botão de escala está marcado
+        selected_label = next(
+            (lbl for lbl, btn in self._scale_btns.items() if btn.isChecked()),
+            "Automática",
+        )
+        # "Automática" → salva None (auto-detect); outros → salva o label
+        font_scale_value = None if selected_label == "Automática" else selected_label
+
+        scale_changed = (font_scale_value != res._user_scale)
+
         res.save(
             server_url=url,
-            font_scale=scale,
+            font_scale=font_scale_value,
             ods_path=clients_path,
             products_path=products_path,
-            pdf_folder=pdf_folder,
+            pending_invoice_alert_days=pending_invoice_alert_days,
         )
-        QMessageBox.information(
-            self,
-            "Salvo",
-            "Configurações salvas.\nReinicie o aplicativo para aplicar a nova escala."
+        self._pending_save_context = {"scale_changed": scale_changed}
+        self._set_save_busy(True)
+        self.operational_status.setText("Salvando prazo de alerta no servidor...")
+        self._start_api_worker(
+            "save_operational",
+            {"pending_invoice_alert_days": pending_invoice_alert_days},
         )
-        self.scale_changed.emit(scale)
+        return
+
+        if scale_changed:
+            QMessageBox.information(
+                self,
+                "Salvo",
+                "Configurações salvas.\nA interface será recarregada com a nova escala.",
+            )
+            self.scale_changed.emit(res.scale)
+        else:
+            current = local_now()
+            self.date_label.setText(_format_header_date(current))
+            self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
+            QMessageBox.information(self, "Salvo", "Configurações salvas.")
 
     def _browse_import_path(self, kind: str):
         title = (
@@ -392,16 +676,6 @@ class SettingsView(QWidget):
         if path:
             self._import_ui[kind]["input"].setText(path)
 
-    def _browse_pdf_folder(self):
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            "Selecionar pasta para PDFs",
-            "",
-            options=QFileDialog.Option.DontUseNativeDialog,
-        )
-        if folder:
-            self.input_pdf_folder.setText(folder)
-
     def _start_import(self, kind: str):
         path = self._import_ui[kind]["input"].text().strip()
         if not path:
@@ -412,8 +686,8 @@ class SettingsView(QWidget):
         if current and current[0].isRunning():
             QMessageBox.information(
                 self,
-                "Importacao em andamento",
-                "Essa importacao ainda esta em execucao. Aguarde a conclusao.",
+                "Importação em andamento",
+                "Essa importação ainda está em execução. Aguarde a conclusão.",
             )
             return
 
@@ -476,3 +750,42 @@ class SettingsView(QWidget):
         current = self._import_threads.get(kind)
         if current == (thread, worker):
             self._import_threads.pop(kind, None)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#settingsView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#settingsContainer {{ background:{bg}; }}")
+        self.input_url.setStyleSheet(_field_style(s))
+        self.input_pending_invoice_days.setStyleSheet(_field_style(s))
+        self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_save.setStyleSheet(_primary_action_btn_style(s))
+        for btn in self._scale_btns.values():
+            checked = btn.isChecked()
+            btn.setStyleSheet(
+                f"QPushButton {{"
+                f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+                f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
+                f"  padding:0 {max(10, int(14*s))}px;"
+                f"  font-size:{max(8, int(9*s))}pt; font-weight:700;"
+                f"}}"
+                f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{theme.PRIMARY}; }}"
+                f"QPushButton:checked {{"
+                f"  background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY};"
+                f"}}"
+            )
+        for ui in self._import_ui.values():
+            ui["input"].setStyleSheet(_field_style(s))
+            ui["button"].setStyleSheet(_primary_action_btn_style(s))
+            ui["browse"].setStyleSheet(_flat_secondary_btn_style(s))
+            ui["progress"].setStyleSheet(
+                f"QProgressBar {{ border:none; border-radius:4px;"
+                f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8,int(9*s))}pt; }}"
+                f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
+            )
+            ui["log"].setStyleSheet(
+                f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
+                f"font-size:{max(9,int(10*s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
+            )

@@ -14,10 +14,13 @@ import math
 import os
 from enum import Enum
 
-from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QEvent
+from PySide6.QtCore import (
+    Qt, QPointF, QRectF, Signal, QEvent,
+    QByteArray, QBuffer, QIODevice, QMimeData,
+)
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPen, QBrush,
-    QPixmap, QKeySequence, QAction, QCursor, QTransform,
+    QPixmap, QKeySequence, QAction, QCursor, QTransform, QGuiApplication,
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QToolBar, QGraphicsScene,
@@ -28,6 +31,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QFrame, QComboBox,
 )
 from ..core import theme
+from ..core.text_case import normalize_upper_text
 
 
 class Tool(Enum):
@@ -50,6 +54,18 @@ _STYLE_TO_STR = {
     Qt.PenStyle.DashDotLine: "dashdot",
 }
 _STR_TO_STYLE = {v: k for k, v in _STYLE_TO_STR.items()}
+_CANVAS_CLIPBOARD_MIME = "application/x-requisicoes-canvas-items"
+
+
+def _pixmap_to_base64(pixmap: QPixmap) -> str:
+    if pixmap.isNull():
+        return ""
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    pixmap.save(buffer, "PNG")
+    data = bytes(buffer.data().toBase64()).decode("ascii")
+    buffer.close()
+    return data
 
 
 def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
@@ -85,7 +101,7 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setPen(pen)
 
     elif t == "text":
-        item = QGraphicsTextItem(d.get("text", ""))
+        item = QGraphicsTextItem(normalize_upper_text(d.get("text", "")))
         item.setPos(QPointF(d["x"], d["y"]))
         item.setDefaultTextColor(QColor(d.get("color", "#000000")))
         font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
@@ -93,12 +109,36 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
 
     elif t == "image":
         path = d.get("path", "")
+        image_data = d.get("image_data", "")
+        pix = QPixmap()
         if path and os.path.exists(path):
             pix = QPixmap(path)
+        elif image_data:
+            pix.loadFromData(QByteArray.fromBase64(image_data.encode("ascii")), "PNG")
+        if not pix.isNull():
+            display_w = int(d.get("display_w", 0) or 0)
+            display_h = int(d.get("display_h", 0) or 0)
+            if display_w > 0 and display_h > 0 and (
+                pix.width() != display_w or pix.height() != display_h
+            ):
+                pix = pix.scaled(
+                    display_w,
+                    display_h,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
             item = QGraphicsPixmapItem(pix)
             item.setPos(QPointF(d["x"], d["y"]))
-            item.setData(0, {"type": "image", "path": path})
+            item.setData(0, {
+                "type": "image",
+                "path": path,
+                "image_data": image_data,
+                "display_w": pix.width(),
+                "display_h": pix.height(),
+            })
 
+    if item is not None and ("pos_x" in d or "pos_y" in d):
+        item.setPos(QPointF(d.get("pos_x", 0.0), d.get("pos_y", 0.0)))
     if item is not None and rot:
         item.setRotation(rot)
 
@@ -296,6 +336,9 @@ class DrawingScene(QGraphicsScene):
         selected = set(self.selectedItems())
         for item in self.items():
             if isinstance(item, QGraphicsTextItem) and item not in selected:
+                normalized_text = normalize_upper_text(item.toPlainText())
+                if normalized_text != item.toPlainText():
+                    item.setPlainText(normalized_text)
                 item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         for item in selected:
             if isinstance(item, QGraphicsTextItem):
@@ -448,6 +491,7 @@ class DrawingScene(QGraphicsScene):
 
         if tool == Tool.TEXT:
             text, ok = QInputDialog.getText(self.cw, "Texto", "Digite o texto:")
+            text = normalize_upper_text(text).strip()
             if ok and text:
                 item = QGraphicsTextItem(text)
                 item.setPos(pos)
@@ -767,6 +811,8 @@ class DrawingCanvas(QWidget):
         self._undo_stack: list[QGraphicsItem] = []
         self._redo_stack: list[QGraphicsItem] = []
         self._attached_pdf: str = ""
+        self._clipboard_signature = ""
+        self._paste_serial = 0
         self._setup_ui()
 
     # ── UI ────────────────────────────────────────────────────────────────────
@@ -938,6 +984,7 @@ class DrawingCanvas(QWidget):
         hint = QLabel(
             "✨ Shift = traço reto  |  C = curva em linha selecionada  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
+            "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
             "Enter / Esc = confirmar  |  2× clique = editar texto"
         )
@@ -1018,6 +1065,18 @@ class DrawingCanvas(QWidget):
         redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         redo_action.triggered.connect(self._redo)
         self.addAction(redo_action)
+
+        copy_action = QAction(self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        copy_action.triggered.connect(self._copy_selection_to_clipboard)
+        self.addAction(copy_action)
+
+        paste_action = QAction(self)
+        paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        paste_action.triggered.connect(self._paste_from_clipboard)
+        self.addAction(paste_action)
 
         # Ctrl+T — Free Transform (estilo Photoshop)
         ft_action = QAction(self)
@@ -1106,18 +1165,7 @@ class DrawingCanvas(QWidget):
         pixmap = QPixmap(path)
         if pixmap.isNull():
             return
-        max_w = min(600, self.view.width() - 40)
-        if pixmap.width() > max_w:
-            pixmap = pixmap.scaledToWidth(max_w, Qt.TransformationMode.SmoothTransformation)
-
-        item = QGraphicsPixmapItem(pixmap)
-        p = pos or QPointF(10, 10)
-        item.setPos(p)
-        item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
-                      QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
-        item.setData(0, {"type": "image", "path": path})
-        self.scene.addItem(item)
-        self._push_undo(item)
+        self._insert_image_from_pixmap(pixmap, pos=pos, path=path)
 
     # ── PDF ──────────────────────────────────────────────────────────────────
     def _attach_pdf(self):
@@ -1150,6 +1198,151 @@ class DrawingCanvas(QWidget):
         self._undo_stack.clear()
         self._redo_stack.clear()
         self.changed.emit()
+
+    def _copy_selection_to_clipboard(self):
+        if self._text_editor_active():
+            return
+
+        items = []
+        for item in self.scene.selectedItems():
+            item_data = self._item_to_dict(item)
+            if item_data:
+                items.append(item_data)
+        if not items:
+            return
+
+        payload = json.dumps({"version": 1, "items": items}, ensure_ascii=False)
+        mime = QMimeData()
+        mime.setData(_CANVAS_CLIPBOARD_MIME, QByteArray(payload.encode("utf-8")))
+        mime.setText(payload)
+        QGuiApplication.clipboard().setMimeData(mime)
+        self._clipboard_signature = payload
+        self._paste_serial = 0
+
+    def _paste_from_clipboard(self):
+        if self._text_editor_active():
+            return
+
+        clipboard = QGuiApplication.clipboard()
+        mime = clipboard.mimeData()
+        if mime is None:
+            return
+
+        payload_text = ""
+        if mime.hasFormat(_CANVAS_CLIPBOARD_MIME):
+            payload_text = bytes(mime.data(_CANVAS_CLIPBOARD_MIME)).decode("utf-8", errors="ignore")
+        elif mime.hasText():
+            payload_text = mime.text()
+
+        if payload_text:
+            try:
+                payload = json.loads(payload_text)
+            except (json.JSONDecodeError, TypeError):
+                payload = None
+            if isinstance(payload, dict) and isinstance(payload.get("items"), list):
+                self._paste_canvas_items(payload.get("items", []), payload_text)
+                return
+
+        pixmap = clipboard.pixmap()
+        if pixmap.isNull():
+            image = clipboard.image()
+            if not image.isNull():
+                pixmap = QPixmap.fromImage(image)
+
+        if not pixmap.isNull():
+            image_data = _pixmap_to_base64(pixmap)
+            insert_pos = self._default_insert_pos(pixmap)
+            self.scene.clearSelection()
+            item = self._insert_image_from_pixmap(
+                pixmap,
+                pos=insert_pos,
+                image_data=image_data,
+            )
+            if item:
+                item.setSelected(True)
+                self.changed.emit()
+
+    def _paste_canvas_items(self, items_data: list[dict], signature: str):
+        if not items_data:
+            return
+
+        if signature == self._clipboard_signature:
+            self._paste_serial += 1
+        else:
+            self._clipboard_signature = signature
+            self._paste_serial = 1
+        offset = QPointF(20 * self._paste_serial, 20 * self._paste_serial)
+
+        self.scene.clearSelection()
+        pasted = []
+        for item_data in items_data:
+            item = self._item_from_dict(item_data)
+            if not item:
+                continue
+            item.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            item.moveBy(offset.x(), offset.y())
+            self.scene.addItem(item)
+            item.setSelected(True)
+            self._undo_stack.append(item)
+            pasted.append(item)
+
+        if pasted:
+            self._redo_stack.clear()
+            self.changed.emit()
+
+    def _insert_image_from_pixmap(
+        self,
+        pixmap: QPixmap,
+        pos: QPointF | None = None,
+        path: str = "",
+        image_data: str = "",
+    ) -> QGraphicsPixmapItem | None:
+        if pixmap.isNull():
+            return None
+
+        display_pixmap = pixmap
+        max_w = min(600, self.view.width() - 40)
+        if max_w > 0 and display_pixmap.width() > max_w:
+            display_pixmap = display_pixmap.scaledToWidth(
+                max_w,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+        item = QGraphicsPixmapItem(display_pixmap)
+        item.setPos(pos or self._default_insert_pos(display_pixmap))
+        item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        item.setData(0, {
+            "type": "image",
+            "path": path,
+            "image_data": image_data,
+            "display_w": display_pixmap.width(),
+            "display_h": display_pixmap.height(),
+        })
+        self.scene.addItem(item)
+        self._push_undo(item)
+        return item
+
+    def _default_insert_pos(self, pixmap: QPixmap | None = None) -> QPointF:
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        if pixmap is not None and not pixmap.isNull():
+            return QPointF(
+                center.x() - (pixmap.width() / 2),
+                center.y() - (pixmap.height() / 2),
+            )
+        return QPointF(center.x() - 20, center.y() - 20)
+
+    def _text_editor_active(self) -> bool:
+        item = self.scene.focusItem()
+        return (
+            isinstance(item, QGraphicsTextItem)
+            and item.textInteractionFlags() != Qt.TextInteractionFlag.NoTextInteraction
+        )
 
     # ── Serialização ─────────────────────────────────────────────────────────
     def to_json(self) -> str:
@@ -1189,18 +1382,21 @@ class DrawingCanvas(QWidget):
             ln = item.line()
             return {"type": "line",
                     "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
+                    "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                     "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsRectItem):
             r = item.rect()
             return {"type": "rect",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
+                    "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                     "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsEllipseItem):
             r = item.rect()
             return {"type": "ellipse",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
+                    "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                     "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsPathItem):
@@ -1210,12 +1406,13 @@ class DrawingCanvas(QWidget):
                 el = path.elementAt(i)
                 points.append([el.x, el.y])
             return {"type": "path", "points": points,
+                    "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                     "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsTextItem):
             return {"type": "text",
                     "x": item.pos().x(), "y": item.pos().y(),
-                    "text": item.toPlainText(),
+                    "text": normalize_upper_text(item.toPlainText()),
                     "color": item.defaultTextColor().name(),
                     "font_size": item.font().pointSize(),
                     "rotation": rot}
@@ -1224,7 +1421,11 @@ class DrawingCanvas(QWidget):
             meta = item.data(0) or {}
             return {"type": "image",
                     "x": item.pos().x(), "y": item.pos().y(),
-                    "path": meta.get("path", ""), "rotation": rot}
+                    "path": meta.get("path", ""),
+                    "image_data": meta.get("image_data", ""),
+                    "display_w": meta.get("display_w", item.pixmap().width()),
+                    "display_h": meta.get("display_h", item.pixmap().height()),
+                    "rotation": rot}
 
         return None
 

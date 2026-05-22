@@ -3,6 +3,8 @@ Formulário principal de requisição — fiel ao mockup fornecido.
 """
 import os
 import io
+import shutil
+import tempfile
 from datetime import date, datetime
 
 from PySide6.QtWidgets import (
@@ -22,8 +24,10 @@ except ImportError:
     HAS_QR = False
 
 from ..core import theme
+from ..core.dialogs import apply_message_box_theme
 from ..core.resolution import res
 from ..core.session import session
+from ..core.text_case import bind_uppercase_line_edit, bind_uppercase_text_edit
 from ..api import client as api
 from ..widgets.status_badge import StatusBadge
 from ..widgets.item_table import ItemTable
@@ -100,7 +104,10 @@ def _build_production_note(action: str, destination: str) -> str:
 
 
 def _format_phone_text(raw: str) -> str:
-    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())[:11]
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if len(digits) > 11 and digits.startswith("55"):
+        digits = digits[2:]
+    digits = digits[-11:]
     if not digits:
         return ""
     if len(digits) <= 2:
@@ -122,10 +129,10 @@ def _emphasized_btn_style(base_style: str) -> str:
 # ── Card helper ───────────────────────────────────────────────────────────────
 def _make_card(parent=None) -> QFrame:
     card = QFrame(parent)
-    card.setStyleSheet(
-        f"QFrame {{ background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
-        f"border-radius:8px; }}"
-    )
+    card.setObjectName("reqCard")
+    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    card.setProperty("theme_bg", "card_bordered")
+    card.setStyleSheet("QFrame#reqCard { border-radius:8px; }")
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(10)
     shadow.setOffset(0, 2)
@@ -136,8 +143,9 @@ def _make_card(parent=None) -> QFrame:
 
 def _field_label(text: str, scale: float) -> QLabel:
     lbl = QLabel(text)
+    lbl.setProperty("accent", "1")
     lbl.setStyleSheet(
-        f"color:{theme.PRIMARY}; font-size:{max(7, int(8*scale))}pt; "
+        f"font-size:{max(7, int(8*scale))}pt; "
         f"font-weight:bold; text-transform:uppercase; border:none;"
     )
     return lbl
@@ -146,8 +154,7 @@ def _field_label(text: str, scale: float) -> QLabel:
 def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     lbl = QLabel(text)
     lbl.setStyleSheet(
-        f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11*scale))}pt; "
-        f"font-weight:bold; border:none;"
+        f"font-size:{max(9, int(11*scale))}pt; font-weight:bold; border:none;"
     )
     return lbl
 
@@ -352,6 +359,18 @@ class ClientSearchBox(QWidget):
         self.input.blockSignals(False)
         self._drop.hide()
 
+    def apply_theme(self, scale: float | None = None) -> None:
+        s = scale if scale is not None else self.scale
+        self.input.setStyleSheet(theme.input_style(s))
+        self._drop.setStyleSheet(
+            f"QListWidget {{ background:{theme.CARD_BG};"
+            f"border:2px solid {theme.PRIMARY}; border-radius:0 0 6px 6px;"
+            f"font-size:{max(9,int(10*s))}pt; outline:none; }}"
+            f"QListWidget::item {{ padding:7px 12px; color:{theme.TEXT_DARK}; }}"
+            f"QListWidget::item:hover, QListWidget::item:selected"
+            f" {{ background:{theme.PRIMARY}; color:#fff; }}"
+        )
+
 
 # ── Dialog do editor de desenho ───────────────────────────────────────────────
 class CanvasDialog(QDialog):
@@ -430,18 +449,18 @@ class RequisitionForm(QWidget):
         root.setSpacing(0)
 
         # ScrollArea
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(
+        self._page_scroll = QScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setStyleSheet(
             f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}"
         )
-        root.addWidget(scroll)
+        root.addWidget(self._page_scroll)
 
-        container = QWidget()
-        container.setStyleSheet(f"background:{theme.CONTENT_BG};")
-        scroll.setWidget(container)
+        self._page_content = QWidget()
+        self._page_content.setStyleSheet(f"background:{theme.CONTENT_BG};")
+        self._page_scroll.setWidget(self._page_content)
 
-        layout = QVBoxLayout(container)
+        layout = QVBoxLayout(self._page_content)
         s = self.scale
         margin = max(12, int(16 * s))
         layout.setContentsMargins(margin, margin, margin, margin)
@@ -487,6 +506,16 @@ class RequisitionForm(QWidget):
         save_row.addWidget(btn_whatsapp)
         self.btn_whatsapp = btn_whatsapp
         self.btn_whatsapp.setText("📲 ENVIAR WHATSAPP")
+
+        save_row.addSpacing(max(8, int(10 * s)))
+
+        btn_print = QPushButton("IMPRIMIR")
+        btn_print.setFixedHeight(max(42, int(48 * s)))
+        btn_print.setMinimumWidth(max(180, int(210 * s)))
+        btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        btn_print.clicked.connect(self._print_requisition_pdf)
+        save_row.addWidget(btn_print)
+        self.btn_print = btn_print
 
         save_row.addSpacing(max(8, int(10 * s)))
 
@@ -540,12 +569,14 @@ class RequisitionForm(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(0)
         lbl_req = QLabel("REQUISIÇÃO")
+        lbl_req.setProperty("accent", "1")
         lbl_req.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(10,int(12*s))}pt; font-weight:700; border:none;"
+            f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none;"
         )
         self.lbl_ped_num = QLabel("#000000")
+        self.lbl_ped_num.setProperty("accent", "1")
         self.lbl_ped_num.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(16,int(20*s))}pt; font-weight:bold; border:none;"
+            f"font-size:{max(16,int(20*s))}pt; font-weight:bold; border:none;"
         )
         title_col.addWidget(lbl_req)
         title_col.addWidget(self.lbl_ped_num)
@@ -678,6 +709,7 @@ class RequisitionForm(QWidget):
         self.input_obra.setPlaceholderText("Nome da obra")
         self.input_obra.setFixedHeight(max(30,int(36*s)))
         self.input_obra.setStyleSheet(theme.input_style(s))
+        bind_uppercase_line_edit(self.input_obra)
         layout.addWidget(self.input_obra, 1, 1)
 
         # Fone
@@ -696,6 +728,7 @@ class RequisitionForm(QWidget):
         self.input_address.setPlaceholderText("Endereço completo de entrega")
         self.input_address.setFixedHeight(max(30,int(36*s)))
         self.input_address.setStyleSheet(theme.input_style(s))
+        bind_uppercase_line_edit(self.input_address)
         layout.addWidget(self.input_address, 3, 1)
 
         layout.setColumnStretch(0, 1)
@@ -785,6 +818,7 @@ class RequisitionForm(QWidget):
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
             f"font-size:{max(9,int(11*s))}pt; padding:6px; background:{theme.INPUT_BG};"
         )
+        bind_uppercase_text_edit(self.input_obs)
         obs_layout.addWidget(self.input_obs)
         layout.addWidget(obs_card, 2)
 
@@ -824,8 +858,15 @@ class RequisitionForm(QWidget):
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
         lbl_qr_txt.setText("🔳 QR CODE\nVendedor")
+        self.lbl_qr_contact = QLabel("")
+        self.lbl_qr_contact.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_qr_contact.setWordWrap(True)
+        self.lbl_qr_contact.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(7,int(8*s))}pt; border:none;"
+        )
         qr_col.addWidget(self.qr_label)
         qr_col.addWidget(lbl_qr_txt)
+        qr_col.addWidget(self.lbl_qr_contact)
         sig_layout.addLayout(qr_col, 1)
 
         layout.addWidget(sig_card, 1)
@@ -834,11 +875,18 @@ class RequisitionForm(QWidget):
 
     # ── QR Code ───────────────────────────────────────────────────────────────
     def _generate_qr(self):
+        if hasattr(self, "lbl_qr_contact"):
+            self.lbl_qr_contact.setText(_format_phone_text(session.whatsapp) or "Sem contato cadastrado")
+        if not hasattr(self, "qr_label"):
+            return
+        self.qr_label.clear()
         if not HAS_QR or not session.whatsapp:
             return
         try:
-            phone = "".join(filter(str.isdigit, session.whatsapp))
-            url = f"https://wa.me/55{phone}"
+            phone = self._normalize_whatsapp_number(session.whatsapp)
+            if not phone:
+                return
+            url = f"https://wa.me/{phone}"
             qr = qrcode.make(url)
             buf = io.BytesIO()
             qr.save(buf, format="PNG")
@@ -851,6 +899,15 @@ class RequisitionForm(QWidget):
             self.qr_label.setPixmap(pix)
         except Exception:
             pass
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._generate_qr()
+
+    def refresh_logged_user(self):
+        if hasattr(self, "lbl_vendor"):
+            self.lbl_vendor.setText((session.user_name or "--").upper())
+        self._generate_qr()
 
     # ── WhatsApp do cliente ───────────────────────────────────────────────────
     def _send_whatsapp_client(self):
@@ -877,6 +934,23 @@ class RequisitionForm(QWidget):
 
         self.btn_whatsapp.setEnabled(not busy)
         self.btn_whatsapp.setText("⏳ PREPARANDO PDF..." if busy else "📲 ENVIAR WHATSAPP")
+
+    def _set_print_busy(self, busy: bool):
+        if not hasattr(self, "btn_print"):
+            return
+
+        self.btn_print.setEnabled(not busy)
+        self.btn_print.setText("PREPARANDO IMPRESSÃO..." if busy else "IMPRIMIR")
+
+    def _print_requisition_pdf(self):
+        self._set_print_busy(True)
+        try:
+            pdf_path = self._find_saved_pdf_for_print()
+            self._print_pdf_file(pdf_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Impressão", str(exc))
+        finally:
+            self._set_print_busy(False)
 
     def _on_whatsapp_error(self, msg: str):
         self._set_whatsapp_busy(False)
@@ -927,13 +1001,92 @@ class RequisitionForm(QWidget):
             digits = "55" + digits
         return digits
 
-    def _generate_saved_pdf(self, req: dict) -> str:
-        folder = res.pdf_folder.strip()
-        if not folder:
+    def _build_current_pdf_payload(self) -> tuple[dict, dict, str, str]:
+        data = self.get_form_data()
+        ped_number = (data.get("ped_number") or "").strip()
+        client = self.client_search.get_selected()
+
+        if not ped_number or not ped_number.isdigit() or int(ped_number) == 0:
+            raise RuntimeError("Informe um número de PED válido antes de imprimir.")
+
+        if not data.get("client_id") or not client:
+            raise RuntimeError("Selecione um cliente antes de imprimir.")
+
+        req = dict(data)
+        if self.req_id:
+            req["id"] = self.req_id
+        req["client_name"] = client.get("name") or ""
+        req["client_code"] = client.get("code") or ""
+        req["vendor_name"] = session.user_name or ""
+        req["vendor_whatsapp"] = session.whatsapp or ""
+        req["emission_date"] = datetime.now().isoformat()
+
+        client_payload = {
+            "id": client.get("id"),
+            "code": client.get("code") or "",
+            "name": client.get("name") or "",
+            "phone": self.input_fone.text().strip() or client.get("phone") or "",
+            "cnpj": client.get("cnpj") or "",
+        }
+        obs = self.input_obs.toPlainText().strip()
+        return req, client_payload, obs, self._canvas_json
+
+    def _find_saved_pdf_for_print(self) -> str:
+        ped_number = self.input_ped.text().strip()
+        if not ped_number or not ped_number.isdigit() or int(ped_number) == 0:
+            raise RuntimeError("Informe um número de requisição válido antes de imprimir.")
+
+        folder = self._resolve_pdf_output_folder(require_configured_folder=True)
+        if not os.path.isdir(folder):
+            raise RuntimeError("A pasta de PDFs configurada não foi encontrada.")
+
+        ped_file = ped_number.zfill(6)
+        prefix = f"REQ-{ped_file}-"
+
+        try:
+            pdf_candidates = [
+                os.path.join(folder, name)
+                for name in os.listdir(folder)
+                if name.lower().endswith(".pdf") and name.upper().startswith(prefix.upper())
+            ]
+        except OSError as exc:
+            raise RuntimeError(f"Não foi possível acessar a pasta de PDFs.\n\n{exc}") from exc
+
+        if not pdf_candidates:
             raise RuntimeError(
-                "Defina a pasta de PDFs nas Configurações antes de enviar a requisição pelo WhatsApp."
+                "Não foi encontrado um PDF salvo para essa requisição na pasta configurada.\n\n"
+                f"Requisição: {ped_file}"
             )
 
+        pdf_candidates.sort(
+            key=lambda path: (os.path.getmtime(path), os.path.basename(path).lower()),
+            reverse=True,
+        )
+        return pdf_candidates[0]
+
+    def _resolve_pdf_output_folder(self, require_configured_folder: bool = True) -> str:
+        folder = res.pdf_folder.strip()
+        if folder:
+            return folder
+
+        if require_configured_folder:
+            raise RuntimeError(
+                "Defina a pasta de PDFs nas Configurações antes de localizar ou gerar o PDF da requisição."
+            )
+
+        folder = os.path.join(tempfile.gettempdir(), "requisicoes-pdf")
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
+    def _generate_pdf_file(
+        self,
+        req: dict,
+        client: dict | None,
+        obs: str,
+        canvas_json: str,
+        *,
+        require_configured_folder: bool,
+    ) -> str:
         try:
             from ..services.pdf_generator import generate_pdf, HAS_REPORTLAB
         except ImportError as exc:
@@ -942,13 +1095,139 @@ class RequisitionForm(QWidget):
         if not HAS_REPORTLAB:
             raise RuntimeError("A geração de PDF está indisponível porque o ReportLab não está instalado.")
 
+        folder = self._resolve_pdf_output_folder(require_configured_folder=require_configured_folder)
+        return generate_pdf(req, client, obs or req.get("obs") or "", folder, canvas_json)
+
+    def _generate_saved_pdf(self, req: dict) -> str:
         client = {
             "code": req.get("client_code") or "",
             "name": req.get("client_name") or "",
             "phone": req.get("phone") or "",
         }
         canvas_json = (req.get("canvas") or {}).get("json_data") or "{}"
-        return generate_pdf(req, client, req.get("obs") or "", folder, canvas_json)
+        return self._generate_pdf_file(
+            req,
+            client,
+            req.get("obs") or "",
+            canvas_json,
+            require_configured_folder=True,
+        )
+
+    def _generate_current_pdf(self) -> str:
+        req, client, obs, canvas_json = self._build_current_pdf_payload()
+        return self._generate_pdf_file(
+            req,
+            client,
+            obs,
+            canvas_json,
+            require_configured_folder=False,
+        )
+
+    def _prepare_local_pdf_for_print(self, pdf_path: str) -> str:
+        if not os.path.isfile(pdf_path):
+            raise RuntimeError("O PDF da requisição não foi encontrado para impressão.")
+
+        temp_dir = os.path.join(tempfile.gettempdir(), "requisicoes-print")
+        os.makedirs(temp_dir, exist_ok=True)
+
+        ped_number = self.input_ped.text().strip() or "000000"
+        fd, local_pdf_path = tempfile.mkstemp(
+            prefix=f"req-{ped_number.zfill(6)}-",
+            suffix=".pdf",
+            dir=temp_dir,
+        )
+        os.close(fd)
+
+        try:
+            shutil.copyfile(pdf_path, local_pdf_path)
+        except OSError as exc:
+            try:
+                os.remove(local_pdf_path)
+            except OSError:
+                pass
+            raise RuntimeError(
+                "Não foi possível preparar uma cópia local do PDF para impressão.\n\n"
+                f"{exc}"
+            ) from exc
+
+        return local_pdf_path
+
+    def _print_pdf_file(self, pdf_path: str) -> bool:
+        try:
+            from PySide6.QtCore import QRect, QSize
+            from PySide6.QtGui import QPageLayout, QPainter
+            from PySide6.QtPdf import QPdfDocument
+            from PySide6.QtPrintSupport import QPrintDialog, QPrinter
+        except ImportError as exc:
+            raise RuntimeError("A seleção de impressora não está disponível neste ambiente.") from exc
+
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setDocName(f"Requisicao {self.input_ped.text().strip() or '000000'}")
+        printer.setPageOrientation(QPageLayout.Orientation.Landscape)
+        printer.setFullPage(True)
+
+        dialog = QPrintDialog(printer, self)
+        dialog.setWindowTitle("Imprimir requisição")
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+
+        if printer.outputFormat() == QPrinter.OutputFormat.NativeFormat:
+            printer.setOutputFileName("")
+
+        local_pdf_path = self._prepare_local_pdf_for_print(pdf_path)
+        document = QPdfDocument(self)
+        painter = QPainter()
+        try:
+            load_result = document.load(local_pdf_path)
+            if load_result != QPdfDocument.Error.None_:
+                raise RuntimeError(
+                    f"Não foi possível abrir o PDF da requisição para impressão ({load_result.name})."
+                )
+            if document.pageCount() <= 0:
+                raise RuntimeError("O PDF da requisição não possui páginas para imprimir.")
+
+            if not painter.begin(printer):
+                raise RuntimeError("Não foi possível iniciar a impressão na impressora selecionada.")
+
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+            for page_index in range(document.pageCount()):
+                if page_index:
+                    printer.newPage()
+
+                page_size = document.pagePointSize(page_index)
+                target_rect = printer.paperRect(QPrinter.Unit.DevicePixel)
+                if target_rect.width() <= 0 or target_rect.height() <= 0:
+                    target_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+                target_x = int(round(target_rect.x()))
+                target_y = int(round(target_rect.y()))
+                target_width = max(1, int(round(target_rect.width())))
+                target_height = max(1, int(round(target_rect.height())))
+                painter.fillRect(QRect(target_x, target_y, target_width, target_height), Qt.GlobalColor.white)
+
+                width = max(1, int((page_size.width() / 72.0) * 300))
+                height = max(1, int((page_size.height() / 72.0) * 300))
+                image = document.render(page_index, QSize(width, height))
+                if image.isNull():
+                    raise RuntimeError(f"Não foi possível renderizar a página {page_index + 1} para impressão.")
+
+                scaled_size = image.size()
+                scaled_size.scale(target_width, target_height, Qt.AspectRatioMode.KeepAspectRatio)
+                x = target_x + max(0, (target_width - scaled_size.width()) // 2)
+                y = target_y + max(0, (target_height - scaled_size.height()) // 2)
+                painter.drawImage(QRect(x, y, scaled_size.width(), scaled_size.height()), image)
+        finally:
+            if painter.isActive():
+                painter.end()
+            if hasattr(document, "close"):
+                document.close()
+            try:
+                os.remove(local_pdf_path)
+            except OSError:
+                pass
+
+        return True
 
     # ── Calculadora de Peso ───────────────────────────────────────────────────
     def _open_weight_calculator(self):
@@ -1119,9 +1398,10 @@ class RequisitionForm(QWidget):
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setText("Selecione para qual produção a requisição deve ser enviada.")
 
-        btn_ar = msg.addButton("A&&R", QMessageBox.ButtonRole.AcceptRole)
+        btn_ar = msg.addButton("A&R", QMessageBox.ButtonRole.AcceptRole)
         btn_pinheiro = msg.addButton("Pinheiro Indústria", QMessageBox.ButtonRole.AcceptRole)
         msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        apply_message_box_theme(msg)
 
         msg.exec()
         clicked = msg.clickedButton()
@@ -1359,3 +1639,32 @@ class RequisitionForm(QWidget):
         self.item_table.set_items([])
         self._canvas_json = "{}"
         self._update_canvas_preview()
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ background:{bg}; border:none; }}")
+        self._page_content.setStyleSheet(f"background:{bg};")
+        self.input_ped.setStyleSheet(
+            f"font-size:{max(14,int(18*s))}pt; font-weight:bold; color:{theme.PRIMARY};"
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:5px; padding:2px 6px;"
+            f"background:{theme.INPUT_BG};"
+        )
+        self.input_obs.setStyleSheet(
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+            f"font-size:{max(9,int(11*s))}pt; padding:6px; background:{theme.INPUT_BG};"
+        )
+        self.input_obra.setStyleSheet(theme.input_style(s))
+        self.input_prazo.setStyleSheet(theme.input_style(s))
+        self.input_fone.setStyleSheet(theme.input_style(s))
+        self.input_address.setStyleSheet(theme.input_style(s))
+        chk_style = f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
+        self.chk_retirada.setStyleSheet(chk_style)
+        self.chk_entrega.setStyleSheet(chk_style)
+        self.client_search.apply_theme(s)
+        self.item_table.apply_theme()
+        self.btn_calc.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))

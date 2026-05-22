@@ -19,11 +19,22 @@ class UserSession:
 
     def login(self, data: dict):
         self.token = data["access_token"]
-        self.user_id = data["user_id"]
-        self.user_name = data["user_name"]
-        self.user_code = data["user_code"]
-        self.role = data["role"]
-        self.whatsapp = data.get("whatsapp") or ""
+        self.update_profile(data)
+
+    def update_profile(self, data: dict):
+        if not isinstance(data, dict):
+            return
+        self.user_id = int(data.get("user_id") or data.get("id") or self.user_id or 0)
+        self.user_name = str(data.get("user_name") or data.get("name") or self.user_name or "")
+        self.user_code = str(data.get("user_code") or data.get("code") or self.user_code or "")
+        self.role = str(data.get("role") or self.role or "")
+        self.whatsapp = str(
+            data.get("whatsapp")
+            or data.get("contact")
+            or data.get("phone")
+            or self.whatsapp
+            or ""
+        )
 
     def logout(self):
         self._reset()
@@ -51,6 +62,10 @@ class UserSession:
     @property
     def can_access_dashboard(self) -> bool:
         return self.role in ("admin", "gerente")
+
+    @property
+    def can_access_technical_panel(self) -> bool:
+        return self.role == "admin"
 
     @property
     def can_access_order_center(self) -> bool:

@@ -1,37 +1,48 @@
 from contextlib import asynccontextmanager
+from time import perf_counter
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .database import Base, engine
-from .models import client, product, requisition, user  # garante registro dos modelos no SQLAlchemy
-from .routers import auth, clients, products, requisitions, users
-from .seed import seed_admin
+from .models import client, notification, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
+from .routers import auth, clients, notifications, products, requisitions, system_settings, users
+from .seed import seed_admin, seed_production_machines
+from .services.runtime_monitor import record_exception, record_request
+from .services.text_normalizer import normalize_existing_user_written_data
 
 
 def _migrate():
-    """Aplica migracoes de colunas adicionadas apos criacao inicial do banco."""
+    """Aplica migracoes de colunas adicionadas apos criacao inicial do banco.
+    Cada statement roda em sua propria transacao para evitar que uma falha
+    (ex: coluna ja existe) aborte as demais — necessario no PostgreSQL.
+    """
     stmts = [
         "ALTER TABLE users ADD COLUMN sector TEXT",
-        "ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP",
         "ALTER TABLE requisitions ADD COLUMN obs TEXT",
+        "ALTER TABLE requisitions ADD COLUMN production_destination TEXT",
+        "ALTER TABLE requisitions ADD COLUMN production_machine TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",
-        "UPDATE users SET must_change_password = 0 WHERE must_change_password IS NULL",
+        "UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL",
         "UPDATE users SET role = 'industria' WHERE role = 'entrega'",
         "UPDATE requisitions SET status = 'em_andamento' WHERE UPPER(status) IN "
         "('RASCUNHO','EMITIDA','RECEBIDA_PRODUCAO','PRONTA','EM_ROTA','AGUARDANDO_RETIRADA','CONCLUIDA')",
         "UPDATE requisitions SET status = 'em_producao' WHERE UPPER(status) = 'EM_FABRICACAO'",
         "UPDATE requisitions SET status = 'aguardando_recebimento' "
         "WHERE status = 'em_producao' AND finalized_at IS NULL",
+        "UPDATE requisitions SET status = 'aguardando_na_fila' "
+        "WHERE status = 'em_producao' AND production_machine IS NULL AND finalized_at IS NOT NULL",
     ]
-    with engine.begin() as conn:
-        for stmt in stmts:
-            try:
+    for stmt in stmts:
+        try:
+            with engine.begin() as conn:
                 conn.execute(text(stmt))
-            except Exception:
-                pass
+        except Exception:
+            pass
 
 
 @asynccontextmanager
@@ -39,6 +50,11 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _migrate()
     seed_admin()
+    seed_production_machines()
+    try:
+        normalize_existing_user_written_data()
+    except Exception:
+        pass
     yield
 
 
@@ -57,11 +73,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def monitor_runtime(request: Request, call_next):
+    started_at = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        record_exception()
+        raise
+
+    duration_ms = (perf_counter() - started_at) * 1000.0
+    record_request(duration_ms, response.status_code)
+    return response
+
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(clients.router)
 app.include_router(products.router)
 app.include_router(requisitions.router)
+app.include_router(notifications.router)
+app.include_router(system_settings.router)
 
 
 @app.get("/health", tags=["Sistema"])

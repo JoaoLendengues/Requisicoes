@@ -1,14 +1,16 @@
-"""Central de usuarios com importacao, cadastro individual e manutencao de acessos."""
+"""Central de usuários com importação, cadastro individual e manutenção de acessos."""
 
 import os
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -27,38 +29,132 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.dialogs import ask_confirmation
+from ..core.datetime_utils import (
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+)
 from ..core.session import session
+from ..core.text_case import bind_uppercase_line_edit
 
 
 ROLE_OPTIONS = [
     ("ADMINISTRADOR", "admin"),
     ("GERENTE", "gerente"),
-    ("PRODUCAO", "producao"),
-    ("INDUSTRIA", "industria"),
+    ("PRODUÇÃO", "producao"),
+    ("INDÚSTRIA", "industria"),
     ("VENDEDOR", "vendedor"),
 ]
 ROLE_LABELS = {value: label for label, value in ROLE_OPTIONS}
-ROLE_LABELS["entrega"] = "INDUSTRIA"
+ROLE_LABELS["entrega"] = "INDÚSTRIA"
+
+def _rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 
-def _make_card(scale: float) -> QFrame:
+def _format_contact_text(raw: str) -> str:
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if len(digits) > 11 and digits.startswith("55"):
+        digits = digits[2:]
+    digits = digits[-11:]
+    if not digits:
+        return ""
+    if len(digits) <= 2:
+        return f"({digits}"
+    formatted = f"({digits[:2]})"
+    if len(digits) >= 3:
+        formatted += f" {digits[2]}"
+    if len(digits) >= 4:
+        formatted += f" {digits[3:7]}"
+    if len(digits) >= 8:
+        formatted += f"-{digits[7:11]}"
+    return formatted
+
+
+def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
+    shadow = QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur)
+    shadow.setOffset(0, y_offset)
+    color = QColor(theme.TEXT_DARK)
+    color.setAlpha(alpha)
+    shadow.setColor(color)
+    widget.setGraphicsEffect(shadow)
+
+
+def _make_card(
+    scale: float,
+    background: str | None = None,
+    border_color: str | None = None,
+    radius: int = 18,
+    hover_background: str | None = None,
+) -> QFrame:
     card = QFrame()
-    card.setStyleSheet(
-        f"background:{theme.CARD_BG}; border:none; border-radius:8px;"
-    )
+    card.setObjectName("userCenterCard")
+    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#userCenterCard {{ border-radius:{radius}px; }}")
+    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
 
 def _flat_secondary_btn_style(scale: float) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
-        f"  border:none; outline:none; border-radius:8px;"
-        f"  padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{theme.SELECTION_BG}; }}"
-        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
+        f"QPushButton:pressed {{ background:#E7EEF7; }}"
+        f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
+    )
+
+
+def _primary_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
+        f"QPushButton:pressed {{ background:#152D49; }}"
+        f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
+    )
+
+
+def _danger_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.DANGER}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:#B91C1C; }}"
+        f"QPushButton:pressed {{ background:#991B1B; }}"
+        f"QPushButton:disabled {{ background:#F0B4B4; color:#FFF7F7; }}"
+    )
+
+
+def _field_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QLineEdit, QComboBox {{"
+        f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:14px;"
+        f"  padding:9px 12px; font-size:{fs}pt; color:{theme.TEXT_DARK};"
+        f"  selection-background-color:{_rgba(theme.PRIMARY, 24)}; selection-color:{theme.TEXT_DARK};"
+        f"}}"
+        f"QLineEdit {{ placeholder-text-color:{theme.TEXT_MEDIUM}; }}"
+        f"QLineEdit:focus, QComboBox:focus {{ border:1px solid {_rgba(theme.PRIMARY, 88)}; }}"
+        f"QComboBox::drop-down {{ border:none; width:24px; }}"
+        f"QComboBox QAbstractItemView {{"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; border:1px solid {theme.BORDER_COLOR};"
+        f"  selection-background-color:{_rgba(theme.PRIMARY, 18)}; selection-color:{theme.TEXT_DARK};"
+        f"}}"
     )
 
 
@@ -126,62 +222,111 @@ class UserCenterView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = "#B3D1FF"
+        page_bg = theme.CONTENT_BG
         self.setObjectName("userCenterView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             f"QWidget#userCenterView {{ background:{page_bg}; }}"
         )
         root = QVBoxLayout(self)
-        root.setContentsMargins(max(12, int(16 * s)), max(12, int(16 * s)),
-                                max(12, int(16 * s)), max(12, int(16 * s)))
-        root.setSpacing(max(10, int(12 * s)))
+        root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                max(18, int(24 * s)), max(18, int(24 * s)))
+        root.setSpacing(max(14, int(18 * s)))
 
         header = QHBoxLayout()
+        header.setSpacing(max(12, int(16 * s)))
         title_col = QVBoxLayout()
-        title = QLabel("CENTRAL DE USUARIOS")
+        title_col.setSpacing(max(4, int(5 * s)))
+        title = QLabel("Central de Usuários")
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(15, int(18 * s))}pt; font-weight:bold;"
+            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
-            "Importe usuarios, ajuste niveis de acesso e mantenha senhas e cadastros em dia."
+            "Importe usuários, ajuste níveis de acesso e mantenha senhas e cadastros em dia."
         )
         subtitle.setWordWrap(True)
+        subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+            f"font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
 
+        right_col = QHBoxLayout()
+        right_col.setSpacing(max(10, int(12 * s)))
+
+        info_card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(16, int(18 * s)),
+            hover_background=theme.CARD_BG,
+        )
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
+                                       max(14, int(16 * s)), max(10, int(12 * s)))
+        info_layout.setSpacing(max(2, int(3 * s)))
+
+        date_hint = QLabel("DATA ATUAL")
+        date_hint.setProperty("muted", "1")
+        date_hint.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;"
+        )
+        self.date_label = QLabel(_format_header_date())
+        self.date_label.setStyleSheet(
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
+        )
+        self.updated_label = QLabel("Pronto para atualizar")
+        self.updated_label.setProperty("muted", "1")
+        self.updated_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
+        )
+        self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        info_layout.addWidget(date_hint)
+        info_layout.addWidget(self.date_label)
+        info_layout.addWidget(self.updated_label)
+
         self.refresh_btn = QPushButton("ATUALIZAR")
-        self.refresh_btn.setFixedHeight(max(32, int(36 * s)))
+        self.refresh_btn.setFixedHeight(max(38, int(44 * s)))
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.refresh_btn.clicked.connect(self.refresh)
-        header.addWidget(self.refresh_btn)
+        right_col.addWidget(info_card)
+        right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
+        header.addLayout(right_col)
         root.addLayout(header)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(
+        self.error_label = QLabel("")
+        self.error_label.hide()
+        self.error_label.setWordWrap(True)
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )
+        root.addWidget(self.error_label)
+
+        self._page_scroll = QScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(
             f"QScrollArea {{ border:none; background:{page_bg}; }}"
         )
-        scroll.viewport().setStyleSheet(
+        self._page_scroll.viewport().setStyleSheet(
             f"background:{page_bg}; border:none;"
         )
-        root.addWidget(scroll, 1)
+        root.addWidget(self._page_scroll, 1)
 
-        content = QWidget()
-        content.setObjectName("userCenterContent")
-        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        content.setStyleSheet(
+        self._page_content = QWidget()
+        self._page_content.setObjectName("userCenterContent")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(
             f"QWidget#userCenterContent {{ background:{page_bg}; }}"
         )
-        scroll.setWidget(content)
-        layout = QVBoxLayout(content)
+        self._page_scroll.setWidget(self._page_content)
+        layout = QVBoxLayout(self._page_content)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(max(12, int(14 * s)))
+        layout.setSpacing(max(16, int(18 * s)))
 
         layout.addWidget(self._build_import_card())
 
@@ -194,41 +339,54 @@ class UserCenterView(QWidget):
 
     def _build_import_card(self) -> QFrame:
         s = self.scale
-        card = _make_card(s)
+        card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(14, int(16 * s)), max(12, int(14 * s)),
-                                  max(14, int(16 * s)), max(12, int(14 * s)))
-        layout.setSpacing(max(8, int(10 * s)))
+        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(10, int(12 * s)))
 
-        title = QLabel("IMPORTACAO DE USUARIOS")
+        accent = QFrame()
+        accent.setFixedHeight(max(4, int(5 * s)))
+        accent.setStyleSheet(
+            f"background:{theme.PRIMARY_HOVER}; border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+        title = QLabel("IMPORTAÇÃO DE USUÁRIOS")
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
         helper = QLabel(
-            "Arquivo esperado: usuarios.ods na pasta base, com colunas Codigo, Nome, Contato e Setor."
+            "Arquivo esperado: usuarios.ods na pasta base, com colunas Código, Nome, Contato e Setor."
         )
         helper.setWordWrap(True)
+        helper.setProperty("muted", "1")
         helper.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
+            f"font-size:{max(7, int(8 * s))}pt;"
         )
+        layout.addWidget(accent)
         layout.addWidget(title)
         layout.addWidget(helper)
 
         row = QHBoxLayout()
         self.input_import_path = QLineEdit(os.path.join(os.getcwd(), "usuarios.ods"))
-        self.input_import_path.setFixedHeight(max(30, int(36 * s)))
-        self.input_import_path.setStyleSheet(theme.input_style(s))
+        self.input_import_path.setFixedHeight(max(38, int(44 * s)))
+        self.input_import_path.setStyleSheet(_field_style(s))
         row.addWidget(self.input_import_path, 1)
 
         browse = QPushButton("...")
-        browse.setFixedSize(max(30, int(36 * s)), max(30, int(36 * s)))
+        browse.setFixedSize(max(38, int(44 * s)), max(38, int(44 * s)))
         browse.setStyleSheet(_flat_secondary_btn_style(s))
         browse.clicked.connect(self._browse_import_file)
         row.addWidget(browse)
 
-        self.import_btn = QPushButton("IMPORTAR USUARIOS")
-        self.import_btn.setFixedHeight(max(32, int(38 * s)))
-        self.import_btn.setStyleSheet(theme.primary_btn_style(s))
+        self.import_btn = QPushButton("IMPORTAR USUÁRIOS")
+        self.import_btn.setFixedHeight(max(38, int(44 * s)))
+        self.import_btn.setStyleSheet(_primary_action_btn_style(s))
         self.import_btn.clicked.connect(self._start_import)
         row.addWidget(self.import_btn)
         layout.addLayout(row)
@@ -237,7 +395,7 @@ class UserCenterView(QWidget):
         self.import_progress.setVisible(False)
         self.import_progress.setStyleSheet(
             f"QProgressBar {{ border:none; border-radius:4px;"
-            f"background:{theme.INPUT_BG}; text-align:center; font-size:{max(8, int(9 * s))}pt; }}"
+            f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8, int(9 * s))}pt; }}"
             f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
         )
         layout.addWidget(self.import_progress)
@@ -247,37 +405,44 @@ class UserCenterView(QWidget):
         self.import_log.setMaximumHeight(max(100, int(120 * s)))
         self.import_log.hide()
         self.import_log.setStyleSheet(
-            f"background:{theme.INPUT_BG}; border:none; border-radius:6px;"
-            f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK};"
+            f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
+            f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
         )
         layout.addWidget(self.import_log)
         return card
 
     def _build_table_card(self) -> QFrame:
         s = self.scale
-        card = _make_card(s)
+        card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(14, int(16 * s)), max(12, int(14 * s)),
-                                  max(14, int(16 * s)), max(12, int(14 * s)))
-        layout.setSpacing(max(8, int(10 * s)))
+        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(10, int(12 * s)))
 
         header = QHBoxLayout()
-        title = QLabel("LISTA DE USUARIOS")
+        header.setSpacing(max(10, int(12 * s)))
+        title = QLabel("LISTA DE USUÁRIOS")
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
         header.addWidget(title)
         header.addStretch()
 
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Buscar por codigo, nome, contato ou setor...")
-        self.search_input.setFixedHeight(max(30, int(34 * s)))
-        self.search_input.setStyleSheet(theme.input_style(s))
+        self.search_input.setPlaceholderText("Buscar por código, nome, contato ou setor...")
+        self.search_input.setFixedHeight(max(38, int(44 * s)))
+        self.search_input.setStyleSheet(_field_style(s))
         self.search_input.textChanged.connect(self._apply_filter)
         header.addWidget(self.search_input)
 
         new_btn = QPushButton("NOVO")
-        new_btn.setFixedHeight(max(30, int(34 * s)))
+        new_btn.setFixedHeight(max(38, int(44 * s)))
         new_btn.setStyleSheet(_flat_secondary_btn_style(s))
         new_btn.clicked.connect(self._prepare_new_user)
         header.addWidget(new_btn)
@@ -301,39 +466,62 @@ class UserCenterView(QWidget):
             header_widget.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         for col in (0, 4, 5, 6):
             header_widget.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_widget.setMinimumHeight(max(34, int(40 * s)))
+        self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{theme.CARD_BG};"
-            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
+            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{theme.TABLE_HEADER_BG}; color:#fff; padding:7px;"
-            f"  font-weight:bold; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
-            f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
         )
+        pal = self.table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
+        self.table.setPalette(pal)
+        self.table.viewport().setAutoFillBackground(True)
         layout.addWidget(self.table, 1)
         return card
 
     def _build_form_card(self) -> QFrame:
         s = self.scale
-        card = _make_card(s)
+        card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(14, int(16 * s)), max(12, int(14 * s)),
-                                  max(14, int(16 * s)), max(12, int(14 * s)))
-        layout.setSpacing(max(8, int(10 * s)))
+        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(10, int(12 * s)))
 
         title = QLabel("CADASTRO INDIVIDUAL")
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
         helper = QLabel(
-            "Deixe a senha em branco para criar o usuario em primeiro acesso. No cadastro existente, so preencha a senha se quiser altera-la."
+            "Deixe a senha em branco para criar o usuário em primeiro acesso. No cadastro existente, só preencha a senha se quiser alterá-la."
         )
         helper.setWordWrap(True)
+        helper.setProperty("muted", "1")
         helper.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt;"
+            f"font-size:{max(7, int(8 * s))}pt;"
         )
         layout.addWidget(title)
         layout.addWidget(helper)
@@ -342,31 +530,38 @@ class UserCenterView(QWidget):
         grid.setHorizontalSpacing(max(8, int(10 * s)))
         grid.setVerticalSpacing(max(8, int(10 * s)))
 
-        self.form_status = QLabel("Novo usuario")
+        self.form_status = QLabel("Novo usuário")
+        self.form_status.setProperty("accent", "1")
         self.form_status.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(8, int(9 * s))}pt; font-weight:bold;"
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:700;"
         )
         layout.addWidget(self.form_status)
 
         self.input_code = self._input()
         self.input_name = self._input()
         self.input_contact = self._input()
+        self.input_contact.setPlaceholderText("(61) 9 9999-9999")
+        self.input_contact.setMaxLength(16)
+        self.input_contact.textEdited.connect(self._on_contact_edited)
         self.input_sector = self._input()
         self.input_password = self._input(password=True)
         self.input_password_confirm = self._input(password=True)
-        self.check_active = QCheckBox("Usuario ativo")
+        bind_uppercase_line_edit(self.input_code)
+        bind_uppercase_line_edit(self.input_name)
+        bind_uppercase_line_edit(self.input_sector)
+        self.check_active = QCheckBox("Usuário ativo")
         self.check_active.setChecked(True)
         self.check_active.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(8, int(9 * s))}pt;"
+            f"font-size:{max(8, int(9 * s))}pt;"
         )
 
         self.combo_role = QComboBox()
-        self.combo_role.setFixedHeight(max(30, int(36 * s)))
-        self.combo_role.setStyleSheet(theme.input_style(s))
+        self.combo_role.setFixedHeight(max(38, int(44 * s)))
+        self.combo_role.setStyleSheet(_field_style(s))
         for label, value in ROLE_OPTIONS:
             self.combo_role.addItem(label, value)
 
-        grid.addWidget(self._field_label("Codigo"), 0, 0)
+        grid.addWidget(self._field_label("Código"), 0, 0)
         grid.addWidget(self.input_code, 0, 1)
         grid.addWidget(self._field_label("Nome"), 1, 0)
         grid.addWidget(self.input_name, 1, 1)
@@ -374,7 +569,7 @@ class UserCenterView(QWidget):
         grid.addWidget(self.input_contact, 2, 1)
         grid.addWidget(self._field_label("Setor"), 3, 0)
         grid.addWidget(self.input_sector, 3, 1)
-        grid.addWidget(self._field_label("Nivel de acesso"), 4, 0)
+        grid.addWidget(self._field_label("Nível de acesso"), 4, 0)
         grid.addWidget(self.combo_role, 4, 1)
         grid.addWidget(self._field_label("Nova senha"), 5, 0)
         grid.addWidget(self.input_password, 5, 1)
@@ -385,19 +580,19 @@ class UserCenterView(QWidget):
 
         actions = QHBoxLayout()
         self.btn_save = QPushButton("SALVAR")
-        self.btn_save.setFixedHeight(max(32, int(38 * s)))
-        self.btn_save.setStyleSheet(theme.primary_btn_style(s))
+        self.btn_save.setFixedHeight(max(38, int(44 * s)))
+        self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_save.clicked.connect(self._save_user)
         actions.addWidget(self.btn_save)
 
         self.btn_disable = QPushButton("DESATIVAR")
-        self.btn_disable.setFixedHeight(max(32, int(38 * s)))
-        self.btn_disable.setStyleSheet(theme.danger_btn_style(s))
+        self.btn_disable.setFixedHeight(max(38, int(44 * s)))
+        self.btn_disable.setStyleSheet(_danger_action_btn_style(s))
         self.btn_disable.clicked.connect(self._deactivate_user)
         actions.addWidget(self.btn_disable)
 
         clear_btn = QPushButton("LIMPAR")
-        clear_btn.setFixedHeight(max(32, int(38 * s)))
+        clear_btn.setFixedHeight(max(38, int(44 * s)))
         clear_btn.setStyleSheet(_flat_secondary_btn_style(s))
         clear_btn.clicked.connect(self._prepare_new_user)
         actions.addWidget(clear_btn)
@@ -408,21 +603,35 @@ class UserCenterView(QWidget):
     def _input(self, password: bool = False) -> QLineEdit:
         s = self.scale
         field = QLineEdit()
-        field.setFixedHeight(max(30, int(36 * s)))
-        field.setStyleSheet(theme.input_style(s))
+        field.setFixedHeight(max(38, int(44 * s)))
+        field.setStyleSheet(_field_style(s))
         if password:
             field.setEchoMode(QLineEdit.EchoMode.Password)
         return field
 
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text.upper())
+        label.setProperty("muted", "1")
         label.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(7, int(8 * self.scale))}pt; font-weight:bold;"
+            f"font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
         )
         return label
 
+    def _on_contact_edited(self, text: str):
+        self._set_contact_text(text)
+
+    def _set_contact_text(self, raw: str):
+        formatted = _format_contact_text(raw)
+        if self.input_contact.text() == formatted:
+            return
+        self.input_contact.blockSignals(True)
+        self.input_contact.setText(formatted)
+        self.input_contact.setCursorPosition(len(formatted))
+        self.input_contact.blockSignals(False)
+
     def refresh(self):
-        self.refresh_btn.setEnabled(False)
+        self._set_loading(True)
+        self.error_label.hide()
         self._run_action(api.list_users, on_result=self._populate_users)
 
     def _run_action(self, fn, *args, on_result=None, success_message: str = ""):
@@ -437,14 +646,15 @@ class UserCenterView(QWidget):
             cb.result.connect(on_result)
         if success_message:
             cb.result.connect(
-                lambda _: QMessageBox.information(self, "Central de usuarios", success_message)
+                lambda _: QMessageBox.information(self, "Central de usuários", success_message)
             )
-        cb.error.connect(lambda msg: QMessageBox.critical(self, "Central de usuarios", msg))
+        cb.error.connect(self._show_error)
+        cb.error.connect(lambda msg: QMessageBox.critical(self, "Central de usuários", msg))
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
         thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
-        thread.finished.connect(lambda: self.refresh_btn.setEnabled(True))
+        thread.finished.connect(lambda: self._set_loading(False))
         worker._cb = cb
         thread.start()
         self._threads.append((thread, worker))
@@ -452,9 +662,23 @@ class UserCenterView(QWidget):
     def _cleanup_thread(self, thread: QThread, worker: QObject):
         self._threads = [pair for pair in self._threads if pair != (thread, worker)]
 
+    def _set_loading(self, loading: bool):
+        self.refresh_btn.setEnabled(not loading)
+        if loading:
+            self.updated_label.setText("Atualizando dados...")
+            self.date_label.setText(_format_header_date())
+
+    def _show_error(self, message: str):
+        self.updated_label.setText("Falha ao atualizar")
+        self.error_label.setText(f"Não foi possível carregar a central de usuários.\n\n{message}")
+        self.error_label.show()
+
     def _populate_users(self, payload: object):
         self._users_all = payload if isinstance(payload, list) else []
         self._apply_filter()
+        current = local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
     def _apply_filter(self):
         term = self.search_input.text().strip().lower()
@@ -488,11 +712,11 @@ class UserCenterView(QWidget):
             values = [
                 str(user.get("code") or "-"),
                 str(user.get("name") or "-"),
-                str(user.get("whatsapp") or "-"),
+                _format_contact_text(str(user.get("whatsapp") or "")) or "-",
                 str(user.get("sector") or "-"),
                 ROLE_LABELS.get(str(user.get("role") or ""), str(user.get("role") or "-")),
                 "Ativo" if user.get("is_active") else "Inativo",
-                "Pendente" if user.get("must_change_password") else "Concluido",
+                "Pendente" if user.get("must_change_password") else "Concluído",
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -513,7 +737,7 @@ class UserCenterView(QWidget):
     def _browse_import_file(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Selecionar planilha de usuarios",
+            "Selecionar planilha de usuários",
             "",
             "Planilhas (*.ods *.xlsx *.xlsm *.xls)",
             options=QFileDialog.Option.DontUseNativeDialog,
@@ -524,12 +748,12 @@ class UserCenterView(QWidget):
     def _start_import(self):
         path = self.input_import_path.text().strip()
         if not path:
-            QMessageBox.warning(self, "Central de usuarios", "Informe o caminho da planilha.")
+            QMessageBox.warning(self, "Central de usuários", "Informe o caminho da planilha.")
             return
 
         current = next((pair for pair in self._threads if isinstance(pair[1], ImportWorker)), None)
         if current and current[0].isRunning():
-            QMessageBox.information(self, "Central de usuarios", "A importacao atual ainda esta em andamento.")
+            QMessageBox.information(self, "Central de usuários", "A importação atual ainda está em andamento.")
             return
 
         self.import_btn.setEnabled(False)
@@ -567,7 +791,7 @@ class UserCenterView(QWidget):
         try:
             self.import_log.setPlainText(result.summary())
         except Exception:
-            self.import_log.setPlainText("Importacao concluida.")
+            self.import_log.setPlainText("Importação concluída.")
         self.refresh()
 
     def _on_import_error(self, message: str):
@@ -577,11 +801,11 @@ class UserCenterView(QWidget):
 
     def _reset_import_button(self):
         self.import_btn.setEnabled(True)
-        self.import_btn.setText("IMPORTAR USUARIOS")
+        self.import_btn.setText("IMPORTAR USUÁRIOS")
 
     def _prepare_new_user(self):
         self._selected_user_id = None
-        self.form_status.setText("Novo usuario")
+        self.form_status.setText("Novo usuário")
         self.input_code.clear()
         self.input_name.clear()
         self.input_contact.clear()
@@ -609,7 +833,7 @@ class UserCenterView(QWidget):
         )
         self.input_code.setText(str(user.get("code") or ""))
         self.input_name.setText(str(user.get("name") or ""))
-        self.input_contact.setText(str(user.get("whatsapp") or ""))
+        self._set_contact_text(str(user.get("whatsapp") or ""))
         self.input_sector.setText(str(user.get("sector") or ""))
         role = str(user.get("role") or "vendedor")
         if role == "entrega":
@@ -624,21 +848,31 @@ class UserCenterView(QWidget):
     def _save_user(self):
         code = self.input_code.text().strip()
         name = self.input_name.text().strip()
-        contact = self.input_contact.text().strip()
+        contact = _format_contact_text(self.input_contact.text().strip())
         sector = self.input_sector.text().strip()
         role = self.combo_role.currentData()
         password = self.input_password.text()
         password_confirm = self.input_password_confirm.text()
+        contact_digits = "".join(ch for ch in contact if ch.isdigit())
 
         if not code or not name:
-            QMessageBox.warning(self, "Central de usuarios", "Informe ao menos codigo e nome.")
+            QMessageBox.warning(self, "Central de usuários", "Informe ao menos código e nome.")
+            return
+        if contact and len(contact_digits) != 11:
+            QMessageBox.warning(
+                self,
+                "Central de usuários",
+                "Informe o contato no formato (61) 9 9999-9999.",
+            )
             return
         if password != password_confirm:
-            QMessageBox.warning(self, "Central de usuarios", "A confirmacao da senha nao confere.")
+            QMessageBox.warning(self, "Central de usuários", "A confirmação da senha não confere.")
             return
         if password and len(password.strip()) < 6:
-            QMessageBox.warning(self, "Central de usuarios", "A senha precisa ter pelo menos 6 caracteres.")
+            QMessageBox.warning(self, "Central de usuários", "A senha precisa ter pelo menos 6 caracteres.")
             return
+
+        self._set_contact_text(contact)
 
         payload = {
             "code": code,
@@ -652,42 +886,112 @@ class UserCenterView(QWidget):
             payload["password"] = password.strip()
 
         self._pending_code = code
+        def _after_save(_):
+            if self._selected_user_id == session.user_id:
+                session.user_name = name
+                session.user_code = code
+                session.whatsapp = contact
+            self.refresh()
         if self._selected_user_id is None:
             self._run_action(
                 api.create_user,
                 payload,
-                on_result=lambda _: self.refresh(),
-                success_message="Usuario salvo com sucesso.",
+                on_result=_after_save,
+                success_message="Usuário salvo com sucesso.",
             )
         else:
             self._run_action(
                 api.update_user,
                 self._selected_user_id,
                 payload,
-                on_result=lambda _: self.refresh(),
+                on_result=_after_save,
                 success_message="Cadastro atualizado com sucesso.",
             )
 
     def _deactivate_user(self):
         if self._selected_user_id is None:
-            QMessageBox.information(self, "Central de usuarios", "Selecione um usuario primeiro.")
+            QMessageBox.information(self, "Central de usuários", "Selecione um usuário primeiro.")
             return
         if self._selected_user_id == session.user_id:
-            QMessageBox.warning(self, "Central de usuarios", "Nao e permitido desativar o proprio usuario.")
+            QMessageBox.warning(self, "Central de usuários", "Não é permitido desativar o próprio usuário.")
             return
 
-        reply = QMessageBox.question(
+        reply = ask_confirmation(
             self,
-            "Central de usuarios",
-            "Deseja desativar este usuario?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            "Central de usuários",
+            "Deseja desativar este usuário?",
+            yes_text="Sim",
+            no_text="Não",
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        if not reply:
             return
 
         self._run_action(
             api.deactivate_user,
             self._selected_user_id,
             on_result=lambda _: (self.refresh(), self._prepare_new_user()),
-            success_message="Usuario desativado com sucesso.",
+            success_message="Usuário desativado com sucesso.",
         )
+
+    def _apply_table_style(self) -> None:
+        s = self.scale
+        self.table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
+            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+        )
+        pal = self.table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
+        self.table.setPalette(pal)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#userCenterView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#userCenterContent {{ background:{bg}; }}")
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )
+        self.import_btn.setStyleSheet(_primary_action_btn_style(s))
+        self.input_import_path.setStyleSheet(_field_style(s))
+        self.import_progress.setStyleSheet(
+            f"QProgressBar {{ border:none; border-radius:4px;"
+            f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8, int(9 * s))}pt; }}"
+            f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
+        )
+        self.import_log.setStyleSheet(
+            f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
+            f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
+        )
+        self.search_input.setStyleSheet(_field_style(s))
+        self._apply_table_style()
+        self.combo_role.setStyleSheet(_field_style(s))
+        for inp in (
+            self.input_code, self.input_name, self.input_contact,
+            self.input_sector, self.input_password, self.input_password_confirm,
+        ):
+            inp.setStyleSheet(_field_style(s))
+        self.check_active.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
+        self.btn_save.setStyleSheet(_primary_action_btn_style(s))
+        self.btn_disable.setStyleSheet(_danger_action_btn_style(s))
