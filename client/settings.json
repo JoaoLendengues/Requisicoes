@@ -1,5 +1,5 @@
 {
-  "dark_mode": true,
+  "dark_mode": false,
   "pending_invoice_alert_days": 1,
   "server_url": "http://10.1.1.151:5000",
   "font_scale": "85%",
