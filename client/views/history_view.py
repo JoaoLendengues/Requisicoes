@@ -399,6 +399,13 @@ class HistoryView(QWidget):
         filter_title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
+        filter_shortcuts = QLabel(
+            "Atalhos do período: h = hoje | o = ontem | i = início do mês | f = final do mês | a = início do ano"
+        )
+        filter_shortcuts.setWordWrap(True)
+        filter_shortcuts.setStyleSheet(
+            f"color:{theme.PRIMARY}; font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;"
+        )
         filter_subtitle = QLabel(
             "Refine a consulta por status, produção e máquina, ou pesquise por pedido, cliente ou obra."
         )
@@ -408,6 +415,7 @@ class HistoryView(QWidget):
             f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
         filter_layout.addWidget(filter_title)
+        filter_layout.addWidget(filter_shortcuts)
         filter_layout.addWidget(filter_subtitle)
 
         controls = QHBoxLayout()
