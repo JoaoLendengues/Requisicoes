@@ -199,6 +199,7 @@ class DrawingScene(QGraphicsScene):
         self._curve_source_item: QGraphicsItem | None = None
         self._curve_points_scene: list[QPointF] = []
         self._curve_segment_index: int = -1
+        self._ruler_commit_on_release: bool = False
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
 
         # Estado do Free Transform (Ctrl+T)
@@ -792,6 +793,10 @@ class DrawingScene(QGraphicsScene):
 
         self._snap_point = None
         self._start = QPointF(pos.x(), pos.y())
+        self._ruler_commit_on_release = (
+            tool == Tool.RULER
+            and bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+        )
 
         if tool == Tool.PEN:
             self._painter_path = QPainterPath(pos)
@@ -922,8 +927,6 @@ class DrawingScene(QGraphicsScene):
         elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
             self._update_ruler(self._start, end)
-            if bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier):
-                self._commit_ruler_measure(self._start, end)
 
         elif tool == Tool.ARROW and self._preview_item:
             end = self._constrain(self._start, pos) if shift else pos
@@ -1002,6 +1005,9 @@ class DrawingScene(QGraphicsScene):
         elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
             self._update_ruler(self._start, end)
+            if self._ruler_commit_on_release:
+                self._commit_ruler_measure(self._start, end)
+            self._ruler_commit_on_release = False
 
         elif tool == Tool.CURVE and self._preview_item and self._curve_source_item:
             old_item = self._curve_source_item
@@ -1035,6 +1041,7 @@ class DrawingScene(QGraphicsScene):
             self._preview_item = None
 
         self._start = None
+        self._ruler_commit_on_release = False
 
     def keyPressEvent(self, event):
         # Enter ou Escape confirmam/saem do Free Transform
