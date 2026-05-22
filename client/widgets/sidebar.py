@@ -53,6 +53,23 @@ BOTTOM_NAV_ITEMS = [
     ("config", "CONFIGURAÇÕES", "config"),
 ]
 
+NAV_GROUPS = [
+    [
+        ("nova", "NOVA REQUISIÇÃO", "nova"),
+        ("pedidos", "CENTRAL DE PEDIDOS", "pedidos"),
+        ("ar", "A&&R", "producao"),
+        ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "producao"),
+    ],
+    [
+        ("dashboard", "PAINEL GERENCIAL", "dashboard"),
+        ("historico", "HISTÓRICO / BUSCA", "historico"),
+    ],
+    [
+        ("usuarios", "CENTRAL DE USUÁRIOS", "usuarios"),
+        ("tecnico", "PAINEL TÉCNICO", "tecnico"),
+    ],
+]
+
 
 def _normalize_icon_name(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
@@ -363,17 +380,24 @@ class Sidebar(QWidget):
         panel_layout.addWidget(self._separator())
 
         # ── Navegação principal ───────────────────────────────────────────────
-        for key, label, icon_key in NAV_ITEMS:
-            btn = self._make_btn(label, icon_key, nav_key=key)
-            self._nav_btns[key] = btn
-            btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
-            panel_layout.addWidget(btn)
+        for group_index, nav_group in enumerate(NAV_GROUPS):
+            for key, label, icon_key in nav_group:
+                btn = self._make_btn(label, icon_key, nav_key=key)
+                self._nav_btns[key] = btn
+                btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
+                panel_layout.addWidget(btn)
+            if group_index < len(NAV_GROUPS) - 1:
+                panel_layout.addWidget(self._separator())
 
         # Espaço flexível — empurra o rodapé para baixo quando há espaço sobrando
         panel_layout.addStretch(1)
 
         # ── Rodapé: config + notificações + usuário + sair ────────────────────
         panel_layout.addWidget(self._separator())
+
+        self._bell = _BellButton(self.scale)
+        self._bell.clicked.connect(self.bell_clicked.emit)
+        panel_layout.addWidget(self._bell)
 
         for key, label, icon_key in BOTTOM_NAV_ITEMS:
             btn = self._make_btn(label, icon_key, nav_key=key)
@@ -382,15 +406,11 @@ class Sidebar(QWidget):
             panel_layout.addWidget(btn)
 
         # ── Toggle claro / escuro ─────────────────────────────────────────────
+        panel_layout.addWidget(self._separator())
+
         self._theme_toggle = _ThemeToggle(theme.is_dark, self.scale)
         self._theme_toggle.toggled.connect(self.theme_toggled.emit)
         panel_layout.addWidget(self._theme_toggle)
-
-        panel_layout.addWidget(self._separator())
-
-        self._bell = _BellButton(self.scale)
-        self._bell.clicked.connect(self.bell_clicked.emit)
-        panel_layout.addWidget(self._bell)
 
         panel_layout.addWidget(self._separator())
 
