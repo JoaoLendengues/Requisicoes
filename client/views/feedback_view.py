@@ -96,6 +96,9 @@ class FeedbackView(QWidget):
         compose_layout.setContentsMargins(12, 12, 12, 12)
         compose_layout.setSpacing(8)
 
+        self.compose_title = QLabel("Enviar feedback")
+        compose_layout.addWidget(self.compose_title)
+
         self.input_feedback = QTextEdit()
         self.input_feedback.setPlaceholderText("Digite aqui seu feedback...")
         self.input_feedback.setMinimumHeight(max(110, int(140 * self.scale)))
@@ -119,18 +122,15 @@ class FeedbackView(QWidget):
         admin_layout.setContentsMargins(12, 12, 12, 12)
         admin_layout.setSpacing(8)
 
-        self.admin_title = QLabel("Mensagens recebidas (ordem de chegada)")
+        self.admin_title = QLabel("Mensagens recebidas")
         admin_layout.addWidget(self.admin_title)
 
         self.feedback_list = QListWidget()
+        self.feedback_list.setWordWrap(True)
+        self.feedback_list.setUniformItemSizes(False)
         self.feedback_list.currentRowChanged.connect(self._on_admin_selection_changed)
         self.feedback_list.setMinimumHeight(max(180, int(230 * self.scale)))
         admin_layout.addWidget(self.feedback_list)
-
-        self.feedback_details = QTextEdit()
-        self.feedback_details.setReadOnly(True)
-        self.feedback_details.setMinimumHeight(max(90, int(120 * self.scale)))
-        admin_layout.addWidget(self.feedback_details)
 
         admin_actions = QHBoxLayout()
         admin_actions.addStretch(1)
@@ -205,7 +205,6 @@ class FeedbackView(QWidget):
     def _on_admin_feedbacks_loaded(self, rows: list[dict]):
         self._admin_feedback_rows = list(rows or [])
         self.feedback_list.clear()
-        self.feedback_details.clear()
         self.btn_ack.setEnabled(False)
 
         for row in self._admin_feedback_rows:
@@ -216,34 +215,15 @@ class FeedbackView(QWidget):
                 when = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%d/%m/%Y %H:%M")
             except Exception:
                 pass
-            status = "Lida" if row.get("read_at") else "Pendente"
-            preview = str(row.get("message") or "").replace("\n", " ").strip()
-            if len(preview) > 60:
-                preview = preview[:57] + "..."
-            item = QListWidgetItem(f"[{status}] {when} - {sender}: {preview}")
+            message = str(row.get("message") or "").strip()
+            item = QListWidgetItem(f"{when} • {sender}\n{message}")
             self.feedback_list.addItem(item)
 
     def _on_admin_selection_changed(self, row_index: int):
         if row_index < 0 or row_index >= len(self._admin_feedback_rows):
-            self.feedback_details.clear()
             self.btn_ack.setEnabled(False)
             return
         row = self._admin_feedback_rows[row_index]
-        sender = str(row.get("user_name") or f"Usuario #{row.get('user_id')}")
-        created_at = str(row.get("created_at") or "")
-        when = created_at
-        try:
-            when = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%d/%m/%Y %H:%M")
-        except Exception:
-            pass
-        status = "Lida" if row.get("read_at") else "Pendente"
-        detail = (
-            f"Autor: {sender}\n"
-            f"Data: {when}\n"
-            f"Status: {status}\n\n"
-            f"{str(row.get('message') or '')}"
-        )
-        self.feedback_details.setPlainText(detail)
         self.btn_ack.setEnabled(not bool(row.get("read_at")))
 
     def _ack_selected_feedback(self):
@@ -292,6 +272,9 @@ class FeedbackView(QWidget):
         self.counter.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(10 * self.scale))}pt;"
         )
+        self.compose_title.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
+        )
         self.admin_title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
         )
@@ -299,12 +282,11 @@ class FeedbackView(QWidget):
         self.compose_card.setStyleSheet(theme.card_style())
         self.admin_card.setStyleSheet(theme.card_style())
         self.input_feedback.setStyleSheet(theme.input_style(self.scale))
-        self.feedback_details.setStyleSheet(theme.input_style(self.scale))
         self.feedback_list.setStyleSheet(
             f"QListWidget {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
             f"}}"
-            f"QListWidget::item {{ padding:8px 10px; border-bottom:1px solid {theme.BORDER_COLOR}; }}"
+            f"QListWidget::item {{ padding:10px 10px; border-bottom:1px solid {theme.BORDER_COLOR}; }}"
             f"QListWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
         )
         self.btn_send.setStyleSheet(theme.primary_btn_style(self.scale))
