@@ -987,5 +987,11 @@ class UserCenterView(QWidget):
         self.search_input.setStyleSheet(_field_style(s))
         self._apply_table_style()
         self.combo_role.setStyleSheet(_field_style(s))
+        for inp in (
+            self.input_code, self.input_name, self.input_contact,
+            self.input_sector, self.input_password, self.input_password_confirm,
+        ):
+            inp.setStyleSheet(_field_style(s))
+        self.check_active.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_disable.setStyleSheet(_danger_action_btn_style(s))
