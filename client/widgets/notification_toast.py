@@ -116,11 +116,11 @@ class NotificationToast(QFrame):
     def _build(self, data: dict, accent: str):
         self.setFixedWidth(TOAST_WIDTH)
         self.setObjectName("toastCard")
-        contrast_border = "rgba(0,0,0,0.28)" if not theme.is_dark else "rgba(255,255,255,0.34)"
+        contrast_border = "rgba(0,0,0,0.52)" if not theme.is_dark else "rgba(255,255,255,0.58)"
         self.setStyleSheet(
             f"QFrame#toastCard {{"
             f"  background: {theme.TOAST_BG};"
-            f"  border: 1px solid {contrast_border};"
+            f"  border: 6px solid {contrast_border};"
             f"  border-radius: 12px;"
             f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
             f"}}"
