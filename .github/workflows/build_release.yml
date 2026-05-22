@@ -1,10 +1,22 @@
 name: Build & Release
 
-# Dispara quando uma tag no formato v1.0.0 é publicada
+# Dispara automaticamente quando uma tag v1.0.0 é publicada,
+# ou manualmente pelo GitHub Actions (útil para testes de build).
 on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão de teste (ex: 1.0.0-test)'
+        required: true
+        default: '1.0.0-test'
+      publish_release:
+        description: 'Publicar como Release no GitHub?'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # necessário para criar a release no GitHub
@@ -25,15 +37,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      # ── 3. Extrair versão da tag (ex: v1.2.3 → 1.2.3) ───────────────────────
-      - name: Extrair versão da tag
+      # ── 3. Extrair versão (da tag ou do input manual) ───────────────────────
+      - name: Extrair versão
         id: version
         shell: pwsh
         run: |
-          $tag     = "${{ github.ref_name }}"
-          $version = $tag.TrimStart('v')
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}".TrimStart('v')
+          }
           "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "TAG=$tag"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "Versao detectada: $version"
 
       # ── 4. Instalar dependências do cliente ──────────────────────────────────
@@ -93,7 +107,10 @@ jobs:
           Write-Host "ZIP criado: dist/$zipName"
 
       # ── 9. Publicar no GitHub Releases ───────────────────────────────────────
+      # Em execução manual, só publica se "publish_release" for true.
+      # Em execução por tag, publica sempre.
       - name: Publicar no GitHub Releases
+        if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           name: "Requisições Pinheiro v${{ steps.version.outputs.VERSION }}"
@@ -103,3 +120,15 @@ jobs:
             dist/Requisicoes_Portable_v${{ steps.version.outputs.VERSION }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 10. Resumo do build (sempre exibido) ─────────────────────────────────
+      - name: Resumo do build
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          Write-Host "=== BUILD CONCLUIDO ==="
+          Write-Host "Versao : $version"
+          Write-Host "Instalador:"
+          Get-ChildItem installer_output/ -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+          Write-Host "Portatil:"
+          Get-ChildItem dist/*.zip       -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
