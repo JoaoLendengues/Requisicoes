@@ -60,6 +60,10 @@ def _message_box_button_style() -> str:
 
 
 def apply_message_box_theme(box: QMessageBox) -> QMessageBox:
+    # Mantém o padrão atual no modo escuro; a padronização customizada é só no claro.
+    if theme.is_dark:
+        return box
+
     box.setStyleSheet(_message_box_style())
     for button in box.buttons():
         if isinstance(button, QPushButton):
