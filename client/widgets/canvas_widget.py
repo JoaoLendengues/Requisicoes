@@ -181,8 +181,8 @@ class DrawingScene(QGraphicsScene):
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
         self._curve_source_item: QGraphicsItem | None = None
-        self._curve_start: QPointF | None = None
-        self._curve_end: QPointF | None = None
+        self._curve_points_scene: list[QPointF] = []
+        self._curve_segment_index: int = -1
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
 
         # Estado do Free Transform (Ctrl+T)
@@ -435,40 +435,104 @@ class DrawingScene(QGraphicsScene):
         return QPointF(start.x() + dist * math.cos(rad),
                        start.y() + dist * math.sin(rad))
 
-    def _build_quadratic_path(self, start: QPointF, control: QPointF, end: QPointF, steps: int = 24) -> QPainterPath:
-        """Aproxima uma curva quadrática em segmentos de linha para manter compatibilidade do JSON."""
-        path = QPainterPath(start)
-        for i in range(1, steps + 1):
-            t = i / steps
-            u = 1.0 - t
-            x = (u * u * start.x()) + (2 * u * t * control.x()) + (t * t * end.x())
-            y = (u * u * start.y()) + (2 * u * t * control.y()) + (t * t * end.y())
-            path.lineTo(QPointF(x, y))
-        return path
-
-    def _path_endpoints(self, item: QGraphicsPathItem) -> tuple[QPointF, QPointF] | None:
-        path = item.path()
-        if path.elementCount() < 2:
-            return None
-        e0 = path.elementAt(0)
-        en = path.elementAt(path.elementCount() - 1)
-        start = item.mapToScene(QPointF(e0.x, e0.y))
-        end = item.mapToScene(QPointF(en.x, en.y))
-        # Ignora caminhos fechados, pois início=fim e não há direção de curvatura útil.
-        if math.hypot(start.x() - end.x(), start.y() - end.y()) < 0.01:
-            return None
-        return (start, end)
-
     def _pick_curve_source_item(self, scene_pos: QPointF) -> QGraphicsItem | None:
-        """Escolhe a linha/curva selecionada para curvar; fallback para item sob o cursor."""
+        """Escolhe forma selecionada para curvar; fallback para item sob o cursor."""
         for item in self.selectedItems():
-            if isinstance(item, (QGraphicsLineItem, QGraphicsPathItem)):
+            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem)):
                 return item
         for item in self.items(scene_pos):
-            if isinstance(item, (QGraphicsLineItem, QGraphicsPathItem)):
+            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem)):
                 item.setSelected(True)
                 return item
         return None
+
+    def _item_curve_points_scene(self, item: QGraphicsItem) -> tuple[list[QPointF], bool]:
+        """Extrai os pontos em coordenadas de cena para curvar um segmento."""
+        if isinstance(item, QGraphicsLineItem):
+            ln = item.line()
+            return [item.mapToScene(ln.p1()), item.mapToScene(ln.p2())], False
+
+        if isinstance(item, QGraphicsRectItem):
+            r = item.rect()
+            pts = [
+                item.mapToScene(r.topLeft()),
+                item.mapToScene(r.topRight()),
+                item.mapToScene(r.bottomRight()),
+                item.mapToScene(r.bottomLeft()),
+                item.mapToScene(r.topLeft()),
+            ]
+            return pts, True
+
+        if isinstance(item, QGraphicsEllipseItem):
+            r = item.rect()
+            pts: list[QPointF] = []
+            samples = 40
+            for i in range(samples):
+                ang = (2.0 * math.pi * i) / samples
+                x = r.center().x() + (r.width() / 2.0) * math.cos(ang)
+                y = r.center().y() + (r.height() / 2.0) * math.sin(ang)
+                pts.append(item.mapToScene(QPointF(x, y)))
+            pts.append(pts[0])
+            return pts, True
+
+        if isinstance(item, QGraphicsPathItem):
+            path = item.path()
+            pts: list[QPointF] = []
+            for i in range(path.elementCount()):
+                el = path.elementAt(i)
+                pts.append(item.mapToScene(QPointF(el.x, el.y)))
+            if len(pts) < 2:
+                return [], False
+            closed = math.hypot(pts[0].x() - pts[-1].x(), pts[0].y() - pts[-1].y()) < 0.01
+            return pts, closed
+
+        return [], False
+
+    def _points_to_path_scene(self, points: list[QPointF]) -> QPainterPath:
+        path = QPainterPath(points[0])
+        for p in points[1:]:
+            path.lineTo(p)
+        return path
+
+    def _distance_point_segment(self, p: QPointF, a: QPointF, b: QPointF) -> float:
+        ax, ay = a.x(), a.y()
+        bx, by = b.x(), b.y()
+        px, py = p.x(), p.y()
+        dx, dy = bx - ax, by - ay
+        denom = dx * dx + dy * dy
+        if denom <= 1e-9:
+            return math.hypot(px - ax, py - ay)
+        t = ((px - ax) * dx + (py - ay) * dy) / denom
+        t = max(0.0, min(1.0, t))
+        qx, qy = ax + t * dx, ay + t * dy
+        return math.hypot(px - qx, py - qy)
+
+    def _closest_curve_segment_index(self, points: list[QPointF], scene_pos: QPointF) -> int:
+        if len(points) < 2:
+            return -1
+        best_i = -1
+        best_d = float("inf")
+        for i in range(len(points) - 1):
+            d = self._distance_point_segment(scene_pos, points[i], points[i + 1])
+            if d < best_d:
+                best_d = d
+                best_i = i
+        return best_i
+
+    def _apply_curve_on_segment(self, points: list[QPointF], segment_index: int, control: QPointF, steps: int = 18) -> list[QPointF]:
+        """Substitui um segmento por uma curva quadrática."""
+        if segment_index < 0 or segment_index >= len(points) - 1:
+            return points
+        p0 = points[segment_index]
+        p1 = points[segment_index + 1]
+        curved: list[QPointF] = []
+        for i in range(steps + 1):
+            t = i / steps
+            u = 1.0 - t
+            x = (u * u * p0.x()) + (2 * u * t * control.x()) + (t * t * p1.x())
+            y = (u * u * p0.y()) + (2 * u * t * control.y()) + (t * t * p1.y())
+            curved.append(QPointF(x, y))
+        return points[:segment_index] + curved + points[segment_index + 2:]
 
     def _triangle_path(self, start: QPointF, end: QPointF) -> QPainterPath:
         """Triangulo isosceles dentro do retangulo definido por start/end."""
@@ -603,9 +667,10 @@ class DrawingScene(QGraphicsScene):
 
         elif tool == Tool.LINE:
             self._start = QPointF(pos.x(), pos.y())
+            # Pequeno segmento inicial para feedback visual instantâneo no primeiro clique.
             self._preview_item = self.addLine(
                 self._start.x(), self._start.y(),
-                self._start.x(), self._start.y(), self._pen()
+                self._start.x() + 0.01, self._start.y(), self._pen()
             )
 
         elif tool == Tool.ARROW:
@@ -621,22 +686,27 @@ class DrawingScene(QGraphicsScene):
                 return
 
             self._curve_source_item = source_item
-            if isinstance(source_item, QGraphicsLineItem):
-                line = source_item.line()
-                self._curve_start = source_item.mapToScene(line.p1())
-                self._curve_end = source_item.mapToScene(line.p2())
-                source_pen = source_item.pen()
-            else:
-                endpoints = self._path_endpoints(source_item)
-                if not endpoints:
-                    self._curve_source_item = None
-                    self._start = None
-                    return
-                self._curve_start, self._curve_end = endpoints
-                source_pen = source_item.pen()
+            self._curve_points_scene, _closed = self._item_curve_points_scene(source_item)
+            if len(self._curve_points_scene) < 2:
+                self._curve_source_item = None
+                self._start = None
+                return
+            self._curve_segment_index = self._closest_curve_segment_index(self._curve_points_scene, pos)
+            if self._curve_segment_index < 0:
+                self._curve_source_item = None
+                self._curve_points_scene = []
+                self._start = None
+                return
+
+            source_pen = source_item.pen()
             source_item.setVisible(False)
 
-            path = self._build_quadratic_path(self._curve_start, pos, self._curve_end)
+            curved_points = self._apply_curve_on_segment(
+                self._curve_points_scene,
+                self._curve_segment_index,
+                pos,
+            )
+            path = self._points_to_path_scene(curved_points)
             curve_item = QGraphicsPathItem(path)
             curve_item.setPen(source_pen)
             self.addItem(curve_item)
@@ -716,10 +786,13 @@ class DrawingScene(QGraphicsScene):
             end = self._constrain(self._start, pos) if shift else pos
             self._preview_item.setPath(self._arrow_path(self._start, end))
 
-        elif tool == Tool.CURVE and self._preview_item and self._curve_start and self._curve_end:
-            self._preview_item.setPath(
-                self._build_quadratic_path(self._curve_start, pos, self._curve_end)
+        elif tool == Tool.CURVE and self._preview_item and self._curve_points_scene:
+            curved_points = self._apply_curve_on_segment(
+                self._curve_points_scene,
+                self._curve_segment_index,
+                pos,
             )
+            self._preview_item.setPath(self._points_to_path_scene(curved_points))
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             self._preview_item.setPath(self._triangle_path(self._start, pos))
@@ -797,8 +870,8 @@ class DrawingScene(QGraphicsScene):
 
             self._preview_item = None
             self._curve_source_item = None
-            self._curve_start = None
-            self._curve_end = None
+            self._curve_points_scene = []
+            self._curve_segment_index = -1
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             item = self._preview_item
