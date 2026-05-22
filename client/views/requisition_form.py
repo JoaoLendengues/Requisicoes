@@ -11,11 +11,11 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
     QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
-    QGraphicsDropShadowEffect, QSizePolicy,
+    QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
     QListWidget, QListWidgetItem,
 )
-from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression
-from PySide6.QtGui import QPixmap, QColor, QFont, QRegularExpressionValidator
+from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression, QRectF
+from PySide6.QtGui import QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
 
 try:
     import qrcode
@@ -31,7 +31,7 @@ from ..core.text_case import bind_uppercase_line_edit, bind_uppercase_text_edit
 from ..api import client as api
 from ..widgets.status_badge import StatusBadge
 from ..widgets.item_table import ItemTable
-from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview
+from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_scene
 
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
@@ -426,6 +426,129 @@ class CanvasDialog(QDialog):
         return self.canvas.to_json()
 
 
+class _CanvasReadOnlyView(QGraphicsView):
+    def __init__(self, scene: QGraphicsScene, scale: float, parent=None):
+        super().__init__(scene, parent)
+        self._zoom_level = 0
+        self._scale_factor = scale
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setStyleSheet(
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
+        )
+        self.setMinimumHeight(max(300, int(420 * scale)))
+
+    def zoom_in(self):
+        self._apply_zoom(1.2, 1)
+
+    def zoom_out(self):
+        self._apply_zoom(1 / 1.2, -1)
+
+    def fit_scene(self):
+        rect = self.scene().itemsBoundingRect()
+        if rect.isNull():
+            rect = QRectF(0, 0, 100, 80)
+        self.fitInView(rect.adjusted(-20, -20, 20, 20), Qt.AspectRatioMode.KeepAspectRatio)
+        self._zoom_level = 0
+
+    def _apply_zoom(self, factor: float, step: int):
+        next_level = self._zoom_level + step
+        if next_level < -12 or next_level > 20:
+            return
+        self._zoom_level = next_level
+        self.scale(factor, factor)
+
+    def wheelEvent(self, event):
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if event.angleDelta().y() > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
+            event.accept()
+            return
+        super().wheelEvent(event)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._zoom_level == 0:
+            self.fit_scene()
+
+
+class CanvasViewerDialog(QDialog):
+    """Janela modal para visualizar o desenho sem permitir edição."""
+
+    def __init__(self, json_data: str, scale: float, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Visualizar Desenho")
+        self.setModal(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            f"QDialog {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background-color:transparent; }}"
+        )
+
+        from PySide6.QtWidgets import QApplication
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.resize(int(screen.width() * 0.90), int(screen.height() * 0.88))
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        toolbar = QHBoxLayout()
+        helper = QLabel("Visualização somente leitura. Use Ctrl + rolagem para zoom.")
+        helper.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * scale))}pt;"
+        )
+        toolbar.addWidget(helper)
+        toolbar.addStretch()
+
+        btn_zoom_out = QPushButton("Zoom -")
+        btn_zoom_out.setFixedHeight(max(30, int(34 * scale)))
+        btn_zoom_out.setStyleSheet(theme.secondary_btn_style(scale))
+        toolbar.addWidget(btn_zoom_out)
+
+        btn_zoom_in = QPushButton("Zoom +")
+        btn_zoom_in.setFixedHeight(max(30, int(34 * scale)))
+        btn_zoom_in.setStyleSheet(theme.secondary_btn_style(scale))
+        toolbar.addWidget(btn_zoom_in)
+
+        btn_fit = QPushButton("Ajustar")
+        btn_fit.setFixedHeight(max(30, int(34 * scale)))
+        btn_fit.setStyleSheet(theme.secondary_btn_style(scale))
+        toolbar.addWidget(btn_fit)
+        layout.addLayout(toolbar)
+
+        scene = QGraphicsScene(self)
+        self.canvas_view = _CanvasReadOnlyView(scene, scale, self)
+        layout.addWidget(self.canvas_view, 1)
+
+        footer = QHBoxLayout()
+        footer.addStretch()
+        btn_close = QPushButton("Fechar")
+        btn_close.setFixedHeight(max(34, int(38 * scale)))
+        btn_close.setStyleSheet(theme.primary_btn_style(scale))
+        btn_close.clicked.connect(self.accept)
+        footer.addWidget(btn_close)
+        layout.addLayout(footer)
+
+        result = load_canvas_scene(scene, json_data, selectable=False)
+        if result.get("items", 0) == 0:
+            placeholder = scene.addText("Nenhum desenho salvo para visualizar.")
+            placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
+            placeholder.setFont(QFont(theme.FONT_PRIMARY, max(9, int(10 * scale))))
+            placeholder.setPos(20, 20)
+        self.canvas_view.fit_scene()
+
+        btn_zoom_in.clicked.connect(self.canvas_view.zoom_in)
+        btn_zoom_out.clicked.connect(self.canvas_view.zoom_out)
+        btn_fit.clicked.connect(self.canvas_view.fit_scene)
+
+
 # ── View principal ────────────────────────────────────────────────────────────
 class RequisitionForm(QWidget):
     saved           = Signal(dict)
@@ -787,11 +910,23 @@ class RequisitionForm(QWidget):
         self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
 
         btn_canvas = QPushButton("✏️ Abrir Editor de Desenho")
-        btn_canvas.setFixedHeight(max(30, int(34*s)))
+        btn_canvas.setFixedHeight(max(28, int(32*s)))
         btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
         btn_canvas.clicked.connect(self._open_canvas_dialog)
-        preview_layout.addWidget(btn_canvas)
         self.btn_canvas = btn_canvas
+
+        btn_canvas_view = QPushButton("🖼️ Visualizar Desenho")
+        btn_canvas_view.setFixedHeight(max(28, int(32*s)))
+        btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))
+        btn_canvas_view.clicked.connect(self._open_canvas_viewer)
+        self.btn_canvas_view = btn_canvas_view
+
+        btn_canvas_row = QHBoxLayout()
+        btn_canvas_row.setContentsMargins(0, 0, 0, 0)
+        btn_canvas_row.setSpacing(max(8, int(10 * s)))
+        btn_canvas_row.addWidget(btn_canvas, 1)
+        btn_canvas_row.addWidget(btn_canvas_view, 1)
+        preview_layout.addLayout(btn_canvas_row)
 
         row.addWidget(preview_card, 1)
         return wrapper
@@ -1436,6 +1571,10 @@ class RequisitionForm(QWidget):
             self._canvas_json = dlg.get_json()
             self._update_canvas_preview()
 
+    def _open_canvas_viewer(self):
+        dlg = CanvasViewerDialog(self._canvas_json, self.scale, self)
+        dlg.exec()
+
     # ── Clientes ──────────────────────────────────────────────────────────────
     def _load_clients(self):
         t, w = _run_in_thread(api.list_clients,
@@ -1530,6 +1669,8 @@ class RequisitionForm(QWidget):
 
         if hasattr(self, "btn_whatsapp"):
             self.btn_whatsapp.setEnabled(True)
+        if hasattr(self, "btn_canvas_view"):
+            self.btn_canvas_view.setEnabled(True)
 
         if hasattr(self, "lock_label"):
             self.lock_label.setVisible(locked)
@@ -1668,3 +1809,5 @@ class RequisitionForm(QWidget):
         self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))
+        self.btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
+        self.btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))
