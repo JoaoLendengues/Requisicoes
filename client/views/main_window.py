@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
     QScrollArea, QLabel, QGraphicsOpacityEffect,
 )
-from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate
+from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate, Signal
 
 from ..core import theme
 from ..core.dialogs import ask_confirmation
@@ -38,6 +38,8 @@ PAGE_FEEDBACK = 9
 
 
 class MainWindow(QMainWindow):
+    switch_user_requested = Signal()
+
     def __init__(self):
         super().__init__()
         self.scale = res.scale
@@ -73,6 +75,7 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar(self.scale)
         self.sidebar.nav_clicked.connect(self._on_nav)
         self.sidebar.logout_clicked.connect(self._logout)
+        self.sidebar.switch_user_clicked.connect(self._switch_user)
         self.sidebar.bell_clicked.connect(self._show_notification_panel)
         self.sidebar.theme_toggled.connect(self._on_theme_toggle)
         root.addWidget(self.sidebar)
@@ -903,8 +906,27 @@ class MainWindow(QMainWindow):
             no_text="Não",
         )
         if reply:
-            self._notif_timer.stop()
-            if self._listener:
-                self._listener.stop()
+            self._stop_runtime_services()
             session.logout()
             self.close()
+
+    def _switch_user(self):
+        reply = ask_confirmation(
+            self,
+            "Trocar usuário",
+            "Deseja encerrar a sessão atual e voltar para a tela de login?",
+            yes_text="Sim",
+            no_text="Não",
+        )
+        if not reply:
+            return
+        self._stop_runtime_services()
+        session.logout()
+        self.switch_user_requested.emit()
+        self.close()
+
+    def _stop_runtime_services(self):
+        if hasattr(self, "_notif_timer") and self._notif_timer is not None:
+            self._notif_timer.stop()
+        if self._listener:
+            self._listener.stop()

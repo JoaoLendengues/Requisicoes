@@ -74,10 +74,21 @@ def main():
     main_window: MainWindow | None = None
     login_view = LoginView()
 
+    def on_switch_user():
+        nonlocal main_window
+        if main_window is not None:
+            main_window = None
+        login_view.input_pass.clear()
+        login_view.error_label.hide()
+        login_view.show()
+        login_view.raise_()
+        login_view.activateWindow()
+
     def on_login():
         nonlocal main_window
         login_view.hide()
         main_window = MainWindow()
+        main_window.switch_user_requested.connect(on_switch_user)
         main_window.show()
         # Verifica atualizações silenciosamente após o login
         _check_for_updates(main_window)

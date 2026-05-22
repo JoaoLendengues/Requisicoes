@@ -36,6 +36,7 @@ SIDEBAR_ICON_ALIASES = {
     "config":       ["configuracoes", "configurações", "config", "ajustes"],
     "feedback":     ["feedback", "feedbacks", "sugestao", "sugestoes", "bugs", "elogios", "problemas"],
     "usuario":      ["usuario", "usuário", "perfil"],
+    "trocar_usuario": ["trocar usuario", "trocar usuário", "alternar usuario", "alternar usuário", "switch user"],
     "sair":         ["sair", "logout"],
 }
 
@@ -312,6 +313,7 @@ class _BellButton(QWidget):
 class Sidebar(QWidget):
     nav_clicked    = Signal(str)
     logout_clicked = Signal()
+    switch_user_clicked = Signal()
     bell_clicked   = Signal()
     theme_toggled  = Signal(bool)   # True = modo escuro
 
@@ -439,6 +441,10 @@ class Sidebar(QWidget):
         user_layout.addWidget(self.user_label, 1)
         panel_layout.addWidget(user_row)
         self._refresh_user_icon()
+
+        btn_switch_user = self._make_btn("TROCAR USUÁRIO", "usuario")
+        btn_switch_user.clicked.connect(self.switch_user_clicked.emit)
+        panel_layout.addWidget(btn_switch_user)
 
         btn_sair = self._make_btn("SAIR", "sair")
         btn_sair.clicked.connect(self.logout_clicked.emit)
