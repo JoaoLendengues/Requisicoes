@@ -383,6 +383,7 @@ class Sidebar(QWidget):
         panel_layout.addWidget(self._separator())
 
         # ── Navegação principal ───────────────────────────────────────────────
+        self._group_separators: list[tuple[int, QFrame]] = []
         for group_index, nav_group in enumerate(NAV_GROUPS):
             for key, label, icon_key in nav_group:
                 btn = self._make_btn(label, icon_key, nav_key=key)
@@ -390,7 +391,9 @@ class Sidebar(QWidget):
                 btn.clicked.connect(lambda checked=False, k=key: self._on_nav(k))
                 panel_layout.addWidget(btn)
             if group_index < len(NAV_GROUPS) - 1:
-                panel_layout.addWidget(self._separator())
+                sep = self._separator()
+                self._group_separators.append((group_index, sep))
+                panel_layout.addWidget(sep)
 
         # Espaço flexível — empurra o rodapé para baixo quando há espaço sobrando
         panel_layout.addStretch(1)
@@ -495,6 +498,16 @@ class Sidebar(QWidget):
 
     def set_actions_visible(self, visible: bool):
         pass
+
+    def refresh_separators(self) -> None:
+        """Oculta separadores cujo grupo seguinte ficou completamente invisível."""
+        for group_index, sep in self._group_separators:
+            next_group = NAV_GROUPS[group_index + 1]
+            next_visible = any(
+                self._nav_btns.get(key) is not None and self._nav_btns[key].isVisible()
+                for key, _, _ in next_group
+            )
+            sep.setVisible(next_visible)
 
     def _refresh_user_icon(self):
         pixmap = _load_sidebar_pixmap("usuario", self.scale, size=max(16, int(18 * self.scale)))

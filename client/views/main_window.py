@@ -59,6 +59,7 @@ class MainWindow(QMainWindow):
         self._toast_manager = ToastManager(self)
         self._refresh_session_profile()
         self._start_notification_listener()
+        self._navigate_to_home()
 
     def _setup_ui(self):
         self.setStyleSheet(f"background:{theme.CONTENT_BG};")
@@ -165,41 +166,24 @@ class MainWindow(QMainWindow):
         self.form_view.save_requested.connect(self._save_requisition)
         self.settings_view.scale_changed.connect(self._on_scale_changed)
 
-        if not session.can_access_dashboard:
-            dash_btn = self.sidebar._nav_btns.get("dashboard")
-            if dash_btn:
-                dash_btn.setEnabled(False)
-                dash_btn.setToolTip("Acesso restrito a gerentes e administradores")
-
-        if not session.can_access_technical_panel:
-            technical_btn = self.sidebar._nav_btns.get("tecnico")
-            if technical_btn:
-                technical_btn.setEnabled(False)
-                technical_btn.setToolTip("Acesso restrito a administradores")
-
-        if not session.can_access_order_center:
-            orders_btn = self.sidebar._nav_btns.get("pedidos")
-            if orders_btn:
-                orders_btn.setEnabled(False)
-                orders_btn.setToolTip("Acesso restrito a administradores, gerentes, vendedores, A&R e Indústria")
-
-        if not session.can_access_industria:
-            pinheiro_btn = self.sidebar._nav_btns.get("pinheiro_industria")
-            if pinheiro_btn:
-                pinheiro_btn.setEnabled(False)
-                pinheiro_btn.setToolTip("Acesso restrito a administradores, gerentes e Indústria")
-
-        if not session.can_access_ar:
-            ar_btn = self.sidebar._nav_btns.get("ar")
-            if ar_btn:
-                ar_btn.setEnabled(False)
-                ar_btn.setToolTip("Acesso restrito a administradores, gerentes e A&R")
-
-        if not session.can_manage_users:
-            users_btn = self.sidebar._nav_btns.get("usuarios")
-            if users_btn:
-                users_btn.setEnabled(False)
-                users_btn.setToolTip("Acesso restrito a administradores")
+        # ── Visibilidade dos botões da sidebar por perfil ─────────────────────
+        nav_visible = {
+            "nova":               not session.is_view_only,
+            "dashboard":          session.can_access_dashboard,
+            "tecnico":            session.can_access_technical_panel,
+            "pedidos":            session.can_access_order_center,
+            "pinheiro_industria": session.can_access_industria,
+            "ar":                 session.can_access_ar,
+            "historico":          True,
+            "usuarios":           session.can_manage_users,
+            "config":             True,
+            "feedback":           True,
+        }
+        for key, visible in nav_visible.items():
+            btn = self.sidebar._nav_btns.get(key)
+            if btn:
+                btn.setVisible(visible)
+        self.sidebar.refresh_separators()
 
     def _setup_statusbar(self):
         bar = self.statusBar()
@@ -230,18 +214,32 @@ class MainWindow(QMainWindow):
 
     def _on_nav(self, key: str):
         mapping = {
-            "nova": PAGE_FORM,
-            "historico": PAGE_HISTORY,
-            "dashboard": PAGE_DASHBOARD,
-            "tecnico": PAGE_TECHNICAL,
-            "pedidos": PAGE_ORDER_CENTER,
+            "nova":               PAGE_FORM,
+            "historico":          PAGE_HISTORY,
+            "dashboard":          PAGE_DASHBOARD,
+            "tecnico":            PAGE_TECHNICAL,
+            "pedidos":            PAGE_ORDER_CENTER,
             "pinheiro_industria": PAGE_PINHEIRO_INDUSTRIA,
-            "ar": PAGE_AR,
-            "usuarios": PAGE_USER_CENTER,
-            "config": PAGE_SETTINGS,
-            "feedback": PAGE_FEEDBACK,
+            "ar":                 PAGE_AR,
+            "usuarios":           PAGE_USER_CENTER,
+            "config":             PAGE_SETTINGS,
+            "feedback":           PAGE_FEEDBACK,
         }
         page = mapping.get(key, PAGE_FORM)
+
+        # Guards defensivos — botões já estão ocultos para roles sem acesso,
+        # mas mantemos a verificação como camada de segurança extra.
+        guards = {
+            PAGE_FORM:               not session.is_view_only,
+            PAGE_DASHBOARD:          session.can_access_dashboard,
+            PAGE_TECHNICAL:          session.can_access_technical_panel,
+            PAGE_ORDER_CENTER:       session.can_access_order_center,
+            PAGE_PINHEIRO_INDUSTRIA: session.can_access_industria,
+            PAGE_AR:                 session.can_access_ar,
+            PAGE_USER_CENTER:        session.can_manage_users,
+        }
+        if page in guards and not guards[page]:
+            return
 
         if key == "nova":
             if not self._confirm_new_requisition():
@@ -252,89 +250,37 @@ class MainWindow(QMainWindow):
 
         if page == PAGE_HISTORY:
             self.history_view.refresh()
-
-        if page == PAGE_DASHBOARD and session.can_access_dashboard:
-            self.dashboard_view.refresh()
         elif page == PAGE_DASHBOARD:
-            QMessageBox.warning(
-                self,
-                "Acesso negado",
-                "O Painel Gerencial é restrito a gerentes e administradores.",
-            )
-            self._highlight_current_page()
-            return
-
-        if page == PAGE_TECHNICAL and session.can_access_technical_panel:
-            self.technical_panel_view.refresh()
+            self.dashboard_view.refresh()
         elif page == PAGE_TECHNICAL:
-            QMessageBox.warning(
-                self,
-                "Acesso negado",
-                "O Painel Técnico é restrito a administradores.",
-            )
-            self._highlight_current_page()
-            return
-
-        if page == PAGE_ORDER_CENTER and session.can_access_order_center:
-            self.order_center_view.refresh()
+            self.technical_panel_view.refresh()
         elif page == PAGE_ORDER_CENTER:
-            QMessageBox.warning(
-                self,
-                "Acesso negado",
-                "A Central de Pedidos é restrita a administradores, gerentes, vendedores, A&R e Indústria.",
-            )
-            self._highlight_current_page()
-            return
-
-        if page == PAGE_PINHEIRO_INDUSTRIA and session.can_access_industria:
-            self.pinheiro_industria_view.refresh()
+            self.order_center_view.refresh()
         elif page == PAGE_PINHEIRO_INDUSTRIA:
-            QMessageBox.warning(
-                self,
-                "Acesso negado",
-                "A tela da Pinheiro Indústria é restrita a administradores, gerentes e Indústria.",
-            )
-            self._highlight_current_page()
-            return
-
-        if page == PAGE_AR and session.can_access_ar:
-            self.ar_view.refresh()
+            self.pinheiro_industria_view.refresh()
         elif page == PAGE_AR:
-            QMessageBox.warning(
-                self,
-                "Acesso negado",
-                "A tela da A&R é restrita a administradores, gerentes e A&R.",
-            )
-            self._highlight_current_page()
-            return
-
-        if page == PAGE_USER_CENTER and session.can_manage_users:
-            self.user_center_view.refresh()
+            self.ar_view.refresh()
         elif page == PAGE_USER_CENTER:
-            QMessageBox.warning(
-                self,
-                "Acesso negado",
-                "A Central de Usuários é restrita a administradores.",
-            )
-            self._highlight_current_page()
-            return
-
-        if page == PAGE_SETTINGS and not session.can_access_settings:
-            QMessageBox.warning(
-                self,
-                "Acesso negado",
-                "As configurações são restritas a administradores.",
-            )
-            self._highlight_current_page()
-            return
-
-        if page == PAGE_SETTINGS and session.can_access_settings:
+            self.user_center_view.refresh()
+        elif page == PAGE_SETTINGS:
             self.settings_view.refresh_operational_settings()
-
-        if page == PAGE_FEEDBACK:
+        elif page == PAGE_FEEDBACK:
             self.feedback_view.refresh()
 
         self.stack.setCurrentIndex(page)
+
+    def _navigate_to_home(self) -> None:
+        """Navega para a página inicial correta de acordo com o perfil."""
+        if not session.is_view_only:
+            return  # admin/gerente/vendedor já partem em PAGE_FORM por padrão
+        if session.can_access_ar:
+            self.stack.setCurrentIndex(PAGE_AR)
+            self.sidebar._highlight("ar")
+            self.ar_view.refresh()
+        else:
+            self.stack.setCurrentIndex(PAGE_PINHEIRO_INDUSTRIA)
+            self.sidebar._highlight("pinheiro_industria")
+            self.pinheiro_industria_view.refresh()
 
     def _confirm_new_requisition(self) -> bool:
         if not self.form_view.has_unsaved_data():
