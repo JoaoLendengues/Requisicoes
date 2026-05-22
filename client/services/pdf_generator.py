@@ -69,7 +69,7 @@ TABLE_COLS = [
     ("DESENV.", 0.09),
     ("CHAPA",   0.08),
     ("TIPO.",   0.10),
-    ("PESO",    0.10),
+    ("PESO(KG)",    0.10),
 ]
 
 GAP = 6   # espaçamento padrão entre seções
@@ -467,7 +467,7 @@ def _draw_info_bar(
         ("\U0001f69a", "RETIRADA",         _fmt_yes_no(req.get("retirada")),     0.18, C_BRAND),
         ("\U0001f69a", "ENTREGA",          _fmt_yes_no(req.get("entrega")),      0.18, C_BRAND),
         ("\U0001f4f1", vendor_phone,       "",                                   0.25, C_GREEN),
-        ("⚖",         "PESO:",            _fmt_kg(weight_val),                  0.15, C_TEXT),
+        ("⚖",         "PESO(KG):",            _fmt_kg(weight_val),                  0.15, C_TEXT),
     ]
 
     cx = x
