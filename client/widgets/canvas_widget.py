@@ -1,13 +1,13 @@
-"""
-Canvas de desenho técnico com suporte a:
-- Ferramentas: Seleção, Caneta livre, Linha, Retângulo, Elipse, Texto
-- Shift: trava linha em 0°/45°/90°
-- Inserção de imagem (PNG, JPG, BMP)
-- Referência de arquivo PDF (exibe nome, abre externamente)
+﻿"""
+Canvas de desenho tÃ©cnico com suporte a:
+- Ferramentas: SeleÃ§Ã£o, Caneta livre, Linha, RetÃ¢ngulo, Elipse, Texto
+- Shift: trava linha em 0Â°/45Â°/90Â°
+- InserÃ§Ã£o de imagem (PNG, JPG, BMP)
+- ReferÃªncia de arquivo PDF (exibe nome, abre externamente)
 - Undo / Redo (Ctrl+Z / Ctrl+Y)
 - Ctrl+T: Free Transform (bounding box + arrastar cantos para girar)
-- Delete para apagar seleção
-- Serialização completa para JSON (salvo no banco)
+- Delete para apagar seleÃ§Ã£o
+- SerializaÃ§Ã£o completa para JSON (salvo no banco)
 """
 import json
 import math
@@ -39,6 +39,7 @@ class Tool(Enum):
     PEN      = "pen"
     ERASER   = "eraser"
     LINE     = "line"
+    RULER    = "ruler"
     ARROW    = "arrow"
     CURVE    = "curve"
     TRIANGLE = "triangle"
@@ -50,7 +51,7 @@ class Tool(Enum):
     IMAGE    = "image"
 
 
-# Mapeamento estilo de linha ↔ string JSON
+# Mapeamento estilo de linha â†” string JSON
 _STYLE_TO_STR = {
     Qt.PenStyle.SolidLine:   "solid",
     Qt.PenStyle.DashLine:    "dash",
@@ -171,12 +172,14 @@ def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False
     return {"items": count, "pdf": obj.get("pdf", "")}
 
 
-# ── Cena personalizada ────────────────────────────────────────────────────────
+# â”€â”€ Cena personalizada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class DrawingScene(QGraphicsScene):
     def __init__(self, canvas_widget):
         super().__init__()
         self.cw = canvas_widget
         self._start: QPointF | None = None
+        self._ruler_line_item: QGraphicsLineItem | None = None
+        self._ruler_text_item: QGraphicsTextItem | None = None
         self._preview_item: QGraphicsItem | None = None
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
@@ -198,14 +201,14 @@ class DrawingScene(QGraphicsScene):
 
         self.selectionChanged.connect(self._on_selection_changed)
 
-    # ── Grade de fundo (visual only — não serializada) ───────────────────────
+    # â”€â”€ Grade de fundo (visual only â€” nÃ£o serializada) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     GRID_MINOR = 20
     GRID_MAJOR = 100
     # Tamanho dos handles do bounding box do Free Transform
     FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
-    FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
+    FT_CORNER_ZONE = 22    # distÃ¢ncia mÃ¡xima do canto para ativar rotaÃ§Ã£o (px viewport)
     # Snap to endpoints
-    SNAP_RADIUS    = 30    # raio de detecção em px de tela (constante com zoom)
+    SNAP_RADIUS    = 30    # raio de detecÃ§Ã£o em px de tela (constante com zoom)
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
@@ -231,7 +234,7 @@ class DrawingScene(QGraphicsScene):
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
             y += step
 
-    # ── Free Transform ────────────────────────────────────────────────────────
+    # â”€â”€ Free Transform â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _view(self):
         views = self.views()
         return views[0] if views else None
@@ -250,7 +253,7 @@ class DrawingScene(QGraphicsScene):
         return QRectF(tl, br).normalized()
 
     def _in_rotation_zone_vp(self, vp_pos: QPointF) -> bool:
-        """True se vp_pos está na zona de rotação (perto de um canto, fora do rect)."""
+        """True se vp_pos estÃ¡ na zona de rotaÃ§Ã£o (perto de um canto, fora do rect)."""
         vp_rect = self._ft_bounding_rect_vp()
         if vp_rect.isNull():
             return False
@@ -277,7 +280,7 @@ class DrawingScene(QGraphicsScene):
         if self.cw.tool != Tool.SELECT:
             self.cw._set_tool(Tool.SELECT)
         self._ft_items = list(items)
-        # Pivot de rotação = centro do bounding rect de cada item
+        # Pivot de rotaÃ§Ã£o = centro do bounding rect de cada item
         for item in self._ft_items:
             item.setTransformOriginPoint(item.boundingRect().center())
         self._ft_active = True
@@ -293,7 +296,7 @@ class DrawingScene(QGraphicsScene):
         self.update()
         self.cw.changed.emit()
 
-    # ── Snap to endpoints ─────────────────────────────────────────────────────
+    # â”€â”€ Snap to endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _collect_snap_points(self) -> list:
         """Retorna todos os endpoints de itens existentes em coordenadas de cena."""
         points = []
@@ -317,8 +320,8 @@ class DrawingScene(QGraphicsScene):
 
     def _find_snap(self, scene_pos: QPointF) -> QPointF | None:
         """
-        Retorna o endpoint mais próximo de scene_pos se estiver dentro de
-        SNAP_RADIUS pixels de tela. Usa distância de viewport para que o
+        Retorna o endpoint mais prÃ³ximo de scene_pos se estiver dentro de
+        SNAP_RADIUS pixels de tela. Usa distÃ¢ncia de viewport para que o
         raio seja constante independente do zoom.
         """
         view = self._view()
@@ -336,7 +339,7 @@ class DrawingScene(QGraphicsScene):
         return best_pt
 
     def _on_selection_changed(self):
-        """Sincroniza spin_font; remove edição inline de textos deselecionados."""
+        """Sincroniza spin_font; remove ediÃ§Ã£o inline de textos deselecionados."""
         selected = set(self.selectedItems())
         for item in self.items():
             if isinstance(item, QGraphicsTextItem) and item not in selected:
@@ -392,7 +395,7 @@ class DrawingScene(QGraphicsScene):
 
         painter.restore()
 
-        # ── Indicador de snap (círculo laranja no ponto de conexão) ──────────
+        # â”€â”€ Indicador de snap (cÃ­rculo laranja no ponto de conexÃ£o) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if self._snap_point is not None:
             view = self._view()
             if view:
@@ -520,7 +523,7 @@ class DrawingScene(QGraphicsScene):
         return best_i
 
     def _apply_curve_on_segment(self, points: list[QPointF], segment_index: int, control: QPointF, steps: int = 18) -> list[QPointF]:
-        """Substitui um segmento por uma curva quadrática."""
+        """Substitui um segmento por uma curva quadrÃ¡tica."""
         if segment_index < 0 or segment_index >= len(points) - 1:
             return points
         p0 = points[segment_index]
@@ -596,6 +599,39 @@ class DrawingScene(QGraphicsScene):
         path.lineTo(right)
         return path
 
+    def _ensure_ruler_items(self):
+        if self._ruler_line_item is None:
+            ruler_pen = QPen(QColor(theme.PRIMARY), 1.4)
+            ruler_pen.setCosmetic(True)
+            ruler_pen.setStyle(Qt.PenStyle.DashLine)
+            self._ruler_line_item = self.addLine(0, 0, 0, 0, ruler_pen)
+            self._ruler_line_item.setZValue(10000)
+            self._ruler_line_item.setData(0, {"type": "ruler_overlay"})
+
+        if self._ruler_text_item is None:
+            self._ruler_text_item = QGraphicsTextItem("")
+            self._ruler_text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+            self._ruler_text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+            self._ruler_text_item.setZValue(10001)
+            self._ruler_text_item.setData(0, {"type": "ruler_overlay"})
+            self.addItem(self._ruler_text_item)
+
+    def _update_ruler(self, start: QPointF, end: QPointF):
+        self._ensure_ruler_items()
+        if self._ruler_line_item is None or self._ruler_text_item is None:
+            return
+
+        self._ruler_line_item.setLine(start.x(), start.y(), end.x(), end.y())
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        dist = math.hypot(dx, dy)
+        self._ruler_text_item.setPlainText(
+            f"Dist: {dist:.1f}px   Î”X: {dx:.1f}px   Î”Y: {dy:.1f}px"
+        )
+        mid_x = (start.x() + end.x()) / 2.0
+        mid_y = (start.y() + end.y()) / 2.0
+        self._ruler_text_item.setPos(QPointF(mid_x + 8.0, mid_y - 22.0))
+
     def mousePressEvent(self, event):
         tool = self.cw.tool
         pos  = event.scenePos()
@@ -605,7 +641,7 @@ class DrawingScene(QGraphicsScene):
             super().mousePressEvent(event)
             return
 
-        # Free Transform ativo: verificar zona de rotação nos cantos
+        # Free Transform ativo: verificar zona de rotaÃ§Ã£o nos cantos
         if self._ft_active and event.button() == Qt.MouseButton.LeftButton:
             view = self._view()
             if view:
@@ -623,11 +659,11 @@ class DrawingScene(QGraphicsScene):
                     self._ft_is_rotating = True
                     event.accept()
                     return
-                # Clique fora da área do bounding box → sair do ft
+                # Clique fora da Ã¡rea do bounding box â†’ sair do ft
                 outer = self._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20)
                 if not outer.contains(vp_pos):
                     self._exit_ft()
-                    # não retorna — deixa a seleção normal acontecer
+                    # nÃ£o retorna â€” deixa a seleÃ§Ã£o normal acontecer
 
         if tool == Tool.SELECT:
             super().mousePressEvent(event)
@@ -667,11 +703,14 @@ class DrawingScene(QGraphicsScene):
 
         elif tool == Tool.LINE:
             self._start = QPointF(pos.x(), pos.y())
-            # Pequeno segmento inicial para feedback visual instantâneo no primeiro clique.
+            # Pequeno segmento inicial para feedback visual instantÃ¢neo no primeiro clique.
             self._preview_item = self.addLine(
                 self._start.x(), self._start.y(),
                 self._start.x() + 0.01, self._start.y(), self._pen()
             )
+
+        elif tool == Tool.RULER:
+            self._update_ruler(self._start, self._start)
 
         elif tool == Tool.ARROW:
             self._start = QPointF(pos.x(), pos.y())
@@ -739,7 +778,7 @@ class DrawingScene(QGraphicsScene):
         tool = self.cw.tool
         pos  = event.scenePos()
 
-        # Free Transform: rotação fluida
+        # Free Transform: rotaÃ§Ã£o fluida
         if self._ft_is_rotating and self._ft_rotate_pivot is not None:
             angle = math.atan2(
                 pos.y() - self._ft_rotate_pivot.y(),
@@ -782,6 +821,10 @@ class DrawingScene(QGraphicsScene):
                                        end.x(), end.y())
             self.update()
 
+        elif tool == Tool.RULER:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._update_ruler(self._start, end)
+
         elif tool == Tool.ARROW and self._preview_item:
             end = self._constrain(self._start, pos) if shift else pos
             self._preview_item.setPath(self._arrow_path(self._start, end))
@@ -810,7 +853,7 @@ class DrawingScene(QGraphicsScene):
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
 
     def mouseReleaseEvent(self, event):
-        # Free Transform: fim da rotação (mantém ft ativo para mais ajustes)
+        # Free Transform: fim da rotaÃ§Ã£o (mantÃ©m ft ativo para mais ajustes)
         if self._ft_is_rotating:
             self._ft_is_rotating = False
             self._ft_rotate_pivot = None
@@ -855,6 +898,10 @@ class DrawingScene(QGraphicsScene):
                           QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
             self.cw._push_undo(item)
             self._preview_item = None
+
+        elif tool == Tool.RULER:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._update_ruler(self._start, end)
 
         elif tool == Tool.CURVE and self._preview_item and self._curve_source_item:
             old_item = self._curve_source_item
@@ -903,7 +950,7 @@ class DrawingScene(QGraphicsScene):
             super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
-        """Duplo clique em texto → ativa edição inline."""
+        """Duplo clique em texto â†’ ativa ediÃ§Ã£o inline."""
         if (self.cw.tool == Tool.SELECT
                 and event.button() == Qt.MouseButton.LeftButton):
             item = self.itemAt(event.scenePos(), QTransform())
@@ -917,11 +964,11 @@ class DrawingScene(QGraphicsScene):
         super().mouseDoubleClickEvent(event)
 
 
-# ── View com pan por botão do meio + Space+arraste ───────────────────────────
+# â”€â”€ View com pan por botÃ£o do meio + Space+arraste â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class DrawingView(QGraphicsView):
     """
-    QGraphicsView com zoom por scroll e pan por botão do meio ou Space+drag.
-    Também gerencia o cursor de rotação quando Free Transform está ativo.
+    QGraphicsView com zoom por scroll e pan por botÃ£o do meio ou Space+drag.
+    TambÃ©m gerencia o cursor de rotaÃ§Ã£o quando Free Transform estÃ¡ ativo.
     """
 
     def __init__(self, scene: QGraphicsScene, parent=None):
@@ -933,22 +980,22 @@ class DrawingView(QGraphicsView):
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         vp = self.viewport()
         vp.installEventFilter(self)
-        vp.setMouseTracking(True)   # receber MouseMove sem botão pressionado
+        vp.setMouseTracking(True)   # receber MouseMove sem botÃ£o pressionado
 
-    # ── Event filter no viewport ──────────────────────────────────────────────
+    # â”€â”€ Event filter no viewport â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def eventFilter(self, obj, event):
         if obj is not self.viewport():
             return super().eventFilter(obj, event)
 
         t = event.type()
 
-        # ── Zoom por scroll ───────────────────────────────────────────────────
+        # â”€â”€ Zoom por scroll â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if t == QEvent.Type.Wheel:
             factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
             self.scale(factor, factor)
             return True
 
-        # ── Início do pan ─────────────────────────────────────────────────────
+        # â”€â”€ InÃ­cio do pan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if t == QEvent.Type.MouseButtonPress:
             mid        = event.button() == Qt.MouseButton.MiddleButton
             space_left = (event.button() == Qt.MouseButton.LeftButton
@@ -957,7 +1004,7 @@ class DrawingView(QGraphicsView):
                 self._start_pan(event.position().toPoint())
                 return True
 
-        # ── Arraste do pan ────────────────────────────────────────────────────
+        # â”€â”€ Arraste do pan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if t == QEvent.Type.MouseMove and self._panning:
             delta = event.position().toPoint() - self._pan_start
             self._pan_start = event.position().toPoint()
@@ -969,14 +1016,14 @@ class DrawingView(QGraphicsView):
             )
             return True
 
-        # ── Fim do pan ────────────────────────────────────────────────────────
+        # â”€â”€ Fim do pan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if t == QEvent.Type.MouseButtonRelease and self._panning:
             if event.button() in (Qt.MouseButton.MiddleButton,
                                    Qt.MouseButton.LeftButton):
                 self._stop_pan()
                 return True
 
-        # ── Cursor de rotação no Free Transform (hover sem botão) ─────────────
+        # â”€â”€ Cursor de rotaÃ§Ã£o no Free Transform (hover sem botÃ£o) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if t == QEvent.Type.MouseMove and not self._panning:
             sc = self.scene()
             if hasattr(sc, "_ft_active") and sc._ft_active:
@@ -990,7 +1037,7 @@ class DrawingView(QGraphicsView):
 
         return super().eventFilter(obj, event)
 
-    # ── Space + arrastar ──────────────────────────────────────────────────────
+    # â”€â”€ Space + arrastar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._space_held = True
@@ -1004,7 +1051,7 @@ class DrawingView(QGraphicsView):
                 self.setCursor(Qt.CursorShape.ArrowCursor)
         super().keyReleaseEvent(event)
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _start_pan(self, pos):
         self._panning   = True
         self._pan_start = pos
@@ -1018,7 +1065,7 @@ class DrawingView(QGraphicsView):
         self.setCursor(cursor)
 
 
-# ── Widget principal ──────────────────────────────────────────────────────────
+# â”€â”€ Widget principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class DrawingCanvas(QWidget):
     changed = Signal()
 
@@ -1038,13 +1085,13 @@ class DrawingCanvas(QWidget):
         self._last_click_scene_pos: QPointF | None = None
         self._setup_ui()
 
-    # ── UI ────────────────────────────────────────────────────────────────────
+    # â”€â”€ UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        title = QLabel("🎨 DESENHO / REFERÊNCIA")
+        title = QLabel("ðŸŽ¨ DESENHO / REFERÃŠNCIA")
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
@@ -1063,23 +1110,24 @@ class DrawingCanvas(QWidget):
             l.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             return l
 
-        # ── Linha 1: Ferramentas + Cor + Estilo + Fonte ───────────────────────
+        # â”€â”€ Linha 1: Ferramentas + Cor + Estilo + Fonte â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         row1 = QHBoxLayout()
         row1.setSpacing(4)
         self._tool_btns: dict[Tool, QPushButton] = {}
 
         tools = [
-            (Tool.SELECT,  "🖱️ Selec.",   "S"),
-            (Tool.PEN,     "✏️ Caneta",   "P"),
-            (Tool.ERASER,  "🧹 Borracha", "X"),
-            (Tool.LINE,    "📏 Linha",    "L"),
-            (Tool.ARROW,   "➡ Seta",      "A"),
-            (Tool.CURVE,   "〰 Curva",    "C"),
-            (Tool.TRIANGLE, "△ Triang.", "G"),
-            (Tool.PENTAGON, "⬟ Penta",    "N"),
-            (Tool.HEXAGON,  "⬢ Hexa",      "H"),
-            (Tool.RECT,    "⬛ Ret.",     "R"),
-            (Tool.ELLIPSE, "⭕ Elipse",   "E"),
+            (Tool.SELECT,  "ðŸ–±ï¸ Selec.",   "S"),
+            (Tool.PEN,     "âœï¸ Caneta",   "P"),
+            (Tool.ERASER,  "ðŸ§¹ Borracha", "X"),
+            (Tool.LINE,    "ðŸ“ Linha",    "L"),
+            (Tool.RULER,   "📐 Régua",    "U"),
+            (Tool.ARROW,   "âž¡ Seta",      "A"),
+            (Tool.CURVE,   "ã€° Curva",    "C"),
+            (Tool.TRIANGLE, "â–³ Triang.", "G"),
+            (Tool.PENTAGON, "â¬Ÿ Penta",    "N"),
+            (Tool.HEXAGON,  "â¬¢ Hexa",      "H"),
+            (Tool.RECT,    "â¬› Ret.",     "R"),
+            (Tool.ELLIPSE, "â­• Elipse",   "E"),
             (Tool.TEXT,    "T Texto",     "T"),
         ]
         for t, label, key in tools:
@@ -1094,7 +1142,7 @@ class DrawingCanvas(QWidget):
         row1.addSpacing(8)
 
         # Cor
-        self.btn_color = QPushButton("🎨")
+        self.btn_color = QPushButton("ðŸŽ¨")
         self.btn_color.setFixedSize(fh, fh)
         self.btn_color.setStyleSheet(
             f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
@@ -1122,10 +1170,10 @@ class DrawingCanvas(QWidget):
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
         self.combo_style.setFixedWidth(max(126, int(152 * s)))
-        self.combo_style.addItem("─── Sólida",     Qt.PenStyle.SolidLine)
+        self.combo_style.addItem("â”€â”€â”€ SÃ³lida",     Qt.PenStyle.SolidLine)
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
-        self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
-        self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
+        self.combo_style.addItem("Â·Â·Â· Pontilhada", Qt.PenStyle.DotLine)
+        self.combo_style.addItem("-Â·- Misto",      Qt.PenStyle.DashDotLine)
         self.combo_style.currentIndexChanged.connect(
             lambda i: setattr(self, "pen_style", self.combo_style.itemData(i))
         )
@@ -1147,16 +1195,16 @@ class DrawingCanvas(QWidget):
         row1.addStretch()
         layout.addLayout(row1)
 
-        # ── Linha 2: Ações ────────────────────────────────────────────────────
+        # â”€â”€ Linha 2: AÃ§Ãµes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         row2 = QHBoxLayout()
         row2.setSpacing(4)
 
-        btn_undo = QPushButton("↩️ Desfazer")
+        btn_undo = QPushButton("â†©ï¸ Desfazer")
         btn_undo.setFixedHeight(fh)
         btn_undo.clicked.connect(self._undo)
         btn_undo.setStyleSheet(self._tool_btn_style())
 
-        btn_redo = QPushButton("↪️ Refazer")
+        btn_redo = QPushButton("â†ªï¸ Refazer")
         btn_redo.setFixedHeight(fh)
         btn_redo.clicked.connect(self._redo)
         btn_redo.setStyleSheet(self._tool_btn_style())
@@ -1165,13 +1213,13 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_redo)
         row2.addSpacing(8)
 
-        # Rotação via toolbar (mantida para precisão numérica)
-        row2.addWidget(_lbl("↻ Girar:"))
+        # RotaÃ§Ã£o via toolbar (mantida para precisÃ£o numÃ©rica)
+        row2.addWidget(_lbl("â†» Girar:"))
         self.spin_rotate = QDoubleSpinBox()
         self.spin_rotate.setRange(-360, 360)
         self.spin_rotate.setValue(45)
         self.spin_rotate.setSingleStep(15)
-        self.spin_rotate.setSuffix("°")
+        self.spin_rotate.setSuffix("Â°")
         self.spin_rotate.setFixedWidth(max(68, int(80 * s)))
         self.spin_rotate.setFixedHeight(fh)
         row2.addWidget(self.spin_rotate)
@@ -1184,17 +1232,17 @@ class DrawingCanvas(QWidget):
 
         row2.addSpacing(8)
 
-        btn_img = QPushButton("🖼️ Imagem")
+        btn_img = QPushButton("ðŸ–¼ï¸ Imagem")
         btn_img.setFixedHeight(fh)
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
 
-        btn_pdf = QPushButton("📎 PDF")
+        btn_pdf = QPushButton("ðŸ“Ž PDF")
         btn_pdf.setFixedHeight(fh)
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
 
-        btn_clear = QPushButton("🗑️ Limpar")
+        btn_clear = QPushButton("ðŸ—‘ï¸ Limpar")
         btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
         btn_clear.setStyleSheet(
@@ -1209,20 +1257,20 @@ class DrawingCanvas(QWidget):
         row2.addStretch()
         layout.addLayout(row2)
 
-        # ── Dica de teclado ──────────────────────────────────────────────────
+        # â”€â”€ Dica de teclado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         hint = QLabel(
-            "✨ Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
-            "Botão do meio / Space+drag = mover  |  "
+            "âœ¨ U = regua  |  Shift = traÃ§o reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
+            "BotÃ£o do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
-            "Enter / Esc = confirmar  |  2× clique = editar texto"
+            "Enter / Esc = confirmar  |  2Ã— clique = editar texto"
         )
         hint.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
 
-        # ── Cena + View ──────────────────────────────────────────────────────
+        # â”€â”€ Cena + View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.scene = DrawingScene(self)
         self.view  = DrawingView(self.scene)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -1233,7 +1281,7 @@ class DrawingCanvas(QWidget):
         self.view.setMinimumHeight(max(250, int(300 * self.scale)))
         layout.addWidget(self.view)
 
-        # ── Painel de PDF ────────────────────────────────────────────────────
+        # â”€â”€ Painel de PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.pdf_panel = QFrame()
         self.pdf_panel.setStyleSheet(
             f"background:{theme.SELECTION_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
@@ -1242,14 +1290,14 @@ class DrawingCanvas(QWidget):
         pdf_layout.setContentsMargins(10, 6, 10, 6)
         self.pdf_label = QLabel("Nenhum PDF anexado")
         self.pdf_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
-        btn_open_pdf = QPushButton("📂 Abrir")
+        btn_open_pdf = QPushButton("ðŸ“‚ Abrir")
         btn_open_pdf.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_pdf.clicked.connect(self._open_pdf)
         btn_rm_pdf = QPushButton("X")
         btn_rm_pdf.setFixedWidth(28)
         btn_rm_pdf.setStyleSheet(theme.danger_btn_style(self.scale))
         btn_rm_pdf.clicked.connect(self._remove_pdf)
-        pdf_layout.addWidget(QLabel("📎 PDF"))
+        pdf_layout.addWidget(QLabel("ðŸ“Ž PDF"))
         pdf_layout.addWidget(self.pdf_label, 1)
         pdf_layout.addWidget(btn_open_pdf)
         pdf_layout.addWidget(btn_rm_pdf)
@@ -1274,6 +1322,7 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_P: Tool.PEN,
             Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
+            Qt.Key.Key_U: Tool.RULER,
             Qt.Key.Key_A: Tool.ARROW,
             Qt.Key.Key_C: Tool.CURVE,
             Qt.Key.Key_G: Tool.TRIANGLE,
@@ -1311,13 +1360,13 @@ class DrawingCanvas(QWidget):
         paste_action.triggered.connect(self._paste_from_clipboard)
         self.addAction(paste_action)
 
-        # Ctrl+T — Free Transform (estilo Photoshop)
+        # Ctrl+T â€” Free Transform (estilo Photoshop)
         ft_action = QAction(self)
         ft_action.setShortcut(QKeySequence("Ctrl+T"))
         ft_action.triggered.connect(self.scene._enter_ft)
         self.addAction(ft_action)
 
-    # ── Ferramentas ──────────────────────────────────────────────────────────
+    # â”€â”€ Ferramentas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _set_tool(self, tool: Tool):
         self.tool = tool
         for t, btn in self._tool_btns.items():
@@ -1333,7 +1382,7 @@ class DrawingCanvas(QWidget):
             self.view.setCursor(Qt.CursorShape.CrossCursor)
 
     def _rotate_selected(self):
-        """Rotaciona os itens selecionados pelo ângulo do spin (precisão numérica)."""
+        """Rotaciona os itens selecionados pelo Ã¢ngulo do spin (precisÃ£o numÃ©rica)."""
         angle = self.spin_rotate.value()
         for item in self.scene.selectedItems():
             item.setTransformOriginPoint(item.boundingRect().center())
@@ -1364,7 +1413,7 @@ class DrawingCanvas(QWidget):
                 f"background:{self.color}; border-radius:8px; border:1px solid {theme.BORDER_COLOR};"
             )
 
-    # ── Undo / Redo ──────────────────────────────────────────────────────────
+    # â”€â”€ Undo / Redo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _push_undo(self, item: QGraphicsItem):
         self._undo_stack.append(item)
         self._redo_stack.clear()
@@ -1384,7 +1433,7 @@ class DrawingCanvas(QWidget):
             self._undo_stack.append(item)
             self.changed.emit()
 
-    # ── Imagem ───────────────────────────────────────────────────────────────
+    # â”€â”€ Imagem â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _insert_image(self, pos: QPointF = None):
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1400,7 +1449,7 @@ class DrawingCanvas(QWidget):
             return
         self._insert_image_from_pixmap(pixmap, pos=pos, path=path)
 
-    # ── PDF ──────────────────────────────────────────────────────────────────
+    # â”€â”€ PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _attach_pdf(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1425,9 +1474,11 @@ class DrawingCanvas(QWidget):
         self.pdf_panel.setVisible(False)
         self.changed.emit()
 
-    # ── Limpar ───────────────────────────────────────────────────────────────
+    # â”€â”€ Limpar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _clear(self):
         self.scene.clear()
+        self.scene._ruler_line_item = None
+        self.scene._ruler_text_item = None
         self._undo_stack.clear()
         self._redo_stack.clear()
         self.changed.emit()
@@ -1597,7 +1648,7 @@ class DrawingCanvas(QWidget):
             and item.textInteractionFlags() != Qt.TextInteractionFlag.NoTextInteraction
         )
 
-    # ── Serialização ─────────────────────────────────────────────────────────
+    # â”€â”€ SerializaÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def to_json(self) -> str:
         items = []
         for item in self.scene.items():
@@ -1623,6 +1674,10 @@ class DrawingCanvas(QWidget):
         load_canvas_scene(self.scene, data, selectable=True)
 
     def _item_to_dict(self, item: QGraphicsItem) -> dict | None:
+        meta = item.data(0) or {}
+        if isinstance(meta, dict) and meta.get("type") == "ruler_overlay":
+            return None
+
         pen_data = lambda p: {
             "color": p.color().name(),
             "width": p.width(),
@@ -1709,7 +1764,7 @@ class CanvasPreview(QGraphicsView):
     def set_json(self, data: str):
         self._last_result = load_canvas_scene(self._scene, data, selectable=False)
         if self._last_result["items"] == 0:
-            placeholder = self._scene.addText("🖼️ Nenhum desenho salvo")
+            placeholder = self._scene.addText("ðŸ–¼ï¸ Nenhum desenho salvo")
             placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
             font = QFont(theme.FONT_PRIMARY, max(9, int(10 * self.scale_factor)))
             placeholder.setFont(font)
