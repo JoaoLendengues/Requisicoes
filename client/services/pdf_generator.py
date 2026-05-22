@@ -11,6 +11,7 @@ import os
 import re
 import unicodedata
 from datetime import datetime
+from ..core.datetime_utils import local_now
 
 try:
     from reportlab.lib import colors
@@ -558,7 +559,7 @@ def _draw_header(
     _txt(pdf, "REQUISI\u00c7\u00c3O", group_center, y + h - 24, 26,
          C_BRAND, bold=True, align="center")
 
-    emission = _fmt_date(req.get("emission_date"), datetime.now().strftime("%d/%m/%Y"))
+    emission = _fmt_date(req.get("emission_date"), local_now().strftime("%d/%m/%Y"))
     meta_shift = min(10, group_w * 0.08)
     date_cx = group_center - group_w * 0.25 - meta_shift
     vendor_cx = group_center + group_w * 0.25 - meta_shift
@@ -1212,7 +1213,7 @@ def _draw_second_page(
     _box(pdf, mx, hdr_y, cw, 32, radius=8, fill=C_BRAND, stroke=C_BRAND)
     _txt(pdf, f"DESENHO TÉCNICO — REQUISIÇÃO {ped}",
          mx + 12, hdr_y + 11, 12, C_WHITE, bold=True)
-    _txt(pdf, datetime.now().strftime("%d/%m/%Y %H:%M"),
+    _txt(pdf, local_now().strftime("%d/%m/%Y %H:%M"),
          mx + cw - 10, hdr_y + 11, 8, C_WHITE, align="right")
 
     body_h = ph - 2 * my - 32 - 8
@@ -1236,7 +1237,7 @@ def generate_pdf(
     ped_raw      = str(req.get("ped_number") or "0")
     ped_file     = ped_raw.zfill(6)
     client_name  = (client or {}).get("name", "") or f"ID{req.get('client_id', '')}"
-    date_str     = datetime.now().strftime("%Y%m%d")
+    date_str     = local_now().strftime("%Y%m%d")
     filename     = _clean_filename(f"REQ-{ped_file}-{date_str}-{client_name}") + ".pdf"
     filepath     = os.path.join(folder, filename)
 
@@ -1334,7 +1335,7 @@ def generate_pdf(
     ped_raw      = str(req.get("ped_number") or "0")
     ped_file     = ped_raw.zfill(6)
     client_name  = (client or {}).get("name", "") or f"ID{req.get('client_id', '')}"
-    date_str     = datetime.now().strftime("%Y%m%d")
+    date_str     = local_now().strftime("%Y%m%d")
     filename     = _clean_filename(f"REQ-{ped_file}-{date_str}-{client_name}") + ".pdf"
     filepath     = os.path.join(folder, filename)
 

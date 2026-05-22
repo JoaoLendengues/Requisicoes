@@ -24,6 +24,7 @@ except ImportError:
     HAS_QR = False
 
 from ..core import theme
+from ..core.datetime_utils import local_now
 from ..core.dialogs import apply_message_box_theme
 from ..core.resolution import res
 from ..core.session import session
@@ -1154,7 +1155,7 @@ class RequisitionForm(QWidget):
         req["client_code"] = client.get("code") or ""
         req["vendor_name"] = session.user_name or ""
         req["vendor_whatsapp"] = session.whatsapp or ""
-        req["emission_date"] = datetime.now().isoformat()
+        req["emission_date"] = local_now().isoformat()
 
         client_payload = {
             "id": client.get("id"),
