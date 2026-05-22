@@ -1,5 +1,5 @@
-"""
-Formulário principal de requisição — fiel ao mockup fornecido.
+﻿"""
+FormulÃ¡rio principal de requisiÃ§Ã£o â€” fiel ao mockup fornecido.
 """
 import os
 import io
@@ -38,7 +38,7 @@ PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
 
 
-# ── Worker genérico ───────────────────────────────────────────────────────────
+# â”€â”€ Worker genÃ©rico â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class ApiWorker(QObject):
     result   = Signal(object)
     error    = Signal(str)
@@ -63,9 +63,9 @@ class ApiWorker(QObject):
 
 class _Callback(QObject):
     """
-    Intermediário criado na thread principal.
+    IntermediÃ¡rio criado na thread principal.
     Quando o worker (outra thread) emite result/error, Qt detecta
-    a diferença de threads e usa QueuedConnection automaticamente,
+    a diferenÃ§a de threads e usa QueuedConnection automaticamente,
     garantindo que os callbacks rodem sempre na thread principal.
     """
     result = Signal(object)
@@ -76,24 +76,24 @@ def _run_in_thread(fn, *args, on_result=None, on_error=None, **kwargs):
     worker = ApiWorker(fn, *args, **kwargs)
     thread = QThread()
 
-    # _Callback criado aqui (main thread) → tem afinidade com a main thread
+    # _Callback criado aqui (main thread) â†’ tem afinidade com a main thread
     cb = _Callback()
 
     worker.moveToThread(thread)
     thread.started.connect(worker.run)
 
-    # worker → cb: cross-thread, Qt usa QueuedConnection automaticamente
+    # worker â†’ cb: cross-thread, Qt usa QueuedConnection automaticamente
     worker.result.connect(cb.result)
     worker.error.connect(cb.error)
     worker.finished.connect(thread.quit)
 
-    # cb → callbacks do usuário: cb vive na main thread → roda na main thread
+    # cb â†’ callbacks do usuÃ¡rio: cb vive na main thread â†’ roda na main thread
     if on_result:
         cb.result.connect(on_result)
     if on_error:
         cb.error.connect(on_error)
 
-    # Guarda cb no worker para não ser coletado pelo GC antes do término
+    # Guarda cb no worker para nÃ£o ser coletado pelo GC antes do tÃ©rmino
     worker._cb = cb
 
     thread.start()
@@ -127,7 +127,7 @@ def _emphasized_btn_style(base_style: str) -> str:
     return base_style + "QPushButton { font-weight:700; }"
 
 
-# ── Card helper ───────────────────────────────────────────────────────────────
+# â”€â”€ Card helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _make_card(parent=None) -> QFrame:
     card = QFrame(parent)
     card.setObjectName("reqCard")
@@ -152,7 +152,7 @@ def _field_label(text: str, scale: float) -> QLabel:
     return lbl
 
 
-def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
+def _value_label(text: str = "â€”", scale: float = 1.0) -> QLabel:
     lbl = QLabel(text)
     lbl.setStyleSheet(
         f"font-size:{max(9, int(11*scale))}pt; font-weight:bold; border:none;"
@@ -160,12 +160,12 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     return lbl
 
 
-# ── Campo de busca de cliente ─────────────────────────────────────────────────
+# â”€â”€ Campo de busca de cliente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class ClientSearchBox(QWidget):
     """
-    Caixa de busca com dropdown em tempo real — filtragem no SERVIDOR.
-    Suporta 100k+ clientes. Debounce de 300 ms para não sobrecarregar a API.
-    Pesquisa por nome, código ou CPF/CNPJ (ignora pontuação).
+    Caixa de busca com dropdown em tempo real â€” filtragem no SERVIDOR.
+    Suporta 100k+ clientes. Debounce de 300 ms para nÃ£o sobrecarregar a API.
+    Pesquisa por nome, cÃ³digo ou CPF/CNPJ (ignora pontuaÃ§Ã£o).
     """
     client_selected = Signal(object)   # dict do cliente ou None
 
@@ -175,7 +175,7 @@ class ClientSearchBox(QWidget):
         self._selected: dict | None = None
         self._threads: list = []
 
-        # Timer de debounce — dispara busca 300 ms após parar de digitar
+        # Timer de debounce â€” dispara busca 300 ms apÃ³s parar de digitar
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(150)
@@ -190,7 +190,7 @@ class ClientSearchBox(QWidget):
         lay.setSpacing(0)
 
         self.input = QLineEdit()
-        self.input.setPlaceholderText("Buscar por nome, código ou CPF/CNPJ...")
+        self.input.setPlaceholderText("Buscar por nome, cÃ³digo ou CPF/CNPJ...")
         self.input.setFixedHeight(max(30, int(36 * s)))
         self.input.setStyleSheet(theme.input_style(s))
         self.input.textChanged.connect(self._on_text)
@@ -215,10 +215,10 @@ class ClientSearchBox(QWidget):
         self._drop.installEventFilter(self)
         self._drop.hide()
 
-    # ── Digitação → debounce → busca no servidor ──────────────────────────────
+    # â”€â”€ DigitaÃ§Ã£o â†’ debounce â†’ busca no servidor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _on_text(self, text: str):
         if self._selected:
-            expected = f"{self._selected['code']} — {self._selected['name']}"
+            expected = f"{self._selected['code']} â€” {self._selected['name']}"
             if text == expected:
                 return
             self._selected = None
@@ -237,7 +237,7 @@ class ClientSearchBox(QWidget):
 
         # Feedback visual imediato
         self._drop.clear()
-        loading = QListWidgetItem("  ⌕ Buscando...")
+        loading = QListWidgetItem("  âŒ• Buscando...")
         loading.setFlags(Qt.ItemFlag.NoItemFlags)
         self._drop.addItem(loading)
         self._reposition()
@@ -260,7 +260,7 @@ class ClientSearchBox(QWidget):
         else:
             for c in clients:
                 cnpj = c.get("cnpj") or ""
-                label = f"{c['code']}  —  {c['name']}"
+                label = f"{c['code']}  â€”  {c['name']}"
                 if cnpj:
                     label += f"    ({cnpj})"
                 it = QListWidgetItem(label)
@@ -278,19 +278,19 @@ class ClientSearchBox(QWidget):
         self._drop.move(gpos)
         self._drop.resize(self.input.width(), rows * row_h + 6)
 
-    # ── Seleção ───────────────────────────────────────────────────────────────
+    # â”€â”€ SeleÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _pick(self, item: QListWidgetItem):
         client = item.data(Qt.ItemDataRole.UserRole)
         if not client:
             return
         self._selected = client
         self.input.blockSignals(True)
-        self.input.setText(f"{client['code']} — {client['name']}")
+        self.input.setText(f"{client['code']} â€” {client['name']}")
         self.input.blockSignals(False)
         self._drop.hide()
         self.client_selected.emit(client)
 
-    # ── Navegação por teclado ─────────────────────────────────────────────────
+    # â”€â”€ NavegaÃ§Ã£o por teclado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.KeyPress:
             key = event.key()
@@ -325,9 +325,9 @@ class ClientSearchBox(QWidget):
 
         return super().eventFilter(obj, event)
 
-    # ── API pública ───────────────────────────────────────────────────────────
+    # â”€â”€ API pÃºblica â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def set_clients(self, clients: list):
-        """Mantido por compatibilidade — não é mais necessário."""
+        """Mantido por compatibilidade â€” nÃ£o Ã© mais necessÃ¡rio."""
         pass
 
     def get_client_id(self) -> int | None:
@@ -337,7 +337,7 @@ class ClientSearchBox(QWidget):
         return self._selected
 
     def set_client_by_id(self, client_id: int):
-        """Carrega o cliente pelo ID ao abrir uma requisição existente."""
+        """Carrega o cliente pelo ID ao abrir uma requisiÃ§Ã£o existente."""
         t, w = _run_in_thread(
             api.get_client, client_id,
             on_result=self._on_client_loaded_by_id,
@@ -350,7 +350,7 @@ class ClientSearchBox(QWidget):
             return
         self._selected = client
         self.input.blockSignals(True)
-        self.input.setText(f"{client['code']} — {client['name']}")
+        self.input.setText(f"{client['code']} â€” {client['name']}")
         self.input.blockSignals(False)
 
     def clear(self):
@@ -373,9 +373,9 @@ class ClientSearchBox(QWidget):
         )
 
 
-# ── Dialog do editor de desenho ───────────────────────────────────────────────
+# â”€â”€ Dialog do editor de desenho â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class CanvasDialog(QDialog):
-    """Janela modal com o editor de desenho técnico."""
+    """Janela modal com o editor de desenho tÃ©cnico."""
 
     def __init__(self, json_data: str, scale: float, parent=None):
         super().__init__(parent)
@@ -388,7 +388,7 @@ class CanvasDialog(QDialog):
             f"QLabel {{ background-color:transparent; }}"
         )
 
-        # Tamanho: 90% da tela disponível
+        # Tamanho: 90% da tela disponÃ­vel
         from PySide6.QtWidgets import QApplication
         screen = QApplication.primaryScreen().availableGeometry()
         self.resize(int(screen.width() * 0.90), int(screen.height() * 0.88))
@@ -400,16 +400,16 @@ class CanvasDialog(QDialog):
         self.canvas = DrawingCanvas(scale)
         layout.addWidget(self.canvas, 1)
 
-        # Botões inferiores
+        # BotÃµes inferiores
         btn_row = QHBoxLayout()
         btn_row.addStretch()
 
-        btn_cancel = QPushButton("✕ Descartar alterações")
+        btn_cancel = QPushButton("âœ• Descartar alteraÃ§Ãµes")
         btn_cancel.setFixedHeight(max(34, int(38 * scale)))
         btn_cancel.setStyleSheet(theme.secondary_btn_style(scale))
         btn_cancel.clicked.connect(self.reject)
 
-        btn_ok = QPushButton("✓ Salvar desenho e fechar")
+        btn_ok = QPushButton("âœ“ Salvar desenho e fechar")
         btn_ok.setFixedHeight(max(34, int(38 * scale)))
         btn_ok.setStyleSheet(theme.primary_btn_style(scale))
         btn_ok.clicked.connect(self.accept)
@@ -479,7 +479,7 @@ class _CanvasReadOnlyView(QGraphicsView):
 
 
 class CanvasViewerDialog(QDialog):
-    """Janela modal para visualizar o desenho sem permitir edição."""
+    """Janela modal para visualizar o desenho sem permitir ediÃ§Ã£o."""
 
     def __init__(self, json_data: str, scale: float, parent=None):
         super().__init__(parent)
@@ -501,7 +501,7 @@ class CanvasViewerDialog(QDialog):
         layout.setSpacing(8)
 
         toolbar = QHBoxLayout()
-        helper = QLabel("Visualização somente leitura. Use Ctrl + rolagem para zoom.")
+        helper = QLabel("VisualizaÃ§Ã£o somente leitura. Use Ctrl + rolagem para zoom.")
         helper.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * scale))}pt;"
         )
@@ -550,10 +550,10 @@ class CanvasViewerDialog(QDialog):
         btn_fit.clicked.connect(self.canvas_view.fit_scene)
 
 
-# ── View principal ────────────────────────────────────────────────────────────
+# â”€â”€ View principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class RequisitionForm(QWidget):
     saved           = Signal(dict)
-    save_requested  = Signal()          # emitido pelo botão Salvar do formulário
+    save_requested  = Signal()          # emitido pelo botÃ£o Salvar do formulÃ¡rio
     req_id: int | None = None
 
     def __init__(self, scale: float = 1.0, parent=None):
@@ -566,7 +566,7 @@ class RequisitionForm(QWidget):
         self._load_clients()
         self._update_canvas_preview()
 
-    # ── Construção da UI ──────────────────────────────────────────────────────
+    # â”€â”€ ConstruÃ§Ã£o da UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _setup_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -596,12 +596,12 @@ class RequisitionForm(QWidget):
         layout.addWidget(self._build_items_section())
         layout.addWidget(self._build_bottom_section())
 
-        # ── Botões Salvar + WhatsApp ──────────────────────────────────────────
+        # â”€â”€ BotÃµes Salvar + WhatsApp â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         s = self.scale
         save_row = QHBoxLayout()
         save_row.addStretch()
 
-        btn_calc = QPushButton("🧮 CALCULADORA DE PESO")
+        btn_calc = QPushButton("ðŸ§® CALCULADORA DE PESO")
         btn_calc.setFixedHeight(max(42, int(48 * s)))
         btn_calc.setMinimumWidth(max(200, int(230 * s)))
         btn_calc.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
@@ -611,14 +611,14 @@ class RequisitionForm(QWidget):
 
         save_row.addSpacing(max(8, int(10 * s)))
 
-        btn_production = QPushButton("ENVIAR PARA PRODUÇÃO")
+        btn_production = QPushButton("ENVIAR PARA PRODUÃ‡ÃƒO")
         btn_production.setFixedHeight(max(42, int(48 * s)))
         btn_production.setMinimumWidth(max(220, int(250 * s)))
         btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         btn_production.clicked.connect(self._send_to_production)
         save_row.addWidget(btn_production)
         self.btn_production = btn_production
-        self.btn_production.setText("🏭 ENVIAR PARA PRODUÇÃO")
+        self.btn_production.setText("ðŸ­ ENVIAR PARA PRODUÃ‡ÃƒO")
 
         save_row.addSpacing(max(8, int(10 * s)))
 
@@ -629,7 +629,7 @@ class RequisitionForm(QWidget):
         btn_whatsapp.clicked.connect(self._send_whatsapp_client)
         save_row.addWidget(btn_whatsapp)
         self.btn_whatsapp = btn_whatsapp
-        self.btn_whatsapp.setText("📲 ENVIAR WHATSAPP")
+        self.btn_whatsapp.setText("ðŸ“² ENVIAR WHATSAPP")
 
         save_row.addSpacing(max(8, int(10 * s)))
 
@@ -643,14 +643,14 @@ class RequisitionForm(QWidget):
 
         save_row.addSpacing(max(8, int(10 * s)))
 
-        btn_save = QPushButton("SALVAR REQUISIÇÃO")
+        btn_save = QPushButton("SALVAR REQUISIÃ‡ÃƒO")
         btn_save.setFixedHeight(max(42, int(48 * s)))
         btn_save.setMinimumWidth(max(220, int(260 * s)))
         btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))
         btn_save.clicked.connect(self.save_requested.emit)
         save_row.addWidget(btn_save)
         self.btn_save = btn_save
-        self.btn_save.setText("💾 SALVAR REQUISIÇÃO")
+        self.btn_save.setText("ðŸ’¾ SALVAR REQUISIÃ‡ÃƒO")
         layout.addLayout(save_row)
 
         self.lock_label = QLabel("")
@@ -680,7 +680,7 @@ class RequisitionForm(QWidget):
 
         layout.addStretch()
 
-    # ── Cabeçalho ─────────────────────────────────────────────────────────────
+    # â”€â”€ CabeÃ§alho â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _build_header(self) -> QFrame:
         card = _make_card()
         layout = QHBoxLayout(card)
@@ -689,10 +689,10 @@ class RequisitionForm(QWidget):
                                    max(12, int(16*s)), max(8, int(12*s)))
         layout.setSpacing(max(12, int(16*s)))
 
-        # Título Requisição + número
+        # TÃ­tulo RequisiÃ§Ã£o + nÃºmero
         title_col = QVBoxLayout()
         title_col.setSpacing(0)
-        lbl_req = QLabel("REQUISIÇÃO")
+        lbl_req = QLabel("REQUISIÃ‡ÃƒO")
         lbl_req.setProperty("accent", "1")
         lbl_req.setStyleSheet(
             f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none;"
@@ -711,7 +711,7 @@ class RequisitionForm(QWidget):
         # Data
         date_col = QVBoxLayout()
         date_col.setSpacing(2)
-        date_col.addWidget(_field_label("📅 DATA", s))
+        date_col.addWidget(_field_label("ðŸ“… DATA", s))
         self.lbl_date = _value_label(date.today().strftime("%d/%m/%Y"), s)
         date_col.addWidget(self.lbl_date)
         layout.addLayout(date_col)
@@ -719,7 +719,7 @@ class RequisitionForm(QWidget):
         # Vendedor
         vend_col = QVBoxLayout()
         vend_col.setSpacing(2)
-        vend_col.addWidget(_field_label("👤 VENDEDOR", s))
+        vend_col.addWidget(_field_label("ðŸ‘¤ VENDEDOR", s))
         self.lbl_vendor = _value_label(session.user_name.upper(), s)
         vend_col.addWidget(self.lbl_vendor)
         layout.addLayout(vend_col)
@@ -737,27 +737,39 @@ class RequisitionForm(QWidget):
         ped_col.setSpacing(2)
         ped_col.addWidget(_field_label("PED:", s))
         self.input_ped = QLineEdit()
-        self.input_ped.setPlaceholderText("Nº pedido")
-        self.input_ped.setFixedWidth(max(80, int(100*s)))
+        self.input_ped.setPlaceholderText("Numero do pedido")
+        self._ped_min_width = max(80, int(100*s))
+        self._ped_max_width = max(180, int(240*s))
+        self.input_ped.setFixedWidth(self._ped_min_width)
         self.input_ped.setFixedHeight(max(30, int(36*s)))
         self.input_ped.setStyleSheet(
             f"font-size:{max(14,int(18*s))}pt; font-weight:bold; color:{theme.PRIMARY};"
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:5px; padding:2px 6px;"
             f"background:{theme.INPUT_BG};"
         )
-        # Apenas dígitos permitidos
+        # Apenas dÃ­gitos permitidos
         self.input_ped.setValidator(
             QRegularExpressionValidator(QRegularExpression(r"\d*"))
         )
-        self.input_ped.textChanged.connect(
-            lambda t: self.lbl_ped_num.setText(f"#{t.zfill(6)}" if t else "#000000")
-        )
+        def _resize_ped_field_width():
+            text = self.input_ped.text().strip()
+            sample = text if text else self.input_ped.placeholderText()
+            target = self.input_ped.fontMetrics().horizontalAdvance(sample) + max(18, int(24 * s))
+            target = max(self._ped_min_width, min(self._ped_max_width, target))
+            self.input_ped.setFixedWidth(target)
+
+        def _on_ped_changed(t: str):
+            self.lbl_ped_num.setText(f"#{t.zfill(6)}" if t else "#000000")
+            _resize_ped_field_width()
+
+        self.input_ped.textChanged.connect(_on_ped_changed)
+        _resize_ped_field_width()
         ped_col.addWidget(self.input_ped)
         layout.addLayout(ped_col)
 
         return card
 
-    # ── Barra de informações ───────────────────────────────────────────────────
+    # â”€â”€ Barra de informaÃ§Ãµes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _build_info_bar(self) -> QFrame:
         card = _make_card()
         layout = QHBoxLayout(card)
@@ -780,27 +792,27 @@ class RequisitionForm(QWidget):
         self.input_prazo.setCalendarPopup(True)
         self.input_prazo.setFixedHeight(max(28,int(32*s)))
         self.input_prazo.setStyleSheet(theme.input_style(s))
-        add_field("📦", "PRAZO DE ENTREGA", self.input_prazo)
+        add_field("ðŸ“¦", "PRAZO DE ENTREGA", self.input_prazo)
 
-        # Retirada — mutuamente exclusivo com Entrega
+        # Retirada â€” mutuamente exclusivo com Entrega
         chk_style = f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
 
-        self.chk_retirada = QCheckBox("NÃO")
+        self.chk_retirada = QCheckBox("NÃƒO")
         self.chk_retirada.setStyleSheet(chk_style)
-        add_field("🏪", "RETIRADA", self.chk_retirada)
+        add_field("ðŸª", "RETIRADA", self.chk_retirada)
 
-        self.chk_entrega = QCheckBox("NÃO")
+        self.chk_entrega = QCheckBox("NÃƒO")
         self.chk_entrega.setStyleSheet(chk_style)
-        add_field("🚚", "ENTREGA", self.chk_entrega)
+        add_field("ðŸšš", "ENTREGA", self.chk_entrega)
 
-        # Mutuamente exclusivos + texto dinâmico SIM / NÃO
+        # Mutuamente exclusivos + texto dinÃ¢mico SIM / NÃƒO
         def _on_retirada(checked: bool):
-            self.chk_retirada.setText("SIM" if checked else "NÃO")
+            self.chk_retirada.setText("SIM" if checked else "NÃƒO")
             if checked:
                 self.chk_entrega.setChecked(False)
 
         def _on_entrega(checked: bool):
-            self.chk_entrega.setText("SIM" if checked else "NÃO")
+            self.chk_entrega.setText("SIM" if checked else "NÃƒO")
             if checked:
                 self.chk_retirada.setChecked(False)
 
@@ -811,7 +823,7 @@ class RequisitionForm(QWidget):
 
         return card
 
-    # ── Seção Cliente ─────────────────────────────────────────────────────────
+    # â”€â”€ SeÃ§Ã£o Cliente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _build_client_section(self) -> QFrame:
         card = _make_card()
         layout = QGridLayout(card)
@@ -821,14 +833,14 @@ class RequisitionForm(QWidget):
         layout.setHorizontalSpacing(max(16,int(20*s)))
         layout.setVerticalSpacing(max(6,int(8*s)))
 
-        # Cliente (busca em tempo real por nome, código ou CPF/CNPJ)
-        layout.addWidget(_field_label("👤 CLIENTE", s), 0, 0)
+        # Cliente (busca em tempo real por nome, cÃ³digo ou CPF/CNPJ)
+        layout.addWidget(_field_label("ðŸ‘¤ CLIENTE", s), 0, 0)
         self.client_search = ClientSearchBox(s, self)
         self.client_search.client_selected.connect(self._on_client_selected)
         layout.addWidget(self.client_search, 1, 0)
 
         # Obra
-        layout.addWidget(_field_label("🏗️ OBRA", s), 0, 1)
+        layout.addWidget(_field_label("ðŸ—ï¸ OBRA", s), 0, 1)
         self.input_obra = QLineEdit()
         self.input_obra.setPlaceholderText("Nome da obra")
         self.input_obra.setFixedHeight(max(30,int(36*s)))
@@ -837,7 +849,7 @@ class RequisitionForm(QWidget):
         layout.addWidget(self.input_obra, 1, 1)
 
         # Fone
-        layout.addWidget(_field_label("📞 FONE", s), 2, 0)
+        layout.addWidget(_field_label("ðŸ“ž FONE", s), 2, 0)
         self.input_fone = QLineEdit()
         self.input_fone.setPlaceholderText("(61) 9 9999-9999")
         self.input_fone.setFixedHeight(max(30,int(36*s)))
@@ -846,10 +858,10 @@ class RequisitionForm(QWidget):
         self.input_fone.textEdited.connect(self._on_phone_edited)
         layout.addWidget(self.input_fone, 3, 0)
 
-        # Endereço
-        layout.addWidget(_field_label("📍 ENDEREÇO A ENTREGAR", s), 2, 1)
+        # EndereÃ§o
+        layout.addWidget(_field_label("ðŸ“ ENDEREÃ‡O A ENTREGAR", s), 2, 1)
         self.input_address = QLineEdit()
-        self.input_address.setPlaceholderText("Endereço completo de entrega")
+        self.input_address.setPlaceholderText("EndereÃ§o completo de entrega")
         self.input_address.setFixedHeight(max(30,int(36*s)))
         self.input_address.setStyleSheet(theme.input_style(s))
         bind_uppercase_line_edit(self.input_address)
@@ -859,7 +871,7 @@ class RequisitionForm(QWidget):
         layout.setColumnStretch(1, 2)
         return card
 
-    # ── Itens (largura total) ─────────────────────────────────────────────────
+    # â”€â”€ Itens (largura total) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _build_items_section(self) -> QFrame:
         s = self.scale
         wrapper = QWidget()
@@ -890,9 +902,9 @@ class RequisitionForm(QWidget):
             f"color:{theme.PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:bold; border:none;"
         )
         preview_layout.addWidget(lbl_preview)
-        lbl_preview.setText("🎨 EDITOR DE DESENHO")
+        lbl_preview.setText("ðŸŽ¨ EDITOR DE DESENHO")
 
-        lbl_preview_hint = QLabel("Prévia do desenho salvo na requisição.")
+        lbl_preview_hint = QLabel("PrÃ©via do desenho salvo na requisiÃ§Ã£o.")
         lbl_preview_hint.setWordWrap(True)
         lbl_preview_hint.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt; border:none;"
@@ -908,15 +920,15 @@ class RequisitionForm(QWidget):
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt; border:none;"
         )
         preview_layout.addWidget(self.lbl_canvas_info)
-        self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
+        self.lbl_canvas_info.setText("ðŸ–¼ï¸ Nenhum desenho salvo ainda.")
 
-        btn_canvas = QPushButton("✏️ Abrir Editor de Desenho")
+        btn_canvas = QPushButton("âœï¸ Abrir Editor de Desenho")
         btn_canvas.setFixedHeight(max(28, int(32*s)))
         btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
         btn_canvas.clicked.connect(self._open_canvas_dialog)
         self.btn_canvas = btn_canvas
 
-        btn_canvas_view = QPushButton("🖼️ Visualizar Desenho")
+        btn_canvas_view = QPushButton("ðŸ–¼ï¸ Visualizar Desenho")
         btn_canvas_view.setFixedHeight(max(28, int(32*s)))
         btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))
         btn_canvas_view.clicked.connect(self._open_canvas_viewer)
@@ -932,7 +944,7 @@ class RequisitionForm(QWidget):
         row.addWidget(preview_card, 1)
         return wrapper
 
-    # ── Rodapé: Observação + Assinatura + QR ─────────────────────────────────
+    # â”€â”€ RodapÃ©: ObservaÃ§Ã£o + Assinatura + QR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _build_bottom_section(self) -> QFrame:
         s = self.scale
         wrapper = QWidget()
@@ -941,14 +953,14 @@ class RequisitionForm(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(max(10,int(12*s)))
 
-        # Observação
+        # ObservaÃ§Ã£o
         obs_card = _make_card()
         obs_layout = QVBoxLayout(obs_card)
         obs_layout.setContentsMargins(max(10,int(12*s)), max(10,int(12*s)),
                                        max(10,int(12*s)), max(10,int(12*s)))
-        obs_layout.addWidget(_field_label("📝 OBSERVAÇÃO", s))
+        obs_layout.addWidget(_field_label("ðŸ“ OBSERVAÃ‡ÃƒO", s))
         self.input_obs = QTextEdit()
-        self.input_obs.setPlaceholderText("Observações adicionais...")
+        self.input_obs.setPlaceholderText("ObservaÃ§Ãµes adicionais...")
         self.input_obs.setMaximumHeight(max(100,int(120*s)))
         self.input_obs.setStyleSheet(
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
@@ -965,7 +977,7 @@ class RequisitionForm(QWidget):
                                        max(10,int(12*s)), max(10,int(12*s)))
 
         sig_col = QVBoxLayout()
-        sig_col.addWidget(_field_label("✍️ ASSINATURA DO CLIENTE", s))
+        sig_col.addWidget(_field_label("âœï¸ ASSINATURA DO CLIENTE", s))
         sig_col.addStretch()
         sig_line = QFrame()
         sig_line.setFrameShape(QFrame.Shape.HLine)
@@ -993,7 +1005,7 @@ class RequisitionForm(QWidget):
         lbl_qr_txt.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
-        lbl_qr_txt.setText("🔳 QR CODE\nVendedor")
+        lbl_qr_txt.setText("ðŸ”³ QR CODE\nVendedor")
         self.lbl_qr_contact = QLabel("")
         self.lbl_qr_contact.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_qr_contact.setWordWrap(True)
@@ -1009,7 +1021,7 @@ class RequisitionForm(QWidget):
         self._generate_qr()
         return wrapper
 
-    # ── QR Code ───────────────────────────────────────────────────────────────
+    # â”€â”€ QR Code â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _generate_qr(self):
         if hasattr(self, "lbl_qr_contact"):
             self.lbl_qr_contact.setText(_format_phone_text(session.whatsapp) or "Sem contato cadastrado")
@@ -1045,13 +1057,13 @@ class RequisitionForm(QWidget):
             self.lbl_vendor.setText((session.user_name or "--").upper())
         self._generate_qr()
 
-    # ── WhatsApp do cliente ───────────────────────────────────────────────────
+    # â”€â”€ WhatsApp do cliente â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _send_whatsapp_client(self):
         if not self.req_id:
             QMessageBox.warning(
                 self,
                 "WhatsApp",
-                "Salve a requisição antes de enviar o PDF pelo WhatsApp.",
+                "Salve a requisiÃ§Ã£o antes de enviar o PDF pelo WhatsApp.",
             )
             return
 
@@ -1069,14 +1081,14 @@ class RequisitionForm(QWidget):
             return
 
         self.btn_whatsapp.setEnabled(not busy)
-        self.btn_whatsapp.setText("⏳ PREPARANDO PDF..." if busy else "📲 ENVIAR WHATSAPP")
+        self.btn_whatsapp.setText("â³ PREPARANDO PDF..." if busy else "ðŸ“² ENVIAR WHATSAPP")
 
     def _set_print_busy(self, busy: bool):
         if not hasattr(self, "btn_print"):
             return
 
         self.btn_print.setEnabled(not busy)
-        self.btn_print.setText("PREPARANDO IMPRESSÃO..." if busy else "IMPRIMIR")
+        self.btn_print.setText("PREPARANDO IMPRESSÃƒO..." if busy else "IMPRIMIR")
 
     def _print_requisition_pdf(self):
         self._set_print_busy(True)
@@ -1084,7 +1096,7 @@ class RequisitionForm(QWidget):
             pdf_path = self._find_saved_pdf_for_print()
             self._print_pdf_file(pdf_path)
         except Exception as exc:
-            QMessageBox.critical(self, "Impressão", str(exc))
+            QMessageBox.critical(self, "ImpressÃ£o", str(exc))
         finally:
             self._set_print_busy(False)
 
@@ -1099,7 +1111,7 @@ class RequisitionForm(QWidget):
                 QMessageBox.warning(
                     self,
                     "WhatsApp",
-                    "A requisição salva não possui um telefone válido para envio.",
+                    "A requisiÃ§Ã£o salva nÃ£o possui um telefone vÃ¡lido para envio.",
                 )
                 return
 
@@ -1120,7 +1132,7 @@ class RequisitionForm(QWidget):
                 "O PDF salvo foi gerado e a conversa do cliente foi aberta.\n\n"
                 f"Arquivo pronto:\n{pdf_path}\n\n"
                 "O anexo ainda precisa ser enviado manualmente porque o projeto "
-                "não tem uma integração configurada de envio de documentos pelo WhatsApp.",
+                "nÃ£o tem uma integraÃ§Ã£o configurada de envio de documentos pelo WhatsApp.",
             )
         except Exception as exc:
             QMessageBox.critical(self, "WhatsApp", str(exc))
@@ -1143,7 +1155,7 @@ class RequisitionForm(QWidget):
         client = self.client_search.get_selected()
 
         if not ped_number or not ped_number.isdigit() or int(ped_number) == 0:
-            raise RuntimeError("Informe um número de PED válido antes de imprimir.")
+            raise RuntimeError("Informe um nÃºmero de PED vÃ¡lido antes de imprimir.")
 
         if not data.get("client_id") or not client:
             raise RuntimeError("Selecione um cliente antes de imprimir.")
@@ -1170,11 +1182,11 @@ class RequisitionForm(QWidget):
     def _find_saved_pdf_for_print(self) -> str:
         ped_number = self.input_ped.text().strip()
         if not ped_number or not ped_number.isdigit() or int(ped_number) == 0:
-            raise RuntimeError("Informe um número de requisição válido antes de imprimir.")
+            raise RuntimeError("Informe um nÃºmero de requisiÃ§Ã£o vÃ¡lido antes de imprimir.")
 
         folder = self._resolve_pdf_output_folder(require_configured_folder=True)
         if not os.path.isdir(folder):
-            raise RuntimeError("A pasta de PDFs configurada não foi encontrada.")
+            raise RuntimeError("A pasta de PDFs configurada nÃ£o foi encontrada.")
 
         ped_file = ped_number.zfill(6)
         prefix = f"REQ-{ped_file}-"
@@ -1186,12 +1198,12 @@ class RequisitionForm(QWidget):
                 if name.lower().endswith(".pdf") and name.upper().startswith(prefix.upper())
             ]
         except OSError as exc:
-            raise RuntimeError(f"Não foi possível acessar a pasta de PDFs.\n\n{exc}") from exc
+            raise RuntimeError(f"NÃ£o foi possÃ­vel acessar a pasta de PDFs.\n\n{exc}") from exc
 
         if not pdf_candidates:
             raise RuntimeError(
-                "Não foi encontrado um PDF salvo para essa requisição na pasta configurada.\n\n"
-                f"Requisição: {ped_file}"
+                "NÃ£o foi encontrado um PDF salvo para essa requisiÃ§Ã£o na pasta configurada.\n\n"
+                f"RequisiÃ§Ã£o: {ped_file}"
             )
 
         pdf_candidates.sort(
@@ -1207,7 +1219,7 @@ class RequisitionForm(QWidget):
 
         if require_configured_folder:
             raise RuntimeError(
-                "Defina a pasta de PDFs nas Configurações antes de localizar ou gerar o PDF da requisição."
+                "Defina a pasta de PDFs nas ConfiguraÃ§Ãµes antes de localizar ou gerar o PDF da requisiÃ§Ã£o."
             )
 
         folder = os.path.join(tempfile.gettempdir(), "requisicoes-pdf")
@@ -1226,10 +1238,10 @@ class RequisitionForm(QWidget):
         try:
             from ..services.pdf_generator import generate_pdf, HAS_REPORTLAB
         except ImportError as exc:
-            raise RuntimeError("A geração de PDF não está disponível neste ambiente.") from exc
+            raise RuntimeError("A geraÃ§Ã£o de PDF nÃ£o estÃ¡ disponÃ­vel neste ambiente.") from exc
 
         if not HAS_REPORTLAB:
-            raise RuntimeError("A geração de PDF está indisponível porque o ReportLab não está instalado.")
+            raise RuntimeError("A geraÃ§Ã£o de PDF estÃ¡ indisponÃ­vel porque o ReportLab nÃ£o estÃ¡ instalado.")
 
         folder = self._resolve_pdf_output_folder(require_configured_folder=require_configured_folder)
         return generate_pdf(req, client, obs or req.get("obs") or "", folder, canvas_json)
@@ -1261,7 +1273,7 @@ class RequisitionForm(QWidget):
 
     def _prepare_local_pdf_for_print(self, pdf_path: str) -> str:
         if not os.path.isfile(pdf_path):
-            raise RuntimeError("O PDF da requisição não foi encontrado para impressão.")
+            raise RuntimeError("O PDF da requisiÃ§Ã£o nÃ£o foi encontrado para impressÃ£o.")
 
         temp_dir = os.path.join(tempfile.gettempdir(), "requisicoes-print")
         os.makedirs(temp_dir, exist_ok=True)
@@ -1282,7 +1294,7 @@ class RequisitionForm(QWidget):
             except OSError:
                 pass
             raise RuntimeError(
-                "Não foi possível preparar uma cópia local do PDF para impressão.\n\n"
+                "NÃ£o foi possÃ­vel preparar uma cÃ³pia local do PDF para impressÃ£o.\n\n"
                 f"{exc}"
             ) from exc
 
@@ -1295,7 +1307,7 @@ class RequisitionForm(QWidget):
             from PySide6.QtPdf import QPdfDocument
             from PySide6.QtPrintSupport import QPrintDialog, QPrinter
         except ImportError as exc:
-            raise RuntimeError("A seleção de impressora não está disponível neste ambiente.") from exc
+            raise RuntimeError("A seleÃ§Ã£o de impressora nÃ£o estÃ¡ disponÃ­vel neste ambiente.") from exc
 
         printer = QPrinter(QPrinter.PrinterMode.HighResolution)
         printer.setDocName(f"Requisicao {self.input_ped.text().strip() or '000000'}")
@@ -1303,7 +1315,7 @@ class RequisitionForm(QWidget):
         printer.setFullPage(True)
 
         dialog = QPrintDialog(printer, self)
-        dialog.setWindowTitle("Imprimir requisição")
+        dialog.setWindowTitle("Imprimir requisiÃ§Ã£o")
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return False
 
@@ -1317,13 +1329,13 @@ class RequisitionForm(QWidget):
             load_result = document.load(local_pdf_path)
             if load_result != QPdfDocument.Error.None_:
                 raise RuntimeError(
-                    f"Não foi possível abrir o PDF da requisição para impressão ({load_result.name})."
+                    f"NÃ£o foi possÃ­vel abrir o PDF da requisiÃ§Ã£o para impressÃ£o ({load_result.name})."
                 )
             if document.pageCount() <= 0:
-                raise RuntimeError("O PDF da requisição não possui páginas para imprimir.")
+                raise RuntimeError("O PDF da requisiÃ§Ã£o nÃ£o possui pÃ¡ginas para imprimir.")
 
             if not painter.begin(printer):
-                raise RuntimeError("Não foi possível iniciar a impressão na impressora selecionada.")
+                raise RuntimeError("NÃ£o foi possÃ­vel iniciar a impressÃ£o na impressora selecionada.")
 
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
@@ -1346,7 +1358,7 @@ class RequisitionForm(QWidget):
                 height = max(1, int((page_size.height() / 72.0) * 300))
                 image = document.render(page_index, QSize(width, height))
                 if image.isNull():
-                    raise RuntimeError(f"Não foi possível renderizar a página {page_index + 1} para impressão.")
+                    raise RuntimeError(f"NÃ£o foi possÃ­vel renderizar a pÃ¡gina {page_index + 1} para impressÃ£o.")
 
                 scaled_size = image.size()
                 scaled_size.scale(target_width, target_height, Qt.AspectRatioMode.KeepAspectRatio)
@@ -1365,7 +1377,7 @@ class RequisitionForm(QWidget):
 
         return True
 
-    # ── Calculadora de Peso ───────────────────────────────────────────────────
+    # â”€â”€ Calculadora de Peso â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _open_weight_calculator(self):
         s = self.scale
         dlg = QDialog(self)
@@ -1388,8 +1400,8 @@ class RequisitionForm(QWidget):
                                    max(20, int(24 * s)), max(20, int(24 * s)))
         layout.setSpacing(max(10, int(12 * s)))
 
-        # Título
-        lbl_title = QLabel("⚖️  Calculadora de Peso")
+        # TÃ­tulo
+        lbl_title = QLabel("âš–ï¸  Calculadora de Peso")
         lbl_title.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
         )
@@ -1444,7 +1456,7 @@ class RequisitionForm(QWidget):
         grid.addWidget(inp_larg,              2, 1)
         grid.addWidget(_lbl("CHAPA (mm):"),   3, 0)
         grid.addWidget(inp_chapa,             3, 1)
-        grid.addWidget(_lbl("VARIÁVEL:"),     4, 0)
+        grid.addWidget(_lbl("VARIÃVEL:"),     4, 0)
         grid.addWidget(inp_var,               4, 1)
         layout.addLayout(grid)
 
@@ -1455,7 +1467,7 @@ class RequisitionForm(QWidget):
         layout.addWidget(sep2)
 
         # Label de resultado
-        lbl_result = QLabel("PESO = —")
+        lbl_result = QLabel("PESO = â€”")
         lbl_result.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_result.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(14, int(16 * s))}pt;"
@@ -1465,7 +1477,7 @@ class RequisitionForm(QWidget):
         )
         layout.addWidget(lbl_result)
 
-        lbl_hint = QLabel("Resultado apenas para consulta — não salvo na requisição.")
+        lbl_hint = QLabel("Resultado apenas para consulta â€” nÃ£o salvo na requisiÃ§Ã£o.")
         lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_hint.setWordWrap(True)
         lbl_hint.setStyleSheet(
@@ -1473,14 +1485,14 @@ class RequisitionForm(QWidget):
         )
         layout.addWidget(lbl_hint)
 
-        # Botão fechar
+        # BotÃ£o fechar
         btn_fechar = QPushButton("Fechar")
         btn_fechar.setFixedHeight(max(34, int(40 * s)))
         btn_fechar.setStyleSheet(theme.secondary_btn_style(s))
         btn_fechar.clicked.connect(dlg.accept)
         layout.addWidget(btn_fechar, alignment=Qt.AlignmentFlag.AlignRight)
 
-        # Lógica de cálculo — recalcula a cada digitação
+        # LÃ³gica de cÃ¡lculo â€” recalcula a cada digitaÃ§Ã£o
         def _recalculate():
             try:
                 qnt   = float(inp_qnt.text().replace(",", ".") or "0")
@@ -1492,13 +1504,13 @@ class RequisitionForm(QWidget):
                 txt   = f"{peso:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 lbl_result.setText(f"PESO = {txt} kg")
             except (ValueError, ZeroDivisionError):
-                lbl_result.setText("PESO = —")
+                lbl_result.setText("PESO = â€”")
 
         inp_qnt.textChanged.connect(_recalculate)
         inp_comp.textChanged.connect(_recalculate)
         inp_larg.textChanged.connect(_recalculate)
         inp_chapa.textChanged.connect(_recalculate)
-        # inp_var é fixo — sem listener necessário
+        # inp_var Ã© fixo â€” sem listener necessÃ¡rio
 
         dlg.exec()
 
@@ -1506,8 +1518,8 @@ class RequisitionForm(QWidget):
         if not self.req_id:
             QMessageBox.warning(
                 self,
-                "Produção",
-                "Salve a requisição antes de enviar para produção.",
+                "ProduÃ§Ã£o",
+                "Salve a requisiÃ§Ã£o antes de enviar para produÃ§Ã£o.",
             )
             return
 
@@ -1530,12 +1542,12 @@ class RequisitionForm(QWidget):
 
     def _pick_production_destination(self) -> str | None:
         msg = QMessageBox(self)
-        msg.setWindowTitle("Enviar para produção")
+        msg.setWindowTitle("Enviar para produÃ§Ã£o")
         msg.setIcon(QMessageBox.Icon.Question)
-        msg.setText("Selecione para qual produção a requisição deve ser enviada.")
+        msg.setText("Selecione para qual produÃ§Ã£o a requisiÃ§Ã£o deve ser enviada.")
 
         btn_ar = msg.addButton("A&R", QMessageBox.ButtonRole.AcceptRole)
-        btn_pinheiro = msg.addButton("Pinheiro Indústria", QMessageBox.ButtonRole.AcceptRole)
+        btn_pinheiro = msg.addButton("Pinheiro IndÃºstria", QMessageBox.ButtonRole.AcceptRole)
         msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
         apply_message_box_theme(msg)
 
@@ -1544,15 +1556,15 @@ class RequisitionForm(QWidget):
         if clicked == btn_ar:
             return "A&R"
         if clicked == btn_pinheiro:
-            return "Pinheiro Indústria"
+            return "Pinheiro IndÃºstria"
         return None
 
     def _on_sent_to_production(self, req: dict, destination: str):
         self.status_badge.set_status(req.get("status", "aguardando_recebimento"))
         QMessageBox.information(
             self,
-            "Produção",
-            f"Requisição enviada para {destination}.",
+            "ProduÃ§Ã£o",
+            f"RequisiÃ§Ã£o enviada para {destination}.",
         )
 
     def _on_send_to_production_error(self, msg: str, previous_status: str = "em_andamento"):
@@ -1560,12 +1572,12 @@ class RequisitionForm(QWidget):
         friendly = msg
         if "aguardando_recebimento" in msg and "Input should be" in msg:
             friendly = (
-                "O servidor ainda não reconhece o novo status de produção.\n\n"
+                "O servidor ainda nÃ£o reconhece o novo status de produÃ§Ã£o.\n\n"
                 "Reinicie o servidor da API e tente novamente."
             )
-        QMessageBox.critical(self, "Produção", friendly)
+        QMessageBox.critical(self, "ProduÃ§Ã£o", friendly)
 
-    # ── Editor de desenho (modal) ─────────────────────────────────────────────
+    # â”€â”€ Editor de desenho (modal) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _open_canvas_dialog(self):
         dlg = CanvasDialog(self._canvas_json, self.scale, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
@@ -1576,7 +1588,7 @@ class RequisitionForm(QWidget):
         dlg = CanvasViewerDialog(self._canvas_json, self.scale, self)
         dlg.exec()
 
-    # ── Clientes ──────────────────────────────────────────────────────────────
+    # â”€â”€ Clientes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _load_clients(self):
         t, w = _run_in_thread(api.list_clients,
                                on_result=self._on_clients_loaded,
@@ -1588,7 +1600,7 @@ class RequisitionForm(QWidget):
         self.client_search.set_clients(clients)
 
     def _on_client_selected(self, client: dict):
-        """Preenche Fone e Endereço automaticamente ao selecionar um cliente."""
+        """Preenche Fone e EndereÃ§o automaticamente ao selecionar um cliente."""
         if not client:
             return
         self._set_phone_text(client.get("phone") or "")
@@ -1611,7 +1623,7 @@ class RequisitionForm(QWidget):
         self.input_fone.setCursorPosition(len(formatted))
         self.input_fone.blockSignals(False)
 
-    # ── Eventos ───────────────────────────────────────────────────────────────
+    # â”€â”€ Eventos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _lookup_product_by_code(self, row: int, code: str):
         lookup_code = code.strip()
         if not lookup_code:
@@ -1639,30 +1651,30 @@ class RequisitionForm(QWidget):
         pdf_path = result.get("pdf") or ""
 
         if result.get("items"):
-            self.lbl_canvas_info.setText("Prévia atual do desenho técnico.")
+            self.lbl_canvas_info.setText("PrÃ©via atual do desenho tÃ©cnico.")
         elif pdf_path:
             self.lbl_canvas_info.setText(
-                f"Referência em PDF anexada: {os.path.basename(pdf_path)}"
+                f"ReferÃªncia em PDF anexada: {os.path.basename(pdf_path)}"
             )
         else:
             self.lbl_canvas_info.setText("Nenhum desenho salvo ainda.")
         if result.get("items"):
-            self.lbl_canvas_info.setText("◉ Prévia atual do desenho técnico.")
+            self.lbl_canvas_info.setText("â—‰ PrÃ©via atual do desenho tÃ©cnico.")
         elif pdf_path:
             self.lbl_canvas_info.setText(
-                f"▤ Referência em PDF anexada: {os.path.basename(pdf_path)}"
+                f"â–¤ ReferÃªncia em PDF anexada: {os.path.basename(pdf_path)}"
             )
         else:
-            self.lbl_canvas_info.setText("◌ Nenhum desenho salvo ainda.")
+            self.lbl_canvas_info.setText("â—Œ Nenhum desenho salvo ainda.")
 
         if result.get("items"):
-            self.lbl_canvas_info.setText("🎨 Prévia atual do desenho técnico.")
+            self.lbl_canvas_info.setText("ðŸŽ¨ PrÃ©via atual do desenho tÃ©cnico.")
         elif pdf_path:
             self.lbl_canvas_info.setText(
-                f"📎 Referência em PDF anexada: {os.path.basename(pdf_path)}"
+                f"ðŸ“Ž ReferÃªncia em PDF anexada: {os.path.basename(pdf_path)}"
             )
         else:
-            self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
+            self.lbl_canvas_info.setText("ðŸ–¼ï¸ Nenhum desenho salvo ainda.")
 
     def _set_form_locked(self, locked: bool, message: str = ""):
         for widget in getattr(self, "_editable_widgets", []):
@@ -1700,7 +1712,7 @@ class RequisitionForm(QWidget):
             return True
         return self._canvas_json not in ("", "{}")
 
-    # ── API pública ──────────────────────────────────────────────────────────
+    # â”€â”€ API pÃºblica â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def get_form_data(self) -> dict:
         client_id = self.client_search.get_client_id()
         prazo = self.input_prazo.date().toString("yyyy-MM-dd")
@@ -1720,7 +1732,7 @@ class RequisitionForm(QWidget):
         }
 
     def load_requisition(self, data: dict, read_only: bool = False):
-        """Popula o formulário com dados de uma requisição existente."""
+        """Popula o formulÃ¡rio com dados de uma requisiÃ§Ã£o existente."""
         self._set_form_locked(False)
         self.req_id = data.get("id")
         self.input_ped.setText(str(data.get("ped_number") or ""))
@@ -1747,7 +1759,7 @@ class RequisitionForm(QWidget):
         self.item_table.set_items(data.get("items", []))
         self.input_obs.setPlainText(data.get("obs") or "")
 
-        # Canvas — armazena JSON; será carregado no dialog ao abrir
+        # Canvas â€” armazena JSON; serÃ¡ carregado no dialog ao abrir
         canvas_data = data.get("canvas")
         self._canvas_json = (canvas_data or {}).get("json_data") or "{}"
         self._update_canvas_preview()
@@ -1760,11 +1772,11 @@ class RequisitionForm(QWidget):
         elif data.get("finalized_at"):
             self._set_form_locked(
                 True,
-                "🏭 Produção recebida ou finalizada. Esta requisição não pode mais ser editada.",
+                "ðŸ­ ProduÃ§Ã£o recebida ou finalizada. Esta requisiÃ§Ã£o nÃ£o pode mais ser editada.",
             )
 
     def reset(self):
-        """Limpa o formulário para nova requisição."""
+        """Limpa o formulÃ¡rio para nova requisiÃ§Ã£o."""
         self._set_form_locked(False)
         self.req_id = None
         self.input_ped.clear()
