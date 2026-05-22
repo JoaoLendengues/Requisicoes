@@ -491,7 +491,7 @@ class ProductionView(QWidget):
 
         title_row = QHBoxLayout()
         title = QLabel(title_text)
-        title.setStyleSheet(f"font-size:{max(10, int(12 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"font-size:{max(12, int(14 * s))}pt; font-weight:800;")
         count = QLabel("0")
         count.setAlignment(Qt.AlignmentFlag.AlignCenter)
         count.setMinimumWidth(max(28, int(34 * s)))
@@ -506,7 +506,7 @@ class ProductionView(QWidget):
         subtitle = QLabel(subtitle_text)
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        subtitle.setStyleSheet(f"font-size:{max(9, int(10 * s))}pt;")
         layout.addLayout(title_row)
         layout.addWidget(subtitle)
 
