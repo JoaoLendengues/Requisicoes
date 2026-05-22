@@ -299,7 +299,7 @@ class DashboardView(QWidget):
             ("pedidos_finalizados_hoje", theme.SUCCESS, "Finalizados Hoje", "Finalizações registradas no dia."),
             ("requisicoes_feitas_no_dia", theme.PRIMARY_HOVER, "Requisições do Dia", "Novas requisições criadas hoje."),
             ("producao_pinheiro_industria", theme.PRIMARY, "Produção Pinheiro Indústria", "Fila ativa enviada para esse destino."),
-            ("producao_ar", theme.PRIMARY_HOVER, "Produção da A&&R", "Fila ativa enviada para esse destino."),
+            ("producao_ar", theme.PRIMARY_HOVER, "Produção da A&R", "Fila ativa enviada para esse destino."),
             ("pedidos_sem_confirmacao_1h", theme.WARNING, "Sem Confirmação", "Aguardando retorno há mais de 1 hora."),
             ("tempo_medio_finalizacao_segundos", theme.BORDER_COLOR, "Tempo Médio de Finalização", "Média entre recebimento e finalização."),
         ]
@@ -339,8 +339,8 @@ class DashboardView(QWidget):
         machine_row.setSpacing(max(12, int(16 * s)))
         machine_row.addWidget(
             self._build_section_card(
-                "MÁQUINAS QUE MAIS OPERAM - A&&R",
-                "Ranking das máquinas da A&&R por volume de operações finalizadas.",
+                "MÁQUINAS QUE MAIS OPERAM - A&R",
+                "Ranking das máquinas da A&R por volume de operações finalizadas.",
                 self._build_top_machines_ar_table(),
                 theme.PRIMARY_HOVER,
             ),
