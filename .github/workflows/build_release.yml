@@ -25,6 +25,8 @@ jobs:
   build:
     name: Build Windows Installer
     runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
     steps:
       # ── 1. Checkout do código ────────────────────────────────────────────────
