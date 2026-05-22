@@ -20,6 +20,19 @@ from client.core.session import session
 from client.core import theme
 from client.views.login_view import LoginView
 from client.views.main_window import MainWindow
+from client.updater import finalize_pending_update, UpdateChecker
+from client.widgets.update_dialog import UpdateAvailableDialog
+
+
+def _check_for_updates(parent_window) -> None:
+    """Inicia verificação silenciosa de atualizações em segundo plano."""
+    checker = UpdateChecker(parent=parent_window)
+    checker.update_available.connect(
+        lambda info: UpdateAvailableDialog(info, parent_window).exec()
+    )
+    # Mantém referência para evitar garbage collection antes do sinal disparar
+    parent_window._update_checker = checker
+    checker.start()
 
 
 def main():
@@ -47,6 +60,15 @@ def main():
     # Estilo global
     app.setStyleSheet(theme.global_style())
 
+    # Verifica se uma atualização anterior foi concluída (ou falhou)
+    update_result = finalize_pending_update()
+    if update_result:
+        from PySide6.QtWidgets import QMessageBox
+        if update_result["status"] == "completed":
+            QMessageBox.information(None, "Atualização concluída", update_result["message"])
+        else:
+            QMessageBox.warning(None, "Atualização com falha", update_result["message"])
+
     main_window: MainWindow | None = None
     login_view = LoginView()
 
@@ -55,6 +77,8 @@ def main():
         login_view.hide()
         main_window = MainWindow()
         main_window.show()
+        # Verifica atualizações silenciosamente após o login
+        _check_for_updates(main_window)
 
     login_view.login_success.connect(on_login)
 
