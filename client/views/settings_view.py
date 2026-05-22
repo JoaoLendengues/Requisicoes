@@ -412,6 +412,36 @@ class SettingsView(QWidget):
             button_text="Importar Produtos",
         )
 
+        layout.addWidget(_section("Atualizacoes do Sistema", s))
+        layout.addWidget(_separator())
+
+        update_row = QHBoxLayout()
+        update_row.setSpacing(max(8, int(10 * s)))
+
+        from ..version import CURRENT_VERSION as _CURRENT_VERSION
+        self._version_label = QLabel(f"Versao atual: v{_CURRENT_VERSION}")
+        self._version_label.setProperty("muted", "1")
+        self._version_label.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
+        update_row.addWidget(self._version_label)
+        update_row.addStretch()
+
+        self.btn_check_update = QPushButton("Verificar atualizacoes")
+        self.btn_check_update.setFixedHeight(max(38, int(44 * s)))
+        self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_check_update.clicked.connect(self._check_updates)
+        update_row.addWidget(self.btn_check_update)
+
+        layout.addLayout(update_row)
+
+        self._update_status_label = QLabel("")
+        self._update_status_label.setProperty("muted", "1")
+        self._update_status_label.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
+        layout.addWidget(self._update_status_label)
+
         layout.addSpacing(4)
         self.btn_save = QPushButton("SALVAR CONFIGURACOES")
         self.btn_save.setFixedHeight(max(38,int(44*s)))
@@ -745,6 +775,51 @@ class SettingsView(QWidget):
         ui["progress"].setVisible(False)
         ui["log"].setVisible(True)
         ui["log"].setPlainText(f"Erro:\n{msg}")
+
+    def _check_updates(self) -> None:
+        from ..updater import UpdateChecker
+        from ..widgets.update_dialog import UpdateAvailableDialog
+
+        self.btn_check_update.setEnabled(False)
+        self.btn_check_update.setText("Verificando...")
+        self._update_status_label.setText("")
+
+        self._update_checker = UpdateChecker(parent=self)
+        self._update_checker.update_available.connect(self._on_update_found)
+        self._update_checker.no_update.connect(self._on_no_update)
+        self._update_checker.error.connect(self._on_update_check_error)
+        self._update_checker.start()
+
+    def _on_update_found(self, update_info: dict) -> None:
+        from ..widgets.update_dialog import UpdateAvailableDialog
+        self.btn_check_update.setEnabled(True)
+        self.btn_check_update.setText("Verificar atualizacoes")
+        self._update_status_label.setText(
+            f"Nova versao disponivel: v{update_info['version']}"
+        )
+        self._update_status_label.setStyleSheet(
+            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600;"
+            f"color:{theme.SUCCESS};"
+        )
+        UpdateAvailableDialog(update_info, parent=self).exec()
+
+    def _on_no_update(self) -> None:
+        self.btn_check_update.setEnabled(True)
+        self.btn_check_update.setText("Verificar atualizacoes")
+        self._update_status_label.setText("Voce ja tem a versao mais recente.")
+        self._update_status_label.setStyleSheet(
+            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600;"
+            f"color:{theme.SUCCESS};"
+        )
+
+    def _on_update_check_error(self, error_msg: str) -> None:
+        self.btn_check_update.setEnabled(True)
+        self.btn_check_update.setText("Verificar atualizacoes")
+        self._update_status_label.setText(f"Erro ao verificar: {error_msg}")
+        self._update_status_label.setStyleSheet(
+            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600;"
+            f"color:{theme.DANGER};"
+        )
 
     def _cleanup_import_thread(self, kind: str, thread: QThread, worker: ImportWorker):
         current = self._import_threads.get(kind)
