@@ -773,13 +773,15 @@ class MainWindow(QMainWindow):
         self._theme_transition_overlay = overlay
         return overlay
 
-    def _start_overlay_fadeout(self, overlay: QLabel | None):
+    def _start_overlay_fadeout(self, overlay: QLabel | None, on_complete=None):
         """
         Inicia o fade-out no overlay já visível.
-        Deve ser chamado APÓS o rebuild, para que a animação corra
-        suavemente sem competir com o bloqueio do event loop.
+        on_complete é chamado após a animação terminar (ou imediatamente se não
+        houver overlay), permitindo diferir trabalho pesado para após a transição.
         """
         if overlay is None or not overlay.isVisible():
+            if on_complete:
+                on_complete()
             return
 
         effect = QGraphicsOpacityEffect(overlay)
@@ -796,6 +798,8 @@ class MainWindow(QMainWindow):
             overlay.deleteLater()
             self._theme_transition_overlay = None
             self._theme_transition_anim = None
+            if on_complete:
+                on_complete()
 
         anim.finished.connect(_cleanup)
         self._theme_transition_anim = anim
@@ -842,6 +846,64 @@ class MainWindow(QMainWindow):
         self.settings_view.apply_theme()
         self._setup_statusbar()
 
+    def _get_current_view(self):
+        """Retorna a view visível no stack, ou None."""
+        views = [
+            self.form_view, self.history_view, self.dashboard_view,
+            self.technical_panel_view, self.order_center_view,
+            self.pinheiro_industria_view, self.ar_view,
+            self.user_center_view, self.settings_view,
+        ]
+        idx = self.stack.currentIndex()
+        return views[idx] if 0 <= idx < len(views) else None
+
+    def _apply_theme_immediate(self) -> None:
+        """Aplica tema apenas ao sidebar e à view atual (~30ms)."""
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"background:{bg};")
+        self._sep.setStyleSheet(
+            f"background:{theme.SIDEBAR_BG}; color:{theme.SIDEBAR_BG}; border:none;"
+        )
+        self.stack.setStyleSheet(f"background:{bg};")
+        self._scroll_main.setStyleSheet(
+            f"QScrollArea {{ background:{bg}; border:none; }}"
+            f"QScrollBar:vertical {{"
+            f"  width:8px; background:transparent;"
+            f"}}"
+            f"QScrollBar::handle:vertical {{"
+            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-height:32px;"
+            f"}}"
+            f"QScrollBar::handle:vertical:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
+            f"QScrollBar:horizontal {{"
+            f"  height:8px; background:transparent;"
+            f"}}"
+            f"QScrollBar::handle:horizontal {{"
+            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-width:32px;"
+            f"}}"
+            f"QScrollBar::handle:horizontal:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
+        )
+        self.sidebar.apply_theme()
+        current = self._get_current_view()
+        if current is not None:
+            current.apply_theme()
+        self._setup_statusbar()
+
+    def _apply_theme_remaining(self) -> None:
+        """Aplica global stylesheet + views ocultas. Chamado após o fade-out."""
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance().setStyleSheet(theme.global_style())
+        current = self._get_current_view()
+        for view in (
+            self.form_view, self.history_view, self.dashboard_view,
+            self.technical_panel_view, self.order_center_view,
+            self.pinheiro_industria_view, self.ar_view,
+            self.user_center_view, self.settings_view,
+        ):
+            if view is not current:
+                view.apply_theme()
+
     def _on_theme_toggle(self, dark: bool):
         """
         Troca de tema com transição visual responsiva.
@@ -850,27 +912,24 @@ class MainWindow(QMainWindow):
         1. Screenshot da janela atual
         2. Overlay aparece imediatamente (cobre a janela)
         3. processEvents() — força a pintura do overlay ANTES do re-estilo
-        4. Re-aplica apenas estilos dependentes do tema (~50 ms)
-        5. Re-estilo concluído → fade-out do overlay revela o novo tema
+        4. Re-aplica estilos apenas no sidebar e na view atual (~30ms)
+        5. Fade-out inicia imediatamente; views ocultas + global stylesheet
+           são aplicados no cleanup do fade, sem bloquear a animação.
         """
         from PySide6.QtWidgets import QApplication
 
         previous_frame = self.grab()
-
-        # Overlay aparece INSTANTANEAMENTE ao clicar
         overlay = self._show_frozen_overlay(previous_frame)
-
-        # Garante que o overlay seja PINTADO antes de bloquear a thread
         QApplication.processEvents()
 
-        # Aplica tema + re-estila widgets existentes (sem reconstruir)
         res.save(dark_mode=dark)
         theme.set_dark(dark)
-        QApplication.instance().setStyleSheet(theme.global_style())
-        self._apply_theme_to_all()
 
-        # Re-estilo concluído — agora o fade-out corre suavemente
-        self._start_overlay_fadeout(overlay)
+        # Fase rápida: apenas o que o usuário vê agora
+        self._apply_theme_immediate()
+
+        # Fade-out começa imediatamente; o restante é diferido para o cleanup
+        self._start_overlay_fadeout(overlay, on_complete=self._apply_theme_remaining)
 
     def _on_scale_changed(self, _new_scale: float):
         """Reconstrói o conteúdo da janela principal com a nova escala."""
