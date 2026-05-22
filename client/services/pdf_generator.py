@@ -422,8 +422,9 @@ def _draw_header(
          C_BRAND, bold=True, align="center")
 
     emission = _fmt_date(req.get("emission_date"), datetime.now().strftime("%d/%m/%Y"))
-    date_cx = group_center - group_w * 0.25
-    vendor_cx = group_center + group_w * 0.25
+    meta_shift = min(10, group_w * 0.08)
+    date_cx = group_center - group_w * 0.25 - meta_shift
+    vendor_cx = group_center + group_w * 0.25 - meta_shift
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
     _txt(pdf, "Data", date_cx, y + 18, 7, C_TEXT_SOFT, align="center")
     _txt(pdf, vendor_name, vendor_cx, y + 30, 10, C_TEXT, bold=True,
