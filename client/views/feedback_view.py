@@ -92,6 +92,7 @@ class FeedbackView(QWidget):
         root.addWidget(self.subtitle)
 
         self.compose_card = QFrame()
+        self.compose_card.setSizePolicy(self.compose_card.sizePolicy().horizontalPolicy(), self.compose_card.sizePolicy().verticalPolicy())
         compose_layout = QVBoxLayout(self.compose_card)
         compose_layout.setContentsMargins(12, 12, 12, 12)
         compose_layout.setSpacing(8)
@@ -101,8 +102,6 @@ class FeedbackView(QWidget):
 
         self.input_feedback = QTextEdit()
         self.input_feedback.setPlaceholderText("Digite aqui seu feedback...")
-        self.input_feedback.setMinimumHeight(max(110, int(140 * self.scale)))
-        self.input_feedback.setMaximumHeight(max(150, int(170 * self.scale)))
         self.input_feedback.textChanged.connect(self._on_text_changed)
         compose_layout.addWidget(self.input_feedback)
 
@@ -141,12 +140,31 @@ class FeedbackView(QWidget):
 
         root.addWidget(self.admin_card, 1)
         self._apply_role_visibility()
+        self._apply_compose_profile_layout()
         self.apply_theme()
 
     def _apply_role_visibility(self):
         is_admin = session.is_admin
         self.admin_card.setVisible(is_admin)
         self.btn_ack.setEnabled(False)
+
+    def _apply_compose_profile_layout(self):
+        """
+        Mantém o formulário de envio compacto e consistente para perfis não-admin.
+        Admin continua com caixa um pouco maior por usar também a área de triagem.
+        """
+        if session.is_admin:
+            min_h = max(110, int(140 * self.scale))
+            max_h = max(150, int(170 * self.scale))
+            card_max_w = 1200
+        else:
+            min_h = max(72, int(90 * self.scale))
+            max_h = max(92, int(110 * self.scale))
+            card_max_w = max(620, int(760 * self.scale))
+
+        self.input_feedback.setMinimumHeight(min_h)
+        self.input_feedback.setMaximumHeight(max_h)
+        self.compose_card.setMaximumWidth(card_max_w)
 
     def _on_text_changed(self):
         text = self.input_feedback.toPlainText()
@@ -259,6 +277,7 @@ class FeedbackView(QWidget):
 
     def refresh(self):
         self._apply_role_visibility()
+        self._apply_compose_profile_layout()
         if session.is_admin:
             self._load_admin_feedbacks()
 
