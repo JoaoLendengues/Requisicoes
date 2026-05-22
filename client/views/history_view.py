@@ -145,7 +145,8 @@ class HistoryWorker(QObject):
         self,
         status: str = "",
         search: str = "",
-        emission_date: str = "",
+        emission_date_start: str = "",
+        emission_date_end: str = "",
         production_destination: str = "",
         production_machine: str = "",
         invoiced: str = "",
@@ -153,7 +154,8 @@ class HistoryWorker(QObject):
         super().__init__()
         self.status = status
         self.search = search
-        self.emission_date = emission_date
+        self.emission_date_start = emission_date_start
+        self.emission_date_end = emission_date_end
         self.production_destination = production_destination
         self.production_machine = production_machine
         self.invoiced = invoiced
@@ -170,7 +172,8 @@ class HistoryWorker(QObject):
                     self.status,
                     self.search,
                     limit=100,
-                    emission_date=self.emission_date,
+                    emission_date_start=self.emission_date_start,
+                    emission_date_end=self.emission_date_end,
                     production_destination=self.production_destination,
                     production_machine=self.production_machine,
                     invoiced=invoiced_value,
@@ -356,22 +359,44 @@ class HistoryView(QWidget):
         status_col.addWidget(status_label)
         status_col.addWidget(self.combo_status)
 
-        date_col = QVBoxLayout()
-        date_col.setSpacing(max(6, int(8 * s)))
-        date_label = QLabel("DATA")
-        date_label.setStyleSheet(
+        period_col = QVBoxLayout()
+        period_col.setSpacing(max(6, int(8 * s)))
+        period_label = QLabel("PERÍODO")
+        period_label.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
-        self.input_date = QDateEdit(ALL_DATES_SENTINEL)
-        self.input_date.setMinimumDate(ALL_DATES_SENTINEL)
-        self.input_date.setDate(ALL_DATES_SENTINEL)
-        self.input_date.setSpecialValueText("Todas as datas")
-        self.input_date.setDisplayFormat("dd/MM/yyyy")
-        self.input_date.setCalendarPopup(True)
-        self.input_date.setFixedHeight(max(38, int(44 * s)))
-        self.input_date.setStyleSheet(_field_style(s))
-        date_col.addWidget(date_label)
-        date_col.addWidget(self.input_date)
+        period_row = QHBoxLayout()
+        period_row.setSpacing(max(6, int(8 * s)))
+
+        self.input_date_from = QDateEdit(ALL_DATES_SENTINEL)
+        self.input_date_from.setMinimumDate(ALL_DATES_SENTINEL)
+        self.input_date_from.setDate(ALL_DATES_SENTINEL)
+        self.input_date_from.setSpecialValueText("Data inicial")
+        self.input_date_from.setDisplayFormat("dd/MM/yyyy")
+        self.input_date_from.setCalendarPopup(True)
+        self.input_date_from.setFixedHeight(max(38, int(44 * s)))
+        self.input_date_from.setStyleSheet(_field_style(s))
+
+        until_label = QLabel("ATÉ")
+        until_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        until_label.setStyleSheet(
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+        )
+
+        self.input_date_to = QDateEdit(ALL_DATES_SENTINEL)
+        self.input_date_to.setMinimumDate(ALL_DATES_SENTINEL)
+        self.input_date_to.setDate(ALL_DATES_SENTINEL)
+        self.input_date_to.setSpecialValueText("Data final")
+        self.input_date_to.setDisplayFormat("dd/MM/yyyy")
+        self.input_date_to.setCalendarPopup(True)
+        self.input_date_to.setFixedHeight(max(38, int(44 * s)))
+        self.input_date_to.setStyleSheet(_field_style(s))
+
+        period_row.addWidget(self.input_date_from, 1)
+        period_row.addWidget(until_label)
+        period_row.addWidget(self.input_date_to, 1)
+        period_col.addWidget(period_label)
+        period_col.addLayout(period_row)
 
         invoiced_col = QVBoxLayout()
         invoiced_col.setSpacing(max(6, int(8 * s)))
@@ -449,7 +474,7 @@ class HistoryView(QWidget):
         buttons_col.addLayout(buttons_row)
 
         controls.addLayout(status_col, 1)
-        controls.addLayout(date_col, 1)
+        controls.addLayout(period_col, 2)
         controls.addLayout(invoiced_col, 1)
         controls.addLayout(production_col, 1)
         controls.addLayout(machine_col, 1)
@@ -554,10 +579,15 @@ class HistoryView(QWidget):
         root.addWidget(results_card, 1)
 
     def refresh(self):
-        self._set_loading(True)
         self.error_label.hide()
+        period = self._selected_emission_period()
+        if period is None:
+            self.error_label.setText("A data inicial não pode ser maior que a data final.")
+            self.error_label.show()
+            return
+        self._set_loading(True)
         status = self.combo_status.currentData() or ""
-        emission_date = self._selected_emission_date()
+        emission_date_start, emission_date_end = period
         invoiced = self.combo_invoiced.currentData() or ""
         production_destination = self.combo_production.currentData() or ""
         production_machine = self.combo_machine.currentData() or ""
@@ -566,7 +596,8 @@ class HistoryView(QWidget):
         worker = HistoryWorker(
             status,
             search,
-            emission_date,
+            emission_date_start,
+            emission_date_end,
             production_destination,
             production_machine,
             invoiced,
@@ -587,11 +618,15 @@ class HistoryView(QWidget):
     def _cleanup_thread(self, thread: QThread, worker: QObject):
         self._threads = [pair for pair in self._threads if pair != (thread, worker)]
 
-    def _selected_emission_date(self) -> str:
-        selected = self.input_date.date()
-        if selected == self.input_date.minimumDate():
-            return ""
-        return selected.toString("yyyy-MM-dd")
+    def _selected_emission_period(self) -> tuple[str, str] | None:
+        start = self.input_date_from.date()
+        end = self.input_date_to.date()
+        minimum = self.input_date_from.minimumDate()
+        if start != minimum and end != minimum and start > end:
+            return None
+        start_value = "" if start == minimum else start.toString("yyyy-MM-dd")
+        end_value = "" if end == minimum else end.toString("yyyy-MM-dd")
+        return start_value, end_value
 
     def _reset_machine_filter(self, placeholder: str = "Todas as máquinas"):
         self.combo_machine.blockSignals(True)
@@ -667,7 +702,8 @@ class HistoryView(QWidget):
         self.search_btn.setEnabled(not loading)
         self.clear_btn.setEnabled(not loading)
         self.combo_status.setEnabled(not loading)
-        self.input_date.setEnabled(not loading)
+        self.input_date_from.setEnabled(not loading)
+        self.input_date_to.setEnabled(not loading)
         self.combo_invoiced.setEnabled(not loading)
         self.combo_production.setEnabled(not loading)
         if not loading:
@@ -764,7 +800,8 @@ class HistoryView(QWidget):
 
     def _clear_filters(self):
         self.combo_status.setCurrentIndex(0)
-        self.input_date.setDate(self.input_date.minimumDate())
+        self.input_date_from.setDate(self.input_date_from.minimumDate())
+        self.input_date_to.setDate(self.input_date_to.minimumDate())
         self.combo_invoiced.setCurrentIndex(0)
         self.combo_production.setCurrentIndex(0)
         self._reset_machine_filter()
@@ -809,7 +846,8 @@ class HistoryView(QWidget):
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         self.combo_status.setStyleSheet(_field_style(s))
-        self.input_date.setStyleSheet(_field_style(s))
+        self.input_date_from.setStyleSheet(_field_style(s))
+        self.input_date_to.setStyleSheet(_field_style(s))
         self.combo_invoiced.setStyleSheet(_field_style(s))
         self.combo_production.setStyleSheet(_field_style(s))
         self.combo_machine.setStyleSheet(_field_style(s))

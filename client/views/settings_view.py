@@ -16,6 +16,7 @@ from ..core.datetime_utils import (
     local_now,
 )
 from ..core.resolution import res, SCALE_STEPS
+from ..core.session import session
 from ..api import client as api
 
 
@@ -177,6 +178,7 @@ class SettingsView(QWidget):
         self._import_ui: dict[str, dict] = {}
         self._pending_save_context: dict | None = None
         self._setup_ui()
+        self._apply_permissions()
         self.refresh_operational_settings(silent=True)
 
     def _setup_ui(self):
@@ -300,6 +302,8 @@ class SettingsView(QWidget):
         self.input_url.setFixedHeight(max(38,int(44*s)))
         self.input_url.setStyleSheet(_field_style(s))
         self.input_url.setPlaceholderText("http://192.168.1.100:5000")
+        self.input_url.setReadOnly(True)
+        self.input_url.setToolTip("A URL do servidor é fixa e não pode ser alterada nesta tela.")
         grid.addWidget(self.input_url, 0, 1)
 
         self.btn_test = QPushButton("Testar conexão")
@@ -325,11 +329,8 @@ class SettingsView(QWidget):
 
         self._scale_btns: dict[str, QPushButton] = {}
         active_label = res.scale_label
-        for label, factor in SCALE_STEPS:
-            hint = ""
-            if factor is None:
-                hint = f"  ({res.recommended_label})"
-            btn = QPushButton(f"{label}{hint}")
+        for label, _factor in SCALE_STEPS:
+            btn = QPushButton(label)
             btn.setCheckable(True)
             btn.setChecked(label == active_label)
             btn.setFixedHeight(max(32, int(36 * s)))
@@ -487,6 +488,28 @@ class SettingsView(QWidget):
         elif kind == "products":
             self.input_products_path = input_path
 
+    def _apply_permissions(self):
+        self.input_url.setReadOnly(True)
+        self.input_url.setToolTip("A URL do servidor é fixa e não pode ser alterada nesta tela.")
+
+        if session.is_admin:
+            return
+
+        admin_only_message = "Somente administradores podem alterar esta configuração."
+        self.input_pending_invoice_days.setEnabled(False)
+        self.input_pending_invoice_days.setToolTip(admin_only_message)
+
+        for kind in ("clients", "products"):
+            ui = self._import_ui.get(kind)
+            if not ui:
+                continue
+            ui["input"].setReadOnly(True)
+            ui["input"].setToolTip(admin_only_message)
+            ui["button"].setEnabled(False)
+            ui["button"].setToolTip(admin_only_message)
+            ui["browse"].setEnabled(False)
+            ui["browse"].setToolTip(admin_only_message)
+
     def _default_products_path(self) -> str:
         settings_data = res._read_file()
         saved_products_path = settings_data.get("products_path")
@@ -621,13 +644,11 @@ class SettingsView(QWidget):
         products_path = self.input_products_path.text().strip()
         pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
 
-        # Descobre qual botão de escala está marcado
         selected_label = next(
             (lbl for lbl, btn in self._scale_btns.items() if btn.isChecked()),
-            "Automática",
+            "100%",
         )
-        # "Automática" → salva None (auto-detect); outros → salva o label
-        font_scale_value = None if selected_label == "Automática" else selected_label
+        font_scale_value = selected_label
 
         scale_changed = (font_scale_value != res._user_scale)
 
@@ -661,6 +682,9 @@ class SettingsView(QWidget):
             QMessageBox.information(self, "Salvo", "Configurações salvas.")
 
     def _browse_import_path(self, kind: str):
+        if not session.is_admin:
+            QMessageBox.warning(self, "Acesso negado", "Somente administradores podem alterar este caminho.")
+            return
         title = (
             "Selecionar planilha de clientes"
             if kind == "clients"
@@ -677,6 +701,9 @@ class SettingsView(QWidget):
             self._import_ui[kind]["input"].setText(path)
 
     def _start_import(self, kind: str):
+        if not session.is_admin:
+            QMessageBox.warning(self, "Acesso negado", "Somente administradores podem executar esta importação.")
+            return
         path = self._import_ui[kind]["input"].text().strip()
         if not path:
             QMessageBox.warning(self, "Atenção", "Informe o caminho do arquivo.")

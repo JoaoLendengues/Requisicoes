@@ -6,7 +6,7 @@ SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "..", "settings.json")
 # ── Passos de escala disponíveis (referência: PROJECT_PARALLELv2) ─────────────
 # Cada entrada: (label exibida na UI, fator numérico ou None para automático)
 SCALE_STEPS: list[tuple[str, float | None]] = [
-    ("Automática", None),
+    ("85%",  0.85),
     ("90%",  0.90),
     ("100%", 1.00),
     ("110%", 1.10),
@@ -56,7 +56,7 @@ class ResolutionManager:
         self._logical_dpi  = screen.logicalDotsPerInch()
         self._geo          = screen.availableGeometry()
         self._auto_scale   = self._calc_auto_scale()
-        self._user_scale   = self._load_setting("font_scale")   # None ou label "90%"/"100%"/…
+        self._user_scale   = self._load_setting("font_scale", "100%")
         self._server_url   = self._load_setting("server_url") or "http://10.1.1.151:5000"
         self._maximized    = self._load_setting("maximized", True)
         self._dark_mode    = bool(self._load_setting("dark_mode", False))
@@ -86,7 +86,7 @@ class ResolutionManager:
         """
         us = self._user_scale
         if us is None:
-            return self._auto_scale
+            return 1.00
         if isinstance(us, str) and us in SCALE_FACTOR:
             return SCALE_FACTOR[us]
         if isinstance(us, (int, float)):
@@ -98,14 +98,14 @@ class ResolutionManager:
         """Label atual exibida na UI ('Automática', '90%', '100%', …)."""
         us = self._user_scale
         if us is None:
-            return "Automática"
+            return "100%"
         if isinstance(us, str) and us in SCALE_FACTOR:
             return us
         # Formato legado (float): encontra o passo discreto mais próximo
         if isinstance(us, (int, float)):
             closest = min(SCALE_FACTOR.items(), key=lambda kv: abs(kv[1] - float(us)))
             return closest[0]
-        return "Automática"
+        return "100%"
 
     @property
     def recommended_label(self) -> str:

@@ -286,10 +286,10 @@ class _BellButton(QWidget):
 
         self._badge = QLabel("")
         self._badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._badge.setFixedSize(20, 20)
+        self._badge.setFixedSize(24, 24)
         self._badge.setStyleSheet(
-            "background:#EF4444; color:#fff; border-radius:10px;"
-            "font-size:8pt; font-weight:bold;"
+            "background:#EF4444; color:#fff; border-radius:12px;"
+            "font-size:9pt; font-weight:bold;"
         )
         self._badge.hide()
         lay.addWidget(self._badge)

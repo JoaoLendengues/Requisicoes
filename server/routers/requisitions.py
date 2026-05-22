@@ -1211,7 +1211,8 @@ def list_requisitions(
     production_destination: Optional[str] = None,
     production_machine: Optional[str] = None,
     invoiced: Optional[bool] = None,
-    emission_date: Optional[date] = None,
+    emission_date_start: Optional[date] = None,
+    emission_date_end: Optional[date] = None,
     search: Optional[str] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, le=200),
@@ -1226,13 +1227,22 @@ def list_requisitions(
         q = q.filter(Requisition.client_id == client_id)
     if vendor_id:
         q = q.filter(Requisition.vendor_id == vendor_id)
-    if emission_date:
-        day_start = datetime(emission_date.year, emission_date.month, emission_date.day)
-        day_end = day_start + timedelta(days=1)
+    if emission_date_start:
+        day_start = datetime(
+            emission_date_start.year,
+            emission_date_start.month,
+            emission_date_start.day,
+        )
         q = q.filter(
             Requisition.emission_date >= day_start,
-            Requisition.emission_date < day_end,
         )
+    if emission_date_end:
+        day_end = datetime(
+            emission_date_end.year,
+            emission_date_end.month,
+            emission_date_end.day,
+        ) + timedelta(days=1)
+        q = q.filter(Requisition.emission_date < day_end)
     if search:
         search_term = f"%{search.strip()}%"
         q = q.join(Requisition.client).filter(or_(

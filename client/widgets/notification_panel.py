@@ -235,9 +235,12 @@ class NotificationDrawer(QWidget):
         count = len(self._notifications)
         if count:
             badge = QLabel(str(count))
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.setMinimumWidth(26)
+            badge.setFixedHeight(22)
             badge.setStyleSheet(
-                f"background: {theme.DANGER}; color: #fff; border-radius: 9px;"
-                f"padding: 1px 7px; font-size: 8pt; font-weight: 700;"
+                f"background: {theme.DANGER}; color: #fff; border-radius: 11px;"
+                f"padding: 2px 8px; font-size: 9pt; font-weight: 700;"
                 f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
             )
             title_row.addWidget(badge)
