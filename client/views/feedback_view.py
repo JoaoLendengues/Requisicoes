@@ -98,11 +98,18 @@ class FeedbackView(QWidget):
         compose_layout.setContentsMargins(12, 12, 12, 12)
         compose_layout.setSpacing(8)
 
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(0)
+
         self.compose_title = QLabel("Enviar feedback")
-        self.compose_title.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.compose_title.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.compose_title.setFixedHeight(max(18, int(22 * self.scale)))
+        self.compose_title.setFixedWidth(max(120, int(145 * self.scale)))
         self.compose_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        compose_layout.addWidget(self.compose_title)
+        title_row.addWidget(self.compose_title)
+        title_row.addStretch(1)
+        compose_layout.addLayout(title_row)
 
         self.input_feedback = QTextEdit()
         self.input_feedback.setPlaceholderText("Digite aqui seu feedback...")
@@ -284,7 +291,7 @@ class FeedbackView(QWidget):
 
     def apply_theme(self):
         self.title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(12, int(16 * self.scale))}pt; font-weight:700;"
+            f"color:{theme.PRIMARY}; font-size:{max(18, int(24 * self.scale))}pt; font-weight:800;"
         )
         self.subtitle.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(9, int(11 * self.scale))}pt;"
@@ -293,7 +300,8 @@ class FeedbackView(QWidget):
             f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(10 * self.scale))}pt;"
         )
         self.compose_title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
+            f"background:transparent; border:none; color:{theme.TEXT_DARK};"
+            f"font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
         )
         self.admin_title.setStyleSheet(
             f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
