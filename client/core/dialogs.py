@@ -60,16 +60,90 @@ def _message_box_button_style() -> str:
 
 
 def apply_message_box_theme(box: QMessageBox) -> QMessageBox:
-    # Mantém o padrão atual no modo escuro; a padronização customizada é só no claro.
-    if theme.is_dark:
-        return box
-
     box.setStyleSheet(_message_box_style())
     for button in box.buttons():
         if isinstance(button, QPushButton):
             button.setStyleSheet(_message_box_button_style())
             button.setAutoDefault(False)
     return box
+
+
+def _exec_themed_message_box(
+    parent: QWidget | None,
+    title: str,
+    text: str,
+    icon: QMessageBox.Icon,
+    buttons: QMessageBox.StandardButton,
+    default_button: QMessageBox.StandardButton,
+) -> QMessageBox.StandardButton:
+    box = QMessageBox(parent)
+    box.setWindowTitle(title)
+    box.setIcon(icon)
+    box.setText(text)
+    box.setTextFormat(Qt.TextFormat.PlainText)
+    box.setStandardButtons(buttons)
+    if default_button != QMessageBox.StandardButton.NoButton:
+        box.setDefaultButton(default_button)
+    apply_message_box_theme(box)
+    box.exec()
+    clicked = box.clickedButton()
+    return box.standardButton(clicked) if clicked else QMessageBox.StandardButton.NoButton
+
+
+def install_message_box_theme_hooks() -> None:
+    """Padroniza QMessageBox.* para o estilo do app em todas as caixas de diálogo."""
+    if getattr(QMessageBox, "_fp_theme_hooks_installed", False):
+        return
+
+    def _information(
+        parent: QWidget | None,
+        title: str,
+        text: str,
+        buttons: QMessageBox.StandardButton = QMessageBox.StandardButton.Ok,
+        default_button: QMessageBox.StandardButton = QMessageBox.StandardButton.NoButton,
+    ) -> QMessageBox.StandardButton:
+        return _exec_themed_message_box(
+            parent, title, text, QMessageBox.Icon.Information, buttons, default_button
+        )
+
+    def _warning(
+        parent: QWidget | None,
+        title: str,
+        text: str,
+        buttons: QMessageBox.StandardButton = QMessageBox.StandardButton.Ok,
+        default_button: QMessageBox.StandardButton = QMessageBox.StandardButton.NoButton,
+    ) -> QMessageBox.StandardButton:
+        return _exec_themed_message_box(
+            parent, title, text, QMessageBox.Icon.Warning, buttons, default_button
+        )
+
+    def _critical(
+        parent: QWidget | None,
+        title: str,
+        text: str,
+        buttons: QMessageBox.StandardButton = QMessageBox.StandardButton.Ok,
+        default_button: QMessageBox.StandardButton = QMessageBox.StandardButton.NoButton,
+    ) -> QMessageBox.StandardButton:
+        return _exec_themed_message_box(
+            parent, title, text, QMessageBox.Icon.Critical, buttons, default_button
+        )
+
+    def _question(
+        parent: QWidget | None,
+        title: str,
+        text: str,
+        buttons: QMessageBox.StandardButton = QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        default_button: QMessageBox.StandardButton = QMessageBox.StandardButton.NoButton,
+    ) -> QMessageBox.StandardButton:
+        return _exec_themed_message_box(
+            parent, title, text, QMessageBox.Icon.Question, buttons, default_button
+        )
+
+    QMessageBox.information = staticmethod(_information)
+    QMessageBox.warning = staticmethod(_warning)
+    QMessageBox.critical = staticmethod(_critical)
+    QMessageBox.question = staticmethod(_question)
+    QMessageBox._fp_theme_hooks_installed = True
 
 
 def ask_confirmation(

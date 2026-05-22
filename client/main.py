@@ -18,6 +18,7 @@ from PySide6.QtGui import QFont
 from client.core.resolution import res
 from client.core.session import session
 from client.core import theme
+from client.core.dialogs import install_message_box_theme_hooks
 from client.views.login_view import LoginView
 from client.views.main_window import MainWindow
 
@@ -46,6 +47,7 @@ def main():
 
     # Estilo global
     app.setStyleSheet(theme.global_style())
+    install_message_box_theme_hooks()
 
     main_window: MainWindow | None = None
     login_view = LoginView()
