@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import unicodedata
 from datetime import datetime
 
 try:
@@ -50,6 +51,12 @@ LOGO_PATHS       = [
     os.path.join(ASSETS_DIR, "logo_requisicao.png"),
     os.path.join(ASSETS_DIR, "logo.png"),
 ]
+PDF_INFO_ICON_DIRS = [
+    r"Z:\REQUISIÇÕES (VENDAS)\ícones\EMOJI PDF",
+    r"\\data04tg\TI\REQUISIÇÕES (VENDAS)\ícones\EMOJI PDF",
+    os.path.join(ASSETS_DIR, "icons", "emoji_pdf"),
+]
+PDF_INFO_ICON_EXTENSIONS = (".png", ".webp", ".jpg", ".jpeg", ".bmp")
 FONT_DIR         = os.path.join(ASSETS_DIR, "fonts")
 FONT_REGULAR_TTF = os.path.join(FONT_DIR, "Montserrat-Regular.ttf")
 FONT_BOLD_TTF    = os.path.join(FONT_DIR, "Montserrat-Bold.ttf")
@@ -92,6 +99,49 @@ def _resolve_logo_path() -> str:
     for path in LOGO_PATHS:
         if _path_exists(path):
             return path
+    return ""
+
+
+def _normalize_icon_name(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(text or ""))
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = re.sub(r"[^A-Za-z0-9]+", " ", normalized).strip()
+    return re.sub(r"\s+", "_", normalized).upper()
+
+
+def _resolve_info_icon_path(*names: str) -> str:
+    candidates: list[str] = []
+    for raw_name in names:
+        name = str(raw_name or "").strip()
+        if not name:
+            continue
+        base_name, ext = os.path.splitext(name)
+        variants = [name]
+        if base_name:
+            variants.append(base_name)
+            variants.append(base_name.replace("_", " "))
+            variants.append(_normalize_icon_name(base_name))
+            variants.append(_normalize_icon_name(base_name).replace("_", " "))
+        for variant in variants:
+            if variant and variant not in candidates:
+                candidates.append(variant)
+        if ext:
+            continue
+
+    for folder in PDF_INFO_ICON_DIRS:
+        if not _path_exists(folder):
+            continue
+        for candidate in candidates:
+            root, ext = os.path.splitext(candidate)
+            if ext:
+                icon_path = os.path.join(folder, candidate)
+                if _path_exists(icon_path):
+                    return icon_path
+                continue
+            for suffix in PDF_INFO_ICON_EXTENSIONS:
+                icon_path = os.path.join(folder, f"{candidate}{suffix}")
+                if _path_exists(icon_path):
+                    return icon_path
     return ""
 
 
@@ -323,6 +373,31 @@ def _line(pdf: pdfcanvas.Canvas, x1, y1, x2, y2, color=None, lw: float = 0.6) ->
     pdf.restoreState()
 
 
+def _draw_image_fit(
+    pdf: pdfcanvas.Canvas,
+    image_path: str,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> bool:
+    if not _path_exists(image_path):
+        return False
+    try:
+        img = ImageReader(image_path)
+        iw, ih = img.getSize()
+        if iw <= 0 or ih <= 0 or w <= 0 or h <= 0:
+            return False
+        scale = min(w / iw, h / ih)
+        dw, dh = iw * scale, ih * scale
+        dx = x + (w - dw) / 2
+        dy = y + (h - dh) / 2
+        pdf.drawImage(img, dx, dy, width=dw, height=dh, mask="auto")
+        return True
+    except Exception:
+        return False
+
+
 def _grid(
     pdf: pdfcanvas.Canvas,
     x: float, y: float, w: float, h: float,
@@ -493,6 +568,72 @@ def _draw_info_bar(
         else:
             # célula do telefone WhatsApp — apenas número grande
             _txt(pdf, label, cx + cw / 2, cy_center - 5, 10,
+                 val_color, bold=True, align="center", max_w=cw - 8)
+
+        cx += cw
+
+
+def _draw_info_bar_with_icons(
+    pdf: pdfcanvas.Canvas,
+    x: float, y: float, w: float, h: float,
+    req: dict,
+    client: dict | None,
+    items: list[dict],
+    vendor_phone: str = "--",
+) -> None:
+    """Barra de informações usando arquivos de ícone externos."""
+    _box(pdf, x, y, w, h, radius=8, fill=C_WHITE, stroke=C_BORDER)
+
+    weight_val = _resolve_weight(req, items)
+    cells = [
+        ("PRAZO DE ENTREGA", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")), 0.24, C_TEXT),
+        ("RETIRADA", "RETIRADA", _fmt_yes_no(req.get("retirada")), 0.18, C_BRAND),
+        ("ENTREGA", "ENTREGA", _fmt_yes_no(req.get("entrega")), 0.18, C_BRAND),
+        ("TELEFONE DO VENDEDOR", vendor_phone, "", 0.25, C_GREEN),
+        ("PESO (KG)", "PESO (KG):", _fmt_kg(weight_val), 0.15, C_TEXT),
+    ]
+
+    cx = x
+    for idx, (icon_name, label, value, ratio, val_color) in enumerate(cells):
+        cw = w * ratio
+        cy_center = y + h / 2
+
+        if idx > 0:
+            _line(pdf, cx, y + 4, cx, y + h - 4, C_BORDER, lw=0.5)
+
+        icon_path = _resolve_info_icon_path(
+            icon_name,
+            icon_name.replace(" ", "_"),
+            label,
+            label.replace(":", ""),
+            label.replace(":", "").replace(" ", "_"),
+        )
+        icon_size = min(10.0, max(8.0, h * 0.24))
+        has_icon = _draw_image_fit(
+            pdf,
+            icon_path,
+            cx + (cw - icon_size) / 2,
+            y + h - icon_size - 4,
+            icon_size,
+            icon_size,
+        )
+
+        if has_icon:
+            value_y = y + 6
+            label_y = y + 16
+            phone_y = y + 9
+        else:
+            value_y = cy_center - 11
+            label_y = cy_center + 9
+            phone_y = cy_center - 5
+
+        if value:
+            _txt(pdf, label, cx + cw / 2, label_y, 7,
+                 C_TEXT_SOFT, align="center", max_w=cw - 8)
+            _txt(pdf, value, cx + cw / 2, value_y, 9.5,
+                 val_color, bold=True, align="center", max_w=cw - 8)
+        else:
+            _txt(pdf, label, cx + cw / 2, phone_y, 10,
                  val_color, bold=True, align="center", max_w=cw - 8)
 
         cx += cw
@@ -1035,7 +1176,7 @@ def generate_pdf(
     # 2. BARRA DE INFORMAÇÕES ──────────────────────────────────────────────────
     bar_h = 42
     bar_y = top - bar_h
-    _draw_info_bar(pdf, mx, bar_y, cw, bar_h, req, client, items_list,
+    _draw_info_bar_with_icons(pdf, mx, bar_y, cw, bar_h, req, client, items_list,
                    vendor_phone=vendor_phone)
     top = bar_y - GAP
 
@@ -1128,7 +1269,7 @@ def generate_pdf(
 
     bar_h = 42
     bar_y = top - bar_h
-    _draw_info_bar(pdf, mx, bar_y, cw, bar_h, req, client, items_list, vendor_phone=vendor_phone)
+    _draw_info_bar_with_icons(pdf, mx, bar_y, cw, bar_h, req, client, items_list, vendor_phone=vendor_phone)
     top = bar_y - GAP
 
     cli_h = 46
