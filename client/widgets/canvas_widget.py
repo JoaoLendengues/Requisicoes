@@ -39,6 +39,7 @@ class Tool(Enum):
     PEN      = "pen"
     ERASER   = "eraser"
     LINE     = "line"
+    ARROW    = "arrow"
     CURVE    = "curve"
     TRIANGLE = "triangle"
     RECT     = "rect"
@@ -479,9 +480,43 @@ class DrawingScene(QGraphicsScene):
         path.closeSubpath()
         return path
 
+    def _arrow_path(self, start: QPointF, end: QPointF) -> QPainterPath:
+        """Seta predefinida: haste + duas abas na ponta final."""
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        dist = math.hypot(dx, dy)
+        if dist < 1e-6:
+            return QPainterPath(start)
+
+        ux, uy = dx / dist, dy / dist
+        head_len = max(10.0, float(self.cw.pen_width) * 4.0)
+        head_ang = math.radians(28.0)
+        cos_a = math.cos(head_ang)
+        sin_a = math.sin(head_ang)
+
+        lx = (ux * cos_a) - (uy * sin_a)
+        ly = (ux * sin_a) + (uy * cos_a)
+        rx = (ux * cos_a) + (uy * sin_a)
+        ry = (-ux * sin_a) + (uy * cos_a)
+
+        left = QPointF(end.x() - (lx * head_len), end.y() - (ly * head_len))
+        right = QPointF(end.x() - (rx * head_len), end.y() - (ry * head_len))
+
+        path = QPainterPath(start)
+        path.lineTo(end)
+        path.moveTo(end)
+        path.lineTo(left)
+        path.moveTo(end)
+        path.lineTo(right)
+        return path
+
     def mousePressEvent(self, event):
         tool = self.cw.tool
         pos  = event.scenePos()
+
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
 
         # Free Transform ativo: verificar zona de rotação nos cantos
         if self._ft_active and event.button() == Qt.MouseButton.LeftButton:
@@ -534,7 +569,8 @@ class DrawingScene(QGraphicsScene):
             self.cw._insert_image(pos)
             return
 
-        self._start = pos
+        self._snap_point = None
+        self._start = QPointF(pos.x(), pos.y())
 
         if tool == Tool.PEN:
             self._painter_path = QPainterPath(pos)
@@ -543,10 +579,17 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._path_item)
 
         elif tool == Tool.LINE:
+            self._start = QPointF(pos.x(), pos.y())
             self._preview_item = self.addLine(
                 self._start.x(), self._start.y(),
                 self._start.x(), self._start.y(), self._pen()
             )
+
+        elif tool == Tool.ARROW:
+            self._start = QPointF(pos.x(), pos.y())
+            self._preview_item = QGraphicsPathItem(self._arrow_path(self._start, self._start))
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
 
         elif tool == Tool.CURVE:
             source_item = self._pick_curve_source_item(pos)
@@ -627,6 +670,10 @@ class DrawingScene(QGraphicsScene):
             self._preview_item.setLine(self._start.x(), self._start.y(),
                                        end.x(), end.y())
 
+        elif tool == Tool.ARROW and self._preview_item:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._preview_item.setPath(self._arrow_path(self._start, end))
+
         elif tool == Tool.CURVE and self._preview_item and self._curve_start and self._curve_end:
             self._preview_item.setPath(
                 self._build_quadratic_path(self._curve_start, pos, self._curve_end)
@@ -666,7 +713,7 @@ class DrawingScene(QGraphicsScene):
             self._path_item = None
             self._painter_path = None
 
-        elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE) and self._preview_item:
+        elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
             if tool == Tool.LINE:
                 if shift:
                     end = self._constrain(self._start, pos)
@@ -674,6 +721,9 @@ class DrawingScene(QGraphicsScene):
                     end = pos
                 self._preview_item.setLine(self._start.x(), self._start.y(),
                                            end.x(), end.y())
+            elif tool == Tool.ARROW:
+                end = self._constrain(self._start, pos) if shift else pos
+                self._preview_item.setPath(self._arrow_path(self._start, end))
             item = self._preview_item
             item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                           QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
@@ -887,6 +937,7 @@ class DrawingCanvas(QWidget):
             (Tool.PEN,     "✏️ Caneta",   "P"),
             (Tool.ERASER,  "🧹 Borracha", "X"),
             (Tool.LINE,    "📏 Linha",    "L"),
+            (Tool.ARROW,   "➡ Seta",      "A"),
             (Tool.CURVE,   "〰 Curva",    "C"),
             (Tool.TRIANGLE, "△ Triang.", "G"),
             (Tool.RECT,    "⬛ Ret.",     "R"),
@@ -1022,7 +1073,7 @@ class DrawingCanvas(QWidget):
 
         # ── Dica de teclado ──────────────────────────────────────────────────
         hint = QLabel(
-            "✨ Shift = traço reto  |  C = curva na linha/curva selecionada  |  G = triangulo  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
@@ -1085,6 +1136,7 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_P: Tool.PEN,
             Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
+            Qt.Key.Key_A: Tool.ARROW,
             Qt.Key.Key_C: Tool.CURVE,
             Qt.Key.Key_G: Tool.TRIANGLE,
             Qt.Key.Key_R: Tool.RECT,
