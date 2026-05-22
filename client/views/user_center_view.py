@@ -42,7 +42,7 @@ from ..core.text_case import bind_uppercase_line_edit
 ROLE_OPTIONS = [
     ("ADMINISTRADOR", "admin"),
     ("GERENTE", "gerente"),
-    ("PRODUÇÃO", "producao"),
+    ("A&R", "producao"),
     ("INDÚSTRIA", "industria"),
     ("VENDEDOR", "vendedor"),
 ]

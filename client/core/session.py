@@ -58,11 +58,11 @@ class UserSession:
     @property
     def is_view_only(self) -> bool:
         """A&R e Indústria sempre abrem formulários em modo somente leitura."""
-        return self.role in ("ar", "industria", "entrega")
+        return self.role in ("producao", "industria", "entrega")
 
     @property
     def is_production_team(self) -> bool:
-        return self.role in ("ar", "industria", "entrega")
+        return self.role in ("producao", "industria", "entrega")
 
     # ── Acesso às telas ───────────────────────────────────────────────────────
 
@@ -77,12 +77,12 @@ class UserSession:
     @property
     def can_access_order_center(self) -> bool:
         """Todos os roles acessam a Central de Pedidos."""
-        return self.role in ("admin", "gerente", "vendedor", "ar", "industria", "entrega")
+        return self.role in ("admin", "gerente", "vendedor", "producao", "industria", "entrega")
 
     @property
     def can_access_ar(self) -> bool:
-        """Tela da A&R: admin, gerente e role A&R."""
-        return self.role in ("admin", "gerente", "ar", "entrega")
+        """Tela da A&R: admin, gerente e role A&R (producao)."""
+        return self.role in ("admin", "gerente", "producao", "entrega")
 
     @property
     def can_access_industria(self) -> bool:
@@ -117,7 +117,7 @@ class UserSession:
 
     @property
     def visible_production_destinations(self) -> tuple[str, ...]:
-        if self.role in ("ar", "entrega"):
+        if self.role in ("producao", "entrega"):
             return ("A&R",)
         if self.role == "industria":
             return ("Pinheiro Indústria",)
