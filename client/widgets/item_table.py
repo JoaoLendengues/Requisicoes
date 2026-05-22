@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QHeaderView, QAbstractItemView,
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPalette
 
 from ..core import theme
 from ..core.text_case import normalize_upper_text
@@ -56,12 +56,12 @@ class ItemTable(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        title = QLabel("ITENS DA REQUISIÇÃO")
+        self.title_label = QLabel("ITENS DA REQUISIÇÃO")
         fs_title = max(9, int(11 * self.scale))
-        title.setStyleSheet(
+        self.title_label.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{fs_title}pt; font-weight:bold;"
         )
-        layout.addWidget(title)
+        layout.addWidget(self.title_label)
 
         self.table = QTableWidget(10, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
@@ -71,19 +71,8 @@ class ItemTable(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(
             PRODUCT_NAME_COL, QHeaderView.ResizeMode.Stretch
         )
-        self.table.setStyleSheet(
-            f"QTableWidget {{"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(8, int(10 * self.scale))}pt;"
-            f"}}"
-            f"QHeaderView::section {{"
-            f"  background:{theme.TABLE_HEADER_BG}; color:#fff;"
-            f"  padding:6px; font-weight:bold; font-size:{max(8, int(9 * self.scale))}pt;"
-            f"  border:none;"
-            f"}}"
-            f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
-        )
+        self._apply_table_stylesheet()
+        self._apply_table_palette()
 
         for row in range(10):
             self._set_position_item(row)
@@ -105,17 +94,59 @@ class ItemTable(QWidget):
 
         footer.addStretch()
 
-        peso_label = QLabel("PESO TOTAL:")
-        peso_label.setStyleSheet(
+        self.peso_label = QLabel("PESO TOTAL:")
+        self.peso_label.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * self.scale))}pt; font-weight:bold;"
         )
         self.total_label = QLabel("0,00")
         self.total_label.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:bold;"
         )
-        footer.addWidget(peso_label)
+        footer.addWidget(self.peso_label)
         footer.addWidget(self.total_label)
         layout.addLayout(footer)
+
+    def _apply_table_stylesheet(self) -> None:
+        s = self.scale
+        self.table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+            f"  background:{theme.CARD_BG};"
+            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(8, int(10 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.TABLE_HEADER_BG}; color:#fff;"
+            f"  padding:6px; font-weight:bold; font-size:{max(8, int(9 * s))}pt;"
+            f"  border:none;"
+            f"}}"
+            f"QTableWidget::item {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
+        )
+        self.table.viewport().setStyleSheet(f"background:{theme.CARD_BG};")
+
+    def _apply_table_palette(self) -> None:
+        pal = self.table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        self.table.setPalette(pal)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        self._apply_table_stylesheet()
+        self._apply_table_palette()
+        self.title_label.setStyleSheet(
+            f"color:{theme.PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:bold;"
+        )
+        self.peso_label.setStyleSheet(
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:bold;"
+        )
+        self.total_label.setStyleSheet(
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+        )
+        self.btn_add.setStyleSheet(theme.secondary_btn_style(s))
+        self.btn_clear_selected.setStyleSheet(theme.secondary_btn_style(s))
 
     def _default_position(self, row: int) -> str:
         return POSITIONS[row] if row < len(POSITIONS) else f"#{row + 1}"
