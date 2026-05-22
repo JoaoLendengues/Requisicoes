@@ -93,7 +93,7 @@ class NotificationToast(QFrame):
             | Qt.WindowType.WindowStaysOnTopHint,
         )
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.setWindowOpacity(0.0)
@@ -187,7 +187,7 @@ class NotificationToast(QFrame):
     def _add_shadow(self):
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(28)
-        shadow.setColor(QColor(0, 44, 109, 18 if not theme.is_dark else 70))
+        shadow.setColor(QColor(0, 44, 109, 26 if not theme.is_dark else 120))
         shadow.setOffset(0, 6)
         self.setGraphicsEffect(shadow)
 
