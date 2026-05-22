@@ -81,19 +81,19 @@ class FeedbackView(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(10)
+        self.root_layout = QVBoxLayout(self)
+        self.root_layout.setContentsMargins(16, 16, 16, 16)
+        self.root_layout.setSpacing(10)
 
         self.title = QLabel("FEEDBACKS")
-        root.addWidget(self.title)
+        self.root_layout.addWidget(self.title)
 
         self.subtitle = QLabel("Problemas, elogios, bugs e sugestoes.")
         self.subtitle.setWordWrap(True)
-        root.addWidget(self.subtitle)
+        self.root_layout.addWidget(self.subtitle)
 
         self.compose_card = QFrame()
-        self.compose_card.setSizePolicy(self.compose_card.sizePolicy().horizontalPolicy(), self.compose_card.sizePolicy().verticalPolicy())
+        self.compose_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         compose_layout = QVBoxLayout(self.compose_card)
         compose_layout.setContentsMargins(12, 12, 12, 12)
         compose_layout.setSpacing(8)
@@ -118,7 +118,7 @@ class FeedbackView(QWidget):
         bottom_row.addWidget(self.btn_send)
         compose_layout.addLayout(bottom_row)
 
-        root.addWidget(self.compose_card)
+        self.root_layout.addWidget(self.compose_card)
 
         self.admin_card = QFrame()
         admin_layout = QVBoxLayout(self.admin_card)
@@ -142,7 +142,8 @@ class FeedbackView(QWidget):
         admin_actions.addWidget(self.btn_ack)
         admin_layout.addLayout(admin_actions)
 
-        root.addWidget(self.admin_card, 1)
+        self.root_layout.addWidget(self.admin_card, 1)
+        self.root_layout.addStretch(1)
         self._apply_role_visibility()
         self._apply_compose_profile_layout()
         self.apply_theme()
@@ -150,21 +151,17 @@ class FeedbackView(QWidget):
     def _apply_role_visibility(self):
         is_admin = session.is_admin
         self.admin_card.setVisible(is_admin)
+        self.root_layout.setStretchFactor(self.admin_card, 1 if is_admin else 0)
         self.btn_ack.setEnabled(False)
 
     def _apply_compose_profile_layout(self):
         """
-        Mantém o formulário de envio compacto e consistente para perfis não-admin.
-        Admin continua com caixa um pouco maior por usar também a área de triagem.
+        Mantém o formulário de envio no mesmo padrão visual para todos os perfis.
+        Apenas a lista de mensagens é exclusiva do administrador.
         """
-        if session.is_admin:
-            min_h = max(110, int(140 * self.scale))
-            max_h = max(150, int(170 * self.scale))
-            card_max_w = 1200
-        else:
-            min_h = max(72, int(90 * self.scale))
-            max_h = max(92, int(110 * self.scale))
-            card_max_w = max(620, int(760 * self.scale))
+        min_h = max(110, int(140 * self.scale))
+        max_h = max(150, int(170 * self.scale))
+        card_max_w = 1200
 
         self.input_feedback.setMinimumHeight(min_h)
         self.input_feedback.setMaximumHeight(max_h)
