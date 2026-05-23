@@ -10,7 +10,7 @@ from datetime import date, datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
-    QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog, QInputDialog,
+    QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
     QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
 )
@@ -950,17 +950,54 @@ class RequisitionForm(QWidget):
 
     def _ask_ped_number(self) -> str | None:
         default_value = (self.input_ped.text() or "").strip()
-        text, ok = QInputDialog.getText(
-            self,
-            "Número do PED",
-            "Digite o número do PED:",
-            QLineEdit.EchoMode.Normal,
-            default_value,
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Pedido")
+        dialog.setModal(True)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dialog.setStyleSheet(
+            f"QDialog {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
+            f"}}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
         )
-        if not ok:
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        lbl = QLabel("Digite o número do PED:")
+        lbl.setStyleSheet(f"font-size:{max(8, int(10 * self.scale))}pt;")
+        layout.addWidget(lbl)
+
+        input_ped = QLineEdit(default_value)
+        input_ped.setPlaceholderText("Ex.: 123456")
+        input_ped.setValidator(QRegularExpressionValidator(QRegularExpression(r"\d*")))
+        input_ped.setStyleSheet(theme.input_style(self.scale))
+        input_ped.setMinimumWidth(max(240, int(280 * self.scale)))
+        layout.addWidget(input_ped)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
+        btn_ok = QPushButton("Confirmar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        btn_ok.clicked.connect(dialog.accept)
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dialog.reject)
+        buttons.addWidget(btn_ok)
+        buttons.addWidget(btn_cancel)
+        layout.addLayout(buttons)
+
+        btn_ok.setDefault(True)
+        btn_ok.setAutoDefault(True)
+        input_ped.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        input_ped.selectAll()
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
 
-        ped_number = (text or "").strip()
+        ped_number = (input_ped.text() or "").strip()
         if not ped_number:
             return None
         if not ped_number.isdigit():
