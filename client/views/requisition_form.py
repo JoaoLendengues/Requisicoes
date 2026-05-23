@@ -12,10 +12,10 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
     QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
-    QListWidget, QListWidgetItem, QStyle,
+    QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
 )
 from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression, QRectF, QSize
-from PySide6.QtGui import QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
+from PySide6.QtGui import QAction, QKeySequence, QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
 
 try:
     import qrcode
@@ -697,6 +697,7 @@ class RequisitionForm(QWidget):
         self._threads: list = []
         self._canvas_json: str = "{}"   # armazena o JSON do desenho
         self._setup_ui()
+        self._setup_hidden_shortcuts()
         self._load_clients()
         self._update_canvas_preview()
 
@@ -814,6 +815,88 @@ class RequisitionForm(QWidget):
         self._set_form_locked(False)
 
         layout.addStretch()
+
+    def _setup_hidden_shortcuts(self) -> None:
+        """Atalhos escondidos da tela Nova Requisição (letras simples)."""
+        shortcuts = {
+            "C": self._shortcut_open_calculator,
+            "P": self._shortcut_send_production,
+            "S": self._shortcut_save,
+            "W": self._shortcut_send_whatsapp,
+            "D": self._shortcut_open_drawing_editor,
+            "E": self._shortcut_set_delivery,
+            "R": self._shortcut_set_pickup,
+        }
+
+        self._hidden_shortcut_actions: list[QAction] = []
+        for sequence, callback in shortcuts.items():
+            action = QAction(self)
+            action.setShortcut(QKeySequence(sequence))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            action.triggered.connect(
+                lambda _checked=False, cb=callback: self._run_hidden_shortcut(cb)
+            )
+            self.addAction(action)
+            self._hidden_shortcut_actions.append(action)
+
+    def _run_hidden_shortcut(self, callback) -> None:
+        if not self._can_process_hidden_shortcut():
+            return
+        callback()
+
+    def _can_process_hidden_shortcut(self) -> bool:
+        if not self.isVisible():
+            return False
+
+        if QApplication.activeModalWidget() is not None:
+            return False
+
+        focus = QApplication.focusWidget()
+        if focus is None:
+            return True
+
+        editable_types = (
+            QLineEdit,
+            QTextEdit,
+            QPlainTextEdit,
+            QComboBox,
+            QDateEdit,
+            QAbstractItemView,
+        )
+        widget = focus
+        while widget is not None:
+            if isinstance(widget, editable_types):
+                return False
+            widget = widget.parentWidget()
+        return True
+
+    def _shortcut_open_calculator(self) -> None:
+        if hasattr(self, "btn_calc") and self.btn_calc.isEnabled():
+            self.btn_calc.click()
+
+    def _shortcut_send_production(self) -> None:
+        if hasattr(self, "btn_production") and self.btn_production.isEnabled():
+            self.btn_production.click()
+
+    def _shortcut_save(self) -> None:
+        if hasattr(self, "btn_save") and self.btn_save.isEnabled():
+            self.btn_save.click()
+
+    def _shortcut_send_whatsapp(self) -> None:
+        if hasattr(self, "btn_whatsapp") and self.btn_whatsapp.isEnabled():
+            self.btn_whatsapp.click()
+
+    def _shortcut_open_drawing_editor(self) -> None:
+        if hasattr(self, "btn_canvas") and self.btn_canvas.isEnabled():
+            self.btn_canvas.click()
+
+    def _shortcut_set_delivery(self) -> None:
+        if hasattr(self, "chk_entrega") and self.chk_entrega.isEnabled():
+            self.chk_entrega.setChecked(True)
+
+    def _shortcut_set_pickup(self) -> None:
+        if hasattr(self, "chk_retirada") and self.chk_retirada.isEnabled():
+            self.chk_retirada.setChecked(True)
 
     # ── Cabeçalho ─────────────────────────────────────────────────────────────
     def _build_header(self) -> QFrame:
