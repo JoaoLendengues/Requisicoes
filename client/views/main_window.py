@@ -205,6 +205,7 @@ class MainWindow(QMainWindow):
             "Ctrl+7": self._toggle_theme_shortcut,
             "Ctrl+8": self._switch_user,
             "Ctrl+9": self._logout,
+            "Ctrl+P": self._print_shortcut,
         }
 
         self._shortcut_actions: list[QAction] = []
@@ -218,6 +219,10 @@ class MainWindow(QMainWindow):
 
     def _toggle_theme_shortcut(self) -> None:
         self._on_theme_toggle(not theme.is_dark)
+
+    def _print_shortcut(self) -> None:
+        if hasattr(self, "form_view") and hasattr(self.form_view, "btn_print") and self.form_view.btn_print.isEnabled():
+            self.form_view.btn_print.click()
 
     def _setup_statusbar(self):
         bar = self.statusBar()

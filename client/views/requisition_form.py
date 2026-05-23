@@ -12,9 +12,9 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
     QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
-    QListWidget, QListWidgetItem,
+    QListWidget, QListWidgetItem, QStyle,
 )
-from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression, QRectF
+from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression, QRectF, QSize
 from PySide6.QtGui import QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
 
 try:
@@ -771,9 +771,10 @@ class RequisitionForm(QWidget):
         btn_print.setFixedHeight(max(42, int(48 * s)))
         btn_print.setMinimumWidth(max(180, int(210 * s)))
         btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_print = btn_print
+        self._update_print_button_visual()
         btn_print.clicked.connect(self._print_requisition_pdf)
         save_row.addWidget(btn_print)
-        self.btn_print = btn_print
 
         save_row.addSpacing(max(8, int(10 * s)))
 
@@ -1223,6 +1224,25 @@ class RequisitionForm(QWidget):
 
         self.btn_print.setEnabled(not busy)
         self.btn_print.setText("PREPARANDO IMPRESSÃO..." if busy else "IMPRIMIR")
+
+    def _update_print_button_visual(self) -> None:
+        if not hasattr(self, "btn_print"):
+            return
+
+        icon = None
+        for icon_name in ("SP_DialogPrintButton", "SP_PrinterIcon"):
+            std_icon = getattr(QStyle.StandardPixmap, icon_name, None)
+            if std_icon is None:
+                continue
+            candidate = self.style().standardIcon(std_icon)
+            if not candidate.isNull():
+                icon = candidate
+                break
+
+        if icon and not icon.isNull():
+            side = max(16, int(18 * self.scale))
+            self.btn_print.setIcon(icon)
+            self.btn_print.setIconSize(QSize(side, side))
 
     def _print_requisition_pdf(self):
         self._set_print_busy(True)
@@ -1955,6 +1975,7 @@ class RequisitionForm(QWidget):
         self.btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self._update_print_button_visual()
         self.btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))
         self.btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
         self.btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))
