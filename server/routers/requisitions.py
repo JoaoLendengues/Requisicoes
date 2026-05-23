@@ -50,6 +50,7 @@ from ..dependencies import (
     require_manager_or_admin,
     require_order_center_access,
 )
+from ..services.audit_service import diff_fields, log_action
 from ..services.runtime_monitor import snapshot as runtime_snapshot
 from ..services.sse_manager import connected_user_ids
 from ..services.text_normalizer import normalize_canvas_json_text, normalize_upper_required
@@ -1491,6 +1492,14 @@ def create_requisition(
         new_status=RequisitionStatus.EM_ANDAMENTO,
         changed_by_id=current_user.id,
     ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="CREATE",
+        changed_by=current_user,
+        changes={"ped_number": data.ped_number, "client_id": data.client_id},
+    )
     db.commit()
     return _get_or_404(db, req.id)
 
@@ -1521,18 +1530,31 @@ def update_requisition(
     ped_number = data.ped_number if data.ped_number is not None else req.ped_number
     _ensure_unique_ped_number(db, ped_number, exclude_req_id=req.id)
 
-    for k, v in data.model_dump(exclude_unset=True, exclude={"items", "weight"}).items():
+    scalar_update = data.model_dump(exclude_unset=True, exclude={"items", "weight"})
+    tracked = ["ped_number", "delivery_date", "os_number", "obra", "obs",
+               "retirada", "entrega", "delivery_address", "phone"]
+    changes = diff_fields(req, scalar_update, tracked)
+
+    for k, v in scalar_update.items():
         setattr(req, k, v)
 
     if data.items is not None:
+        old_count = len(req.items)
         for item in list(req.items):
             db.delete(item)
         db.flush()
         for item in data.items:
             db.add(RequisitionItem(**item.model_dump(), requisition_id=req.id))
         req.weight = _sum_item_weights(data.items)
+        new_count = len(data.items)
+        if old_count != new_count:
+            changes["items"] = {"old": f"{old_count} item(s)", "new": f"{new_count} item(s)"}
     elif data.weight is not None:
         req.weight = data.weight
+
+    if changes:
+        log_action(db, entity="requisition", entity_id=req.id, action="UPDATE",
+                   changed_by=current_user, changes=changes)
 
     db.commit()
     return _get_or_404(db, req_id)
@@ -1662,6 +1684,14 @@ def cancel_requisition(
         new_status=RequisitionStatus.CANCELADA,
         changed_by_id=current_user.id,
     ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="DELETE",
+        changed_by=current_user,
+        changes={"ped_number": req.ped_number, "status": {"old": str(old_status), "new": "cancelada"}},
+    )
 
     notifications: list = []
     if req.vendor_id != current_user.id:

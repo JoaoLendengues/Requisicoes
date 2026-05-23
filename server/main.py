@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .database import Base, engine
-from .models import client, feedback, notification, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
+from .models import audit, client, feedback, notification, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
 from .routers import auth, clients, feedbacks, notifications, products, requisitions, system_settings, users
 from .seed import seed_admin, seed_production_machines
 from .services.runtime_monitor import record_exception, record_request
