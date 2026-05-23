@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
-        env_file_encoding = "utf-8"
+        env_file_encoding = "utf-8-sig"  # suporta arquivos salvos com BOM no Windows
 
 
 settings = Settings()
