@@ -164,8 +164,15 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
 # ── Campo de busca de cliente ─────────────────────────────────────────────────
 class ClientSearchBox(QWidget):
     """
-    Caixa de busca com dropdown em tempo real — filtragem no SERVIDOR.
-    Suporta 100k+ clientes. Debounce de 300 ms para não sobrecarregar a API.
+    Caixa de busca com dropdown em tempo real.
+
+    Estratégia de dois estágios:
+    1. Ao abrir o formulário, carrega TODOS os clientes ativos em background
+       (limit=9999).  Enquanto a carga não termina, usa busca no servidor com
+       debounce curto como fallback.
+    2. Após a carga (~1–3 s na LAN), toda busca é client-side puro — zero
+       requisições de rede, latência imperceptível a cada keystroke.
+
     Pesquisa por nome, código ou CPF/CNPJ (ignora pontuação).
     """
     client_selected = Signal(object)   # dict do cliente ou None
@@ -180,8 +187,9 @@ class ClientSearchBox(QWidget):
         self._results_cache: dict[str, list] = {}
         self._max_cache_entries = 40
         self._live_candidates: list = []
+        self._all_clients: list = []          # cache completo — preenchido em background
 
-        # Timer de debounce — dispara busca 300 ms após parar de digitar
+        # Timer de debounce — fallback enquanto _all_clients ainda carrega
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(120)
@@ -189,32 +197,36 @@ class ClientSearchBox(QWidget):
 
         self._setup_ui()
 
-        # Warmup: estabelece a conexão TCP e pré-carrega os primeiros resultados
-        # antes que o usuário comece a digitar — chamada não bloqueia a UI.
-        self._warmup()
+        # Carrega todos os clientes em background para busca client-side instantânea
+        self._load_all_clients()
 
-    # ── Warmup de conexão ─────────────────────────────────────────────────────
+    # ── Carga completa em background ──────────────────────────────────────────
 
-    def _warmup(self) -> None:
+    def _load_all_clients(self) -> None:
         """
-        Dispara uma busca vazia em background logo após o formulário carregar.
+        Busca todos os clientes ativos do servidor uma única vez.
 
-        Dois efeitos:
-        1. Estabelece a conexão TCP com o servidor antes do usuário digitar,
-           eliminando o custo do handshake na primeira busca real.
-        2. Pre-carrega os primeiros resultados no cache (key ""), que são usados
-           imediatamente como prévia enquanto a resposta da busca real ainda chega.
+        Após a conclusão, cada keystroke passa a ser filtrado localmente em
+        Python puro, sem nenhuma requisição de rede.
         """
         t, w = _run_in_thread(
-            api.list_clients, "", 20,
-            on_result=self._on_warmup,
+            api.list_clients, "", 9999,
+            on_result=self._on_all_clients_loaded,
             on_error=lambda _: None,
         )
         self._track_thread(t, w)
 
-    def _on_warmup(self, clients: list) -> None:
+    def _on_all_clients_loaded(self, clients: list) -> None:
+        self._all_clients = clients
+        # Pré-popula o cache vazio para que _render_cached_preview já funcione
         if clients:
-            self._results_cache[""] = clients
+            self._results_cache[""] = clients[:20]
+        # Se o usuário já digitou algo antes da carga terminar, atualiza o dropdown
+        current_term = self.input.text().strip()
+        min_chars = 1 if self._looks_like_code_or_document(current_term) else 2
+        if len(current_term) >= min_chars:
+            filtered = self._filter_cached_clients(self._all_clients, current_term)
+            self._render_results(filtered[:20])
 
     # ── Interface ─────────────────────────────────────────────────────────────
 
@@ -250,7 +262,7 @@ class ClientSearchBox(QWidget):
         self._drop.installEventFilter(self)
         self._drop.hide()
 
-    # ── Digitação → debounce → busca no servidor ──────────────────────────────
+    # ── Digitação → filtro local (ou debounce → servidor como fallback) ──────
     def _on_text(self, text: str):
         if self._selected:
             expected = f"{self._selected['code']} — {self._selected['name']}"
@@ -264,6 +276,14 @@ class ClientSearchBox(QWidget):
             self._debounce.stop()
             self._drop.hide()
             return
+
+        # ── Caminho rápido: busca local instantânea ────────────────────────
+        # Quando _all_clients já foi carregado, filtra em Python sem rede.
+        if self._all_clients:
+            filtered = self._filter_cached_clients(self._all_clients, term)
+            self._render_results(filtered[:20])
+            return
+        # ── Fallback: servidor (enquanto a carga inicial ainda não terminou) ─
 
         cached = self._results_cache.get(term)
         if cached is not None:
@@ -279,6 +299,10 @@ class ClientSearchBox(QWidget):
             self._debounce.start(40)
 
     def _do_search(self):
+        # Carga completa já disponível — busca client-side em _on_text, nada a fazer.
+        if self._all_clients:
+            return
+
         term = self.input.text().strip()
         min_chars = 1 if self._looks_like_code_or_document(term) else 2
         if len(term) < min_chars:
