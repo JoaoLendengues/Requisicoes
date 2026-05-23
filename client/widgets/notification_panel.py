@@ -1,9 +1,9 @@
-"""
-Drawer lateral de notificações.
+﻿"""
+Drawer lateral de notificaÃ§Ãµes.
 
-NotificationDrawer — painel que desliza da direita sobre o conteúdo principal.
+NotificationDrawer â€” painel que desliza da direita sobre o conteÃºdo principal.
                      Usa os tokens DRAWER_* de theme.py (suporte a dark mode).
-_Overlay           — camada semitransparente com fade; fecha o drawer ao clicar.
+_Overlay           â€” camada semitransparente com fade; fecha o drawer ao clicar.
 """
 from __future__ import annotations
 
@@ -18,18 +18,18 @@ from PySide6.QtWidgets import (
 
 from ..core import theme
 
-# ── Constantes ────────────────────────────────────────────────────────────────
+# â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 DRAWER_WIDTH = 400
 ANIM_MS      = 280
 
 _ICONS: dict[str, str] = {
-    "nova_requisicao":   "🏭",
-    "em_producao":       "⚙️",
-    "finalizada":        "✅",
-    "cancelada":         "❌",
-    "prod_cancelada":    "⚠️",
-    "requisicao_parada": "⏰",
+    "nova_requisicao":   "ðŸ­",
+    "em_producao":       "âš™ï¸",
+    "finalizada":        "âœ…",
+    "cancelada":         "âŒ",
+    "prod_cancelada":    "âš ï¸",
+    "requisicao_parada": "â°",
 }
 
 _ACCENT: dict[str, str] = {
@@ -42,10 +42,10 @@ _ACCENT: dict[str, str] = {
 }
 
 _ICONS.update({
-    "aguardando_faturamento": "🧾",
-    "faturado": "💰",
-    "faturamento_atrasado": "⏰",
-    "machine_status": "🛠️",
+    "aguardando_faturamento": "ðŸ§¾",
+    "faturado": "ðŸ’°",
+    "faturamento_atrasado": "â°",
+    "machine_status": "ðŸ› ï¸",
 })
 
 _ACCENT.update({
@@ -58,7 +58,18 @@ _ACCENT.update({
 _DEFAULT_ACCENT = "#2563EB"
 
 
-# ── Helper: timestamp relativo ────────────────────────────────────────────────
+def _blend_color(base_hex: str, tint_hex: str, tint_alpha: int) -> str:
+    """Mistura tint_hex sobre base_hex com alpha (0-255) e retorna #RRGGBB."""
+    base = QColor(base_hex)
+    tint = QColor(tint_hex)
+    a = max(0.0, min(1.0, float(tint_alpha) / 255.0))
+    r = int(round(base.red() * (1.0 - a) + tint.red() * a))
+    g = int(round(base.green() * (1.0 - a) + tint.green() * a))
+    b = int(round(base.blue() * (1.0 - a) + tint.blue() * a))
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
+# â”€â”€ Helper: timestamp relativo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _relative_time(iso: str | None) -> str:
     if not iso:
@@ -71,9 +82,9 @@ def _relative_time(iso: str | None) -> str:
         if diff < 60:
             return "agora"
         if diff < 3_600:
-            return f"há {int(diff / 60)} min"
+            return f"hÃ¡ {int(diff / 60)} min"
         if diff < 86_400:
-            return f"há {int(diff / 3_600)}h"
+            return f"hÃ¡ {int(diff / 3_600)}h"
         if diff < 172_800:
             return "ontem"
         return dt.strftime("%d/%m/%Y")
@@ -81,10 +92,10 @@ def _relative_time(iso: str | None) -> str:
         return ""
 
 
-# ── Overlay ───────────────────────────────────────────────────────────────────
+# â”€â”€ Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class _Overlay(QWidget):
-    """Fundo semitransparente com fade — fecha o drawer ao ser clicado."""
+    """Fundo semitransparente com fade â€” fecha o drawer ao ser clicado."""
 
     clicked = Signal()
 
@@ -125,10 +136,10 @@ class _Overlay(QWidget):
         super().mousePressEvent(event)
 
 
-# ── Drawer ────────────────────────────────────────────────────────────────────
+# â”€â”€ Drawer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class NotificationDrawer(QWidget):
-    """Painel lateral que desliza da direita listando notificações não lidas."""
+    """Painel lateral que desliza da direita listando notificaÃ§Ãµes nÃ£o lidas."""
 
     mark_all_requested = Signal()
     open_req_requested = Signal(int)
@@ -141,7 +152,7 @@ class NotificationDrawer(QWidget):
         self._closing       = False
         self._setup()
 
-    # ── Build ─────────────────────────────────────────────────────────────────
+    # â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _setup(self):
         parent = self.parent()
@@ -176,7 +187,7 @@ class NotificationDrawer(QWidget):
         self._build_list(root)
         self._build_footer(root)
 
-        # Animações deslizamento
+        # AnimaÃ§Ãµes deslizamento
         self._anim_open = QPropertyAnimation(self, b"pos", self)
         self._anim_open.setDuration(ANIM_MS)
         self._anim_open.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -200,7 +211,7 @@ class NotificationDrawer(QWidget):
         )
         root.addWidget(accent_bar)
 
-        # Cabeçalho
+        # CabeÃ§alho
         header = QWidget()
         header.setObjectName("drawerHeader")
         header.setFixedHeight(62)
@@ -215,16 +226,16 @@ class NotificationDrawer(QWidget):
         hlay.setContentsMargins(18, 0, 14, 0)
         hlay.setSpacing(10)
 
-        # Ícone + título + badge de contagem
+        # Ãcone + tÃ­tulo + badge de contagem
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
         title_row.setContentsMargins(0, 0, 0, 0)
 
-        bell = QLabel("🔔")
+        bell = QLabel("ðŸ””")
         bell.setStyleSheet("font-size: 15px; background: transparent;")
         title_row.addWidget(bell)
 
-        title = QLabel("Notificações")
+        title = QLabel("NotificaÃ§Ãµes")
         title.setStyleSheet(
             f"color: {theme.DRAWER_TITLE}; font-size: 11pt; font-weight: 700;"
             f"background: transparent;"
@@ -247,7 +258,7 @@ class NotificationDrawer(QWidget):
 
         hlay.addLayout(title_row, 1)
 
-        # Botão "Marcar todas" — estilo ghost
+        # BotÃ£o "Marcar todas" â€” estilo ghost
         if self._notifications:
             btn_all = QPushButton("Marcar todas")
             btn_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -263,8 +274,8 @@ class NotificationDrawer(QWidget):
             btn_all.clicked.connect(self._on_mark_all)
             hlay.addWidget(btn_all)
 
-        # Botão fechar
-        btn_close = QPushButton("✕")
+        # BotÃ£o fechar
+        btn_close = QPushButton("âœ•")
         btn_close.setFixedSize(30, 30)
         btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_close.setStyleSheet(
@@ -320,14 +331,14 @@ class NotificationDrawer(QWidget):
         root.addWidget(scroll, 1)
 
     def _build_empty_state(self, vlay: QVBoxLayout):
-        """Estado vazio: ícone grande + textos centralizados."""
+        """Estado vazio: Ã­cone grande + textos centralizados."""
         wrapper = QWidget()
         wrapper_lay = QVBoxLayout(wrapper)
         wrapper_lay.setContentsMargins(20, 46, 20, 36)
         wrapper_lay.setSpacing(8)
         wrapper_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        emoji_lbl = QLabel("🎉")
+        emoji_lbl = QLabel("ðŸŽ‰")
         emoji_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         emoji_lbl.setStyleSheet(
             "font-size: 42px; background: transparent;"
@@ -343,7 +354,7 @@ class NotificationDrawer(QWidget):
         )
         wrapper_lay.addWidget(title_lbl)
 
-        sub_lbl = QLabel("Não há notificações\nnão lidas no momento.")
+        sub_lbl = QLabel("NÃ£o hÃ¡ notificaÃ§Ãµes\nnÃ£o lidas no momento.")
         sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub_lbl.setWordWrap(True)
         sub_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -363,7 +374,7 @@ class NotificationDrawer(QWidget):
         if not count:
             return
 
-        s = "notificação não lida" if count == 1 else "notificações não lidas"
+        s = "notificaÃ§Ã£o nÃ£o lida" if count == 1 else "notificaÃ§Ãµes nÃ£o lidas"
 
         footer = QWidget()
         footer.setObjectName("drawerFooter")
@@ -397,17 +408,30 @@ class NotificationDrawer(QWidget):
         card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        hover_bg = theme.SURFACE_SOFT
+        led_bg_top = _blend_color(theme.DRAWER_CARD, accent, 58)
+        led_bg_bottom = _blend_color(theme.DRAWER_CARD, accent, 20)
+        led_hover_top = _blend_color(theme.DRAWER_CARD, accent, 74)
+        led_hover_bottom = _blend_color(theme.DRAWER_CARD, accent, 28)
 
         card.setStyleSheet(
             f"QFrame#drawerNotifCard {{"
-            f"  background: {theme.DRAWER_CARD};"
+            f"  background: qlineargradient("
+            f"    x1:0, y1:0, x2:1, y2:1,"
+            f"    stop:0 {led_bg_top},"
+            f"    stop:0.52 {theme.DRAWER_CARD},"
+            f"    stop:1 {led_bg_bottom}"
+            f"  );"
             f"  border: 1px solid {theme.DRAWER_BORDER} !important;"
             f"  border-left: 4px solid {accent} !important;"
             f"  border-radius: 10px;"
             f"}}"
             f"QFrame#drawerNotifCard:hover {{"
-            f"  background: {hover_bg};"
+            f"  background: qlineargradient("
+            f"    x1:0, y1:0, x2:1, y2:1,"
+            f"    stop:0 {led_hover_top},"
+            f"    stop:0.52 {theme.DRAWER_CARD},"
+            f"    stop:1 {led_hover_bottom}"
+            f"  );"
             f"  border-color: {accent} !important;"
             f"}}"
             f"QLabel {{ background: transparent; border: none !important; }}"
@@ -418,12 +442,12 @@ class NotificationDrawer(QWidget):
         lay.setContentsMargins(14, 12, 12, 11)
         lay.setSpacing(6)
 
-        # ── Linha superior: ícone + título + dot + timestamp ──
+        # â”€â”€ Linha superior: Ã­cone + tÃ­tulo + dot + timestamp â”€â”€
         top = QHBoxLayout()
         top.setSpacing(8)
         top.setContentsMargins(0, 0, 0, 0)
 
-        icon_lbl = QLabel(_ICONS.get(ntype, "🔔"))
+        icon_lbl = QLabel(_ICONS.get(ntype, "ðŸ””"))
         icon_lbl.setStyleSheet("font-size: 16px; background: transparent; border: none;")
         icon_lbl.setFixedWidth(24)
         top.addWidget(icon_lbl)
@@ -437,8 +461,8 @@ class NotificationDrawer(QWidget):
         title_lbl.setWordWrap(True)
         top.addWidget(title_lbl, 1)
 
-        # Dot colorido de não lida
-        dot = QLabel("●")
+        # Dot colorido de nÃ£o lida
+        dot = QLabel("â—")
         dot.setStyleSheet(
             f"color: {accent}; font-size: 9px; background: transparent; border: none;"
         )
@@ -455,7 +479,7 @@ class NotificationDrawer(QWidget):
 
         lay.addLayout(top)
 
-        # ── Mensagem ──
+        # â”€â”€ Mensagem â”€â”€
         msg = n.get("message", "")
         if msg:
             msg_lbl = QLabel(msg)
@@ -468,7 +492,7 @@ class NotificationDrawer(QWidget):
             msg_lbl.setWordWrap(True)
             lay.addWidget(msg_lbl)
 
-        # ── Botões de ação ──
+        # â”€â”€ BotÃµes de aÃ§Ã£o â”€â”€
         nid    = n.get("id")
         req_id = n.get("requisition_id")
 
@@ -479,7 +503,7 @@ class NotificationDrawer(QWidget):
             btns.addStretch()
 
             if nid:
-                btn_read = QPushButton("✓  Marcar lida")
+                btn_read = QPushButton("âœ“  Marcar lida")
                 btn_read.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 btn_read.setStyleSheet(
                     f"QPushButton {{"
@@ -497,7 +521,7 @@ class NotificationDrawer(QWidget):
                 btns.addWidget(btn_read)
 
             if req_id:
-                btn_open = QPushButton("Abrir  →")
+                btn_open = QPushButton("Abrir  â†’")
                 btn_open.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 btn_open.setStyleSheet(
                     f"QPushButton {{"
@@ -515,7 +539,7 @@ class NotificationDrawer(QWidget):
 
         return card
 
-    # ── Animação ──────────────────────────────────────────────────────────────
+    # â”€â”€ AnimaÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def open_drawer(self):
         parent = self.parent()
@@ -551,7 +575,7 @@ class NotificationDrawer(QWidget):
         self._overlay.deleteLater()
         self.deleteLater()
 
-    # ── Ações ─────────────────────────────────────────────────────────────────
+    # â”€â”€ AÃ§Ãµes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _on_mark_all(self):
         self.mark_all_requested.emit()
