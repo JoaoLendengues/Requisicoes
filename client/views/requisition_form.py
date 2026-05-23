@@ -229,7 +229,8 @@ class ClientSearchBox(QWidget):
             self._selected = None
 
         term = text.strip()
-        if len(term) < 2:
+        min_chars = 1 if self._looks_like_code_or_document(term) else 2
+        if len(term) < min_chars:
             self._debounce.stop()
             self._drop.hide()
             return
@@ -238,11 +239,16 @@ class ClientSearchBox(QWidget):
         if cached is not None:
             self._render_results(cached)
 
-        self._debounce.start()
+        # Codigo/CPF/CNPJ: resposta mais imediata.
+        if self._looks_like_code_or_document(term):
+            self._debounce.start(60)
+        else:
+            self._debounce.start()
 
     def _do_search(self):
         term = self.input.text().strip()
-        if len(term) < 2:
+        min_chars = 1 if self._looks_like_code_or_document(term) else 2
+        if len(term) < min_chars:
             return
 
         if term == self._last_requested_term:
@@ -263,7 +269,7 @@ class ClientSearchBox(QWidget):
         self._search_seq += 1
         search_id = self._search_seq
         t, w = _run_in_thread(
-            api.list_clients, term,
+            api.list_clients, term, 80,
             on_result=lambda clients, q=term, sid=search_id: self._on_results(q, sid, clients),
             on_error=lambda _, q=term, sid=search_id: self._on_search_error(q, sid),
         )
@@ -322,6 +328,17 @@ class ClientSearchBox(QWidget):
             thread.deleteLater()
 
         thread.finished.connect(_cleanup)
+
+    def _looks_like_code_or_document(self, term: str) -> bool:
+        plain = (
+            term.replace(".", "")
+            .replace("-", "")
+            .replace("/", "")
+            .replace(" ", "")
+        )
+        if not plain:
+            return False
+        return plain.isdigit() or term.isalnum()
 
     def _reposition(self):
         s = self.scale
