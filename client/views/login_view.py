@@ -1,6 +1,6 @@
 import os
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QObject, QPropertyAnimation, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
@@ -381,6 +381,15 @@ class LoginView(QWidget):
         outer.addWidget(footer)
 
     # ── Fundo sazonal ────────────────────────────────────────────────────────
+
+    def fade_in(self, duration: int = 260) -> None:
+        """Anima windowOpacity 0 → 1 para entrada suave (troca de usuário)."""
+        self._fade_in_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade_in_anim.setDuration(duration)
+        self._fade_in_anim.setStartValue(0.0)
+        self._fade_in_anim.setEndValue(1.0)
+        self._fade_in_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade_in_anim.start()
 
     def reload_background(self) -> None:
         """Recarrega a campanha ativa (chamada após salvar configurações)."""
