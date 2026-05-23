@@ -621,6 +621,13 @@ class DrawingScene(QGraphicsScene):
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         return pen
 
+    def _ruler_label_pos(self, start: QPointF, end: QPointF) -> QPointF:
+        mid_x = (start.x() + end.x()) / 2.0
+        mid_y = (start.y() + end.y()) / 2.0
+        # Quanto maior a espessura, mais sobe a label para não ficar tampada.
+        y_offset = 22.0 + (float(max(1, self.cw.pen_width)) * 0.9)
+        return QPointF(mid_x + 8.0, mid_y - y_offset)
+
     def _format_ruler_text(self, start: QPointF, end: QPointF) -> tuple[str, float]:
         dx = end.x() - start.x()
         dy = end.y() - start.y()
@@ -672,9 +679,7 @@ class DrawingScene(QGraphicsScene):
         text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
         text_item.setZValue(9001)
         text_item.setData(0, {"type": "ruler_measure_text"})
-        mid_x = (start.x() + end.x()) / 2.0
-        mid_y = (start.y() + end.y()) / 2.0
-        text_item.setPos(QPointF(mid_x + 8.0, mid_y - 22.0))
+        text_item.setPos(self._ruler_label_pos(start, end))
         text_item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
             QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -727,9 +732,7 @@ class DrawingScene(QGraphicsScene):
         self._ruler_line_item.setLine(start.x(), start.y(), end.x(), end.y())
         text, _dist_mm = self._format_ruler_text(start, end)
         self._ruler_text_item.setPlainText(text)
-        mid_x = (start.x() + end.x()) / 2.0
-        mid_y = (start.y() + end.y()) / 2.0
-        self._ruler_text_item.setPos(QPointF(mid_x + 8.0, mid_y - 22.0))
+        self._ruler_text_item.setPos(self._ruler_label_pos(start, end))
 
     def mousePressEvent(self, event):
         tool = self.cw.tool
@@ -1296,7 +1299,7 @@ class DrawingCanvas(QWidget):
         # Espessura
         row1.addWidget(_lbl("Esp.:"))
         self.spin_width = QSpinBox()
-        self.spin_width.setRange(1, 20)
+        self.spin_width.setRange(1, 26)
         self.spin_width.setValue(self.pen_width)
         self.spin_width.setFixedWidth(max(56, int(68 * s)))
         self.spin_width.setFixedHeight(fh)
