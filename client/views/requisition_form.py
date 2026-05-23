@@ -179,6 +179,7 @@ class ClientSearchBox(QWidget):
         self._last_requested_term = ""
         self._results_cache: dict[str, list] = {}
         self._max_cache_entries = 40
+        self._live_candidates: list = []
 
         # Timer de debounce — dispara busca 300 ms após parar de digitar
         self._debounce = QTimer(self)
@@ -239,13 +240,14 @@ class ClientSearchBox(QWidget):
         if cached is not None:
             self._render_results(cached)
         else:
+            self._render_live_preview(term)
             self._render_cached_preview(term)
 
         # Codigo/CPF/CNPJ: resposta mais imediata.
         if self._looks_like_code_or_document(term):
-            self._debounce.start(60)
+            self._debounce.start(0)
         else:
-            self._debounce.start()
+            self._debounce.start(40)
 
     def _do_search(self):
         term = self.input.text().strip()
@@ -275,6 +277,7 @@ class ClientSearchBox(QWidget):
         if self.input.text().strip() != term:
             return
 
+        self._live_candidates = clients
         self._results_cache[term] = clients
         if len(self._results_cache) > self._max_cache_entries:
             first_key = next(iter(self._results_cache))
@@ -317,6 +320,13 @@ class ClientSearchBox(QWidget):
         if not base:
             return
         filtered = self._filter_cached_clients(base, term)
+        if filtered:
+            self._render_results(filtered[:80], show_empty=False)
+
+    def _render_live_preview(self, term: str) -> None:
+        if not self._live_candidates:
+            return
+        filtered = self._filter_cached_clients(self._live_candidates, term)
         if filtered:
             self._render_results(filtered[:80], show_empty=False)
 
