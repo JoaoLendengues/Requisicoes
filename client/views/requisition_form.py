@@ -226,7 +226,7 @@ class ClientSearchBox(QWidget):
         min_chars = 1 if self._looks_like_code_or_document(current_term) else 2
         if len(current_term) >= min_chars:
             filtered = self._filter_cached_clients(self._all_clients, current_term)
-            self._render_results(filtered[:20])
+            self._render_results(filtered[:25])
 
     # ── Interface ─────────────────────────────────────────────────────────────
 
@@ -281,7 +281,7 @@ class ClientSearchBox(QWidget):
         # Quando _all_clients já foi carregado, filtra em Python sem rede.
         if self._all_clients:
             filtered = self._filter_cached_clients(self._all_clients, term)
-            self._render_results(filtered[:20])
+            self._render_results(filtered[:25])
             return
         # ── Fallback: servidor (enquanto a carga inicial ainda não terminou) ─
 
@@ -395,32 +395,78 @@ class ClientSearchBox(QWidget):
                     best_size = len(clients)
         return best
 
+    # ── Helpers de normalização ───────────────────────────────────────────────
+
+    @staticmethod
+    def _alnum(value: str) -> str:
+        """Lowercased alphanumeric only — remove toda pontuação e espaços."""
+        return "".join(ch for ch in (value or "").lower() if ch.isalnum())
+
+    @staticmethod
+    def _digits(value: str) -> str:
+        """Somente dígitos."""
+        return "".join(ch for ch in (value or "") if ch.isdigit())
+
+    # ── Filtro com ranking de relevância ──────────────────────────────────────
+
     def _filter_cached_clients(self, clients: list, term: str) -> list:
-        normalized_term = self._normalize_search_text(term)
-        plain_term = "".join(ch for ch in normalized_term if ch.isalnum())
-        plain_term_nozero = plain_term.lstrip("0")
-        if not normalized_term:
+        """
+        Filtra e ordena clientes por relevância:
+          Tier 0 — match exato de código ou CPF/CNPJ completo
+          Tier 1 — código ou CPF/CNPJ começa com o termo
+          Tier 2 — nome começa com o termo
+          Tier 3 — qualquer campo contém o termo
+
+        Tanto letras quanto números são aceitos em qualquer campo;
+        a busca é sempre case-insensitive e ignora pontuação (.,/-).
+        """
+        t_an = self._alnum(term.strip())      # letras+dígitos, lowercase
+        t_d  = self._digits(term)             # só dígitos (para CPF/CNPJ)
+        if not t_an:
             return clients
 
-        output: list = []
-        for client in clients:
-            name = self._normalize_search_text(client.get("name") or "")
-            code = self._normalize_search_text(client.get("code") or "")
-            cnpj = self._normalize_search_text(client.get("cnpj") or "")
-            code_plain = "".join(ch for ch in code if ch.isalnum())
-            cnpj_plain = "".join(ch for ch in cnpj if ch.isalnum())
+        t_nozero = t_an.lstrip("0")
 
-            if normalized_term in name or normalized_term in code or normalized_term in cnpj:
-                output.append(client)
+        tier0: list = []   # match exato
+        tier1: list = []   # começa com (código / CNPJ)
+        tier2: list = []   # nome começa com
+        tier3: list = []   # contém (qualquer campo)
+
+        for c in clients:
+            name     = self._alnum(c.get("name") or "")
+            code     = self._alnum(c.get("code") or "")
+            cnpj_raw = c.get("cnpj") or ""
+            cnpj_an  = self._alnum(cnpj_raw)       # remove pontuação, lowercase
+            cnpj_d   = self._digits(cnpj_raw)      # só dígitos do CNPJ/CPF
+            code_nz  = code.lstrip("0")
+
+            # ── Tier 0: exato ────────────────────────────────────────────
+            if t_an == code or (t_d and t_d == cnpj_d):
+                tier0.append(c)
                 continue
-            if plain_term and (plain_term in code_plain or plain_term in cnpj_plain):
-                output.append(client)
+
+            # ── Tier 1: código/CNPJ começa com o termo ───────────────────
+            if code.startswith(t_an) or (t_d and cnpj_d.startswith(t_d)):
+                tier1.append(c)
                 continue
-            if plain_term_nozero and plain_term_nozero in code_plain.lstrip("0"):
-                output.append(client)
-        return output
+
+            # ── Tier 2: nome começa com o termo ──────────────────────────
+            if name.startswith(t_an):
+                tier2.append(c)
+                continue
+
+            # ── Tier 3: qualquer campo contém ────────────────────────────
+            if (t_an in code
+                    or t_an in name
+                    or t_an in cnpj_an
+                    or (t_d and t_d in cnpj_d)
+                    or (t_nozero and t_nozero in code_nz)):
+                tier3.append(c)
+
+        return tier0 + tier1 + tier2 + tier3
 
     def _normalize_search_text(self, value: str) -> str:
+        """Usado no caminho de fallback (servidor). Mantido por compatibilidade."""
         return (
             (value or "")
             .strip()
