@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, Signal, QThread, QObject
 from PySide6.QtGui import QColor
 
 from ..core import theme
+from ..widgets.smooth_scroll import SmoothScrollArea
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
     format_header_date as _format_header_date,
@@ -209,7 +210,7 @@ class SettingsView(QWidget):
         header.addWidget(info_card, 0, Qt.AlignmentFlag.AlignTop)
         root_layout.addLayout(header)
 
-        self._page_scroll = QScrollArea(self)
+        self._page_scroll = SmoothScrollArea(self)
         self._page_scroll.setWidgetResizable(True)
         self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._page_scroll.setStyleSheet(

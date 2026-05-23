@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate, Signal
 
 from ..core import theme
+from ..widgets.smooth_scroll import SmoothScrollArea
 from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import local_now
 from ..core.resolution import res
@@ -49,6 +50,7 @@ class MainWindow(QMainWindow):
         self._shown_notif_ids: set[int] = set()   # evita toast duplicado
         self._theme_transition_overlay: QLabel | None = None
         self._theme_transition_anim: QPropertyAnimation | None = None
+        self._nav_overlay: QLabel | None = None
         self._setup_ui()
         self._setup_statusbar()
         self.setWindowTitle("Sistema de Requisições - Ferragens Pinheiro")
@@ -97,7 +99,7 @@ class MainWindow(QMainWindow):
             max(520, int(600 * self.scale)),
         )
 
-        self._scroll_main = QScrollArea()
+        self._scroll_main = SmoothScrollArea()
         self._scroll_main.setWidgetResizable(True)
         self._scroll_main.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll_main.setStyleSheet(
@@ -216,6 +218,49 @@ class MainWindow(QMainWindow):
         self.form_view.refresh_logged_user()
         self._setup_statusbar()
 
+    def _nav_transition(self, page: int) -> None:
+        """Cross-fade suave ao trocar de página no stack (160 ms, OutCubic)."""
+        if self.stack.currentIndex() == page:
+            return
+
+        # Cancela overlay anterior se o usuário clicar rápido
+        if self._nav_overlay is not None:
+            self._nav_overlay.deleteLater()
+            self._nav_overlay = None
+
+        pixmap = self.stack.grab()
+        self.stack.setCurrentIndex(page)
+
+        if pixmap.isNull():
+            return
+
+        overlay = QLabel(self.stack)
+        overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        overlay.setScaledContents(True)
+        overlay.setPixmap(pixmap)
+        overlay.setGeometry(self.stack.rect())
+        overlay.raise_()
+        overlay.show()
+        self._nav_overlay = overlay
+
+        effect = QGraphicsOpacityEffect(overlay)
+        effect.setOpacity(1.0)
+        overlay.setGraphicsEffect(effect)
+
+        anim = QPropertyAnimation(effect, b"opacity", overlay)
+        anim.setDuration(160)
+        anim.setStartValue(1.0)
+        anim.setEndValue(0.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def _done():
+            overlay.deleteLater()
+            self._nav_overlay = None
+
+        anim.finished.connect(_done)
+        overlay._anim = anim   # mantém referência viva durante a animação
+        anim.start()
+
     def _on_nav(self, key: str):
         mapping = {
             "nova":               PAGE_FORM,
@@ -253,10 +298,10 @@ class MainWindow(QMainWindow):
                         True,
                         "Selecione uma requisição no Histórico ou na Central de Pedidos para visualizar.",
                     )
-                self.stack.setCurrentIndex(PAGE_FORM)
+                self._nav_transition(PAGE_FORM)
                 return
             if not self._confirm_new_requisition():
-                self.stack.setCurrentIndex(PAGE_FORM)
+                self._nav_transition(PAGE_FORM)
                 self.sidebar._highlight("nova")
                 return
             self.form_view.reset()
@@ -280,7 +325,7 @@ class MainWindow(QMainWindow):
         elif page == PAGE_FEEDBACK:
             self.feedback_view.refresh()
 
-        self.stack.setCurrentIndex(page)
+        self._nav_transition(page)
 
     def _navigate_to_home(self) -> None:
         """Navega para a página inicial correta de acordo com o perfil."""

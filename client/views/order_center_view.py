@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..widgets.smooth_scroll import SmoothScrollArea
 from ..core.session import session
 from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import (
@@ -283,7 +284,7 @@ class OrderCenterView(QWidget):
         )
         root.addWidget(self.error_label)
 
-        self._page_scroll = QScrollArea()
+        self._page_scroll = SmoothScrollArea()
         self._page_scroll.setWidgetResizable(True)
         self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._page_scroll.setStyleSheet(

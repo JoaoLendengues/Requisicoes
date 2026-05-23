@@ -24,6 +24,7 @@ except ImportError:
     HAS_QR = False
 
 from ..core import theme
+from ..widgets.smooth_scroll import SmoothScrollArea
 from ..core.datetime_utils import local_now
 from ..core.dialogs import apply_message_box_theme
 from ..core.resolution import res
@@ -573,7 +574,7 @@ class RequisitionForm(QWidget):
         root.setSpacing(0)
 
         # ScrollArea
-        self._page_scroll = QScrollArea()
+        self._page_scroll = SmoothScrollArea()
         self._page_scroll.setWidgetResizable(True)
         self._page_scroll.setStyleSheet(
             f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}"
