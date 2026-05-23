@@ -5,6 +5,7 @@ import os
 import io
 import shutil
 import tempfile
+import unicodedata
 from datetime import date, datetime
 
 from PySide6.QtWidgets import (
@@ -399,12 +400,26 @@ class ClientSearchBox(QWidget):
 
     @staticmethod
     def _alnum(value: str) -> str:
-        """Lowercased alphanumeric only — remove toda pontuação e espaços."""
-        return "".join(ch for ch in (value or "").lower() if ch.isalnum())
+        """
+        Lowercase, somente alfanumérico, SEM acentos.
+
+        'JOÃO PEDRO' → 'joaopedro'
+        'josé'       → 'jose'
+        '067.1/A-'   → '0671a'
+
+        Usa decomposição NFD para separar letras base de marcas de acento,
+        então descarta os combining chars — garantindo que 'joao' encontre
+        'JOÃO' mesmo quando o banco armazena nomes com acentos.
+        """
+        nfd = unicodedata.normalize("NFD", (value or "").lower())
+        return "".join(
+            ch for ch in nfd
+            if ch.isalnum() and not unicodedata.combining(ch)
+        )
 
     @staticmethod
     def _digits(value: str) -> str:
-        """Somente dígitos."""
+        """Somente dígitos — para comparar CPF/CNPJ independente da formatação."""
         return "".join(ch for ch in (value or "") if ch.isdigit())
 
     # ── Filtro com ranking de relevância ──────────────────────────────────────
@@ -412,32 +427,40 @@ class ClientSearchBox(QWidget):
     def _filter_cached_clients(self, clients: list, term: str) -> list:
         """
         Filtra e ordena clientes por relevância:
-          Tier 0 — match exato de código ou CPF/CNPJ completo
-          Tier 1 — código ou CPF/CNPJ começa com o termo
-          Tier 2 — nome começa com o termo
+          Tier 0 — match exato de código OU CPF/CNPJ completo
+          Tier 1 — código/CNPJ começa com o termo
+          Tier 2 — nome começa com o termo  (apenas pesquisas com letras)
           Tier 3 — qualquer campo contém o termo
 
-        Tanto letras quanto números são aceitos em qualquer campo;
-        a busca é sempre case-insensitive e ignora pontuação (.,/-).
+        Regras de campo por tipo de entrada:
+          Apenas dígitos  → busca em código e CPF/CNPJ  (nome ignorado)
+          Com letras      → busca em todos os campos
+
+        Sempre case-insensitive e sem acentos (ã=a, é=e, ç=c…).
         """
-        t_an = self._alnum(term.strip())      # letras+dígitos, lowercase
-        t_d  = self._digits(term)             # só dígitos (para CPF/CNPJ)
+        t_raw = term.strip()
+        if not t_raw:
+            return clients
+
+        t_an     = self._alnum(t_raw)   # sem acento, lowercase, alfanumérico
+        t_d      = self._digits(t_raw)  # só dígitos
         if not t_an:
             return clients
 
-        t_nozero = t_an.lstrip("0")
+        t_nozero    = t_an.lstrip("0")
+        digits_only = bool(t_d) and t_d == t_an   # entrada é puramente numérica
 
         tier0: list = []   # match exato
-        tier1: list = []   # começa com (código / CNPJ)
-        tier2: list = []   # nome começa com
-        tier3: list = []   # contém (qualquer campo)
+        tier1: list = []   # código/CNPJ começa com o termo
+        tier2: list = []   # nome começa com (só pesquisas com letras)
+        tier3: list = []   # contém em qualquer campo relevante
 
         for c in clients:
             name     = self._alnum(c.get("name") or "")
             code     = self._alnum(c.get("code") or "")
             cnpj_raw = c.get("cnpj") or ""
-            cnpj_an  = self._alnum(cnpj_raw)       # remove pontuação, lowercase
-            cnpj_d   = self._digits(cnpj_raw)      # só dígitos do CNPJ/CPF
+            cnpj_an  = self._alnum(cnpj_raw)   # sem pontuação, sem acento
+            cnpj_d   = self._digits(cnpj_raw)  # só dígitos do CNPJ/CPF
             code_nz  = code.lstrip("0")
 
             # ── Tier 0: exato ────────────────────────────────────────────
@@ -450,17 +473,19 @@ class ClientSearchBox(QWidget):
                 tier1.append(c)
                 continue
 
-            # ── Tier 2: nome começa com o termo ──────────────────────────
-            if name.startswith(t_an):
+            # ── Tier 2: nome começa com (apenas quando há letras no termo) ─
+            if not digits_only and name.startswith(t_an):
                 tier2.append(c)
                 continue
 
-            # ── Tier 3: qualquer campo contém ────────────────────────────
-            if (t_an in code
-                    or t_an in name
-                    or t_an in cnpj_an
-                    or (t_d and t_d in cnpj_d)
-                    or (t_nozero and t_nozero in code_nz)):
+            # ── Tier 3: contém em qualquer campo relevante ───────────────
+            code_match = (t_an in code
+                          or (t_nozero and t_nozero in code_nz))
+            cnpj_match = (t_an in cnpj_an
+                          or (t_d and t_d in cnpj_d))
+            name_match = (not digits_only) and (t_an in name)
+
+            if code_match or cnpj_match or name_match:
                 tier3.append(c)
 
         return tier0 + tier1 + tier2 + tier3
