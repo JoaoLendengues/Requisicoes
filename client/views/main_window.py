@@ -204,7 +204,7 @@ class MainWindow(QMainWindow):
             "Ctrl+6": lambda: self._on_nav("historico"),
             "Ctrl+7": self._toggle_theme_shortcut,
             "Ctrl+8": self._switch_user,
-            "Ctrl+9": self._switch_user,
+            "Ctrl+9": self._logout,
         }
 
         self._shortcut_actions: list[QAction] = []
@@ -316,6 +316,8 @@ class MainWindow(QMainWindow):
         }
         if page in guards and not guards[page]:
             return
+        if key in self.sidebar._nav_btns:
+            self.sidebar._highlight(key)
 
         if key == "nova":
             if session.is_view_only:
