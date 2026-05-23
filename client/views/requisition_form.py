@@ -5,7 +5,6 @@ import os
 import io
 import shutil
 import tempfile
-import unicodedata
 from datetime import date, datetime
 
 from PySide6.QtWidgets import (
@@ -165,18 +164,17 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
 # ── Campo de busca de cliente ─────────────────────────────────────────────────
 class ClientSearchBox(QWidget):
     """
-    Caixa de busca com dropdown em tempo real.
+    Busca de cliente em tempo real — sempre via servidor.
 
-    Estratégia de dois estágios:
-    1. Ao abrir o formulário, carrega TODOS os clientes ativos em background
-       (limit=9999).  Enquanto a carga não termina, usa busca no servidor com
-       debounce curto como fallback.
-    2. Após a carga (~1–3 s na LAN), toda busca é client-side puro — zero
-       requisições de rede, latência imperceptível a cada keystroke.
-
-    Pesquisa por nome, código ou CPF/CNPJ (ignora pontuação).
+    Adequada para bases com 100k+ clientes: nenhum pré-carregamento.
+    Cada keystroke reinicia um debounce de 250 ms; ao disparar, envia o
+    termo ao servidor que retorna os 100 resultados mais relevantes usando
+    índices GIN de trigrama (busca por nome, código e CPF/CNPJ).
     """
     client_selected = Signal(object)   # dict do cliente ou None
+
+    _DEBOUNCE_MS  = 250   # ms de espera após o último keystroke
+    _SERVER_LIMIT = 100   # máximo de resultados por busca
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -184,57 +182,13 @@ class ClientSearchBox(QWidget):
         self._selected: dict | None = None
         self._threads: list = []
         self._search_seq = 0
-        self._last_requested_term = ""
-        self._results_cache: dict[str, list] = {}
-        self._max_cache_entries = 40
-        self._live_candidates: list = []
-        self._all_clients: list = []          # cache completo — preenchido em background
 
-        # Timer de debounce — fallback enquanto _all_clients ainda carrega
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
-        self._debounce.setInterval(120)
+        self._debounce.setInterval(self._DEBOUNCE_MS)
         self._debounce.timeout.connect(self._do_search)
 
         self._setup_ui()
-
-        # Carrega todos os clientes em background para busca client-side instantânea
-        self._load_all_clients()
-
-    # ── Carga completa em background ──────────────────────────────────────────
-
-    def _load_all_clients(self) -> None:
-        """
-        Busca todos os clientes ativos do servidor uma única vez.
-
-        Após a conclusão, cada keystroke passa a ser filtrado localmente em
-        Python puro, sem nenhuma requisição de rede.
-        """
-        t, w = _run_in_thread(
-            api.list_clients, "", 9999,
-            on_result=self._on_all_clients_loaded,
-            on_error=lambda _: None,
-        )
-        self._track_thread(t, w)
-
-    def _on_all_clients_loaded(self, clients: list) -> None:
-        # Garante que recebemos uma lista de dicts — descarta silenciosamente
-        # qualquer resposta inesperada para não quebrar o filtro.
-        if not isinstance(clients, list):
-            return
-        self._all_clients = [c for c in clients if isinstance(c, dict)]
-        # Pré-popula o cache vazio para que _render_cached_preview já funcione
-        if self._all_clients:
-            self._results_cache[""] = self._all_clients
-        # Se o usuário já digitou algo antes da carga terminar, atualiza o dropdown
-        current_term = self.input.text().strip()
-        min_chars = 1 if self._looks_like_code_or_document(current_term) else 2
-        if len(current_term) >= min_chars:
-            try:
-                filtered = self._filter_cached_clients(self._all_clients, current_term)
-                self._render_results(filtered)
-            except Exception:
-                self._render_results(self._all_clients)
 
     # ── Interface ─────────────────────────────────────────────────────────────
 
@@ -270,8 +224,10 @@ class ClientSearchBox(QWidget):
         self._drop.installEventFilter(self)
         self._drop.hide()
 
-    # ── Digitação → filtro local (ou debounce → servidor como fallback) ──────
+    # ── Digitação → debounce → servidor ───────────────────────────────────────
+
     def _on_text(self, text: str):
+        # Se o texto atual é o cliente já selecionado, ignora
         if self._selected:
             expected = f"{self._selected['code']} — {self._selected['name']}"
             if text == expected:
@@ -279,90 +235,59 @@ class ClientSearchBox(QWidget):
             self._selected = None
 
         term = text.strip()
-        min_chars = 1 if self._looks_like_code_or_document(term) else 2
-        if len(term) < min_chars:
+        if len(term) < 2:
             self._debounce.stop()
             self._drop.hide()
             return
 
-        # ── Caminho rápido: busca local instantânea ────────────────────────
-        # Quando _all_clients já foi carregado, filtra em Python sem rede.
-        if self._all_clients:
-            try:
-                filtered = self._filter_cached_clients(self._all_clients, term)
-                self._render_results(filtered)
-            except Exception:
-                # Fallback defensivo: mostra os primeiros clientes sem filtro
-                self._render_results(self._all_clients)
-            return
-        # ── Fallback: servidor (enquanto a carga inicial ainda não terminou) ─
-
-        cached = self._results_cache.get(term)
-        if cached is not None:
-            self._render_results(cached)
-        else:
-            self._render_live_preview(term)
-            self._render_cached_preview(term)
-
-        # Codigo/CPF/CNPJ: resposta mais imediata.
-        if self._looks_like_code_or_document(term):
-            self._debounce.start(0)
-        else:
-            self._debounce.start(40)
+        self._debounce.start(self._DEBOUNCE_MS)
 
     def _do_search(self):
-        # Carga completa já disponível — busca client-side em _on_text, nada a fazer.
-        if self._all_clients:
-            return
-
         term = self.input.text().strip()
-        min_chars = 1 if self._looks_like_code_or_document(term) else 2
-        if len(term) < min_chars:
+        if len(term) < 2:
             return
-
-        if term == self._last_requested_term:
-            cached = self._results_cache.get(term)
-            if cached is not None:
-                self._render_results(cached)
-            return
-        self._last_requested_term = term
 
         self._search_seq += 1
         search_id = self._search_seq
+
+        # Indicador de carregamento enquanto aguarda o servidor
+        self._drop.clear()
+        loading = QListWidgetItem("  Buscando...")
+        loading.setFlags(Qt.ItemFlag.NoItemFlags)
+        loading.setForeground(QColor(theme.TEXT_LIGHT))
+        self._drop.addItem(loading)
+        self._reposition()
+        self._drop.show()
+
         t, w = _run_in_thread(
-            api.list_clients, term, 9999,
-            on_result=lambda clients, q=term, sid=search_id: self._on_results(q, sid, clients),
-            on_error=lambda _, q=term, sid=search_id: self._on_search_error(q, sid),
+            api.list_clients, term, self._SERVER_LIMIT,
+            on_result=lambda clients, sid=search_id: self._on_results(sid, clients),
+            on_error=lambda _, sid=search_id: self._on_search_error(sid),
         )
         self._track_thread(t, w)
 
-    def _on_results(self, term: str, search_id: int, clients: list):
+    def _on_results(self, search_id: int, clients: list):
         if search_id != self._search_seq:
             return
-        if self.input.text().strip() != term:
-            return
-
-        self._live_candidates = clients
-        self._results_cache[term] = clients
-        if len(self._results_cache) > self._max_cache_entries:
-            first_key = next(iter(self._results_cache))
-            if first_key != term:
-                self._results_cache.pop(first_key, None)
+        if not isinstance(clients, list):
+            clients = []
         self._render_results(clients)
 
-    def _on_search_error(self, term: str, search_id: int):
+    def _on_search_error(self, search_id: int):
         if search_id != self._search_seq:
             return
-        if self.input.text().strip() != term:
-            return
-        if self._drop.count() == 0:
-            self._drop.hide()
-
-    def _render_results(self, clients: list, show_empty: bool = True):
-        if not clients and not show_empty:
-            return
         self._drop.clear()
+        it = QListWidgetItem("  Erro ao buscar — verifique a conexão")
+        it.setFlags(Qt.ItemFlag.NoItemFlags)
+        it.setForeground(QColor(theme.TEXT_LIGHT))
+        self._drop.addItem(it)
+        self._reposition()
+        self._drop.show()
 
+    # ── Renderização ──────────────────────────────────────────────────────────
+
+    def _render_results(self, clients: list):
+        self._drop.clear()
         if not clients:
             it = QListWidgetItem("  Nenhum cliente encontrado")
             it.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -377,183 +302,14 @@ class ClientSearchBox(QWidget):
                 it = QListWidgetItem(label)
                 it.setData(Qt.ItemDataRole.UserRole, c)
                 self._drop.addItem(it)
-
         self._reposition()
         self._drop.show()
-
-    def _render_cached_preview(self, term: str) -> None:
-        base = self._best_cached_base(term)
-        if not base:
-            return
-        filtered = self._filter_cached_clients(base, term)
-        if filtered:
-            self._render_results(filtered, show_empty=False)
-
-    def _render_live_preview(self, term: str) -> None:
-        if not self._live_candidates:
-            return
-        filtered = self._filter_cached_clients(self._live_candidates, term)
-        if filtered:
-            self._render_results(filtered, show_empty=False)
-
-    def _best_cached_base(self, term: str) -> list:
-        normalized_term = self._normalize_search_text(term)
-        best: list = []
-        best_size = 0
-        for key, clients in self._results_cache.items():
-            normalized_key = self._normalize_search_text(key)
-            if normalized_term.startswith(normalized_key) or normalized_key.startswith(normalized_term):
-                if len(clients) > best_size:
-                    best = clients
-                    best_size = len(clients)
-        return best
-
-    # ── Helpers de normalização ───────────────────────────────────────────────
-
-    @staticmethod
-    def _alnum(value: str) -> str:
-        """
-        Lowercase, somente alfanumérico, SEM acentos.
-        'JOÃO PEDRO' → 'joaopedro', 'José' → 'jose', '067.1' → '0671'
-        """
-        nfd = unicodedata.normalize("NFD", (value or "").lower())
-        return "".join(
-            ch for ch in nfd
-            if ch.isalnum() and not unicodedata.combining(ch)
-        )
-
-    @staticmethod
-    def _digits(value: str) -> str:
-        """Somente dígitos — para comparar CPF/CNPJ independente da formatação."""
-        return "".join(ch for ch in (value or "") if ch.isdigit())
-
-    # ── Filtro unificado com ranking de relevância ────────────────────────────
-
-    @staticmethod
-    def _term_looks_like_document(term: str) -> bool:
-        """
-        Retorna True quando o termo digitado claramente representa um CPF/CNPJ:
-          • contém . / - (formatação típica de documento)
-          • OU tem 8 ou mais dígitos puros (longo demais para ser um código)
-        Dígitos curtos sem formatação (ex: '067', '1234') NÃO ativam a busca
-        por CNPJ, evitando que o código de cliente bata no CPF do cliente.
-        """
-        if any(ch in term for ch in "./-"):
-            return True
-        return sum(ch.isdigit() for ch in term) >= 8
-
-    def _filter_cached_clients(self, clients: list, term: str) -> list:
-        """
-        Pesquisa unificada nas três colunas (name, code, cnpj) com ranking:
-
-          Tier 0 — match exato de código  OU  CPF/CNPJ completo
-          Tier 1 — código ou nome COMEÇA COM o termo
-          Tier 1 — CNPJ começa com os dígitos do termo  (somente se parecer documento)
-          Tier 2 — código, nome ou CNPJ CONTÉM o termo
-
-        Regra CNPJ: só é incluído na busca quando o termo tem formatação
-        de documento (. / -) ou ≥ 8 dígitos — para impedir que um código
-        curto como '067' traga todos os clientes com '067' no CPF.
-        """
-        t_raw = term.strip()
-        if not t_raw:
-            return clients
-
-        t_an    = self._alnum(t_raw)   # sem acento, lowercase, alfanumérico
-        t_d     = self._digits(t_raw)  # só dígitos (para CPF/CNPJ)
-        if not t_an:
-            return clients
-
-        t_nozero    = t_an.lstrip("0")
-        use_cnpj    = self._term_looks_like_document(t_raw)
-
-        tier0: list = []
-        tier1: list = []
-        tier2: list = []
-
-        for c in clients:
-            if not isinstance(c, dict):
-                continue
-            name    = self._alnum(c.get("name") or "")
-            code    = self._alnum(c.get("code") or "")
-            code_nz = code.lstrip("0")
-            cnpj_d  = self._digits(c.get("cnpj") or "") if use_cnpj else ""
-
-            # ── Tier 0: match exato ────────────────────────────────────────
-            if t_an == code:
-                tier0.append(c)
-                continue
-            if use_cnpj and t_d and t_d == cnpj_d:
-                tier0.append(c)
-                continue
-
-            # ── Tier 1: começa com ─────────────────────────────────────────
-            if code.startswith(t_an) or name.startswith(t_an):
-                tier1.append(c)
-                continue
-            if use_cnpj and t_d and cnpj_d.startswith(t_d):
-                tier1.append(c)
-                continue
-
-            # ── Tier 2: contém em qualquer campo relevante ─────────────────
-            if (t_an in code
-                    or t_an in name
-                    or (t_nozero and t_nozero in code_nz)
-                    or (use_cnpj and t_d and t_d in cnpj_d)):
-                tier2.append(c)
-
-        return tier0 + tier1 + tier2
-
-    def _normalize_search_text(self, value: str) -> str:
-        """Usado no caminho de fallback (servidor). Mantido por compatibilidade."""
-        return (
-            (value or "")
-            .strip()
-            .lower()
-            .replace(".", "")
-            .replace("-", "")
-            .replace("/", "")
-            .replace(" ", "")
-        )
-
-    def _track_thread(self, thread: QThread, worker: QObject) -> None:
-        pair = (thread, worker)
-        self._threads.append(pair)
-
-        def _cleanup():
-            try:
-                self._threads.remove(pair)
-            except ValueError:
-                pass
-            worker.deleteLater()
-            thread.deleteLater()
-
-        thread.finished.connect(_cleanup)
-
-    def _looks_like_code_or_document(self, term: str) -> bool:
-        plain = (
-            term.replace(".", "")
-            .replace("-", "")
-            .replace("/", "")
-            .replace(" ", "")
-        )
-        if not plain:
-            return False
-        return plain.isdigit() or term.isalnum()
-
-    def _first_selectable(self) -> QListWidgetItem | None:
-        """Retorna o primeiro item com dado de cliente (pula itens não-selecionáveis)."""
-        for i in range(self._drop.count()):
-            it = self._drop.item(i)
-            if it and it.data(Qt.ItemDataRole.UserRole) is not None:
-                return it
-        return None
 
     def _reposition(self):
         s = self.scale
         gpos = self.input.mapToGlobal(self.input.rect().bottomLeft())
         row_h = max(30, int(34 * s))
-        # Usa todo o espaço disponível abaixo do campo na tela
+        # Ocupa todo o espaço disponível abaixo do campo na tela
         screen = QApplication.primaryScreen().availableGeometry()
         available_h = screen.bottom() - gpos.y() - 10
         max_by_screen = max(4, available_h // row_h)
@@ -562,6 +318,7 @@ class ClientSearchBox(QWidget):
         self._drop.resize(self.input.width(), rows * row_h + 6)
 
     # ── Seleção ───────────────────────────────────────────────────────────────
+
     def _pick(self, item: QListWidgetItem):
         client = item.data(Qt.ItemDataRole.UserRole)
         if not client:
@@ -573,7 +330,16 @@ class ClientSearchBox(QWidget):
         self._drop.hide()
         self.client_selected.emit(client)
 
+    def _first_selectable(self) -> QListWidgetItem | None:
+        """Retorna o primeiro item com dado de cliente (pula itens não-selecionáveis)."""
+        for i in range(self._drop.count()):
+            it = self._drop.item(i)
+            if it and it.data(Qt.ItemDataRole.UserRole) is not None:
+                return it
+        return None
+
     # ── Navegação por teclado ─────────────────────────────────────────────────
+
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.KeyPress:
             key = event.key()
@@ -611,7 +377,24 @@ class ClientSearchBox(QWidget):
 
         return super().eventFilter(obj, event)
 
+    # ── Utilitários internos ──────────────────────────────────────────────────
+
+    def _track_thread(self, thread: QThread, worker: QObject) -> None:
+        pair = (thread, worker)
+        self._threads.append(pair)
+
+        def _cleanup():
+            try:
+                self._threads.remove(pair)
+            except ValueError:
+                pass
+            worker.deleteLater()
+            thread.deleteLater()
+
+        thread.finished.connect(_cleanup)
+
     # ── API pública ───────────────────────────────────────────────────────────
+
     def set_clients(self, clients: list):
         """Mantido por compatibilidade — não é mais necessário."""
         pass
@@ -641,7 +424,6 @@ class ClientSearchBox(QWidget):
 
     def clear(self):
         self._selected = None
-        self._last_requested_term = ""
         self.input.blockSignals(True)
         self.input.clear()
         self.input.blockSignals(False)
