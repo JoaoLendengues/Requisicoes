@@ -916,11 +916,20 @@ class RequisitionForm(QWidget):
     def _ask_ped_shortcut_action(self) -> str | None:
         msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Icon.Question)
-        msg.setWindowTitle("Atalho N")
+        msg.setWindowTitle("Pedido")
         msg.setText("O que deseja fazer com o número do PED?")
         btn_fill = msg.addButton("Preencher PED", QMessageBox.ButtonRole.AcceptRole)
-        btn_open = msg.addButton("Abrir por PED", QMessageBox.ButtonRole.AcceptRole)
-        msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        btn_open = msg.addButton("Abrir por pedido", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+
+        # Atalhos locais do diálogo: P=Preencher, A=Abrir, C=Cancelar
+        for key, button in (("P", btn_fill), ("A", btn_open), ("C", btn_cancel)):
+            action = QAction(msg)
+            action.setShortcut(QKeySequence(key))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            action.triggered.connect(button.click)
+            msg.addAction(action)
+
         apply_message_box_theme(msg)
         msg.exec()
 
@@ -981,7 +990,7 @@ class RequisitionForm(QWidget):
             on_result=lambda data, target=normalized_target: self._on_requisition_search_by_ped(data, target),
             on_error=lambda msg: QMessageBox.critical(self, "PED", msg),
         )
-        self._track_thread(thread, worker)
+        self._threads.append((thread, worker))
 
     def _on_requisition_search_by_ped(self, results: list, normalized_target: str) -> None:
         matches = []
