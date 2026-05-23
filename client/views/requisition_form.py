@@ -244,10 +244,6 @@ class ClientSearchBox(QWidget):
         self._debounce.start(self._DEBOUNCE_MS)
 
     def _do_search(self):
-        # Carga completa já disponível — busca client-side em _on_text, nada a fazer.
-        if self._all_clients:
-            return
-
         term = self.input.text().strip()
         if len(term) < 2:
             return
