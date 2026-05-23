@@ -342,6 +342,14 @@ class _ItemGridTable(QTableWidget):
     """QTableWidget com fluxo de Tab lateral para os itens da requisição."""
 
     def keyPressEvent(self, event):
+        if (
+            event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace)
+            and self.state() != QAbstractItemView.State.EditingState
+        ):
+            self._clear_selected_cells()
+            event.accept()
+            return
+
         if event.key() == Qt.Key.Key_Tab and not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
             current = self.currentIndex()
             if self._is_last_weight_cell(current):
@@ -399,3 +407,15 @@ class _ItemGridTable(QTableWidget):
         if row > 0:
             return self.model().index(row - 1, WEIGHT_COL)
         return self.model().index(row, PRODUCT_CODE_COL)
+
+    def _clear_selected_cells(self) -> None:
+        indexes = sorted(self.selectedIndexes(), key=lambda idx: (idx.row(), idx.column()))
+        if not indexes:
+            return
+
+        model = self.model()
+        for idx in indexes:
+            row, col = idx.row(), idx.column()
+            if col == POSITION_COL:
+                continue
+            model.setData(idx, "")
