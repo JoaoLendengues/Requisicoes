@@ -20,6 +20,15 @@ SCALE_FACTOR: dict[str, float] = {
     label: f for label, f in SCALE_STEPS if f is not None
 }
 
+# ── Passos de tamanho de fonte ────────────────────────────────────────────────
+FONT_SIZE_STEPS: list[tuple[str, float]] = [
+    ("Pequeno",      0.90),
+    ("Normal",       1.00),
+    ("Grande",       1.10),
+    ("Muito Grande", 1.20),
+]
+FONT_SIZE_FACTOR: dict[str, float] = {label: f for label, f in FONT_SIZE_STEPS}
+
 
 def _ratio_to_scale(ratio: float) -> float:
     """Mapeia ratio de resolução (vs 1920×1080) para o fator de escala discreto."""
@@ -56,10 +65,11 @@ class ResolutionManager:
         self._logical_dpi  = screen.logicalDotsPerInch()
         self._geo          = screen.availableGeometry()
         self._auto_scale   = self._calc_auto_scale()
-        self._user_scale   = self._load_setting("font_scale", "100%")
-        self._server_url   = self._load_setting("server_url") or "http://10.1.1.151:5000"
-        self._maximized    = self._load_setting("maximized", True)
-        self._dark_mode    = bool(self._load_setting("dark_mode", False))
+        self._user_scale      = self._load_setting("font_scale", "100%")
+        self._font_size_label = self._load_setting("font_size", "Normal")
+        self._server_url      = self._load_setting("server_url") or "http://10.1.1.151:5000"
+        self._maximized       = self._load_setting("maximized", True)
+        self._dark_mode       = bool(self._load_setting("dark_mode", False))
         _theme.set_dark(self._dark_mode)
         self._ready = True
 
@@ -144,6 +154,22 @@ class ResolutionManager:
 
     # ── Configurações persistentes ──────────────────────────────────────────
     @property
+    def font_size_label(self) -> str:
+        """Label do tamanho de fonte ativo ('Pequeno', 'Normal', 'Grande', 'Muito Grande')."""
+        lbl = self._font_size_label
+        return lbl if lbl in FONT_SIZE_FACTOR else "Normal"
+
+    @property
+    def font_factor(self) -> float:
+        """Multiplicador de tamanho de fonte (0.90 – 1.20)."""
+        return FONT_SIZE_FACTOR.get(self.font_size_label, 1.0)
+
+    @property
+    def effective_scale(self) -> float:
+        """Escala efetiva = escala de interface × fator de fonte."""
+        return round(self.scale * self.font_factor, 4)
+
+    @property
     def server_url(self) -> str:
         return self._server_url
 
@@ -165,6 +191,8 @@ class ResolutionManager:
             data[k] = v
             if k == "font_scale":
                 self._user_scale = v
+            if k == "font_size":
+                self._font_size_label = v
             if k == "server_url":
                 self._server_url = v
             if k == "maximized":

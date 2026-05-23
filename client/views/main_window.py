@@ -42,7 +42,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.scale = res.scale
+        self.scale = res.effective_scale
         self._threads: list = []
         self._unread_count = 0
         self._listener: NotificationListener | None = None
@@ -168,6 +168,7 @@ class MainWindow(QMainWindow):
         )
         self.form_view.save_requested.connect(self._save_requisition)
         self.settings_view.scale_changed.connect(self._on_scale_changed)
+        self.settings_view.font_size_changed.connect(self._on_scale_changed)
 
         # ── Visibilidade dos botões da sidebar por perfil ─────────────────────
         nav_visible = {
@@ -708,7 +709,7 @@ class MainWindow(QMainWindow):
         old_central = self.takeCentralWidget()
         if old_central is not None:
             old_central.deleteLater()
-        self.scale = res.scale
+        self.scale = res.effective_scale
         self._setup_ui()
         self._restore_ui_state(state)
         return self

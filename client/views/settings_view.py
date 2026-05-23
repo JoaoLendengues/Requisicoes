@@ -12,7 +12,7 @@ from ..core.datetime_utils import (
     format_header_date as _format_header_date,
     local_now,
 )
-from ..core.resolution import res, SCALE_STEPS
+from ..core.resolution import res, SCALE_STEPS, FONT_SIZE_STEPS
 from ..core.session import session
 from ..api import client as api
 
@@ -136,6 +136,7 @@ class SettingsApiWorker(QObject):
 
 class SettingsView(QWidget):
     scale_changed = Signal(float)
+    font_size_changed = Signal()
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -303,18 +304,7 @@ class SettingsView(QWidget):
             btn.setCheckable(True)
             btn.setChecked(label == active_label)
             btn.setFixedHeight(max(32, int(36 * s)))
-            btn.setStyleSheet(
-                f"QPushButton {{"
-                f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-                f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
-                f"  padding:0 {max(10, int(14*s))}px;"
-                f"  font-size:{max(8, int(9*s))}pt; font-weight:700;"
-                f"}}"
-                f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{theme.PRIMARY}; }}"
-                f"QPushButton:checked {{"
-                f"  background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY};"
-                f"}}"
-            )
+            btn.setStyleSheet(self._scale_btn_style(s))
             btn.clicked.connect(lambda checked=False, lbl=label: self._on_scale_btn(lbl))
             scale_row.addWidget(btn)
             self._scale_btns[label] = btn
@@ -331,6 +321,36 @@ class SettingsView(QWidget):
             f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
         )
         layout.addWidget(self.screen_info)
+
+        # ── Tamanho de Fonte (todos) ──────────────────────────────────────────
+        layout.addWidget(_section("Tamanho de Fonte", s))
+        layout.addWidget(_separator())
+
+        font_size_row = QHBoxLayout()
+        font_size_row.setSpacing(max(6, int(8 * s)))
+        font_size_row.addWidget(self._lbl("Tamanho do texto:", s))
+
+        self._font_size_btns: dict[str, QPushButton] = {}
+        active_font_label = res.font_size_label
+        for label, _factor in FONT_SIZE_STEPS:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setChecked(label == active_font_label)
+            btn.setFixedHeight(max(32, int(36 * s)))
+            btn.setStyleSheet(self._scale_btn_style(s))
+            btn.clicked.connect(lambda checked=False, lbl=label: self._on_font_size_btn(lbl))
+            font_size_row.addWidget(btn)
+            self._font_size_btns[label] = btn
+
+        font_size_row.addStretch()
+        layout.addLayout(font_size_row)
+
+        font_size_hint = QLabel(
+            "Aumenta ou reduz apenas os textos, mantendo o layout da interface."
+        )
+        font_size_hint.setProperty("muted", "1")
+        font_size_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        layout.addWidget(font_size_hint)
 
         # ── Alertas de Faturamento (admin + gerente) ──────────────────────────
         self._billing_section = QWidget()
@@ -473,6 +493,7 @@ class SettingsView(QWidget):
     def _finish_save(self, remote_ok: bool, error_message: str = ""):
         context = self._pending_save_context or {}
         scale_changed = bool(context.get("scale_changed"))
+        font_size_changed = bool(context.get("font_size_changed"))
         current = local_now()
         self.date_label.setText(_format_header_date(current))
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
@@ -482,32 +503,48 @@ class SettingsView(QWidget):
             self.operational_status.setText(
                 f"Prazo sincronizado com o servidor: {self.input_pending_invoice_days.value()} dia(s)."
             )
+            QMessageBox.information(self, "Configuracoes", "Configuracoes aplicadas com sucesso.")
             if scale_changed:
-                QMessageBox.information(
-                    self,
-                    "Salvo",
-                    "Configuracoes salvas.\nA interface sera recarregada com a nova escala.",
-                )
                 self.scale_changed.emit(res.scale)
-            else:
-                QMessageBox.information(self, "Salvo", "Configuracoes salvas.")
+            elif font_size_changed:
+                self.font_size_changed.emit()
         else:
             self.operational_status.setText(
                 "Nao foi possivel salvar o prazo no servidor. O valor local foi mantido."
             )
-            message = (
+            QMessageBox.warning(
+                self,
+                "Atencao",
                 "As configuracoes locais foram salvas, mas o prazo de alerta "
-                "de faturamento nao foi salvo no servidor.\n\n"
-                f"{error_message}"
+                f"de faturamento nao foi salvo no servidor.\n\n{error_message}",
             )
-            QMessageBox.warning(self, "Atencao", message)
             if scale_changed:
                 self.scale_changed.emit(res.scale)
+            elif font_size_changed:
+                self.font_size_changed.emit()
 
         self._pending_save_context = None
 
+    def _scale_btn_style(self, s: float) -> str:
+        return (
+            f"QPushButton {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
+            f"  padding:0 {max(10, int(14*s))}px;"
+            f"  font-size:{max(8, int(9*s))}pt; font-weight:700;"
+            f"}}"
+            f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{theme.PRIMARY}; }}"
+            f"QPushButton:checked {{"
+            f"  background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY};"
+            f"}}"
+        )
+
     def _on_scale_btn(self, label: str):
         for lbl, btn in self._scale_btns.items():
+            btn.setChecked(lbl == label)
+
+    def _on_font_size_btn(self, label: str):
+        for lbl, btn in self._font_size_btns.items():
             btn.setChecked(lbl == label)
 
     def _test_connection(self):
@@ -530,20 +567,29 @@ class SettingsView(QWidget):
         self.btn_test.setText("Testar conexao")
 
     def _save(self):
-        selected_label = next(
+        selected_scale = next(
             (lbl for lbl, btn in self._scale_btns.items() if btn.isChecked()),
             "100%",
         )
-        scale_changed = (selected_label != res._user_scale)
+        selected_font_size = next(
+            (lbl for lbl, btn in self._font_size_btns.items() if btn.isChecked()),
+            "Normal",
+        )
+        scale_changed     = (selected_scale != res._user_scale)
+        font_size_changed = (selected_font_size != res.font_size_label)
 
         if session.settings_show_billing:
             # Admin / Gerente: salva aparência + prazo de faturamento no servidor
             pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
             res.save(
-                font_scale=selected_label,
+                font_scale=selected_scale,
+                font_size=selected_font_size,
                 pending_invoice_alert_days=pending_invoice_alert_days,
             )
-            self._pending_save_context = {"scale_changed": scale_changed}
+            self._pending_save_context = {
+                "scale_changed": scale_changed,
+                "font_size_changed": font_size_changed,
+            }
             self._set_save_busy(True)
             self.operational_status.setText("Salvando prazo de alerta no servidor...")
             self._start_api_worker(
@@ -552,19 +598,15 @@ class SettingsView(QWidget):
             )
         else:
             # Demais roles: salva apenas aparência localmente
-            res.save(font_scale=selected_label)
+            res.save(font_scale=selected_scale, font_size=selected_font_size)
             current = local_now()
             self.date_label.setText(_format_header_date(current))
             self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
+            QMessageBox.information(self, "Configuracoes", "Configuracoes aplicadas com sucesso.")
             if scale_changed:
-                QMessageBox.information(
-                    self,
-                    "Salvo",
-                    "Configuracoes salvas.\nA interface sera recarregada com a nova escala.",
-                )
                 self.scale_changed.emit(res.scale)
-            else:
-                QMessageBox.information(self, "Salvo", "Configuracoes salvas.")
+            elif font_size_changed:
+                self.font_size_changed.emit()
 
     def _check_updates(self) -> None:
         from ..updater import UpdateChecker
@@ -623,16 +665,8 @@ class SettingsView(QWidget):
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
+        btn_style = self._scale_btn_style(s)
         for btn in self._scale_btns.values():
-            btn.setStyleSheet(
-                f"QPushButton {{"
-                f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-                f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
-                f"  padding:0 {max(10, int(14*s))}px;"
-                f"  font-size:{max(8, int(9*s))}pt; font-weight:700;"
-                f"}}"
-                f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{theme.PRIMARY}; }}"
-                f"QPushButton:checked {{"
-                f"  background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY};"
-                f"}}"
-            )
+            btn.setStyleSheet(btn_style)
+        for btn in self._font_size_btns.values():
+            btn.setStyleSheet(btn_style)
