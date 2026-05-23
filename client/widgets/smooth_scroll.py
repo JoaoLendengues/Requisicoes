@@ -26,10 +26,10 @@ from PySide6.QtWidgets import QScrollArea
 
 _FRAME_MS    = 16       # intervalo do timer (ms) — referência, não é o divisor
 _FRAME_REF_S = _FRAME_MS / 1000.0
-_BASE_LERP   = 0.38     # lerp equivalente a um frame de 16 ms
-_SNAP_PX     = 1.5      # trava quando diff < 1.5 px
-_STEP_RATIO  = 0.20     # passo por tick = 20 % do pageStep
-_STEP_MIN_PX = 80       # passo mínimo em pixels
+_BASE_LERP   = 0.55     # lerp equivalente a um frame de 16 ms (0.38 era lento)
+_SNAP_PX     = 2.0      # trava quando diff < 2 px
+_STEP_RATIO  = 0.25     # passo por tick = 25 % do pageStep
+_STEP_MIN_PX = 100      # passo mínimo em pixels
 
 
 class SmoothScrollArea(QScrollArea):
