@@ -416,7 +416,9 @@ class OrderCenterView(QWidget):
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
         accent_line.setStyleSheet(
-            f"background:{color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(color, 235)}, stop:0.5 {_rgba(color, 155)}, stop:1 {_rgba(color, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
 
         header_row = QHBoxLayout()
@@ -518,7 +520,9 @@ class OrderCenterView(QWidget):
         accent = QFrame()
         accent.setFixedHeight(max(4, int(5 * s)))
         accent.setStyleSheet(
-            f"background:{accent_color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(accent_color, 235)}, stop:0.5 {_rgba(accent_color, 155)}, stop:1 {_rgba(accent_color, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
         layout.addWidget(accent)
 

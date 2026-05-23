@@ -442,7 +442,9 @@ class HistoryView(QWidget):
         filter_accent = QFrame()
         filter_accent.setFixedHeight(max(4, int(5 * s)))
         filter_accent.setStyleSheet(
-            f"background:{theme.PRIMARY_HOVER}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(theme.PRIMARY_HOVER, 235)}, stop:0.5 {_rgba(theme.PRIMARY_HOVER, 155)}, stop:1 {_rgba(theme.PRIMARY_HOVER, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
         filter_layout.addWidget(filter_accent)
 
@@ -645,7 +647,9 @@ class HistoryView(QWidget):
         results_accent = QFrame()
         results_accent.setFixedHeight(max(4, int(5 * s)))
         results_accent.setStyleSheet(
-            f"background:{theme.PRIMARY}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(theme.PRIMARY, 235)}, stop:0.5 {_rgba(theme.PRIMARY, 155)}, stop:1 {_rgba(theme.PRIMARY, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
         results_layout.addWidget(results_accent)
 
