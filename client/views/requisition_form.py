@@ -238,6 +238,8 @@ class ClientSearchBox(QWidget):
         cached = self._results_cache.get(term)
         if cached is not None:
             self._render_results(cached)
+        else:
+            self._render_cached_preview(term)
 
         # Codigo/CPF/CNPJ: resposta mais imediata.
         if self._looks_like_code_or_document(term):
@@ -257,14 +259,6 @@ class ClientSearchBox(QWidget):
                 self._render_results(cached)
             return
         self._last_requested_term = term
-
-        # Feedback visual imediato
-        self._drop.clear()
-        loading = QListWidgetItem("  ⌕ Buscando...")
-        loading.setFlags(Qt.ItemFlag.NoItemFlags)
-        self._drop.addItem(loading)
-        self._reposition()
-        self._drop.show()
 
         self._search_seq += 1
         search_id = self._search_seq
@@ -293,9 +287,12 @@ class ClientSearchBox(QWidget):
             return
         if self.input.text().strip() != term:
             return
-        self._drop.hide()
+        if self._drop.count() == 0:
+            self._drop.hide()
 
-    def _render_results(self, clients: list):
+    def _render_results(self, clients: list, show_empty: bool = True):
+        if not clients and not show_empty:
+            return
         self._drop.clear()
         if not clients:
             it = QListWidgetItem("  Nenhum cliente encontrado")
@@ -314,6 +311,62 @@ class ClientSearchBox(QWidget):
 
         self._reposition()
         self._drop.show()
+
+    def _render_cached_preview(self, term: str) -> None:
+        base = self._best_cached_base(term)
+        if not base:
+            return
+        filtered = self._filter_cached_clients(base, term)
+        if filtered:
+            self._render_results(filtered[:80], show_empty=False)
+
+    def _best_cached_base(self, term: str) -> list:
+        normalized_term = self._normalize_search_text(term)
+        best: list = []
+        best_size = 0
+        for key, clients in self._results_cache.items():
+            normalized_key = self._normalize_search_text(key)
+            if normalized_term.startswith(normalized_key) or normalized_key.startswith(normalized_term):
+                if len(clients) > best_size:
+                    best = clients
+                    best_size = len(clients)
+        return best
+
+    def _filter_cached_clients(self, clients: list, term: str) -> list:
+        normalized_term = self._normalize_search_text(term)
+        plain_term = "".join(ch for ch in normalized_term if ch.isalnum())
+        plain_term_nozero = plain_term.lstrip("0")
+        if not normalized_term:
+            return clients
+
+        output: list = []
+        for client in clients:
+            name = self._normalize_search_text(client.get("name") or "")
+            code = self._normalize_search_text(client.get("code") or "")
+            cnpj = self._normalize_search_text(client.get("cnpj") or "")
+            code_plain = "".join(ch for ch in code if ch.isalnum())
+            cnpj_plain = "".join(ch for ch in cnpj if ch.isalnum())
+
+            if normalized_term in name or normalized_term in code or normalized_term in cnpj:
+                output.append(client)
+                continue
+            if plain_term and (plain_term in code_plain or plain_term in cnpj_plain):
+                output.append(client)
+                continue
+            if plain_term_nozero and plain_term_nozero in code_plain.lstrip("0"):
+                output.append(client)
+        return output
+
+    def _normalize_search_text(self, value: str) -> str:
+        return (
+            (value or "")
+            .strip()
+            .lower()
+            .replace(".", "")
+            .replace("-", "")
+            .replace("/", "")
+            .replace(" ", "")
+        )
 
     def _track_thread(self, thread: QThread, worker: QObject) -> None:
         pair = (thread, worker)
