@@ -1546,7 +1546,7 @@ class RequisitionForm(QWidget):
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setText("Selecione para qual produção a requisição deve ser enviada.")
 
-        btn_ar = msg.addButton("A&R", QMessageBox.ButtonRole.AcceptRole)
+        btn_ar = msg.addButton("A&&R", QMessageBox.ButtonRole.AcceptRole)
         btn_pinheiro = msg.addButton("Pinheiro Indústria", QMessageBox.ButtonRole.AcceptRole)
         msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
         apply_message_box_theme(msg)
