@@ -127,42 +127,69 @@ def _date_cols(cols: list[str]) -> set[str]:
 
 # ── Mapeamento de IDs ─────────────────────────────────────────────────────────
 
+def _best_match_col(pg_cur, table: str, candidates: list[str]) -> str | None:
+    """Retorna o primeiro candidato que existe como coluna na tabela do PG."""
+    pg_cur.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND table_name = %s", (table,)
+    )
+    existing = {r[0].lower() for r in pg_cur.fetchall()}
+    for col in candidates:
+        if col.lower() in existing:
+            return col
+    return None
+
+
 def build_id_maps(
     sq_conn: sqlite3.Connection, pg_conn
 ) -> tuple[dict[int, int], dict[int, int]]:
     """
-    Constrói SQLite-ID → PostgreSQL-ID para users (por e-mail)
-    e clients (por code).
+    Constrói SQLite-ID → PostgreSQL-ID para users e clients.
+    Detecta automaticamente qual coluna usar para o match.
+    Users  : tenta email → code → name (nessa ordem)
+    Clients: tenta code  → name
     """
     sq = sq_conn.cursor()
     pg = pg_conn.cursor()
 
-    # Users: match por e-mail (identificador estável)
-    sq.execute("SELECT id, email FROM users")
-    sq_users = {email.lower(): sq_id for sq_id, email in sq.fetchall() if email}
-    pg.execute("SELECT id, email FROM users")
-    pg_users = {email.lower(): pg_id for pg_id, email in pg.fetchall() if email}
-    user_map = {
-        sq_id: pg_users[email]
-        for email, sq_id in sq_users.items()
-        if email in pg_users
-    }
+    # ── Users ──────────────────────────────────────────────────────────────
+    user_key = _best_match_col(pg, "users", ["email", "code", "name"])
+    if user_key is None:
+        print("  AVISO: nenhuma coluna de match encontrada em 'users' — user_map vazio.")
+        user_map: dict[int, int] = {}
+    else:
+        print(f"  Usuários  : usando coluna '{user_key}' para match")
+        sq.execute(f"SELECT id, {user_key} FROM users")
+        sq_users = {str(v).lower(): sq_id for sq_id, v in sq.fetchall() if v}
+        pg.execute(f"SELECT id, {user_key} FROM users")
+        pg_users = {str(v).lower(): pg_id for pg_id, v in pg.fetchall() if v}
+        user_map = {
+            sq_id: pg_users[key]
+            for key, sq_id in sq_users.items()
+            if key in pg_users
+        }
+        unmapped = len(sq_users) - len(user_map)
+        print(f"             {len(user_map)} mapeados, {unmapped} não encontrados no PG")
 
-    # Clients: match por code
-    sq.execute("SELECT id, code FROM clients")
-    sq_clients = {code: sq_id for sq_id, code in sq.fetchall() if code}
-    pg.execute("SELECT id, code FROM clients")
-    pg_clients = {code: pg_id for pg_id, code in pg.fetchall() if code}
-    client_map = {
-        sq_id: pg_clients[code]
-        for code, sq_id in sq_clients.items()
-        if code in pg_clients
-    }
+    # ── Clients ────────────────────────────────────────────────────────────
+    client_key = _best_match_col(pg, "clients", ["code", "name"])
+    if client_key is None:
+        print("  AVISO: nenhuma coluna de match encontrada em 'clients' — client_map vazio.")
+        client_map: dict[int, int] = {}
+    else:
+        print(f"  Clientes  : usando coluna '{client_key}' para match")
+        sq.execute(f"SELECT id, {client_key} FROM clients")
+        sq_clients = {str(v): sq_id for sq_id, v in sq.fetchall() if v}
+        pg.execute(f"SELECT id, {client_key} FROM clients")
+        pg_clients = {str(v): pg_id for pg_id, v in pg.fetchall() if v}
+        client_map = {
+            sq_id: pg_clients[key]
+            for key, sq_id in sq_clients.items()
+            if key in pg_clients
+        }
+        unmapped = len(sq_clients) - len(client_map)
+        print(f"             {len(client_map)} mapeados, {unmapped} não encontrados no PG")
 
-    unmapped_users   = len(sq_users)   - len(user_map)
-    unmapped_clients = len(sq_clients) - len(client_map)
-    print(f"  Usuários  : {len(user_map)} mapeados, {unmapped_users} não encontrados no PG")
-    print(f"  Clientes  : {len(client_map)} mapeados, {unmapped_clients} não encontrados no PG")
     return user_map, client_map
 
 
