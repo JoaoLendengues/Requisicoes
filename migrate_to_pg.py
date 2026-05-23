@@ -36,7 +36,9 @@ except ImportError:
 
 ROOT = Path(__file__).parent
 SQLITE_PATH = ROOT / "requisicoes.db"
-ENV_PATH = ROOT / ".env" if (ROOT / ".env").exists() else ROOT / ".env.example"
+
+# URL de fallback usada quando nenhum arquivo .env / .env.example é encontrado
+_FALLBACK_DB_URL = "postgresql://tipinheiro:Pinheiro123@10.1.1.151:5432/requisicoes"
 
 # Ordem respeitando dependências de chave estrangeira
 TABLES_ORDER = [
@@ -53,13 +55,20 @@ TABLES_ORDER = [
 # ── Utilitários ───────────────────────────────────────────────────────────────
 
 def load_env() -> dict[str, str]:
-    env: dict[str, str] = {}
-    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and "=" in line and not line.startswith("#"):
-            k, _, v = line.partition("=")
-            env[k.strip()] = v.strip()
-    return env
+    """Carrega variáveis de .env, .env.example ou usa fallback embutido."""
+    for candidate in (".env", ".env.example"):
+        path = ROOT / candidate
+        if path.exists():
+            env: dict[str, str] = {}
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and "=" in line and not line.startswith("#"):
+                    k, _, v = line.partition("=")
+                    env[k.strip()] = v.strip()
+            return env
+    # Nenhum arquivo encontrado — usa conexão embutida
+    print("  AVISO: nenhum .env encontrado, usando conexão embutida no script.")
+    return {"DATABASE_URL": _FALLBACK_DB_URL, "DATABASE_TYPE": "postgresql"}
 
 
 def parse_pg_url(url: str) -> dict:
@@ -191,10 +200,6 @@ def main() -> None:
     # Validações iniciais
     if not SQLITE_PATH.exists():
         sys.exit(f"\nERRO: arquivo SQLite não encontrado em:\n  {SQLITE_PATH}")
-    if not ENV_PATH.exists():
-        sys.exit(f"\nERRO: nenhum arquivo .env ou .env.example encontrado em:\n  {ROOT}")
-    if ENV_PATH.name == ".env.example":
-        print(f"  AVISO: usando .env.example (crie um .env para produção).")
 
     env = load_env()
     if env.get("DATABASE_TYPE") != "postgresql":
