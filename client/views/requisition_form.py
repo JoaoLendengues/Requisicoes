@@ -165,6 +165,7 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
 # ── Campo de busca de cliente ─────────────────────────────────────────────────
 class ClientSearchBox(QWidget):
     """
+<<<<<<< HEAD
     Caixa de busca com dropdown em tempo real.
 
     Estratégia de dois estágios:
@@ -175,8 +176,19 @@ class ClientSearchBox(QWidget):
        requisições de rede, latência imperceptível a cada keystroke.
 
     Pesquisa por nome, código ou CPF/CNPJ (ignora pontuação).
+=======
+    Busca de cliente em tempo real — sempre via servidor.
+
+    Adequada para bases com 100k+ clientes: nenhum pré-carregamento.
+    Cada keystroke reinicia um debounce de 250 ms; ao disparar, envia o
+    termo ao servidor que retorna os 100 resultados mais relevantes usando
+    índices GIN de trigrama (busca por nome, código e CPF/CNPJ).
+>>>>>>> 500d2669de7a08241897785aacf5b35d0ad1bdab
     """
     client_selected = Signal(object)   # dict do cliente ou None
+
+    _DEBOUNCE_MS  = 250   # ms de espera após o último keystroke
+    _SERVER_LIMIT = 100   # máximo de resultados por busca
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -184,6 +196,7 @@ class ClientSearchBox(QWidget):
         self._selected: dict | None = None
         self._threads: list = []
         self._search_seq = 0
+<<<<<<< HEAD
         self._last_requested_term = ""
         self._results_cache: dict[str, list] = {}
         self._max_cache_entries = 40
@@ -191,13 +204,17 @@ class ClientSearchBox(QWidget):
         self._all_clients: list = []          # cache completo — preenchido em background
 
         # Timer de debounce — fallback enquanto _all_clients ainda carrega
+=======
+
+>>>>>>> 500d2669de7a08241897785aacf5b35d0ad1bdab
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
-        self._debounce.setInterval(120)
+        self._debounce.setInterval(self._DEBOUNCE_MS)
         self._debounce.timeout.connect(self._do_search)
 
         self._setup_ui()
 
+<<<<<<< HEAD
         # Carrega todos os clientes em background para busca client-side instantânea
         self._load_all_clients()
 
@@ -236,6 +253,8 @@ class ClientSearchBox(QWidget):
             except Exception:
                 self._render_results(self._all_clients)
 
+=======
+>>>>>>> 500d2669de7a08241897785aacf5b35d0ad1bdab
     # ── Interface ─────────────────────────────────────────────────────────────
 
     def _setup_ui(self):
@@ -270,8 +289,14 @@ class ClientSearchBox(QWidget):
         self._drop.installEventFilter(self)
         self._drop.hide()
 
+<<<<<<< HEAD
     # ── Digitação → filtro local (ou debounce → servidor como fallback) ──────
+=======
+    # ── Digitação → debounce → servidor ───────────────────────────────────────
+
+>>>>>>> 500d2669de7a08241897785aacf5b35d0ad1bdab
     def _on_text(self, text: str):
+        # Se o texto atual é o cliente já selecionado, ignora
         if self._selected:
             expected = f"{self._selected['code']} — {self._selected['name']}"
             if text == expected:
@@ -279,12 +304,12 @@ class ClientSearchBox(QWidget):
             self._selected = None
 
         term = text.strip()
-        min_chars = 1 if self._looks_like_code_or_document(term) else 2
-        if len(term) < min_chars:
+        if len(term) < 2:
             self._debounce.stop()
             self._drop.hide()
             return
 
+<<<<<<< HEAD
         # ── Caminho rápido: busca local instantânea ────────────────────────
         # Quando _all_clients já foi carregado, filtra em Python sem rede.
         if self._all_clients:
@@ -309,6 +334,9 @@ class ClientSearchBox(QWidget):
             self._debounce.start(0)
         else:
             self._debounce.start(40)
+=======
+        self._debounce.start(self._DEBOUNCE_MS)
+>>>>>>> 500d2669de7a08241897785aacf5b35d0ad1bdab
 
     def _do_search(self):
         # Carga completa já disponível — busca client-side em _on_text, nada a fazer.
@@ -316,51 +344,55 @@ class ClientSearchBox(QWidget):
             return
 
         term = self.input.text().strip()
-        min_chars = 1 if self._looks_like_code_or_document(term) else 2
-        if len(term) < min_chars:
+        if len(term) < 2:
             return
-
-        if term == self._last_requested_term:
-            cached = self._results_cache.get(term)
-            if cached is not None:
-                self._render_results(cached)
-            return
-        self._last_requested_term = term
 
         self._search_seq += 1
         search_id = self._search_seq
+
+        # Indicador de carregamento enquanto aguarda o servidor
+        self._drop.clear()
+        loading = QListWidgetItem("  Buscando...")
+        loading.setFlags(Qt.ItemFlag.NoItemFlags)
+        loading.setForeground(QColor(theme.TEXT_LIGHT))
+        self._drop.addItem(loading)
+        self._reposition()
+        self._drop.show()
+
         t, w = _run_in_thread(
+<<<<<<< HEAD
             api.list_clients, term, 9999,
             on_result=lambda clients, q=term, sid=search_id: self._on_results(q, sid, clients),
             on_error=lambda _, q=term, sid=search_id: self._on_search_error(q, sid),
+=======
+            api.list_clients, term, self._SERVER_LIMIT,
+            on_result=lambda clients, sid=search_id: self._on_results(sid, clients),
+            on_error=lambda _, sid=search_id: self._on_search_error(sid),
+>>>>>>> 500d2669de7a08241897785aacf5b35d0ad1bdab
         )
         self._track_thread(t, w)
 
-    def _on_results(self, term: str, search_id: int, clients: list):
+    def _on_results(self, search_id: int, clients: list):
         if search_id != self._search_seq:
             return
-        if self.input.text().strip() != term:
-            return
-
-        self._live_candidates = clients
-        self._results_cache[term] = clients
-        if len(self._results_cache) > self._max_cache_entries:
-            first_key = next(iter(self._results_cache))
-            if first_key != term:
-                self._results_cache.pop(first_key, None)
+        if not isinstance(clients, list):
+            clients = []
         self._render_results(clients)
 
-    def _on_search_error(self, term: str, search_id: int):
+    def _on_search_error(self, search_id: int):
         if search_id != self._search_seq:
             return
-        if self.input.text().strip() != term:
-            return
-        if self._drop.count() == 0:
-            self._drop.hide()
+        self._drop.clear()
+        it = QListWidgetItem("  Erro ao buscar — verifique a conexão")
+        it.setFlags(Qt.ItemFlag.NoItemFlags)
+        it.setForeground(QColor(theme.TEXT_LIGHT))
+        self._drop.addItem(it)
+        self._reposition()
+        self._drop.show()
 
-    def _render_results(self, clients: list, show_empty: bool = True):
-        if not clients and not show_empty:
-            return
+    # ── Renderização ──────────────────────────────────────────────────────────
+
+    def _render_results(self, clients: list):
         self._drop.clear()
 
         if not clients:
@@ -377,10 +409,10 @@ class ClientSearchBox(QWidget):
                 it = QListWidgetItem(label)
                 it.setData(Qt.ItemDataRole.UserRole, c)
                 self._drop.addItem(it)
-
         self._reposition()
         self._drop.show()
 
+<<<<<<< HEAD
     def _render_cached_preview(self, term: str) -> None:
         base = self._best_cached_base(term)
         if not base:
@@ -549,11 +581,17 @@ class ClientSearchBox(QWidget):
                 return it
         return None
 
+=======
+>>>>>>> 500d2669de7a08241897785aacf5b35d0ad1bdab
     def _reposition(self):
         s = self.scale
         gpos = self.input.mapToGlobal(self.input.rect().bottomLeft())
         row_h = max(30, int(34 * s))
+<<<<<<< HEAD
         # Usa todo o espaço disponível abaixo do campo na tela
+=======
+        # Ocupa todo o espaço disponível abaixo do campo na tela
+>>>>>>> 500d2669de7a08241897785aacf5b35d0ad1bdab
         screen = QApplication.primaryScreen().availableGeometry()
         available_h = screen.bottom() - gpos.y() - 10
         max_by_screen = max(4, available_h // row_h)
@@ -562,6 +600,7 @@ class ClientSearchBox(QWidget):
         self._drop.resize(self.input.width(), rows * row_h + 6)
 
     # ── Seleção ───────────────────────────────────────────────────────────────
+
     def _pick(self, item: QListWidgetItem):
         client = item.data(Qt.ItemDataRole.UserRole)
         if not client:
@@ -573,7 +612,16 @@ class ClientSearchBox(QWidget):
         self._drop.hide()
         self.client_selected.emit(client)
 
+    def _first_selectable(self) -> QListWidgetItem | None:
+        """Retorna o primeiro item com dado de cliente (pula itens não-selecionáveis)."""
+        for i in range(self._drop.count()):
+            it = self._drop.item(i)
+            if it and it.data(Qt.ItemDataRole.UserRole) is not None:
+                return it
+        return None
+
     # ── Navegação por teclado ─────────────────────────────────────────────────
+
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.KeyPress:
             key = event.key()
@@ -611,7 +659,24 @@ class ClientSearchBox(QWidget):
 
         return super().eventFilter(obj, event)
 
+    # ── Utilitários internos ──────────────────────────────────────────────────
+
+    def _track_thread(self, thread: QThread, worker: QObject) -> None:
+        pair = (thread, worker)
+        self._threads.append(pair)
+
+        def _cleanup():
+            try:
+                self._threads.remove(pair)
+            except ValueError:
+                pass
+            worker.deleteLater()
+            thread.deleteLater()
+
+        thread.finished.connect(_cleanup)
+
     # ── API pública ───────────────────────────────────────────────────────────
+
     def set_clients(self, clients: list):
         """Mantido por compatibilidade — não é mais necessário."""
         pass
@@ -641,7 +706,6 @@ class ClientSearchBox(QWidget):
 
     def clear(self):
         self._selected = None
-        self._last_requested_term = ""
         self.input.blockSignals(True)
         self.input.clear()
         self.input.blockSignals(False)
