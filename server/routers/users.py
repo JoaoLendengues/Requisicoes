@@ -14,6 +14,7 @@ from ..schemas.user import (
     UserResponse,
     UserUpdate,
 )
+from ..services.audit_service import diff_fields, log_action
 from ..services.auth_service import hash_password
 from ..services.text_normalizer import normalize_upper_required
 
@@ -68,7 +69,11 @@ def list_users(db: Session = Depends(get_db), _=Depends(require_manager_or_admin
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def create_user(data: UserCreate, db: Session = Depends(get_db), _=Depends(require_manager_or_admin)):
+def create_user(
+    data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager_or_admin),
+):
     code = _normalize_code(data.code)
     if not code:
         raise HTTPException(status_code=400, detail="Informe o codigo do usuario")
@@ -89,6 +94,15 @@ def create_user(data: UserCreate, db: Session = Depends(get_db), _=Depends(requi
         is_active=bool(data.is_active),
     )
     db.add(user)
+    db.flush()
+    log_action(
+        db,
+        entity="user",
+        entity_id=user.id,
+        action="CREATE",
+        changed_by=current_user,
+        changes={"code": code, "name": user.name, "role": str(data.role)},
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -161,7 +175,7 @@ def update_user(
     user_id: int,
     data: UserUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_manager_or_admin),
+    current_user: User = Depends(require_manager_or_admin),
 ):
     user = _get_user_or_404(db, user_id)
     update_data = data.model_dump(exclude_unset=True)
@@ -172,6 +186,13 @@ def update_user(
 
     email = _resolve_email(new_code, update_data.get("email", user.email))
     _ensure_unique_identity(db, code=new_code, email=email, ignore_user_id=user.id)
+
+    # Captura mudanças antes de aplicar
+    changes = diff_fields(user, update_data, ["name", "role", "whatsapp", "sector", "is_active"])
+    if new_code != user.code:
+        changes["code"] = {"old": user.code, "new": new_code}
+    if update_data.get("password"):
+        changes["password"] = {"old": "***", "new": "*** (alterada)"}
 
     user.code = new_code
     user.email = email
@@ -196,6 +217,10 @@ def update_user(
         elif not (user.hashed_password or "").strip():
             user.must_change_password = True
 
+    if changes:
+        log_action(db, entity="user", entity_id=user.id, action="UPDATE",
+                   changed_by=current_user, changes=changes)
+
     db.commit()
     db.refresh(user)
     return user
@@ -203,8 +228,18 @@ def update_user(
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_user(
-    user_id: int, db: Session = Depends(get_db), _=Depends(require_manager_or_admin)
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager_or_admin),
 ):
     user = _get_user_or_404(db, user_id)
     user.is_active = False
+    log_action(
+        db,
+        entity="user",
+        entity_id=user.id,
+        action="DELETE",
+        changed_by=current_user,
+        changes={"code": user.code, "name": user.name, "is_active": {"old": "True", "new": "False"}},
+    )
     db.commit()
