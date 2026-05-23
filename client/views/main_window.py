@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
-    QScrollArea, QLabel, QGraphicsOpacityEffect,
+    QScrollArea, QLabel, QGraphicsOpacityEffect, QGraphicsDropShadowEffect,
 )
 from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate, Signal
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QColor, QKeySequence
 
 from ..core import theme
 from ..widgets.smooth_scroll import SmoothScrollArea
@@ -904,6 +904,8 @@ class MainWindow(QMainWindow):
 
     def _apply_theme_immediate(self) -> None:
         """Aplica tema apenas ao sidebar e à view atual (~30ms)."""
+        from PySide6.QtWidgets import QApplication
+
         bg = theme.CONTENT_BG
         self.setStyleSheet(f"background:{bg};")
         self._sep.setStyleSheet(
@@ -935,10 +937,12 @@ class MainWindow(QMainWindow):
             current.apply_theme()
         self._setup_statusbar()
 
-    def _apply_theme_remaining(self) -> None:
-        """Aplica global stylesheet + views ocultas. Chamado após o fade-out."""
-        from PySide6.QtWidgets import QApplication
+        # Aplica o global_style enquanto o overlay ainda cobre a tela, assim os
+        # textos e paletas globais já estão corretos quando o fade-out terminar.
         QApplication.instance().setStyleSheet(theme.global_style())
+
+    def _apply_theme_remaining(self) -> None:
+        """Aplica views ocultas + atualiza sombras. Chamado após o fade-out."""
         current = self._get_current_view()
         for view in (
             self.form_view, self.history_view, self.dashboard_view,
@@ -948,6 +952,20 @@ class MainWindow(QMainWindow):
         ):
             if view is not current:
                 view.apply_theme()
+        # Atualiza a cor de todos os QGraphicsDropShadowEffect na janela inteira.
+        # Necessário porque os efeitos são criados uma única vez no __init__ com
+        # a cor do tema corrente; sem isso a sombra some ao trocar de tema.
+        self._refresh_all_shadows()
+
+    def _refresh_all_shadows(self) -> None:
+        """Percorre todos os widgets filhos e atualiza a cor das sombras."""
+        for child in self.findChildren(QWidget):
+            effect = child.graphicsEffect()
+            if isinstance(effect, QGraphicsDropShadowEffect):
+                alpha = effect.color().alpha()   # preserva o alpha original
+                color = QColor(theme.TEXT_DARK)
+                color.setAlpha(alpha)
+                effect.setColor(color)
 
     def _on_theme_toggle(self, dark: bool):
         """
@@ -1007,8 +1025,18 @@ class MainWindow(QMainWindow):
             return
         self._stop_runtime_services()
         session.logout()
+
+        # Mostra o login (opacity 0, vai fazer fade-in) antes de sumir
         self.switch_user_requested.emit()
-        self.close()
+
+        # Faz o fade-out desta janela e fecha ao terminar
+        self._switch_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._switch_anim.setDuration(220)
+        self._switch_anim.setStartValue(1.0)
+        self._switch_anim.setEndValue(0.0)
+        self._switch_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._switch_anim.finished.connect(self.close)
+        self._switch_anim.start()
 
     def _stop_runtime_services(self):
         if hasattr(self, "_notif_timer") and self._notif_timer is not None:
