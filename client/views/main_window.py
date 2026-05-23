@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QLabel, QGraphicsOpacityEffect,
 )
 from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate, Signal
+from PySide6.QtGui import QAction, QKeySequence
 
 from ..core import theme
 from ..widgets.smooth_scroll import SmoothScrollArea
@@ -52,6 +53,7 @@ class MainWindow(QMainWindow):
         self._theme_transition_anim: QPropertyAnimation | None = None
         self._nav_overlay: QLabel | None = None
         self._setup_ui()
+        self._setup_hidden_shortcuts()
         self._setup_statusbar()
         self.setWindowTitle("Sistema de Requisições - Ferragens Pinheiro")
         if res.start_maximized:
@@ -190,6 +192,32 @@ class MainWindow(QMainWindow):
             if btn:
                 btn.setVisible(visible)
         self.sidebar.refresh_separators()
+
+    def _setup_hidden_shortcuts(self) -> None:
+        # Atalhos intencionais "ocultos": não exibem dicas na interface.
+        shortcuts = {
+            "Ctrl+1": lambda: self._on_nav("nova"),
+            "Ctrl+2": lambda: self._on_nav("pedidos"),
+            "Ctrl+3": lambda: self._on_nav("ar"),
+            "Ctrl+4": lambda: self._on_nav("pinheiro_industria"),
+            "Ctrl+5": lambda: self._on_nav("dashboard"),
+            "Ctrl+6": lambda: self._on_nav("historico"),
+            "Ctrl+7": self._toggle_theme_shortcut,
+            "Ctrl+8": self._switch_user,
+            "Ctrl+9": self._switch_user,
+        }
+
+        self._shortcut_actions: list[QAction] = []
+        for sequence, callback in shortcuts.items():
+            action = QAction(self)
+            action.setShortcut(QKeySequence(sequence))
+            action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            action.triggered.connect(callback)
+            self.addAction(action)
+            self._shortcut_actions.append(action)
+
+    def _toggle_theme_shortcut(self) -> None:
+        self._on_theme_toggle(not theme.is_dark)
 
     def _setup_statusbar(self):
         bar = self.statusBar()
