@@ -32,6 +32,7 @@ class ProductionMachine(Base):
         SAEnum(
             MachineOperationalStatus,
             values_callable=lambda values: [item.value for item in values],
+            native_enum=False,
         ),
         default=MachineOperationalStatus.FUNCIONANDO,
     )

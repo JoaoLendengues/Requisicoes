@@ -41,7 +41,7 @@ class Requisition(Base):
     weight: Mapped[float] = mapped_column(Float, default=0.0)
 
     status: Mapped[RequisitionStatus] = mapped_column(
-        SAEnum(RequisitionStatus, values_callable=lambda x: [e.value for e in x]),
+        SAEnum(RequisitionStatus, values_callable=lambda x: [e.value for e in x], native_enum=False),
         default=RequisitionStatus.EM_ANDAMENTO,
     )
     production_destination: Mapped[str | None] = mapped_column(String(120), nullable=True)

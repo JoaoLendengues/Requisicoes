@@ -22,7 +22,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(150))
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
-    role: Mapped[Role] = mapped_column(SAEnum(Role), default=Role.VENDEDOR)
+    role: Mapped[Role] = mapped_column(SAEnum(Role, native_enum=False), default=Role.VENDEDOR)
     whatsapp: Mapped[str | None] = mapped_column(String(20), nullable=True)
     sector: Mapped[str | None] = mapped_column(String(120), nullable=True)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
