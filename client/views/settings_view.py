@@ -1,12 +1,16 @@
+import os
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QFrame, QGraphicsDropShadowEffect,
-    QMessageBox, QSpinBox,
+    QMessageBox, QSpinBox, QDateEdit, QFileDialog,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QThread, QObject
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, Signal, QThread, QObject, QDate
+from PySide6.QtGui import QBrush, QColor
 
 from ..core import theme
+from ..core import login_backgrounds
 from ..widgets.smooth_scroll import SmoothScrollArea
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
@@ -106,6 +110,201 @@ def _field_style(scale: float) -> str:
         f"}}"
         f"QLineEdit {{ placeholder-text-color:{theme.TEXT_MEDIUM}; }}"
     )
+
+
+def _date_edit_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QDateEdit {{"
+        f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:14px;"
+        f"  padding:9px 12px; font-size:{fs}pt; color:{theme.TEXT_DARK};"
+        f"}}"
+        f"QDateEdit::drop-down {{ border:none; width:24px; }}"
+        f"QDateEdit::down-arrow {{ width:12px; }}"
+    )
+
+
+def _table_style() -> str:
+    return (
+        f"QTableWidget {{"
+        f"  background:{theme.CARD_BG}; gridline-color:{theme.BORDER_COLOR};"
+        f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
+        f"  font-size:9pt;"
+        f"}}"
+        f"QTableWidget::item {{ padding:6px 10px; color:{theme.TEXT_DARK}; }}"
+        f"QTableWidget::item:selected {{"
+        f"  background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK};"
+        f"}}"
+        f"QHeaderView::section {{"
+        f"  background:{theme.TABLE_HEADER_BG}; color:#fff;"
+        f"  padding:6px 10px; border:none; font-weight:700; font-size:9pt;"
+        f"}}"
+        f"QHeaderView::section:first {{ border-top-left-radius:10px; }}"
+        f"QHeaderView::section:last  {{ border-top-right-radius:10px; }}"
+    )
+
+
+class _CampaignDialog(QDialog):
+    """Dialog para adicionar uma nova campanha de fundo da tela de login."""
+
+    def __init__(self, scale: float, parent=None):
+        super().__init__(parent)
+        self.scale = scale
+        self._image_path: str = ""
+        self.setWindowTitle("Nova Campanha de Fundo")
+        self.setModal(True)
+        self.setMinimumWidth(max(400, int(460 * scale)))
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            f"QDialog {{"
+            f"  background-color:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+            f"}}"
+            f"QDialog QWidget {{ background-color:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background-color:transparent; }}"
+        )
+        self._setup_ui()
+
+    def _setup_ui(self):
+        s = self.scale
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                  max(18, int(24 * s)), max(18, int(24 * s)))
+        layout.setSpacing(max(10, int(14 * s)))
+
+        title = QLabel("Nova Campanha de Fundo")
+        title.setStyleSheet(
+            f"font-size:{max(12, int(14 * s))}pt; font-weight:800; color:{theme.PRIMARY};"
+        )
+        layout.addWidget(title)
+
+        helper = QLabel(
+            "Configure um nome, o período de exibição e a imagem de fundo desejada."
+        )
+        helper.setWordWrap(True)
+        helper.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+        )
+        layout.addWidget(helper)
+
+        # ── Campos ──────────────────────────────────────────────────────────
+        from PySide6.QtWidgets import QFormLayout
+        form = QFormLayout()
+        form.setSpacing(max(8, int(10 * s)))
+        form.setHorizontalSpacing(max(10, int(14 * s)))
+
+        self.input_name = QLineEdit()
+        self.input_name.setPlaceholderText("Ex: Natal 2025")
+        self.input_name.setFixedHeight(max(36, int(42 * s)))
+        self.input_name.setStyleSheet(_field_style(s))
+        form.addRow("Nome:", self.input_name)
+
+        today = QDate.currentDate()
+
+        self.date_start = QDateEdit()
+        self.date_start.setCalendarPopup(True)
+        self.date_start.setDisplayFormat("dd/MM/yyyy")
+        self.date_start.setDate(today)
+        self.date_start.setFixedHeight(max(36, int(42 * s)))
+        self.date_start.setStyleSheet(_date_edit_style(s))
+        form.addRow("Data início:", self.date_start)
+
+        self.date_end = QDateEdit()
+        self.date_end.setCalendarPopup(True)
+        self.date_end.setDisplayFormat("dd/MM/yyyy")
+        self.date_end.setDate(today)
+        self.date_end.setFixedHeight(max(36, int(42 * s)))
+        self.date_end.setStyleSheet(_date_edit_style(s))
+        form.addRow("Data fim:", self.date_end)
+
+        layout.addLayout(form)
+
+        # ── Seleção de imagem ────────────────────────────────────────────────
+        img_row = QHBoxLayout()
+        img_row.setSpacing(max(8, int(10 * s)))
+
+        self._img_label = QLabel("Nenhuma imagem selecionada")
+        self._img_label.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+        )
+        img_row.addWidget(self._img_label, 1)
+
+        btn_img = QPushButton("Selecionar Imagem")
+        btn_img.setFixedHeight(max(34, int(40 * s)))
+        btn_img.setStyleSheet(_flat_secondary_btn_style(s))
+        btn_img.clicked.connect(self._pick_image)
+        img_row.addWidget(btn_img)
+        layout.addLayout(img_row)
+
+        img_hint = QLabel("Formatos suportados: PNG, JPG, JPEG, BMP, WEBP")
+        img_hint.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt; font-style:italic;"
+        )
+        layout.addWidget(img_hint)
+
+        # ── Erro ─────────────────────────────────────────────────────────────
+        self._error_label = QLabel("")
+        self._error_label.setWordWrap(True)
+        self._error_label.hide()
+        self._error_label.setStyleSheet(
+            f"color:{theme.DANGER}; background:#FDEEEF;"
+            f"border:1px solid #F4C7CC; border-radius:8px; padding:8px;"
+        )
+        layout.addWidget(self._error_label)
+
+        # ── Botões ────────────────────────────────────────────────────────────
+        btns = QHBoxLayout()
+        btns.addStretch()
+
+        cancel = QPushButton("Cancelar")
+        cancel.setFixedHeight(max(36, int(42 * s)))
+        cancel.setStyleSheet(_flat_secondary_btn_style(s))
+        cancel.clicked.connect(self.reject)
+        btns.addWidget(cancel)
+
+        confirm = QPushButton("Adicionar Campanha")
+        confirm.setFixedHeight(max(36, int(42 * s)))
+        confirm.setStyleSheet(_primary_action_btn_style(s))
+        confirm.clicked.connect(self._validate_and_accept)
+        btns.addWidget(confirm)
+        layout.addLayout(btns)
+
+    # ── Lógica interna ────────────────────────────────────────────────────────
+
+    def _pick_image(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Selecionar Imagem de Fundo",
+            "",
+            "Imagens (*.png *.jpg *.jpeg *.bmp *.webp)",
+        )
+        if path:
+            self._image_path = path
+            self._img_label.setText(os.path.basename(path))
+
+    def _validate_and_accept(self):
+        name = self.input_name.text().strip()
+        if not name:
+            self._show_error("Informe o nome da campanha.")
+            return
+        if self.date_end.date() < self.date_start.date():
+            self._show_error("A data de fim deve ser igual ou posterior à data de início.")
+            return
+        if not self._image_path:
+            self._show_error("Selecione uma imagem para o fundo.")
+            return
+        self._error_label.hide()
+        self.accept()
+
+    def _show_error(self, message: str):
+        self._error_label.setText(message)
+        self._error_label.show()
+
+    def values(self) -> tuple[str, str, str, str]:
+        """Retorna (name, start_iso, end_iso, image_path)."""
+        start = self.date_start.date().toString("yyyy-MM-dd")
+        end   = self.date_end.date().toString("yyyy-MM-dd")
+        return self.input_name.text().strip(), start, end, self._image_path
 
 
 class SettingsApiWorker(QObject):
@@ -386,6 +585,67 @@ class SettingsView(QWidget):
         layout.addWidget(self._billing_section)
         self._billing_section.setVisible(session.settings_show_billing)
 
+        # ── Fundo da Tela de Login (admin only) ──────────────────────────────
+        self._login_bg_section = QWidget()
+        bg_vl = QVBoxLayout(self._login_bg_section)
+        bg_vl.setContentsMargins(0, 0, 0, 0)
+        bg_vl.setSpacing(max(8, int(10 * s)))
+
+        bg_vl.addWidget(_section("Fundo da Tela de Login", s))
+        bg_vl.addWidget(_separator())
+
+        # Tabela de campanhas
+        self._bg_table = QTableWidget(0, 3)
+        self._bg_table.setHorizontalHeaderLabels(["Nome", "Período", "Status"])
+        self._bg_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self._bg_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._bg_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._bg_table.verticalHeader().setVisible(False)
+        self._bg_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._bg_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._bg_table.setAlternatingRowColors(True)
+        self._bg_table.setMinimumHeight(max(120, int(140 * s)))
+        self._bg_table.setMaximumHeight(max(200, int(220 * s)))
+        self._bg_table.setStyleSheet(_table_style())
+        bg_vl.addWidget(self._bg_table)
+
+        # Linha de botões
+        bg_btn_row = QHBoxLayout()
+        bg_btn_row.setSpacing(max(8, int(10 * s)))
+
+        self._btn_add_bg = QPushButton("Adicionar Campanha")
+        self._btn_add_bg.setFixedHeight(max(36, int(42 * s)))
+        self._btn_add_bg.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_add_bg.clicked.connect(self._add_bg_campaign)
+        bg_btn_row.addWidget(self._btn_add_bg)
+
+        self._btn_remove_bg = QPushButton("Remover Selecionado")
+        self._btn_remove_bg.setFixedHeight(max(36, int(42 * s)))
+        self._btn_remove_bg.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_remove_bg.clicked.connect(self._remove_bg_campaign)
+        bg_btn_row.addWidget(self._btn_remove_bg)
+        bg_btn_row.addStretch()
+
+        bg_vl.addLayout(bg_btn_row)
+
+        bg_hint = QLabel(
+            "A imagem é exibida automaticamente na tela de login conforme o período configurado."
+        )
+        bg_hint.setProperty("muted", "1")
+        bg_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        bg_vl.addWidget(bg_hint)
+
+        layout.addWidget(self._login_bg_section)
+        self._login_bg_section.setVisible(session.settings_show_login_backgrounds)
+        if session.settings_show_login_backgrounds:
+            self._refresh_bg_table()
+
         # ── Atualizações do Sistema (todos) ───────────────────────────────────
         layout.addWidget(_section("Atualizacoes do Sistema", s))
         layout.addWidget(_separator())
@@ -609,6 +869,89 @@ class SettingsView(QWidget):
             elif font_size_changed:
                 self.font_size_changed.emit()
 
+    # ── Fundo da Tela de Login ────────────────────────────────────────────────
+
+    def _refresh_bg_table(self) -> None:
+        """Recarrega a tabela de campanhas a partir do config.json."""
+        campaigns = login_backgrounds.load_all()
+        self._bg_table.setRowCount(0)
+        _STATUS_COLORS = {
+            "Ativa":       theme.SUCCESS,
+            "Programada":  theme.PRIMARY_LIGHT,
+            "Expirada":    theme.TEXT_LIGHT,
+        }
+        for camp in campaigns:
+            row = self._bg_table.rowCount()
+            self._bg_table.insertRow(row)
+
+            name_item = QTableWidgetItem(camp.get("name", ""))
+            name_item.setData(Qt.ItemDataRole.UserRole, camp.get("id", 0))
+            self._bg_table.setItem(row, 0, name_item)
+
+            start = camp.get("start", "")
+            end   = camp.get("end",   "")
+            period = f"{login_backgrounds.fmt_date(start)} – {login_backgrounds.fmt_date(end)}"
+            self._bg_table.setItem(row, 1, QTableWidgetItem(period))
+
+            status = login_backgrounds.campaign_status(start, end)
+            status_item = QTableWidgetItem(status)
+            status_item.setForeground(QBrush(QColor(_STATUS_COLORS.get(status, theme.TEXT_DARK))))
+            self._bg_table.setItem(row, 2, status_item)
+
+    def _add_bg_campaign(self) -> None:
+        """Abre o dialog e adiciona uma nova campanha."""
+        dialog = _CampaignDialog(self.scale, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        name, start, end, img_path = dialog.values()
+        try:
+            login_backgrounds.add_campaign(name, start, end, img_path)
+            self._refresh_bg_table()
+            # Notifica LoginView se acessível via MainWindow
+            self._notify_login_view_bg_changed()
+        except Exception as exc:
+            QMessageBox.warning(self, "Erro", f"Nao foi possivel salvar a campanha.\n{exc}")
+
+    def _remove_bg_campaign(self) -> None:
+        """Remove a campanha selecionada na tabela."""
+        row = self._bg_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Remover", "Selecione uma campanha para remover.")
+            return
+        name_item = self._bg_table.item(row, 0)
+        if name_item is None:
+            return
+        campaign_id = name_item.data(Qt.ItemDataRole.UserRole)
+        name        = name_item.text()
+        ans = QMessageBox.question(
+            self,
+            "Remover campanha",
+            f"Remover a campanha '{name}'?\n\n"
+            "O arquivo de imagem NÃO será apagado do disco.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        login_backgrounds.remove_campaign(campaign_id)
+        self._refresh_bg_table()
+        self._notify_login_view_bg_changed()
+
+    def _notify_login_view_bg_changed(self) -> None:
+        """Avisa o LoginView para recarregar o fundo, se acessível."""
+        try:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app is None:
+                return
+            for widget in app.allWidgets():
+                if widget.__class__.__name__ == "LoginView":
+                    if hasattr(widget, "reload_background"):
+                        widget.reload_background()
+                    break
+        except Exception:
+            pass
+
     def _check_updates(self) -> None:
         from ..updater import UpdateChecker
 
@@ -671,3 +1014,8 @@ class SettingsView(QWidget):
             btn.setStyleSheet(btn_style)
         for btn in self._font_size_btns.values():
             btn.setStyleSheet(btn_style)
+        if session.settings_show_login_backgrounds:
+            self._btn_add_bg.setStyleSheet(_flat_secondary_btn_style(s))
+            self._btn_remove_bg.setStyleSheet(_flat_secondary_btn_style(s))
+            self._bg_table.setStyleSheet(_table_style())
+            self._refresh_bg_table()

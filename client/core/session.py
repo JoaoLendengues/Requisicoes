@@ -156,5 +156,10 @@ class UserSession:
         """Atualizações: todos."""
         return True
 
+    @property
+    def settings_show_login_backgrounds(self) -> bool:
+        """Fundo da tela de login: somente admin."""
+        return self.role == "admin"
+
 
 session = UserSession()
