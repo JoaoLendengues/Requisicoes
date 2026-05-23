@@ -189,6 +189,35 @@ class ClientSearchBox(QWidget):
 
         self._setup_ui()
 
+        # Warmup: estabelece a conexão TCP e pré-carrega os primeiros resultados
+        # antes que o usuário comece a digitar — chamada não bloqueia a UI.
+        self._warmup()
+
+    # ── Warmup de conexão ─────────────────────────────────────────────────────
+
+    def _warmup(self) -> None:
+        """
+        Dispara uma busca vazia em background logo após o formulário carregar.
+
+        Dois efeitos:
+        1. Estabelece a conexão TCP com o servidor antes do usuário digitar,
+           eliminando o custo do handshake na primeira busca real.
+        2. Pre-carrega os primeiros resultados no cache (key ""), que são usados
+           imediatamente como prévia enquanto a resposta da busca real ainda chega.
+        """
+        t, w = _run_in_thread(
+            api.list_clients, "", 20,
+            on_result=self._on_warmup,
+            on_error=lambda _: None,
+        )
+        self._track_thread(t, w)
+
+    def _on_warmup(self, clients: list) -> None:
+        if clients:
+            self._results_cache[""] = clients
+
+    # ── Interface ─────────────────────────────────────────────────────────────
+
     def _setup_ui(self):
         s = self.scale
         lay = QHBoxLayout(self)
@@ -265,7 +294,7 @@ class ClientSearchBox(QWidget):
         self._search_seq += 1
         search_id = self._search_seq
         t, w = _run_in_thread(
-            api.list_clients, term, 80,
+            api.list_clients, term, 20,
             on_result=lambda clients, q=term, sid=search_id: self._on_results(q, sid, clients),
             on_error=lambda _, q=term, sid=search_id: self._on_search_error(q, sid),
         )
