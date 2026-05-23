@@ -422,7 +422,6 @@ class NotificationDrawer(QWidget):
             f"    stop:1 {led_bg_bottom}"
             f"  );"
             f"  border: 1px solid {theme.DRAWER_BORDER} !important;"
-            f"  border-left: 4px solid {accent} !important;"
             f"  border-radius: 10px;"
             f"}}"
             f"QFrame#drawerNotifCard:hover {{"
