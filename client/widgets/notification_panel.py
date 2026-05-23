@@ -169,6 +169,10 @@ class NotificationDrawer(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
             f"QWidget#notifDrawer {{ background: {theme.DRAWER_BG}; }}"
+            f"QWidget#notifDrawer QLabel, QWidget#notifDrawer QPushButton {{"
+            f"  font-family: 'Inter', 'Segoe UI';"
+            f"  font-weight: 700;"
+            f"}}"
             f"QFrame {{ border: none; }}"
         )
 
@@ -239,7 +243,7 @@ class NotificationDrawer(QWidget):
         title.setStyleSheet(
             f"color: {theme.DRAWER_TITLE}; font-size: 11pt; font-weight: 700;"
             f"background: transparent;"
-            f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+            f"font-family: 'Inter', 'Segoe UI';"
         )
         title_row.addWidget(title)
 
@@ -252,7 +256,7 @@ class NotificationDrawer(QWidget):
             badge.setStyleSheet(
                 f"background: {theme.DANGER}; color: #fff; border-radius: 11px;"
                 f"padding: 2px 8px; font-size: 9pt; font-weight: 700;"
-                f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+                f"font-family: 'Inter', 'Segoe UI';"
             )
             title_row.addWidget(badge)
 
@@ -266,8 +270,8 @@ class NotificationDrawer(QWidget):
                 f"QPushButton {{"
                 f"  background: transparent; color: {theme.PRIMARY};"
                 f"  border: 1px solid {theme.PRIMARY}; border-radius: 6px;"
-                f"  padding: 4px 11px; font-size: 8pt; font-weight: 600;"
-                f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+                f"  padding: 4px 11px; font-size: 8pt; font-weight: 700;"
+                f"  font-family: 'Inter', 'Segoe UI';"
                 f"}}"
                 f"QPushButton:hover {{ background: {theme.SELECTION_BG}; }}"
             )
@@ -282,7 +286,7 @@ class NotificationDrawer(QWidget):
             f"QPushButton {{"
             f"  background: transparent; color: {theme.TEXT_LABEL};"
             f"  border: none; border-radius: 15px; font-size: 13px;"
-            f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+            f"  font-family: 'Inter', 'Segoe UI';"
             f"}}"
             f"QPushButton:hover {{"
             f"  background: {theme.BORDER_COLOR}; color: {theme.TEXT_DARK};"
@@ -350,7 +354,7 @@ class NotificationDrawer(QWidget):
         title_lbl.setStyleSheet(
             f"color: {theme.DRAWER_TITLE}; font-size: 13pt; font-weight: 700;"
             f"background: transparent;"
-            f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+            f"font-family: 'Inter', 'Segoe UI';"
         )
         wrapper_lay.addWidget(title_lbl)
 
@@ -363,7 +367,7 @@ class NotificationDrawer(QWidget):
         sub_lbl.setStyleSheet(
             f"color: {theme.DRAWER_MUTED}; font-size: 9pt;"
             f"background: transparent;"
-            f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+            f"font-family: 'Inter', 'Segoe UI';"
         )
         wrapper_lay.addWidget(sub_lbl)
 
@@ -393,7 +397,7 @@ class NotificationDrawer(QWidget):
         count_lbl.setStyleSheet(
             f"color: {theme.TEXT_LABEL}; font-size: 8pt;"
             f"background: transparent;"
-            f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+            f"font-family: 'Inter', 'Segoe UI';"
         )
         flay.addWidget(count_lbl, 1)
 
@@ -455,7 +459,7 @@ class NotificationDrawer(QWidget):
         title_lbl.setStyleSheet(
             f"font-weight: 700; font-size: 9pt; color: {theme.DRAWER_TITLE};"
             f"background: transparent; border: none;"
-            f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+            f"font-family: 'Inter', 'Segoe UI';"
         )
         title_lbl.setWordWrap(True)
         top.addWidget(title_lbl, 1)
@@ -472,7 +476,7 @@ class NotificationDrawer(QWidget):
             ts_lbl = QLabel(ts)
             ts_lbl.setStyleSheet(
                 f"color: {theme.DRAWER_MUTED}; font-size: 7pt; background: transparent; border: none;"
-                f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+                f"font-family: 'Inter', 'Segoe UI';"
             )
             top.addWidget(ts_lbl)
 
@@ -485,7 +489,7 @@ class NotificationDrawer(QWidget):
             msg_lbl.setStyleSheet(
                 f"color: {theme.DRAWER_BODY}; font-size: 8pt;"
                 f"background: transparent; border: none;"
-                f"font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+                f"font-family: 'Inter', 'Segoe UI';"
                 f"padding-left: 32px;"
             )
             msg_lbl.setWordWrap(True)
@@ -509,7 +513,7 @@ class NotificationDrawer(QWidget):
                     f"  background: transparent; color: {theme.TEXT_LABEL};"
                     f"  border: 1px solid {theme.DRAWER_BORDER}; border-radius: 5px;"
                     f"  padding: 3px 10px; font-size: 7pt;"
-                    f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+                    f"  font-family: 'Inter', 'Segoe UI';"
                     f"}}"
                     f"QPushButton:hover {{"
                     f"  color: {theme.SUCCESS}; border-color: {theme.SUCCESS};"
@@ -526,8 +530,8 @@ class NotificationDrawer(QWidget):
                     f"QPushButton {{"
                     f"  background: {theme.PRIMARY}; color: #fff;"
                     f"  border: none; border-radius: 5px;"
-                    f"  padding: 3px 10px; font-size: 7pt; font-weight: 600;"
-                    f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+                    f"  padding: 3px 10px; font-size: 7pt; font-weight: 700;"
+                    f"  font-family: 'Inter', 'Segoe UI';"
                     f"}}"
                     f"QPushButton:hover {{ background: {theme.PRIMARY_HOVER}; }}"
                 )
