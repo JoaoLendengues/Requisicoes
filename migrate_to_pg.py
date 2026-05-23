@@ -36,7 +36,7 @@ except ImportError:
 
 ROOT = Path(__file__).parent
 SQLITE_PATH = ROOT / "requisicoes.db"
-ENV_PATH = ROOT / ".env"
+ENV_PATH = ROOT / ".env" if (ROOT / ".env").exists() else ROOT / ".env.example"
 
 # Ordem respeitando dependências de chave estrangeira
 TABLES_ORDER = [
@@ -192,7 +192,9 @@ def main() -> None:
     if not SQLITE_PATH.exists():
         sys.exit(f"\nERRO: arquivo SQLite não encontrado em:\n  {SQLITE_PATH}")
     if not ENV_PATH.exists():
-        sys.exit(f"\nERRO: arquivo .env não encontrado em:\n  {ENV_PATH}")
+        sys.exit(f"\nERRO: nenhum arquivo .env ou .env.example encontrado em:\n  {ROOT}")
+    if ENV_PATH.name == ".env.example":
+        print(f"  AVISO: usando .env.example (crie um .env para produção).")
 
     env = load_env()
     if env.get("DATABASE_TYPE") != "postgresql":
