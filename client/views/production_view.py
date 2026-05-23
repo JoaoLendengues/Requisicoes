@@ -1008,9 +1008,9 @@ class ProductionView(QWidget):
         self._run_action(
             api.update_status,
             int(req["id"]),
-            "em_andamento",
+            "cancelada",
             _build_production_note(PROD_CANCELED, self.destination, reason=reason),
-            success_message="Requisição devolvida para em andamento.",
+            success_message="Requisição cancelada.",
         )
 
     def _finish_selected_machine(self, machine_id: int):

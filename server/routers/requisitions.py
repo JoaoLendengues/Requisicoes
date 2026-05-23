@@ -368,7 +368,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
                 status_code=400,
                 detail="Informe um motivo de cancelamento com pelo menos 10 caracteres",
             )
-        req.status = RequisitionStatus.EM_ANDAMENTO
+        req.status = RequisitionStatus.CANCELADA
         req.finalized_at = None
         req.production_machine = None
         return
@@ -378,6 +378,17 @@ def _apply_manual_status_transition(
     req: Requisition,
     new_status: RequisitionStatus,
 ):
+    if req.status == RequisitionStatus.CANCELADA:
+        if new_status == RequisitionStatus.FATURADO:
+            raise HTTPException(
+                status_code=400,
+                detail="Requisições canceladas não podem ser faturadas diretamente",
+            )
+        req.status = new_status
+        req.finalized_at = None
+        req.production_machine = None
+        return
+
     if new_status == RequisitionStatus.FATURADO:
         if req.status != RequisitionStatus.AGUARDANDO_FATURAMENTO:
             raise HTTPException(
@@ -865,6 +876,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     status=req.status,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
+                    destination=destination,
                     canceled_at=_latest_status_changed_at(req, RequisitionStatus.CANCELADA),
                 )
             )

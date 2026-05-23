@@ -51,6 +51,9 @@ _METRIC_ICON_FILES = {
     "tempo_medio_producao_segundos": "tempo_medio_producao.png",
 }
 
+PROD_NOTE_PREFIX = "PRODUCAO"
+PROD_SEND = "ENVIADA"
+
 
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
@@ -159,6 +162,11 @@ def _format_waiting_minutes(minutes: object) -> str:
 
     days, hours = divmod(hours, 24)
     return f"{days}d {hours:02d}h"
+
+
+def _build_production_note(action: str, destination: str) -> str:
+    destination_text = str(destination or "").strip()
+    return "|".join([PROD_NOTE_PREFIX, action, destination_text])
 
 
 class OrderCenterWorker(QObject):
@@ -562,6 +570,12 @@ class OrderCenterView(QWidget):
             btn_pdf.setStyleSheet(_primary_action_btn_style(s))
             btn_pdf.clicked.connect(lambda _checked=False, section=key: self._open_selected_pdf(section))
             title_row.addWidget(btn_pdf)
+        if key == "cancelados":
+            btn_restore = QPushButton("RETORNAR STATUS")
+            btn_restore.setFixedHeight(max(34, int(38 * s)))
+            btn_restore.setStyleSheet(_flat_secondary_btn_style(s))
+            btn_restore.clicked.connect(self._reopen_canceled_selected)
+            title_row.addWidget(btn_restore)
 
         layout.addLayout(title_row)
 
@@ -887,6 +901,84 @@ class OrderCenterView(QWidget):
             on_error=lambda msg: QMessageBox.critical(self, "Central de pedidos", msg),
         )
         self._threads.append((thread, worker))
+
+    def _reopen_canceled_selected(self):
+        row = self._selected_row("cancelados")
+        if not row:
+            QMessageBox.information(
+                self,
+                "Central de pedidos",
+                "Selecione um pedido cancelado primeiro.",
+            )
+            return
+
+        ped_number = str(row.get("ped_number") or "").strip() or "sem PED"
+        destination = str(row.get("destination") or "").strip()
+
+        box = QMessageBox(self)
+        box.setWindowTitle("Retornar Status")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText(f"Como deseja retornar o pedido {ped_number}?")
+        if destination:
+            box.setInformativeText(f"Destino de produção registrado: {destination}.")
+        else:
+            box.setInformativeText(
+                "Este pedido não possui destino de produção registrado para voltar em aguardando recebimento."
+            )
+
+        btn_edit = box.addButton("Nova requisição (editar)", QMessageBox.ButtonRole.AcceptRole)
+        btn_receipt = box.addButton("Aguardando recebimento", QMessageBox.ButtonRole.ActionRole)
+        btn_close = box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        btn_receipt.setEnabled(bool(destination))
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == btn_edit:
+            self._apply_reopen_canceled_status(
+                row,
+                new_status="em_andamento",
+                note="",
+                success_message=f"Pedido {ped_number} voltou para nova requisição.",
+            )
+        elif clicked == btn_receipt:
+            if not destination:
+                QMessageBox.warning(
+                    self,
+                    "Central de pedidos",
+                    "Não foi possível retornar para aguardando recebimento sem destino de produção.",
+                )
+                return
+            self._apply_reopen_canceled_status(
+                row,
+                new_status="aguardando_recebimento",
+                note=_build_production_note(PROD_SEND, destination),
+                success_message=f"Pedido {ped_number} voltou para aguardando recebimento em {destination}.",
+            )
+        elif clicked == btn_close:
+            return
+
+    def _apply_reopen_canceled_status(
+        self,
+        row: dict,
+        *,
+        new_status: str,
+        note: str,
+        success_message: str,
+    ):
+        req_id = int(row["id"])
+        thread, worker = _run_in_thread(
+            api.update_status,
+            req_id,
+            new_status,
+            note,
+            on_result=lambda _req: self._after_reopen_canceled(success_message),
+            on_error=lambda msg: QMessageBox.critical(self, "Central de pedidos", msg),
+        )
+        self._threads.append((thread, worker))
+
+    def _after_reopen_canceled(self, success_message: str):
+        QMessageBox.information(self, "Central de pedidos", success_message)
+        self.refresh()
 
     def _after_mark_invoiced(self, ped_number: str):
         QMessageBox.information(
