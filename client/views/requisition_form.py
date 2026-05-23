@@ -218,16 +218,23 @@ class ClientSearchBox(QWidget):
         self._track_thread(t, w)
 
     def _on_all_clients_loaded(self, clients: list) -> None:
-        self._all_clients = clients
+        # Garante que recebemos uma lista de dicts — descarta silenciosamente
+        # qualquer resposta inesperada para não quebrar o filtro.
+        if not isinstance(clients, list):
+            return
+        self._all_clients = [c for c in clients if isinstance(c, dict)]
         # Pré-popula o cache vazio para que _render_cached_preview já funcione
-        if clients:
-            self._results_cache[""] = clients[:20]
+        if self._all_clients:
+            self._results_cache[""] = self._all_clients[:20]
         # Se o usuário já digitou algo antes da carga terminar, atualiza o dropdown
         current_term = self.input.text().strip()
         min_chars = 1 if self._looks_like_code_or_document(current_term) else 2
         if len(current_term) >= min_chars:
-            filtered = self._filter_cached_clients(self._all_clients, current_term)
-            self._render_results(filtered[:25])
+            try:
+                filtered = self._filter_cached_clients(self._all_clients, current_term)
+                self._render_results(filtered[:25])
+            except Exception:
+                self._render_results(self._all_clients[:25])
 
     # ── Interface ─────────────────────────────────────────────────────────────
 
@@ -281,8 +288,12 @@ class ClientSearchBox(QWidget):
         # ── Caminho rápido: busca local instantânea ────────────────────────
         # Quando _all_clients já foi carregado, filtra em Python sem rede.
         if self._all_clients:
-            filtered = self._filter_cached_clients(self._all_clients, term)
-            self._render_results(filtered[:25])
+            try:
+                filtered = self._filter_cached_clients(self._all_clients, term)
+                self._render_results(filtered[:25])
+            except Exception:
+                # Fallback defensivo: mostra os primeiros clientes sem filtro
+                self._render_results(self._all_clients[:25])
             return
         # ── Fallback: servidor (enquanto a carga inicial ainda não terminou) ─
 
@@ -461,6 +472,8 @@ class ClientSearchBox(QWidget):
         tier2: list = []
 
         for c in clients:
+            if not isinstance(c, dict):
+                continue
             name    = self._alnum(c.get("name") or "")
             code    = self._alnum(c.get("code") or "")
             code_nz = code.lstrip("0")
