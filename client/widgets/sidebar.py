@@ -249,14 +249,25 @@ class _ThemeToggle(QWidget):
         self._anim.setEndValue(QPoint(self._knob_x(dark), _KNOB_PAD))
         self._anim.start()
 
+    def _refresh_labels(self) -> None:
+        self._icon_lbl.setText("🌙" if self._dark else "☀️")
+        self._text_lbl.setText("MODO ESCURO" if self._dark else "MODO CLARO")
+
+    def set_dark(self, dark: bool, *, animate: bool = False) -> None:
+        self._dark = bool(dark)
+        if animate:
+            self._animate_to(self._dark)
+        else:
+            self._anim.stop()
+            self._pill.setStyleSheet(self._pill_style(self._dark))
+            self._knob.move(self._knob_x(self._dark), _KNOB_PAD)
+        self._refresh_labels()
+
     # ── Interação ─────────────────────────────────────────────────────────────
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self._dark = not self._dark
-            self._animate_to(self._dark)
-            self._icon_lbl.setText("🌙" if self._dark else "☀️")
-            self._text_lbl.setText("MODO ESCURO" if self._dark else "MODO CLARO")
+            self.set_dark(not self._dark, animate=True)
             self.toggled.emit(self._dark)
         super().mousePressEvent(event)
 
@@ -567,5 +578,6 @@ class Sidebar(QWidget):
                 f"  border:1px solid {theme.SIDEBAR_INDICATOR};"
                 f"}}"
             )
+        self._theme_toggle.set_dark(theme.is_dark, animate=False)
         self._theme_toggle.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
         self._bell.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
