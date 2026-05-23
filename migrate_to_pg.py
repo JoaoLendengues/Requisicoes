@@ -10,11 +10,16 @@ Tabelas migradas por este script:
   production_machines, requisitions, requisition_items,
   canvas_data, status_history, notifications, feedbacks
 
-IMPORTANTE: inicie o servidor ao menos uma vez antes de rodar este script,
-para que o create_all() e o _migrate() criem e atualizem as tabelas no PG.
+Como usar:
 
-Uso:
-  .venv\\Scripts\\python.exe migrate_to_pg.py
+  Primeira execução (ou após limpar dados parciais):
+    .venv\\Scripts\\python.exe migrate_to_pg.py --clean
+
+  Re-executar sem apagar o que já existe:
+    .venv\\Scripts\\python.exe migrate_to_pg.py
+
+IMPORTANTE: inicie o servidor ao menos uma vez antes de rodar,
+para que create_all() e _migrate() criem/atualizem as tabelas no PG.
 """
 
 from __future__ import annotations
@@ -34,28 +39,35 @@ except ImportError:
 
 # ── Configuração ──────────────────────────────────────────────────────────────
 
-ROOT = Path(__file__).parent
+ROOT        = Path(__file__).parent
 SQLITE_PATH = ROOT / "requisicoes.db"
 
-# Conexão de fallback usada quando não há .env nem .env.example
 _FALLBACK_DB_URL = "postgresql://tipinheiro:Pinheiro123@10.1.1.151:5432/requisicoes"
 
-# Ordem respeitando dependências de chave estrangeira
+# Ordem respeitando dependências de FK
 TABLES_ORDER = [
     "production_machines",   # sem FK para tabelas migradas
-    "requisitions",          # FK → users, clients (já no PG)
-    "requisition_items",     # FK → requisitions
-    "canvas_data",           # FK → requisitions
-    "status_history",        # FK → requisitions, users
-    "notifications",         # FK → users
-    "feedbacks",             # FK → users
+    "requisitions",          # vendor_id → users | client_id → clients
+    "requisition_items",     # requisition_id → requisitions
+    "canvas_data",           # requisition_id → requisitions
+    "status_history",        # requisition_id → requisitions | changed_by_id → users
+    "notifications",         # user_id → users
+    "feedbacks",             # user_id → users | read_by_id → users (nullable)
 ]
 
+# Colunas FK que precisam de remapeamento de ID SQLite → PG
+# Formato: {tabela: {coluna: "user" | "client"}}
+FK_REMAPS: dict[str, dict[str, str]] = {
+    "requisitions":   {"vendor_id": "user",  "client_id": "client"},
+    "status_history": {"changed_by_id": "user"},
+    "notifications":  {"user_id": "user"},
+    "feedbacks":      {"user_id": "user",    "read_by_id": "user"},
+}
 
-# ── Utilitários de configuração ───────────────────────────────────────────────
+
+# ── Configuração / conexão ────────────────────────────────────────────────────
 
 def load_env() -> dict[str, str]:
-    """Carrega variáveis de .env, .env.example ou usa fallback embutido."""
     for candidate in (".env", ".env.example"):
         path = ROOT / candidate
         if path.exists():
@@ -66,7 +78,7 @@ def load_env() -> dict[str, str]:
                     k, _, v = line.partition("=")
                     env[k.strip()] = v.strip()
             return env
-    print("  AVISO: nenhum .env encontrado — usando conexão embutida no script.")
+    print("  AVISO: nenhum .env encontrado — usando conexão embutida.")
     return {"DATABASE_URL": _FALLBACK_DB_URL, "DATABASE_TYPE": "postgresql"}
 
 
@@ -77,7 +89,7 @@ def parse_pg_url(url: str) -> dict:
         url,
     )
     if not m:
-        raise ValueError(f"URL de banco inválida: {url!r}")
+        raise ValueError(f"URL inválida: {url!r}")
     return dict(
         user=m["user"], password=m["password"],
         host=m["host"], port=int(m["port"] or 5432),
@@ -85,13 +97,12 @@ def parse_pg_url(url: str) -> dict:
     )
 
 
-# ── Utilitários de schema ─────────────────────────────────────────────────────
+# ── Schema helpers ────────────────────────────────────────────────────────────
 
 def pg_table_exists(pg_cur, table: str) -> bool:
     pg_cur.execute(
         "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
-        "WHERE table_schema = 'public' AND table_name = %s)",
-        (table,),
+        "WHERE table_schema = 'public' AND table_name = %s)", (table,)
     )
     return pg_cur.fetchone()[0]
 
@@ -99,8 +110,7 @@ def pg_table_exists(pg_cur, table: str) -> bool:
 def get_pg_columns(pg_cur, table: str) -> set[str]:
     pg_cur.execute(
         "SELECT column_name FROM information_schema.columns "
-        "WHERE table_schema = 'public' AND table_name = %s",
-        (table,),
+        "WHERE table_schema = 'public' AND table_name = %s", (table,)
     )
     return {row[0] for row in pg_cur.fetchall()}
 
@@ -115,7 +125,48 @@ def _date_cols(cols: list[str]) -> set[str]:
     return {c for c in cols if any(kw in c.lower() for kw in keywords)}
 
 
-# ── Conversão de tipos SQLite → Python ───────────────────────────────────────
+# ── Mapeamento de IDs ─────────────────────────────────────────────────────────
+
+def build_id_maps(
+    sq_conn: sqlite3.Connection, pg_conn
+) -> tuple[dict[int, int], dict[int, int]]:
+    """
+    Constrói SQLite-ID → PostgreSQL-ID para users (por e-mail)
+    e clients (por code).
+    """
+    sq = sq_conn.cursor()
+    pg = pg_conn.cursor()
+
+    # Users: match por e-mail (identificador estável)
+    sq.execute("SELECT id, email FROM users")
+    sq_users = {email.lower(): sq_id for sq_id, email in sq.fetchall() if email}
+    pg.execute("SELECT id, email FROM users")
+    pg_users = {email.lower(): pg_id for pg_id, email in pg.fetchall() if email}
+    user_map = {
+        sq_id: pg_users[email]
+        for email, sq_id in sq_users.items()
+        if email in pg_users
+    }
+
+    # Clients: match por code
+    sq.execute("SELECT id, code FROM clients")
+    sq_clients = {code: sq_id for sq_id, code in sq.fetchall() if code}
+    pg.execute("SELECT id, code FROM clients")
+    pg_clients = {code: pg_id for pg_id, code in pg.fetchall() if code}
+    client_map = {
+        sq_id: pg_clients[code]
+        for code, sq_id in sq_clients.items()
+        if code in pg_clients
+    }
+
+    unmapped_users   = len(sq_users)   - len(user_map)
+    unmapped_clients = len(sq_clients) - len(client_map)
+    print(f"  Usuários  : {len(user_map)} mapeados, {unmapped_users} não encontrados no PG")
+    print(f"  Clientes  : {len(client_map)} mapeados, {unmapped_clients} não encontrados no PG")
+    return user_map, client_map
+
+
+# ── Conversão de tipos ────────────────────────────────────────────────────────
 
 def _parse_dt(value):
     if value is None or isinstance(value, (datetime, date)):
@@ -126,18 +177,35 @@ def _parse_dt(value):
             return datetime.strptime(s, fmt)
         except ValueError:
             continue
-    return value  # devolve como está — PostgreSQL tentará coagir
+    return value  # deixa o PG tentar coagir
 
 
 def _adapt_row(
-    row: tuple,
+    raw: tuple,
     cols: list[str],
     bool_cols: set[str],
     dt_cols: set[str],
-) -> tuple:
+    user_map: dict[int, int],
+    client_map: dict[int, int],
+    table: str,
+) -> tuple | None:
+    """
+    Converte tipos e remapeia FKs.
+    Retorna None se FK obrigatória não puder ser resolvida.
+    """
+    remaps = FK_REMAPS.get(table, {})
     result = []
-    for val, col in zip(row, cols):
-        if col in bool_cols:
+    for val, col in zip(raw, cols):
+        if col in remaps:
+            if val is None:          # FK nullable (ex: read_by_id)
+                result.append(None)
+                continue
+            id_map = user_map if remaps[col] == "user" else client_map
+            new_id = id_map.get(int(val))
+            if new_id is None:
+                return None          # FK obrigatória sem match → descarta linha
+            result.append(new_id)
+        elif col in bool_cols:
             result.append(bool(val) if val is not None else None)
         elif col in dt_cols:
             result.append(_parse_dt(val))
@@ -146,73 +214,104 @@ def _adapt_row(
     return tuple(result)
 
 
+# ── Limpeza (--clean) ─────────────────────────────────────────────────────────
+
+def clean_tables(pg_conn) -> None:
+    """Trunca todas as tabelas migradas em ordem inversa, reiniciando sequences."""
+    pg_cur = pg_conn.cursor()
+    existing = [t for t in reversed(TABLES_ORDER) if pg_table_exists(pg_cur, t)]
+    if not existing:
+        print("  Nenhuma tabela encontrada para limpar.")
+        return
+    pg_cur.execute(
+        "TRUNCATE TABLE " + ", ".join(existing) + " RESTART IDENTITY CASCADE"
+    )
+    pg_conn.commit()
+    for t in existing:
+        print(f"  {t}: limpa.")
+
+
 # ── Cópia de tabela ───────────────────────────────────────────────────────────
 
-def copy_table(sq_conn: sqlite3.Connection, pg_conn, table: str) -> None:
+def copy_table(
+    sq_conn: sqlite3.Connection,
+    pg_conn,
+    table: str,
+    user_map: dict[int, int],
+    client_map: dict[int, int],
+) -> None:
     pg_cur = pg_conn.cursor()
 
-    # 1. Tabela existe no PostgreSQL?
+    # Tabela existe no PG?
     if not pg_table_exists(pg_cur, table):
         print(f"  {table}: tabela não existe no PostgreSQL.")
         print( "           → Inicie o servidor uma vez para criar as tabelas e tente novamente.")
         return
 
-    # 2. Já tem dados? Pula.
+    # Já populada?
     pg_cur.execute(f"SELECT COUNT(*) FROM {table}")
-    pg_count = pg_cur.fetchone()[0]
-    if pg_count > 0:
-        print(f"  {table}: já tem {pg_count} linha(s) no PostgreSQL — pulando.")
+    if pg_cur.fetchone()[0] > 0:
+        print(f"  {table}: já tem dados no PostgreSQL — pulando. (use --clean para refazer)")
         return
 
-    # 3. Lê todos os dados do SQLite
+    # Lê SQLite
     sq_cur = sq_conn.cursor()
     sq_cur.execute(f"SELECT * FROM {table}")
     sq_cols = [d[0] for d in sq_cur.description]
-    rows = sq_cur.fetchall()
+    rows    = sq_cur.fetchall()
 
     if not rows:
-        print(f"  {table}: vazia no SQLite — nada a migrar.")
+        print(f"  {table}: vazia no SQLite.")
         return
 
-    # 4. Usa somente as colunas que existem nos DOIS bancos
-    #    (resolve colunas adicionadas por _migrate que ainda não estão no PG)
-    pg_cols = get_pg_columns(pg_cur, table)
+    # Usa apenas colunas presentes nos dois bancos
+    pg_cols  = get_pg_columns(pg_cur, table)
     use_cols = [c for c in sq_cols if c in pg_cols]
     use_idx  = [i for i, c in enumerate(sq_cols) if c in pg_cols]
     missing  = [c for c in sq_cols if c not in pg_cols]
-
     if missing:
-        print(f"  {table}: colunas ausentes no PG, serão ignoradas: {missing}")
-        print( "           → Inicie o servidor para aplicar as migrações e re-execute o script.")
+        print(f"  {table}: colunas ausentes no PG (ignoradas): {missing}")
+        print( "           → Inicie o servidor para aplicar as migrações e refaça com --clean.")
 
-    # 5. Adapta tipos (bool, datetime)
     b_cols = _bool_cols(sq_cur, table)
     d_cols = _date_cols(use_cols)
-    adapted = [
-        _adapt_row(tuple(r[i] for i in use_idx), use_cols, b_cols, d_cols)
-        for r in rows
-    ]
+
+    # Adapta e remapeia IDs
+    adapted:     list[tuple] = []
+    fk_skipped:  int         = 0
+    for r in rows:
+        row = _adapt_row(
+            tuple(r[i] for i in use_idx),
+            use_cols, b_cols, d_cols,
+            user_map, client_map, table,
+        )
+        if row is None:
+            fk_skipped += 1
+        else:
+            adapted.append(row)
+
+    if not adapted:
+        print(f"  {table}: todas as {fk_skipped} linha(s) descartadas "
+              f"(usuário/cliente não encontrado no PG).")
+        return
 
     col_str      = ", ".join(f'"{c}"' for c in use_cols)
     placeholders = ", ".join(["%s"] * len(use_cols))
     sql_single   = f'INSERT INTO {table} ({col_str}) VALUES ({placeholders}) ON CONFLICT DO NOTHING'
 
-    # 6. Tenta bulk insert; se falhar por FK, cai em row-by-row tolerante
-    inserted = 0
-    skipped  = 0
+    # Bulk insert; se falhar, row-by-row
+    inserted   = 0
+    err_skipped = 0
     try:
         execute_values(
             pg_cur,
             f'INSERT INTO {table} ({col_str}) VALUES %s ON CONFLICT DO NOTHING',
-            adapted,
-            page_size=500,
+            adapted, page_size=500,
         )
         pg_conn.commit()
         inserted = len(adapted)
-
     except Exception:
         pg_conn.rollback()
-        # Insere linha a linha, pulando as que violam FK ou outra restrição
         for row in adapted:
             try:
                 pg_cur.execute(sql_single, row)
@@ -220,37 +319,40 @@ def copy_table(sq_conn: sqlite3.Connection, pg_conn, table: str) -> None:
                 inserted += 1
             except Exception:
                 pg_conn.rollback()
-                skipped += 1
+                err_skipped += 1
 
-    # 7. Reseta a sequence do id
+    # Reseta sequence
     if "id" in use_cols:
         try:
             pg_cur.execute(
                 "SELECT setval(pg_get_serial_sequence(%s, 'id'), "
-                f"COALESCE((SELECT MAX(id) FROM {table}), 1))",
-                (table,),
+                f"COALESCE((SELECT MAX(id) FROM {table}), 1))", (table,)
             )
             pg_conn.commit()
         except Exception:
             pg_conn.rollback()
 
-    # 8. Relatório
-    if skipped:
-        print(f"  {table}: {inserted} migrada(s), {skipped} pulada(s) (FK ausente no PG). OK")
-    else:
-        print(f"  {table}: {inserted} linha(s) migrada(s). OK")
+    # Relatório
+    parts = [f"{inserted} migrada(s)"]
+    if fk_skipped:   parts.append(f"{fk_skipped} sem usuário/cliente no PG")
+    if err_skipped:  parts.append(f"{err_skipped} outro erro")
+    print(f"  {table}: {', '.join(parts)}. OK")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
+    clean_mode = "--clean" in sys.argv
+
     print()
     print("=" * 58)
     print("  Migração de dados: SQLite → PostgreSQL")
+    if clean_mode:
+        print("  MODO: --clean  (dados parciais serão apagados e refeitos)")
     print("=" * 58)
 
     if not SQLITE_PATH.exists():
-        sys.exit(f"\nERRO: arquivo SQLite não encontrado em:\n  {SQLITE_PATH}")
+        sys.exit(f"\nERRO: SQLite não encontrado em:\n  {SQLITE_PATH}")
 
     env    = load_env()
     params = parse_pg_url(env["DATABASE_URL"])
@@ -265,6 +367,15 @@ def main() -> None:
 
     sq_conn = sqlite3.connect(str(SQLITE_PATH))
 
+    if clean_mode:
+        print("Limpando dados parciais:")
+        clean_tables(pg_conn)
+        print()
+
+    print("Mapeando IDs (users por e-mail, clients por código):")
+    user_map, client_map = build_id_maps(sq_conn, pg_conn)
+    print()
+
     sq_cur = sq_conn.cursor()
     sq_cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
     sq_tables = {r[0] for r in sq_cur.fetchall()}
@@ -276,7 +387,7 @@ def main() -> None:
             print(f"  {table}: não existe no SQLite — pulando.")
             continue
         try:
-            copy_table(sq_conn, pg_conn, table)
+            copy_table(sq_conn, pg_conn, table, user_map, client_map)
         except Exception as exc:
             pg_conn.rollback()
             msg = f"  ERRO inesperado em '{table}': {exc}"
