@@ -1,43 +1,58 @@
 """
-SmoothScrollArea — QScrollArea com scroll suave via QPropertyAnimation (60 fps).
+SmoothScrollArea — scroll fluido a 60 fps via spring/lerp com PreciseTimer.
 
-Substitui o scroll abrupto padrão por uma animação com easing OutCubic.
-Acumula corretamente múltiplos eventos de roda antes da animação terminar.
+Como funciona:
+  - Cada tick do roda acumula um delta no _target (sem limite de duração).
+  - Um QTimer com PreciseTimer dispara a cada 16 ms (~62.5 fps).
+  - A cada tick, o valor atual avança 22% da distância restante (lerp).
+  - Quando o restante é < 1 px, trava no alvo — sem oscilação.
+
+Resultado: inércia natural, desaceleração suave, resposta imediata a novos
+eventos de roda enquanto o scroll anterior ainda está animando.
 """
 from PySide6.QtWidgets import QScrollArea
-from PySide6.QtCore import QPropertyAnimation, QEasingCurve, QAbstractAnimation
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QWheelEvent
 
-_DURATION_MS = 220          # duração da animação de scroll
-_TICKS_PER_STEP = 3         # multiplicador do singleStep por tick de roda
+_FRAME_MS    = 16     # intervalo do timer → ~62.5 fps (PreciseTimer garante isso)
+_LERP        = 0.22   # fator por frame: 22% da distância restante
+_SNAP_PX     = 1.0    # trava quando diff < 1 px
+_STEP_RATIO  = 0.13   # passo por tick = 13% do pageStep (sensação natural)
+_STEP_MIN_PX = 40     # passo mínimo em pixels
 
 
 class SmoothScrollArea(QScrollArea):
-    """QScrollArea com scroll vertical suave."""
+    """QScrollArea com scroll suave a ~60 fps via lerp exponencial."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        bar = self.verticalScrollBar()
-        self._anim = QPropertyAnimation(bar, b"value", self)
-        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._anim.setDuration(_DURATION_MS)
-        self._target: int | None = None
-        self._anim.finished.connect(self._sync_target)
 
-    # ── helpers ──────────────────────────────────────────────────────────────
+        self._timer = QTimer(self)
+        self._timer.setTimerType(Qt.TimerType.PreciseTimer)  # resolução máxima
+        self._timer.setInterval(_FRAME_MS)
+        self._timer.timeout.connect(self._tick)
 
-    def _sync_target(self) -> None:
-        self._target = self.verticalScrollBar().value()
+        self._target:  float = 0.0
+        self._current: float = 0.0
 
-    def _current_target(self) -> int:
-        if (
-            self._anim.state() == QAbstractAnimation.State.Running
-            and self._target is not None
-        ):
-            return self._target
-        return self.verticalScrollBar().value()
+    # ── loop de animação ──────────────────────────────────────────────────────
 
-    # ── eventos ──────────────────────────────────────────────────────────────
+    def _tick(self) -> None:
+        bar  = self.verticalScrollBar()
+        diff = self._target - self._current
+
+        if abs(diff) < _SNAP_PX:
+            # chegou — trava e para o timer
+            val = int(round(self._target))
+            bar.setValue(val)
+            self._current = float(val)
+            self._timer.stop()
+            return
+
+        self._current += diff * _LERP
+        bar.setValue(int(round(self._current)))
+
+    # ── evento de roda ────────────────────────────────────────────────────────
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         bar = self.verticalScrollBar()
@@ -45,18 +60,21 @@ class SmoothScrollArea(QScrollArea):
             super().wheelEvent(event)
             return
 
-        delta = event.angleDelta().y()
-        step = max(40, bar.singleStep() * _TICKS_PER_STEP)
+        # Sincroniza ponto de partida quando o scroll estava parado
+        if not self._timer.isActive():
+            self._current = float(bar.value())
+            self._target  = self._current
+
+        delta     = event.angleDelta().y()
+        step      = max(_STEP_MIN_PX, int(bar.pageStep() * _STEP_RATIO))
         direction = -1 if delta > 0 else 1
 
-        new_target = max(
-            bar.minimum(),
-            min(bar.maximum(), self._current_target() + direction * step),
+        self._target = max(
+            float(bar.minimum()),
+            min(float(bar.maximum()), self._target + direction * step),
         )
-        self._target = new_target
 
-        self._anim.stop()
-        self._anim.setStartValue(bar.value())
-        self._anim.setEndValue(new_target)
-        self._anim.start()
+        if not self._timer.isActive():
+            self._timer.start()
+
         event.accept()
