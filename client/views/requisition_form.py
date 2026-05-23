@@ -330,7 +330,7 @@ class ClientSearchBox(QWidget):
         self._search_seq += 1
         search_id = self._search_seq
         t, w = _run_in_thread(
-            api.list_clients, term, 20,
+            api.list_clients, term, 9999,
             on_result=lambda clients, q=term, sid=search_id: self._on_results(q, sid, clients),
             on_error=lambda _, q=term, sid=search_id: self._on_search_error(q, sid),
         )
@@ -552,8 +552,12 @@ class ClientSearchBox(QWidget):
     def _reposition(self):
         s = self.scale
         gpos = self.input.mapToGlobal(self.input.rect().bottomLeft())
-        rows = min(max(self._drop.count(), 1), 8)
         row_h = max(30, int(34 * s))
+        # Usa todo o espaço disponível abaixo do campo na tela
+        screen = QApplication.primaryScreen().availableGeometry()
+        available_h = screen.bottom() - gpos.y() - 10
+        max_by_screen = max(4, available_h // row_h)
+        rows = min(max(self._drop.count(), 1), max_by_screen)
         self._drop.move(gpos)
         self._drop.resize(self.input.width(), rows * row_h + 6)
 
