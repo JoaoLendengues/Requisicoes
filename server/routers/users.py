@@ -48,19 +48,21 @@ def _ensure_unique_identity(
     db: Session,
     *,
     code: str,
-    email: str,
+    email: str | None,
     ignore_user_id: int | None = None,
 ):
     code_query = db.query(User).filter(User.code == code)
-    email_query = db.query(User).filter(User.email == email)
     if ignore_user_id is not None:
         code_query = code_query.filter(User.id != ignore_user_id)
-        email_query = email_query.filter(User.id != ignore_user_id)
-
     if code_query.first():
         raise HTTPException(status_code=400, detail="Codigo ja cadastrado")
-    if email_query.first():
-        raise HTTPException(status_code=400, detail="Email ja cadastrado")
+
+    if email:
+        email_query = db.query(User).filter(User.email == email)
+        if ignore_user_id is not None:
+            email_query = email_query.filter(User.id != ignore_user_id)
+        if email_query.first():
+            raise HTTPException(status_code=400, detail="Email ja cadastrado")
 
 
 @router.get("/", response_model=List[UserResponse])
