@@ -22,10 +22,10 @@ SCALE_FACTOR: dict[str, float] = {
 
 # ── Passos de tamanho de fonte ────────────────────────────────────────────────
 FONT_SIZE_STEPS: list[tuple[str, float]] = [
-    ("Pequeno",      0.90),
+    ("Pequeno",      0.85),
     ("Normal",       1.00),
-    ("Grande",       1.10),
-    ("Muito Grande", 1.20),
+    ("Grande",       1.15),
+    ("Muito Grande", 1.30),
 ]
 FONT_SIZE_FACTOR: dict[str, float] = {label: f for label, f in FONT_SIZE_STEPS}
 

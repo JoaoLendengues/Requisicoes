@@ -168,7 +168,7 @@ class MainWindow(QMainWindow):
         )
         self.form_view.save_requested.connect(self._save_requisition)
         self.settings_view.scale_changed.connect(self._on_scale_changed)
-        self.settings_view.font_size_changed.connect(self._on_scale_changed)
+        self.settings_view.font_size_changed.connect(lambda: self._on_scale_changed(res.scale))
 
         # ── Visibilidade dos botões da sidebar por perfil ─────────────────────
         nav_visible = {
