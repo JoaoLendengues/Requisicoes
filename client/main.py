@@ -36,14 +36,34 @@ def _check_for_updates(parent_window) -> None:
     checker.start()
 
 
+def _set_windows_timer_resolution() -> None:
+    """
+    Windows usa resolução de timer de 15.6 ms por padrão (≈64 Hz).
+    Reduzir para 1 ms garante que os callbacks do Qt disparem a cada ~16 ms
+    (≈60 fps) em vez de cada ~31 ms, tornando animações realmente fluidas.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.winmm.timeBeginPeriod(1)
+        import atexit
+        atexit.register(ctypes.windll.winmm.timeEndPeriod, 1)
+    except Exception:
+        pass
+
+
 def main():
+    # Garante timer de 1 ms no Windows → animações a 60 fps reais
+    _set_windows_timer_resolution()
+
     # Habilita escala de DPI no Windows
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
 
     app = QApplication(sys.argv)
-    app.setStyle("Windows")
+    app.setStyle("Fusion")  # renderização consistente e eficiente em todas as plataformas
     app.setApplicationName("Requisições — Ferragens Pinheiro")
     app.setOrganizationName("Pinheiro Ferragens")
 

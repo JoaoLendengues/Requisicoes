@@ -248,10 +248,10 @@ class MainWindow(QMainWindow):
         overlay.setGraphicsEffect(effect)
 
         anim = QPropertyAnimation(effect, b"opacity", overlay)
-        anim.setDuration(160)
+        anim.setDuration(140)
         anim.setStartValue(1.0)
         anim.setEndValue(0.0)
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.setEasingCurve(QEasingCurve.Type.OutQuart)
 
         def _done():
             overlay.deleteLater()
