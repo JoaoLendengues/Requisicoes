@@ -227,7 +227,7 @@ class ClientSearchBox(QWidget):
         min_chars = 1 if self._looks_like_code_or_document(current_term) else 2
         if len(current_term) >= min_chars:
             filtered = self._filter_cached_clients(self._all_clients, current_term)
-            self._render_results(filtered[:25])
+            self._render_results(filtered[:25], mode=self._classify_input(current_term))
 
     # ── Interface ─────────────────────────────────────────────────────────────
 
@@ -238,7 +238,7 @@ class ClientSearchBox(QWidget):
         lay.setSpacing(0)
 
         self.input = QLineEdit()
-        self.input.setPlaceholderText("Buscar por nome, código ou CPF/CNPJ...")
+        self.input.setPlaceholderText("Nome, código ou CPF/CNPJ...")
         self.input.setFixedHeight(max(30, int(36 * s)))
         self.input.setStyleSheet(theme.input_style(s))
         self.input.textChanged.connect(self._on_text)
@@ -282,7 +282,8 @@ class ClientSearchBox(QWidget):
         # Quando _all_clients já foi carregado, filtra em Python sem rede.
         if self._all_clients:
             filtered = self._filter_cached_clients(self._all_clients, term)
-            self._render_results(filtered[:25])
+            mode     = self._classify_input(term)
+            self._render_results(filtered[:25], mode=mode)
             return
         # ── Fallback: servidor (enquanto a carga inicial ainda não terminou) ─
 
@@ -347,10 +348,28 @@ class ClientSearchBox(QWidget):
         if self._drop.count() == 0:
             self._drop.hide()
 
-    def _render_results(self, clients: list, show_empty: bool = True):
+    # Rótulos exibidos no cabeçalho do dropdown conforme o modo detectado
+    _MODE_LABELS = {
+        "name":     "🔤  Pesquisando por nome",
+        "code":     "🔢  Pesquisando por código",
+        "document": "🪪  Pesquisando por CPF / CNPJ",
+    }
+
+    def _render_results(self, clients: list, show_empty: bool = True, mode: str = ""):
         if not clients and not show_empty:
             return
         self._drop.clear()
+
+        # Cabeçalho de modo (não selecionável)
+        if mode and mode in self._MODE_LABELS:
+            header = QListWidgetItem(self._MODE_LABELS[mode])
+            header.setFlags(Qt.ItemFlag.NoItemFlags)
+            header.setForeground(QColor(theme.PRIMARY))
+            f = header.font()
+            f.setItalic(True)
+            header.setFont(f)
+            self._drop.addItem(header)
+
         if not clients:
             it = QListWidgetItem("  Nenhum cliente encontrado")
             it.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -402,14 +421,7 @@ class ClientSearchBox(QWidget):
     def _alnum(value: str) -> str:
         """
         Lowercase, somente alfanumérico, SEM acentos.
-
-        'JOÃO PEDRO' → 'joaopedro'
-        'josé'       → 'jose'
-        '067.1/A-'   → '0671a'
-
-        Usa decomposição NFD para separar letras base de marcas de acento,
-        então descarta os combining chars — garantindo que 'joao' encontre
-        'JOÃO' mesmo quando o banco armazena nomes com acentos.
+        'JOÃO PEDRO' → 'joaopedro', 'José' → 'jose', '067.1' → '0671'
         """
         nfd = unicodedata.normalize("NFD", (value or "").lower())
         return "".join(
@@ -422,73 +434,91 @@ class ClientSearchBox(QWidget):
         """Somente dígitos — para comparar CPF/CNPJ independente da formatação."""
         return "".join(ch for ch in (value or "") if ch.isdigit())
 
-    # ── Filtro com ranking de relevância ──────────────────────────────────────
+    # ── Detecção automática de modo (estilo JusBrasil) ────────────────────────
+
+    def _classify_input(self, term: str) -> str:
+        """
+        Detecta o campo de busca pelo FORMAT do que foi digitado:
+
+          'name'     — contém letras  →  pesquisa somente no NOME
+          'document' — tem . / -  OU  tem ≥ 8 dígitos puros
+                       →  pesquisa somente no CPF/CNPJ
+          'code'     — dígitos curtos sem formatação de documento
+                       →  pesquisa somente no CÓDIGO
+
+        Isso garante que digitar '067' não traga clientes cujo CPF
+        contém '067', e que digitar '067.123.456-78' não traga
+        correspondências em códigos ou nomes.
+        """
+        if any(ch.isalpha() for ch in term):
+            return "name"
+        if any(ch in term for ch in "./-"):
+            return "document"
+        if len(self._digits(term)) >= 8:
+            return "document"
+        return "code"
+
+    # ── Filtro com ranking por modo ───────────────────────────────────────────
 
     def _filter_cached_clients(self, clients: list, term: str) -> list:
         """
-        Filtra e ordena clientes por relevância:
-          Tier 0 — match exato de código OU CPF/CNPJ completo
-          Tier 1 — código/CNPJ começa com o termo
-          Tier 2 — nome começa com o termo  (apenas pesquisas com letras)
-          Tier 3 — qualquer campo contém o termo
+        Filtra e ordena por relevância dentro do modo detectado.
 
-        Regras de campo por tipo de entrada:
-          Apenas dígitos  → busca em código e CPF/CNPJ  (nome ignorado)
-          Com letras      → busca em todos os campos
-
-        Sempre case-insensitive e sem acentos (ã=a, é=e, ç=c…).
+        Modo NAME     → Tier 0: nome exato  /  Tier 1: começa com  /  Tier 2: contém
+        Modo CODE     → Tier 0: código exato  /  Tier 1: começa com  /  Tier 2: contém
+        Modo DOCUMENT → Tier 0: CPF/CNPJ exato  /  Tier 1: começa com  /  Tier 2: contém
         """
         t_raw = term.strip()
         if not t_raw:
             return clients
 
-        t_an     = self._alnum(t_raw)   # sem acento, lowercase, alfanumérico
-        t_d      = self._digits(t_raw)  # só dígitos
+        t_an = self._alnum(t_raw)   # sem acento, lowercase, alfanumérico
+        t_d  = self._digits(t_raw)  # só dígitos
         if not t_an:
             return clients
 
-        t_nozero    = t_an.lstrip("0")
-        digits_only = bool(t_d) and t_d == t_an   # entrada é puramente numérica
+        mode     = self._classify_input(t_raw)
+        t_nozero = t_an.lstrip("0")
 
-        tier0: list = []   # match exato
-        tier1: list = []   # código/CNPJ começa com o termo
-        tier2: list = []   # nome começa com (só pesquisas com letras)
-        tier3: list = []   # contém em qualquer campo relevante
+        tier0: list = []   # exato
+        tier1: list = []   # começa com
+        tier2: list = []   # contém
 
         for c in clients:
-            name     = self._alnum(c.get("name") or "")
-            code     = self._alnum(c.get("code") or "")
-            cnpj_raw = c.get("cnpj") or ""
-            cnpj_an  = self._alnum(cnpj_raw)   # sem pontuação, sem acento
-            cnpj_d   = self._digits(cnpj_raw)  # só dígitos do CNPJ/CPF
-            code_nz  = code.lstrip("0")
 
-            # ── Tier 0: exato ────────────────────────────────────────────
-            if t_an == code or (t_d and t_d == cnpj_d):
-                tier0.append(c)
-                continue
+            if mode == "name":
+                name = self._alnum(c.get("name") or "")
+                if t_an == name:
+                    tier0.append(c)
+                elif name.startswith(t_an):
+                    tier1.append(c)
+                elif t_an in name:
+                    tier2.append(c)
 
-            # ── Tier 1: código/CNPJ começa com o termo ───────────────────
-            if code.startswith(t_an) or (t_d and cnpj_d.startswith(t_d)):
-                tier1.append(c)
-                continue
+            elif mode == "code":
+                code    = self._alnum(c.get("code") or "")
+                code_nz = code.lstrip("0")
+                if t_an == code:
+                    tier0.append(c)
+                elif code.startswith(t_an):
+                    tier1.append(c)
+                elif t_an in code or (t_nozero and t_nozero in code_nz):
+                    tier2.append(c)
 
-            # ── Tier 2: nome começa com (apenas quando há letras no termo) ─
-            if not digits_only and name.startswith(t_an):
-                tier2.append(c)
-                continue
+            else:   # document — usa somente os dígitos do CPF/CNPJ
+                if not t_d:
+                    continue
+                cnpj_d = self._digits(c.get("cnpj") or "")
+                if not cnpj_d:
+                    continue
+                if t_d == cnpj_d:
+                    tier0.append(c)
+                elif cnpj_d.startswith(t_d):
+                    tier1.append(c)
+                elif t_d in cnpj_d:
+                    tier2.append(c)
 
-            # ── Tier 3: contém em qualquer campo relevante ───────────────
-            code_match = (t_an in code
-                          or (t_nozero and t_nozero in code_nz))
-            cnpj_match = (t_an in cnpj_an
-                          or (t_d and t_d in cnpj_d))
-            name_match = (not digits_only) and (t_an in name)
-
-            if code_match or cnpj_match or name_match:
-                tier3.append(c)
-
-        return tier0 + tier1 + tier2 + tier3
+        return tier0 + tier1 + tier2
 
     def _normalize_search_text(self, value: str) -> str:
         """Usado no caminho de fallback (servidor). Mantido por compatibilidade."""
@@ -527,10 +557,18 @@ class ClientSearchBox(QWidget):
             return False
         return plain.isdigit() or term.isalnum()
 
+    def _first_selectable(self) -> QListWidgetItem | None:
+        """Retorna o primeiro item selecionável (pula cabeçalhos não-selecionáveis)."""
+        for i in range(self._drop.count()):
+            it = self._drop.item(i)
+            if it and it.data(Qt.ItemDataRole.UserRole) is not None:
+                return it
+        return None
+
     def _reposition(self):
         s = self.scale
         gpos = self.input.mapToGlobal(self.input.rect().bottomLeft())
-        rows = min(max(self._drop.count(), 1), 8)
+        rows = min(max(self._drop.count(), 1), 9)
         row_h = max(30, int(34 * s))
         self._drop.move(gpos)
         self._drop.resize(self.input.width(), rows * row_h + 6)
@@ -557,13 +595,14 @@ class ClientSearchBox(QWidget):
                     self._drop.hide()
                     return True
                 if key == Qt.Key.Key_Down and self._drop.isVisible():
-                    if self._drop.count():
+                    first = self._first_selectable()
+                    if first:
                         self._drop.setFocus()
-                        self._drop.setCurrentRow(0)
+                        self._drop.setCurrentItem(first)
                     return True
                 if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     if self._drop.isVisible() and self._drop.count():
-                        self._pick(self._drop.item(0))
+                        self._pick(self._first_selectable())
                     return True
 
             elif obj is self._drop:
