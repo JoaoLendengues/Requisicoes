@@ -1,9 +1,9 @@
 """Painel gerencial com indicadores operacionais e alertas."""
 
-from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -22,20 +22,27 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..widgets.smooth_scroll import SmoothScrollArea
+from ..core.datetime_utils import (
+    format_date as _format_date,
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+    parse_datetime as _parse_datetime,
+)
 
 
-DASH_BG = "#F4F7FB"
-DASH_SURFACE = "#FFFFFF"
-DASH_PRIMARY = "#1E3A5F"
-DASH_SECONDARY = "#27496D"
-DASH_SUCCESS = "#16A34A"
-DASH_DANGER = "#DC2626"
-DASH_WARNING = "#F59E0B"
-DASH_SLATE = "#334155"
-DASH_TEXT = "#0F172A"
-DASH_MUTED = "#64748B"
-DASH_BORDER = "#E2E8F0"
-DASH_ROW_ALT = "#F8FBFF"
+_ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
+_METRIC_ICON_FILES = {
+    "pedidos_em_producao": "pedidos_em_producao.png",
+    "pedidos_em_atraso": "pedidos_atrasados.png",
+    "pedidos_finalizados_hoje": "pedidos_concluidos.png",
+    "producao_pinheiro_industria": "producao_pinheiro_industria.png",
+    "producao_ar": "producao_ar.png",
+    "requisicoes_feitas_no_dia": "requisicoes_do_dia.png",
+    "pedidos_sem_confirmacao_1h": "aguardando_recebimento.png",
+    "tempo_medio_finalizacao_segundos": "tempo_medio_producao.png",
+}
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -43,11 +50,21 @@ def _rgba(color: str, alpha: int) -> str:
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 
+def _tint(color: str, alpha: int = 40) -> str:
+    """Cor sólida equivalente a rgba(color, alpha) sobre fundo branco."""
+    c = QColor(color)
+    a = alpha / 255.0
+    r = round(c.red() * a + 255 * (1 - a))
+    g = round(c.green() * a + 255 * (1 - a))
+    b = round(c.blue() * a + 255 * (1 - a))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
     shadow.setOffset(0, y_offset)
-    color = QColor(DASH_TEXT)
+    color = QColor(theme.TEXT_DARK)
     color.setAlpha(alpha)
     shadow.setColor(color)
     widget.setGraphicsEffect(shadow)
@@ -64,66 +81,32 @@ def _make_shadow_card(
     card.setObjectName("dashboardCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    border = f"1px solid {border_color}" if border_color else "none"
-    hover = hover_background or background
-    card.setStyleSheet(
-        f"QFrame#dashboardCard {{"
-        f"  background:{background}; border:{border}; border-radius:{radius}px;"
-        f"}}"
-        f"QFrame#dashboardCard:hover {{"
-        f"  background:{hover}; border:{border};"
-        f"}}"
-    )
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#dashboardCard {{ border-radius:{radius}px; }}")
     _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
+
+
+def _metric_icon_path(key: str) -> Path | None:
+    filename = _METRIC_ICON_FILES.get(key)
+    if not filename:
+        return None
+    path = _ICON_DIR / filename
+    return path if path.exists() else None
 
 
 def _flat_secondary_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{DASH_SURFACE}; color:{DASH_PRIMARY};"
-        f"  border:1px solid {DASH_BORDER}; outline:none; border-radius:14px;"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{DASH_ROW_ALT}; border-color:{_rgba(DASH_PRIMARY, 70)}; }}"
+        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
         f"QPushButton:pressed {{ background:#E7EEF7; }}"
         f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
     )
-
-
-def _parse_datetime(value: object) -> datetime | None:
-    if not value:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
-    except ValueError:
-        return None
-
-
-def _format_datetime(value: object) -> str:
-    parsed = _parse_datetime(value)
-    if parsed is None:
-        return "-"
-    return parsed.strftime("%d/%m/%Y %H:%M")
-
-
-def _format_date(value: object) -> str:
-    if not value:
-        return "-"
-    text = str(value).strip()
-    if not text:
-        return "-"
-    if "T" in text:
-        return _format_datetime(text)[:10]
-    try:
-        parsed = datetime.fromisoformat(text)
-        return parsed.strftime("%d/%m/%Y")
-    except ValueError:
-        return text[:10]
 
 
 def _format_duration(seconds: object) -> str:
@@ -168,9 +151,22 @@ def _format_waiting_minutes(minutes: object) -> str:
     return f"{days}d {remaining_hours:02d}h"
 
 
-def _format_header_date(value: datetime | None = None) -> str:
-    current = value or datetime.now()
-    return current.strftime("%d/%m/%Y")
+def _machine_status_label(value: object) -> str:
+    status = str(value or "").strip().casefold()
+    if status == "funcionando":
+        return "Funcionando"
+    if status == "manutencao":
+        return "Manutenção"
+    return str(value or "-") or "-"
+
+
+def _machine_status_color(value: object) -> str:
+    status = str(value or "").strip().casefold()
+    if status == "funcionando":
+        return theme.SUCCESS
+    if status == "manutencao":
+        return theme.WARNING
+    return theme.BORDER_COLOR
 
 
 class DashWorker(QObject):
@@ -200,12 +196,10 @@ class DashboardView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = DASH_BG
+        page_bg = theme.CONTENT_BG
         self.setObjectName("dashboardView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(
-            f"QWidget#dashboardView {{ background:{page_bg}; }}"
-        )
+        self.setStyleSheet(f"QWidget#dashboardView {{ background:{page_bg}; }}")
         root = QVBoxLayout(self)
         root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
                                 max(18, int(24 * s)), max(18, int(24 * s)))
@@ -216,16 +210,13 @@ class DashboardView(QWidget):
 
         title_col = QVBoxLayout()
         title_col.setSpacing(max(4, int(5 * s)))
-        title = QLabel("Painel de Producao")
-        title.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
-        )
+        title = QLabel("Painel de Produção")
+        title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
         subtitle = QLabel(
-            "Visao executiva da operacao industrial com indicadores, alertas e ritmo de producao."
+            "Visão executiva da operação industrial com indicadores, alertas e ritmo de produção."
         )
-        subtitle.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(8, int(10 * s))}pt;"
-        )
+        subtitle.setProperty("muted", "1")
+        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
         subtitle.setWordWrap(True)
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -236,10 +227,10 @@ class DashboardView(QWidget):
 
         info_card = _make_shadow_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(16, int(18 * s)),
-            hover_background=DASH_SURFACE,
+            hover_background=theme.CARD_BG,
         )
         info_layout = QVBoxLayout(info_card)
         info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
@@ -247,17 +238,13 @@ class DashboardView(QWidget):
         info_layout.setSpacing(max(2, int(3 * s)))
 
         date_hint = QLabel("DATA ATUAL")
-        date_hint.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
-        )
+        date_hint.setProperty("muted", "1")
+        date_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;")
         self.date_label = QLabel(_format_header_date())
-        self.date_label.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(13, int(16 * s))}pt; font-weight:800;"
-        )
+        self.date_label.setStyleSheet(f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;")
         self.updated_label = QLabel("Atualizando dados...")
-        self.updated_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
-        )
+        self.updated_label.setProperty("muted", "1")
+        self.updated_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
@@ -277,32 +264,26 @@ class DashboardView(QWidget):
         self.error_label.hide()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet(
-            f"background:{_rgba(DASH_DANGER, 18)}; color:{DASH_DANGER};"
-            f"border:1px solid {_rgba(DASH_DANGER, 48)}; border-radius:16px;"
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         root.addWidget(self.error_label)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(
-            f"QScrollArea {{ border:none; background:{page_bg}; }}"
-        )
-        scroll.viewport().setStyleSheet(
-            f"background:{page_bg}; border:none;"
-        )
-        root.addWidget(scroll, 1)
+        self._page_scroll = SmoothScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{page_bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{page_bg}; border:none;")
+        root.addWidget(self._page_scroll, 1)
 
-        content = QWidget()
-        content.setObjectName("dashboardContent")
-        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        content.setStyleSheet(
-            f"QWidget#dashboardContent {{ background:{page_bg}; }}"
-        )
-        scroll.setWidget(content)
+        self._page_content = QWidget()
+        self._page_content.setObjectName("dashboardContent")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(f"QWidget#dashboardContent {{ background:{page_bg}; }}")
+        self._page_scroll.setWidget(self._page_content)
 
-        layout = QVBoxLayout(content)
+        layout = QVBoxLayout(self._page_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(max(16, int(18 * s)))
 
@@ -314,14 +295,14 @@ class DashboardView(QWidget):
         layout.addLayout(metrics)
 
         card_defs = [
-            ("pedidos_em_producao", DASH_PRIMARY, "Pedidos em Producao", "Requisicoes recebidas pela producao."),
-            ("pedidos_em_atraso", DASH_DANGER, "Pedidos em Atraso", "Pedidos abertos com prazo vencido."),
-            ("pedidos_finalizados_hoje", DASH_SUCCESS, "Finalizados Hoje", "Finalizacoes registradas no dia."),
-            ("requisicoes_feitas_no_dia", DASH_SECONDARY, "Requisicoes do Dia", "Novas requisicoes criadas hoje."),
-            ("producao_pinheiro_industria", DASH_PRIMARY, "Producao Pinheiro Industria", "Fila ativa enviada para esse destino."),
-            ("producao_ar", DASH_SECONDARY, "Producao da A&R", "Fila ativa enviada para esse destino."),
-            ("pedidos_sem_confirmacao_1h", DASH_WARNING, "Sem Confirmacao", "Aguardando retorno ha mais de 1 hora."),
-            ("tempo_medio_finalizacao_segundos", DASH_SLATE, "Tempo Medio de Finalizacao", "Media entre recebimento e finalizacao."),
+            ("pedidos_em_producao", theme.PRIMARY, "Pedidos em Produção", "Requisições recebidas pela produção."),
+            ("pedidos_em_atraso", theme.DANGER, "Pedidos em Atraso", "Pedidos abertos com prazo vencido."),
+            ("pedidos_finalizados_hoje", theme.SUCCESS, "Finalizados Hoje", "Finalizações registradas no dia."),
+            ("requisicoes_feitas_no_dia", theme.PRIMARY_HOVER, "Requisições do Dia", "Novas requisições criadas hoje."),
+            ("producao_pinheiro_industria", theme.PRIMARY, "Produção Pinheiro Indústria", "Fila ativa enviada para esse destino."),
+            ("producao_ar", theme.PRIMARY_HOVER, "Produção da A&R", "Fila ativa enviada para esse destino."),
+            ("pedidos_sem_confirmacao_1h", theme.WARNING, "Sem Confirmação", "Aguardando retorno há mais de 1 hora."),
+            ("tempo_medio_finalizacao_segundos", theme.BORDER_COLOR, "Tempo Médio de Finalização", "Média entre recebimento e finalização."),
         ]
 
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
@@ -337,30 +318,52 @@ class DashboardView(QWidget):
         secondary_row.setSpacing(max(12, int(16 * s)))
         secondary_row.addWidget(
             self._build_section_card(
-                "Vendedores com Mais Requisicoes",
-                "Ranking geral por volume de requisicoes emitidas.",
+                "Vendedores com Mais Requisições",
+                "Ranking geral por volume de requisições emitidas.",
                 self._build_top_vendors_table(),
-                DASH_PRIMARY,
+                theme.PRIMARY,
             ),
             1,
         )
         secondary_row.addWidget(
             self._build_section_card(
-                "Pedidos sem Confirmacao",
-                "Pedidos aguardando retorno da producao por mais de 1 hora.",
+                "Pedidos sem Confirmação",
+                "Pedidos aguardando retorno da produção por mais de 1 hora.",
                 self._build_alerts_table(),
-                DASH_WARNING,
+                theme.WARNING,
             ),
             1,
         )
         layout.addLayout(secondary_row)
 
+        machine_row = QHBoxLayout()
+        machine_row.setSpacing(max(12, int(16 * s)))
+        machine_row.addWidget(
+            self._build_section_card(
+                "MÁQUINAS QUE MAIS OPERAM - A&R",
+                "Ranking das máquinas da A&R por volume de operações finalizadas.",
+                self._build_top_machines_ar_table(),
+                theme.PRIMARY_HOVER,
+            ),
+            1,
+        )
+        machine_row.addWidget(
+            self._build_section_card(
+                "MÁQUINAS QUE MAIS OPERAM - INDÚSTRIA",
+                "Ranking das máquinas da Indústria por volume de operações finalizadas.",
+                self._build_top_machines_industria_table(),
+                theme.PRIMARY,
+            ),
+            1,
+        )
+        layout.addLayout(machine_row)
+
         layout.addWidget(
             self._build_section_card(
-                "Ultimas Requisicoes",
-                "Visao rapida das requisicoes mais recentes do sistema.",
+                "Últimas Requisições",
+                "Visão rápida das requisições mais recentes do sistema.",
                 self._build_recent_table(),
-                DASH_SLATE,
+                theme.BORDER_COLOR,
             )
         )
         layout.addStretch()
@@ -375,10 +378,10 @@ class DashboardView(QWidget):
         s = self.scale
         card = _make_shadow_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(16, int(20 * s)), max(15, int(18 * s)),
@@ -387,32 +390,38 @@ class DashboardView(QWidget):
 
         value_label = QLabel("-")
         value_label.setStyleSheet(
-            f"color:{DASH_TEXT}; font-size:{max(20, int(26 * s))}pt;"
-            f"font-weight:800; background:transparent; border:none;"
+            f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
         )
         value_label.setWordWrap(True)
 
         title_label = QLabel(title)
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(9, int(11 * s))}pt;"
-            f"font-weight:700; background:transparent; border:none;"
+            f"font-size:{max(9, int(11 * s))}pt; font-weight:700; background:transparent; border:none;"
         )
 
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
-        helper_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
-            f"background:transparent; border:none;"
-        )
+        helper_label.setProperty("muted", "1")
+        helper_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent; border:none;")
 
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
         accent_line.setStyleSheet(
-            f"background:{color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(color, 235)}, stop:0.5 {_rgba(color, 155)}, stop:1 {_rgba(color, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
 
-        layout.addWidget(value_label)
+        header_row = QHBoxLayout()
+        header_row.setSpacing(max(10, int(12 * s)))
+        header_row.addWidget(value_label, 1, Qt.AlignmentFlag.AlignTop)
+
+        icon_label = self._build_metric_icon_label(key)
+        if icon_label is not None:
+            header_row.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+
+        layout.addLayout(header_row)
         layout.addWidget(title_label)
         layout.addWidget(helper_label)
         layout.addStretch()
@@ -421,14 +430,38 @@ class DashboardView(QWidget):
         self._metric_labels[key] = value_label
         return card
 
+    def _build_metric_icon_label(self, key: str) -> QLabel | None:
+        icon_path = _metric_icon_path(key)
+        if icon_path is None:
+            return None
+
+        pixmap = QPixmap(str(icon_path))
+        if pixmap.isNull():
+            return None
+
+        size = max(52, int(62 * self.scale))
+        label = QLabel()
+        label.setFixedSize(size, size)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("background:transparent; border:none;")
+        label.setPixmap(
+            pixmap.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        return label
+
     def _build_section_card(self, title: str, subtitle: str, body: QWidget, accent_color: str) -> QFrame:
         s = self.scale
         card = _make_shadow_card(
             s,
-            DASH_SURFACE,
+            theme.CARD_BG,
             border_color=None,
             radius=max(18, int(20 * s)),
-            hover_background="#FBFDFF",
+            hover_background=theme.CARD_BG,
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
@@ -438,19 +471,20 @@ class DashboardView(QWidget):
         accent = QFrame()
         accent.setFixedHeight(max(4, int(5 * s)))
         accent.setStyleSheet(
-            f"background:{accent_color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(accent_color, 235)}, stop:0.5 {_rgba(accent_color, 155)}, stop:1 {_rgba(accent_color, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
 
         title_label = QLabel(title)
         title_label.setStyleSheet(
-            f"color:{DASH_PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
 
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
-        subtitle_label.setStyleSheet(
-            f"color:{DASH_MUTED}; font-size:{max(7, int(8 * s))}pt;"
-        )
+        subtitle_label.setProperty("muted", "1")
+        subtitle_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
 
         layout.addWidget(accent)
         layout.addWidget(title_label)
@@ -485,25 +519,34 @@ class DashboardView(QWidget):
 
         table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:none; outline:none; background:{DASH_SURFACE};"
-            f"  alternate-background-color:{DASH_ROW_ALT};"
-            f"  color:{DASH_SLATE}; border-radius:14px;"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
+            f"  color:{theme.BORDER_COLOR}; border-radius:14px;"
             f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{DASH_PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
             f"QTableWidget::item {{"
-            f"  padding:7px 6px; border-bottom:1px solid {_rgba(DASH_PRIMARY, 18)};"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
             f"}}"
-            f"QTableWidget::item:alternate {{ background:{DASH_ROW_ALT}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.TEXT_DARK}; }}"
         )
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        table.setPalette(pal)
+        table.viewport().setAutoFillBackground(True)
         return table
 
     def _build_top_vendors_table(self) -> QTableWidget:
         self.top_vendors_table = self._create_table(
-            ["#", "VENDEDOR", "REQUISICOES"],
+            ["#", "VENDEDOR", "REQUISIÇÕES"],
             {1},
         )
         self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
@@ -519,11 +562,35 @@ class DashboardView(QWidget):
 
     def _build_recent_table(self) -> QTableWidget:
         self.recent_table = self._create_table(
-            ["PED", "CLIENTE", "VENDEDOR", "EMISSAO", "STATUS", "DESTINO"],
-            {1, 2},
+            ["PED", "CLIENTE", "VENDEDOR", "EMISSÃO", "STATUS", "DESTINO"],
+            {2, 4},
         )
         self.recent_table.setMinimumHeight(max(260, int(300 * self.scale)))
         return self.recent_table
+
+    def _build_top_machines_ar_table(self) -> QTableWidget:
+        self.top_machines_ar_table = self._create_table(
+            ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
+            {1},
+        )
+        header = self.top_machines_ar_table.horizontalHeader()
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_ar_table.setColumnWidth(5, max(140, int(170 * self.scale)))
+        self.top_machines_ar_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
+        self.top_machines_ar_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        return self.top_machines_ar_table
+
+    def _build_top_machines_industria_table(self) -> QTableWidget:
+        self.top_machines_industria_table = self._create_table(
+            ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
+            {1},
+        )
+        header = self.top_machines_industria_table.horizontalHeader()
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_industria_table.setColumnWidth(5, max(140, int(170 * self.scale)))
+        self.top_machines_industria_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
+        self.top_machines_industria_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        return self.top_machines_industria_table
 
     def refresh(self):
         self._set_loading(True)
@@ -553,12 +620,12 @@ class DashboardView(QWidget):
             self.date_label.setText(_format_header_date())
 
     def _show_error(self, message: str):
-        self.error_label.setText(f"Nao foi possivel carregar o painel.\n\n{message}")
+        self.error_label.setText(f"Não foi possível carregar o painel.\n\n{message}")
         self.error_label.show()
 
     def _populate(self, payload: object):
         if not isinstance(payload, dict):
-            self._show_error("Resposta invalida do servidor.")
+            self._show_error("Resposta inválida do servidor.")
             return
 
         stats = payload.get("stats") or {}
@@ -572,14 +639,22 @@ class DashboardView(QWidget):
             else:
                 label.setText(str(value if value is not None else 0))
 
-        generated_at = _parse_datetime(payload.get("generated_at"))
-        self.date_label.setText(_format_header_date(generated_at or datetime.now()))
-        self.updated_label.setText(
-            f"Atualizado em {_format_datetime(payload.get('generated_at'))}"
-        )
+        current = _parse_datetime(payload.get("generated_at")) or local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
         self._fill_top_vendors_table(payload.get("top_vendors") or [])
         self._fill_alerts_table(payload.get("receipt_alerts") or [])
+        self._fill_top_machines_table(
+            self.top_machines_ar_table,
+            payload.get("top_machines_ar") or [],
+            "Nenhuma máquina da A&R encontrada.",
+        )
+        self._fill_top_machines_table(
+            self.top_machines_industria_table,
+            payload.get("top_machines_industria") or [],
+            "Nenhuma máquina da Indústria encontrada.",
+        )
         self._fill_recent_table(payload.get("recent_requisitions") or [])
 
     def _fill_top_vendors_table(self, rows: object):
@@ -614,7 +689,7 @@ class DashboardView(QWidget):
         items = rows if isinstance(rows, list) else []
 
         if not items:
-            self._set_empty_message(table, "Nenhum pedido aguardando confirmacao ha mais de 1 hora.")
+            self._set_empty_message(table, "Nenhum pedido aguardando confirmação há mais de 1 hora.")
             return
 
         for row in items:
@@ -633,6 +708,51 @@ class DashboardView(QWidget):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
 
+    def _fill_top_machines_table(
+        self,
+        table: QTableWidget,
+        rows: object,
+        empty_message: str,
+    ):
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, empty_message)
+            return
+
+        for index, row in enumerate(items, start=1):
+            if not isinstance(row, dict):
+                continue
+
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(index),
+                str(row.get("machine_name") or "-"),
+                str(row.get("total_operations") or 0),
+                str(row.get("in_production_count") or 0),
+                _format_duration(row.get("average_seconds")),
+                str(row.get("machine_status") or "-"),
+            ]
+
+            for col, value in enumerate(values):
+                if col == 5:
+                    machine_status = str(row.get("machine_status") or "")
+                    color = _machine_status_color(machine_status)
+                    label = QLabel(_machine_status_label(machine_status))
+                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    label.setStyleSheet(
+                        f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                        f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
+                    )
+                    table.setCellWidget(line, col, label)
+                else:
+                    item = QTableWidgetItem(value)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    table.setItem(line, col, item)
+
     def _fill_recent_table(self, rows: object):
         table = self.recent_table
         table.clearSpans()
@@ -640,7 +760,7 @@ class DashboardView(QWidget):
         items = rows if isinstance(rows, list) else []
 
         if not items:
-            self._set_empty_message(table, "Nenhuma requisicao recente encontrada.")
+            self._set_empty_message(table, "Nenhuma requisição recente encontrada.")
             return
 
         for row in items:
@@ -661,17 +781,20 @@ class DashboardView(QWidget):
             for col, value in enumerate(values):
                 if col == 4:
                     status = str(row.get("status") or "")
-                    label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     color_map = {
-                        "em_andamento": DASH_SECONDARY,
-                        "aguardando_recebimento": DASH_WARNING,
-                        "em_producao": DASH_PRIMARY,
-                        "cancelada": DASH_DANGER,
+                        "em_andamento": theme.PRIMARY_HOVER,
+                        "aguardando_recebimento": theme.WARNING,
+                        "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
+                        "aguardando_faturamento": theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
+                        "em_producao": theme.PRIMARY,
+                        "faturado": theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+                        "cancelada": theme.DANGER,
                     }
-                    color = color_map.get(status, DASH_SLATE)
+                    color = color_map.get(status, theme.BORDER_COLOR)
+                    label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     label.setStyleSheet(
-                        f"background:{_rgba(color, 30)}; color:{color}; border-radius:999px;"
+                        f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
                         f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
                     table.setCellWidget(line, col, label)
@@ -685,5 +808,86 @@ class DashboardView(QWidget):
         table.setSpan(0, 0, 1, table.columnCount())
         item = QTableWidgetItem(message)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        item.setForeground(QColor(DASH_MUTED))
+        item.setForeground(QColor(theme.TEXT_MEDIUM))
         table.setItem(0, 0, item)
+
+    def _apply_table_style(self, table: QTableWidget) -> None:
+        s = self.scale
+        table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
+            f"  color:{theme.BORDER_COLOR}; border-radius:14px;"
+            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.TEXT_DARK}; }}"
+        )
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        table.setPalette(pal)
+        table.viewport().setAutoFillBackground(True)
+
+    def _refresh_machine_status_labels(self, table: QTableWidget) -> None:
+        """Re-estiliza os QLabel de STATUS embutidos nas células da tabela de máquinas."""
+        status_col = 5
+        for row in range(table.rowCount()):
+            widget = table.cellWidget(row, status_col)
+            if isinstance(widget, QLabel):
+                raw = widget.text()
+                if raw == "Funcionando":
+                    machine_status = "funcionando"
+                elif raw == "Manutenção":
+                    machine_status = "manutencao"
+                else:
+                    machine_status = ""
+                color = _machine_status_color(machine_status)
+                widget.setStyleSheet(
+                    f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                    f"font-weight:700; padding:4px 10px;"
+                    f"font-size:{max(7, int(8 * self.scale))}pt;"
+                )
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#dashboardView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#dashboardContent {{ background:{bg}; }}")
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )
+        for tbl in [
+            getattr(self, "top_vendors_table", None),
+            getattr(self, "alerts_table", None),
+            getattr(self, "top_machines_ar_table", None),
+            getattr(self, "top_machines_industria_table", None),
+            getattr(self, "recent_table", None),
+        ]:
+            if tbl is not None:
+                self._apply_table_style(tbl)
+        for tbl in [
+            getattr(self, "top_machines_ar_table", None),
+            getattr(self, "top_machines_industria_table", None),
+        ]:
+            if tbl is not None:
+                self._refresh_machine_status_labels(tbl)
+        for lbl in self._metric_labels.values():
+            lbl.setStyleSheet(
+                f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
+            )

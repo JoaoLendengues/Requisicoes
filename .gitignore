@@ -17,6 +17,12 @@ arquivos/
 *.pdf
 *.xlsm
 
+# Preferências locais do cliente (tema, escala, etc.) — não versionar
+client/settings.json
+
+# Campanhas de fundo da tela de login (imagens + config são dados do usuário)
+client/assets/login_backgrounds/
+
 # IDE
 .vscode/settings.json
 .idea/

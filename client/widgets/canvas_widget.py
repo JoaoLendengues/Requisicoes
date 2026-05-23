@@ -1,4 +1,4 @@
-"""
+﻿"""
 Canvas de desenho técnico com suporte a:
 - Ferramentas: Seleção, Caneta livre, Linha, Retângulo, Elipse, Texto
 - Shift: trava linha em 0°/45°/90°
@@ -14,10 +14,13 @@ import math
 import os
 from enum import Enum
 
-from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QEvent
+from PySide6.QtCore import (
+    Qt, QPointF, QRectF, Signal, QEvent,
+    QByteArray, QBuffer, QIODevice, QMimeData,
+)
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPen, QBrush,
-    QPixmap, QKeySequence, QAction, QCursor, QTransform,
+    QPixmap, QKeySequence, QAction, QCursor, QTransform, QGuiApplication,
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QToolBar, QGraphicsScene,
@@ -28,6 +31,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QFrame, QComboBox,
 )
 from ..core import theme
+from ..core.text_case import normalize_upper_text
 
 
 class Tool(Enum):
@@ -35,13 +39,19 @@ class Tool(Enum):
     PEN      = "pen"
     ERASER   = "eraser"
     LINE     = "line"
+    RULER    = "ruler"
+    ARROW    = "arrow"
+    CURVE    = "curve"
+    TRIANGLE = "triangle"
+    PENTAGON = "pentagon"
+    HEXAGON  = "hexagon"
     RECT     = "rect"
     ELLIPSE  = "ellipse"
     TEXT     = "text"
     IMAGE    = "image"
 
 
-# Mapeamento estilo de linha ↔ string JSON
+# Mapeamento estilo de linha �?" string JSON
 _STYLE_TO_STR = {
     Qt.PenStyle.SolidLine:   "solid",
     Qt.PenStyle.DashLine:    "dash",
@@ -49,6 +59,18 @@ _STYLE_TO_STR = {
     Qt.PenStyle.DashDotLine: "dashdot",
 }
 _STR_TO_STYLE = {v: k for k, v in _STYLE_TO_STR.items()}
+_CANVAS_CLIPBOARD_MIME = "application/x-requisicoes-canvas-items"
+
+
+def _pixmap_to_base64(pixmap: QPixmap) -> str:
+    if pixmap.isNull():
+        return ""
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    pixmap.save(buffer, "PNG")
+    data = bytes(buffer.data().toBase64()).decode("ascii")
+    buffer.close()
+    return data
 
 
 def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
@@ -64,6 +86,11 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
     if t == "line":
         item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
         item.setPen(pen)
+
+    elif t == "ruler_measure_line":
+        item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
+        item.setPen(pen)
+        item.setData(0, {"type": "ruler_measure_line"})
 
     elif t == "rect":
         item = QGraphicsRectItem(d["x"], d["y"], d["w"], d["h"])
@@ -84,20 +111,52 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setPen(pen)
 
     elif t == "text":
-        item = QGraphicsTextItem(d.get("text", ""))
+        item = QGraphicsTextItem(normalize_upper_text(d.get("text", "")))
         item.setPos(QPointF(d["x"], d["y"]))
         item.setDefaultTextColor(QColor(d.get("color", "#000000")))
         font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
         item.setFont(font)
 
+    elif t == "ruler_measure_text":
+        item = QGraphicsTextItem(d.get("text", ""))
+        item.setPos(QPointF(d["x"], d["y"]))
+        item.setDefaultTextColor(QColor(d.get("color", "#000000")))
+        font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
+        item.setFont(font)
+        item.setData(0, {"type": "ruler_measure_text"})
+
     elif t == "image":
         path = d.get("path", "")
+        image_data = d.get("image_data", "")
+        pix = QPixmap()
         if path and os.path.exists(path):
             pix = QPixmap(path)
+        elif image_data:
+            pix.loadFromData(QByteArray.fromBase64(image_data.encode("ascii")), "PNG")
+        if not pix.isNull():
+            display_w = int(d.get("display_w", 0) or 0)
+            display_h = int(d.get("display_h", 0) or 0)
+            if display_w > 0 and display_h > 0 and (
+                pix.width() != display_w or pix.height() != display_h
+            ):
+                pix = pix.scaled(
+                    display_w,
+                    display_h,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
             item = QGraphicsPixmapItem(pix)
             item.setPos(QPointF(d["x"], d["y"]))
-            item.setData(0, {"type": "image", "path": path})
+            item.setData(0, {
+                "type": "image",
+                "path": path,
+                "image_data": image_data,
+                "display_w": pix.width(),
+                "display_h": pix.height(),
+            })
 
+    if item is not None and ("pos_x" in d or "pos_y" in d):
+        item.setPos(QPointF(d.get("pos_x", 0.0), d.get("pos_y", 0.0)))
     if item is not None and rot:
         item.setRotation(rot)
 
@@ -126,15 +185,21 @@ def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False
     return {"items": count, "pdf": obj.get("pdf", "")}
 
 
-# ── Cena personalizada ────────────────────────────────────────────────────────
+# �"?�"? Cena personalizada �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 class DrawingScene(QGraphicsScene):
     def __init__(self, canvas_widget):
         super().__init__()
         self.cw = canvas_widget
         self._start: QPointF | None = None
+        self._ruler_line_item: QGraphicsLineItem | None = None
+        self._ruler_text_item: QGraphicsTextItem | None = None
         self._preview_item: QGraphicsItem | None = None
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
+        self._curve_source_item: QGraphicsItem | None = None
+        self._curve_points_scene: list[QPointF] = []
+        self._curve_segment_index: int = -1
+        self._ruler_commit_on_release: bool = False
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
 
         # Estado do Free Transform (Ctrl+T)
@@ -150,14 +215,15 @@ class DrawingScene(QGraphicsScene):
 
         self.selectionChanged.connect(self._on_selection_changed)
 
-    # ── Grade de fundo (visual only — não serializada) ───────────────────────
+    # �"?�"? Grade de fundo (visual only �?" não serializada) �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     GRID_MINOR = 20
     GRID_MAJOR = 100
     # Tamanho dos handles do bounding box do Free Transform
     FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
     FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
     # Snap to endpoints
-    SNAP_RADIUS    = 12    # raio de detecção em px de tela (constante com zoom)
+    SNAP_RADIUS    = 30    # raio de detecção em px de tela (constante com zoom)
+    RULER_PX_PER_MM = 3.78
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
@@ -183,7 +249,7 @@ class DrawingScene(QGraphicsScene):
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
             y += step
 
-    # ── Free Transform ────────────────────────────────────────────────────────
+    # �"?�"? Free Transform �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _view(self):
         views = self.views()
         return views[0] if views else None
@@ -245,7 +311,7 @@ class DrawingScene(QGraphicsScene):
         self.update()
         self.cw.changed.emit()
 
-    # ── Snap to endpoints ─────────────────────────────────────────────────────
+    # �"?�"? Snap to endpoints �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _collect_snap_points(self) -> list:
         """Retorna todos os endpoints de itens existentes em coordenadas de cena."""
         points = []
@@ -292,6 +358,9 @@ class DrawingScene(QGraphicsScene):
         selected = set(self.selectedItems())
         for item in self.items():
             if isinstance(item, QGraphicsTextItem) and item not in selected:
+                normalized_text = normalize_upper_text(item.toPlainText())
+                if normalized_text != item.toPlainText():
+                    item.setPlainText(normalized_text)
                 item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         for item in selected:
             if isinstance(item, QGraphicsTextItem):
@@ -341,7 +410,7 @@ class DrawingScene(QGraphicsScene):
 
         painter.restore()
 
-        # ── Indicador de snap (círculo laranja no ponto de conexão) ──────────
+        # �"?�"? Indicador de snap (círculo laranja no ponto de conexão) �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
         if self._snap_point is not None:
             view = self._view()
             if view:
@@ -384,9 +453,295 @@ class DrawingScene(QGraphicsScene):
         return QPointF(start.x() + dist * math.cos(rad),
                        start.y() + dist * math.sin(rad))
 
+    def _pick_curve_source_item(self, scene_pos: QPointF) -> QGraphicsItem | None:
+        """Escolhe forma selecionada para curvar; fallback para item sob o cursor."""
+        for item in self.selectedItems():
+            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem)):
+                return item
+        for item in self.items(scene_pos):
+            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem)):
+                item.setSelected(True)
+                return item
+        return None
+
+    def _item_curve_points_scene(self, item: QGraphicsItem) -> tuple[list[QPointF], bool]:
+        """Extrai os pontos em coordenadas de cena para curvar um segmento."""
+        if isinstance(item, QGraphicsLineItem):
+            ln = item.line()
+            return [item.mapToScene(ln.p1()), item.mapToScene(ln.p2())], False
+
+        if isinstance(item, QGraphicsRectItem):
+            r = item.rect()
+            pts = [
+                item.mapToScene(r.topLeft()),
+                item.mapToScene(r.topRight()),
+                item.mapToScene(r.bottomRight()),
+                item.mapToScene(r.bottomLeft()),
+                item.mapToScene(r.topLeft()),
+            ]
+            return pts, True
+
+        if isinstance(item, QGraphicsEllipseItem):
+            r = item.rect()
+            pts: list[QPointF] = []
+            samples = 40
+            for i in range(samples):
+                ang = (2.0 * math.pi * i) / samples
+                x = r.center().x() + (r.width() / 2.0) * math.cos(ang)
+                y = r.center().y() + (r.height() / 2.0) * math.sin(ang)
+                pts.append(item.mapToScene(QPointF(x, y)))
+            pts.append(pts[0])
+            return pts, True
+
+        if isinstance(item, QGraphicsPathItem):
+            path = item.path()
+            pts: list[QPointF] = []
+            for i in range(path.elementCount()):
+                el = path.elementAt(i)
+                pts.append(item.mapToScene(QPointF(el.x, el.y)))
+            if len(pts) < 2:
+                return [], False
+            closed = math.hypot(pts[0].x() - pts[-1].x(), pts[0].y() - pts[-1].y()) < 0.01
+            return pts, closed
+
+        return [], False
+
+    def _points_to_path_scene(self, points: list[QPointF]) -> QPainterPath:
+        path = QPainterPath(points[0])
+        for p in points[1:]:
+            path.lineTo(p)
+        return path
+
+    def _distance_point_segment(self, p: QPointF, a: QPointF, b: QPointF) -> float:
+        ax, ay = a.x(), a.y()
+        bx, by = b.x(), b.y()
+        px, py = p.x(), p.y()
+        dx, dy = bx - ax, by - ay
+        denom = dx * dx + dy * dy
+        if denom <= 1e-9:
+            return math.hypot(px - ax, py - ay)
+        t = ((px - ax) * dx + (py - ay) * dy) / denom
+        t = max(0.0, min(1.0, t))
+        qx, qy = ax + t * dx, ay + t * dy
+        return math.hypot(px - qx, py - qy)
+
+    def _closest_curve_segment_index(self, points: list[QPointF], scene_pos: QPointF) -> int:
+        if len(points) < 2:
+            return -1
+        best_i = -1
+        best_d = float("inf")
+        for i in range(len(points) - 1):
+            d = self._distance_point_segment(scene_pos, points[i], points[i + 1])
+            if d < best_d:
+                best_d = d
+                best_i = i
+        return best_i
+
+    def _apply_curve_on_segment(self, points: list[QPointF], segment_index: int, control: QPointF, steps: int = 18) -> list[QPointF]:
+        """Substitui um segmento por uma curva quadrática."""
+        if segment_index < 0 or segment_index >= len(points) - 1:
+            return points
+        p0 = points[segment_index]
+        p1 = points[segment_index + 1]
+        curved: list[QPointF] = []
+        for i in range(steps + 1):
+            t = i / steps
+            u = 1.0 - t
+            x = (u * u * p0.x()) + (2 * u * t * control.x()) + (t * t * p1.x())
+            y = (u * u * p0.y()) + (2 * u * t * control.y()) + (t * t * p1.y())
+            curved.append(QPointF(x, y))
+        return points[:segment_index] + curved + points[segment_index + 2:]
+
+    def _triangle_path(self, start: QPointF, end: QPointF) -> QPainterPath:
+        """Triangulo isosceles dentro do retangulo definido por start/end."""
+        r = QRectF(start, end).normalized()
+        top = QPointF(r.center().x(), r.top())
+        left = QPointF(r.left(), r.bottom())
+        right = QPointF(r.right(), r.bottom())
+        path = QPainterPath(top)
+        path.lineTo(left)
+        path.lineTo(right)
+        path.closeSubpath()
+        return path
+
+    def _regular_polygon_path(self, start: QPointF, end: QPointF, sides: int) -> QPainterPath:
+        """Poligono regular inscrito no retangulo definido por start/end."""
+        if sides < 3:
+            return QPainterPath()
+        r = QRectF(start, end).normalized()
+        cx, cy = r.center().x(), r.center().y()
+        rx = max(1.0, r.width() / 2.0)
+        ry = max(1.0, r.height() / 2.0)
+
+        pts = []
+        for i in range(sides):
+            ang = -math.pi / 2.0 + (2.0 * math.pi * i / sides)
+            pts.append(QPointF(cx + rx * math.cos(ang), cy + ry * math.sin(ang)))
+
+        path = QPainterPath(pts[0])
+        for p in pts[1:]:
+            path.lineTo(p)
+        path.closeSubpath()
+        return path
+
+    def _arrow_path(self, start: QPointF, end: QPointF) -> QPainterPath:
+        """Seta predefinida: haste + duas abas na ponta final."""
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        dist = math.hypot(dx, dy)
+        if dist < 1e-6:
+            return QPainterPath(start)
+
+        ux, uy = dx / dist, dy / dist
+        head_len = max(10.0, float(self.cw.pen_width) * 4.0)
+        head_ang = math.radians(28.0)
+        cos_a = math.cos(head_ang)
+        sin_a = math.sin(head_ang)
+
+        lx = (ux * cos_a) - (uy * sin_a)
+        ly = (ux * sin_a) + (uy * cos_a)
+        rx = (ux * cos_a) + (uy * sin_a)
+        ry = (-ux * sin_a) + (uy * cos_a)
+
+        left = QPointF(end.x() - (lx * head_len), end.y() - (ly * head_len))
+        right = QPointF(end.x() - (rx * head_len), end.y() - (ry * head_len))
+
+        path = QPainterPath(start)
+        path.lineTo(end)
+        path.moveTo(end)
+        path.lineTo(left)
+        path.moveTo(end)
+        path.lineTo(right)
+        return path
+
+    def _ruler_pen(self, cosmetic: bool = True) -> QPen:
+        pen = QPen(QColor(theme.PRIMARY), float(max(1, self.cw.pen_width)))
+        pen.setCosmetic(cosmetic)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        return pen
+
+    def _ruler_label_pos(self, start: QPointF, end: QPointF) -> QPointF:
+        mid_x = (start.x() + end.x()) / 2.0
+        mid_y = (start.y() + end.y()) / 2.0
+        # Quanto maior a espessura, mais sobe a label para não ficar tampada.
+        y_offset = 22.0 + (float(max(1, self.cw.pen_width)) * 0.9)
+        return QPointF(mid_x + 8.0, mid_y - y_offset)
+
+    def _format_ruler_text(self, start: QPointF, end: QPointF) -> tuple[str, float]:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        dist = math.hypot(dx, dy)
+        dx_mm = dx / self.RULER_PX_PER_MM
+        dy_mm = dy / self.RULER_PX_PER_MM
+        dist_mm = dist / self.RULER_PX_PER_MM
+        dx_cm = dx_mm / 10.0
+        dy_cm = dy_mm / 10.0
+        dist_cm = dist_mm / 10.0
+        dx_m = dx_mm / 1000.0
+        dy_m = dy_mm / 1000.0
+        dist_m = dist_mm / 1000.0
+        text = (
+            f"Dist: {dist_mm:.1f} mm ({dist_cm:.2f} cm | {dist_m:.3f} m)   "
+            f"dX: {dx_mm:.1f} mm ({dx_cm:.2f} cm | {dx_m:.3f} m)   "
+            f"dY: {dy_mm:.1f} mm ({dy_cm:.2f} cm | {dy_m:.3f} m)"
+        )
+        return text, dist_mm
+
+    @staticmethod
+    def _format_fixed_measure(dist_mm: float) -> str:
+        abs_dist = abs(dist_mm)
+        if abs_dist >= 1000.0:
+            return f"{(dist_mm / 1000.0):.3f} m"
+        if abs_dist >= 10.0:
+            return f"{(dist_mm / 10.0):.2f} cm"
+        return f"{dist_mm:.1f} mm"
+
+    def _commit_ruler_measure(self, start: QPointF, end: QPointF):
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+        text, dist_mm = self._format_ruler_text(start, end)
+        _ = text  # mantém o cálculo completo centralizado para régua dinâmica.
+
+        line_item = QGraphicsLineItem(start.x(), start.y(), end.x(), end.y())
+        line_item.setPen(self._ruler_pen(cosmetic=True))
+        line_item.setZValue(9000)
+        line_item.setData(0, {"type": "ruler_measure_line"})
+        line_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(line_item)
+
+        label = self._format_fixed_measure(dist_mm)
+        text_item = QGraphicsTextItem(label)
+        text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+        text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+        text_item.setZValue(9001)
+        text_item.setData(0, {"type": "ruler_measure_text"})
+        text_item.setPos(self._ruler_label_pos(start, end))
+        text_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(text_item)
+
+        self.cw._push_undo(line_item)
+        self.cw._push_undo(text_item)
+        self.cw.changed.emit()
+
+    def commit_ruler_overlay(self):
+        if self._ruler_line_item is None:
+            return
+        line = self._ruler_line_item.line()
+        start = QPointF(line.x1(), line.y1())
+        end = QPointF(line.x2(), line.y2())
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+        self._commit_ruler_measure(start, end)
+
+    def _sync_ruler_visuals(self):
+        if self._ruler_line_item is not None:
+            self._ruler_line_item.setPen(self._ruler_pen(cosmetic=True))
+        for item in self.items():
+            meta = item.data(0) or {}
+            if isinstance(meta, dict) and meta.get("type") == "ruler_measure_line" and isinstance(item, QGraphicsLineItem):
+                item.setPen(self._ruler_pen(cosmetic=True))
+
+    def _ensure_ruler_items(self):
+        if self._ruler_line_item is None:
+            self._ruler_line_item = self.addLine(0, 0, 0, 0, self._ruler_pen(cosmetic=True))
+            self._ruler_line_item.setZValue(10000)
+            self._ruler_line_item.setData(0, {"type": "ruler_overlay"})
+        else:
+            self._ruler_line_item.setPen(self._ruler_pen(cosmetic=True))
+
+        if self._ruler_text_item is None:
+            self._ruler_text_item = QGraphicsTextItem("")
+            self._ruler_text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+            self._ruler_text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+            self._ruler_text_item.setZValue(10001)
+            self._ruler_text_item.setData(0, {"type": "ruler_overlay"})
+            self.addItem(self._ruler_text_item)
+
+    def _update_ruler(self, start: QPointF, end: QPointF):
+        self._ensure_ruler_items()
+        if self._ruler_line_item is None or self._ruler_text_item is None:
+            return
+
+        self._ruler_line_item.setLine(start.x(), start.y(), end.x(), end.y())
+        text, _dist_mm = self._format_ruler_text(start, end)
+        self._ruler_text_item.setPlainText(text)
+        self._ruler_text_item.setPos(self._ruler_label_pos(start, end))
+
     def mousePressEvent(self, event):
         tool = self.cw.tool
         pos  = event.scenePos()
+        self.cw._last_click_scene_pos = QPointF(pos.x(), pos.y())
+
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
 
         # Free Transform ativo: verificar zona de rotação nos cantos
         if self._ft_active and event.button() == Qt.MouseButton.LeftButton:
@@ -406,11 +761,11 @@ class DrawingScene(QGraphicsScene):
                     self._ft_is_rotating = True
                     event.accept()
                     return
-                # Clique fora da área do bounding box → sair do ft
+                # Clique fora da área do bounding box �?' sair do ft
                 outer = self._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20)
                 if not outer.contains(vp_pos):
                     self._exit_ft()
-                    # não retorna — deixa a seleção normal acontecer
+                    # não retorna �?" deixa a seleção normal acontecer
 
         if tool == Tool.SELECT:
             super().mousePressEvent(event)
@@ -422,6 +777,7 @@ class DrawingScene(QGraphicsScene):
 
         if tool == Tool.TEXT:
             text, ok = QInputDialog.getText(self.cw, "Texto", "Digite o texto:")
+            text = normalize_upper_text(text).strip()
             if ok and text:
                 item = QGraphicsTextItem(text)
                 item.setPos(pos)
@@ -438,7 +794,12 @@ class DrawingScene(QGraphicsScene):
             self.cw._insert_image(pos)
             return
 
-        self._start = pos
+        self._snap_point = None
+        self._start = QPointF(pos.x(), pos.y())
+        self._ruler_commit_on_release = (
+            tool == Tool.RULER
+            and bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+        )
 
         if tool == Tool.PEN:
             self._painter_path = QPainterPath(pos)
@@ -447,20 +808,77 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._path_item)
 
         elif tool == Tool.LINE:
-            # Snap no ponto de início
-            snap = self._find_snap(pos)
-            if snap:
-                self._start = snap
+            self._start = QPointF(pos.x(), pos.y())
+            # Pequeno segmento inicial para feedback visual instantâneo no primeiro clique.
             self._preview_item = self.addLine(
                 self._start.x(), self._start.y(),
-                self._start.x(), self._start.y(), self._pen()
+                self._start.x() + 0.01, self._start.y(), self._pen()
             )
+
+        elif tool == Tool.RULER:
+            self._update_ruler(self._start, self._start)
+
+        elif tool == Tool.ARROW:
+            self._start = QPointF(pos.x(), pos.y())
+            self._preview_item = QGraphicsPathItem(self._arrow_path(self._start, self._start))
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
+
+        elif tool == Tool.CURVE:
+            source_item = self._pick_curve_source_item(pos)
+            if not source_item:
+                self._start = None
+                return
+
+            self._curve_source_item = source_item
+            self._curve_points_scene, _closed = self._item_curve_points_scene(source_item)
+            if len(self._curve_points_scene) < 2:
+                self._curve_source_item = None
+                self._start = None
+                return
+            self._curve_segment_index = self._closest_curve_segment_index(self._curve_points_scene, pos)
+            if self._curve_segment_index < 0:
+                self._curve_source_item = None
+                self._curve_points_scene = []
+                self._start = None
+                return
+
+            source_pen = source_item.pen()
+            source_item.setVisible(False)
+
+            curved_points = self._apply_curve_on_segment(
+                self._curve_points_scene,
+                self._curve_segment_index,
+                pos,
+            )
+            path = self._points_to_path_scene(curved_points)
+            curve_item = QGraphicsPathItem(path)
+            curve_item.setPen(source_pen)
+            self.addItem(curve_item)
+            self._preview_item = curve_item
+
+        elif tool == Tool.TRIANGLE:
+            self._preview_item = QGraphicsPathItem(self._triangle_path(self._start, pos))
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
+
+        elif tool == Tool.PENTAGON:
+            self._preview_item = QGraphicsPathItem(self._regular_polygon_path(self._start, pos, 5))
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
+
+        elif tool == Tool.HEXAGON:
+            self._preview_item = QGraphicsPathItem(self._regular_polygon_path(self._start, pos, 6))
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
 
         elif tool == Tool.RECT:
             self._preview_item = self.addRect(QRectF(pos, pos), self._pen())
 
         elif tool == Tool.ELLIPSE:
             self._preview_item = self.addEllipse(QRectF(pos, pos), self._pen())
+
+        event.accept()
 
     def mouseMoveEvent(self, event):
         tool = self.cw.tool
@@ -499,7 +917,7 @@ class DrawingScene(QGraphicsScene):
 
         elif tool == Tool.LINE and self._preview_item:
             snap = self._find_snap(pos)
-            if snap:
+            if snap is not None:
                 end = snap
                 self._snap_point = snap
             else:
@@ -507,7 +925,32 @@ class DrawingScene(QGraphicsScene):
                 self._snap_point = None
             self._preview_item.setLine(self._start.x(), self._start.y(),
                                        end.x(), end.y())
-            self.update()   # atualiza o indicador de snap
+            self.update()
+
+        elif tool == Tool.RULER:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._update_ruler(self._start, end)
+
+        elif tool == Tool.ARROW and self._preview_item:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._preview_item.setPath(self._arrow_path(self._start, end))
+
+        elif tool == Tool.CURVE and self._preview_item and self._curve_points_scene:
+            curved_points = self._apply_curve_on_segment(
+                self._curve_points_scene,
+                self._curve_segment_index,
+                pos,
+            )
+            self._preview_item.setPath(self._points_to_path_scene(curved_points))
+
+        elif tool == Tool.TRIANGLE and self._preview_item:
+            self._preview_item.setPath(self._triangle_path(self._start, pos))
+
+        elif tool == Tool.PENTAGON and self._preview_item:
+            self._preview_item.setPath(self._regular_polygon_path(self._start, pos, 5))
+
+        elif tool == Tool.HEXAGON and self._preview_item:
+            self._preview_item.setPath(self._regular_polygon_path(self._start, pos, 6))
 
         elif tool == Tool.RECT and self._preview_item:
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
@@ -540,10 +983,10 @@ class DrawingScene(QGraphicsScene):
             self._path_item = None
             self._painter_path = None
 
-        elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE) and self._preview_item:
+        elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
             if tool == Tool.LINE:
                 snap = self._find_snap(pos)
-                if snap:
+                if snap is not None:
                     end = snap
                 elif shift:
                     end = self._constrain(self._start, pos)
@@ -553,6 +996,47 @@ class DrawingScene(QGraphicsScene):
                                            end.x(), end.y())
                 self._snap_point = None
                 self.update()
+            elif tool == Tool.ARROW:
+                end = self._constrain(self._start, pos) if shift else pos
+                self._preview_item.setPath(self._arrow_path(self._start, end))
+            item = self._preview_item
+            item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                          QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+            self.cw._push_undo(item)
+            self._preview_item = None
+
+        elif tool == Tool.RULER:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._update_ruler(self._start, end)
+            if self._ruler_commit_on_release:
+                self._commit_ruler_measure(self._start, end)
+            self._ruler_commit_on_release = False
+
+        elif tool == Tool.CURVE and self._preview_item and self._curve_source_item:
+            old_item = self._curve_source_item
+            self.removeItem(old_item)
+            if old_item in self.cw._undo_stack:
+                self.cw._undo_stack.remove(old_item)
+
+            item = self._preview_item
+            item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                          QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+            item.setSelected(True)
+            self.cw._push_undo(item)
+
+            self._preview_item = None
+            self._curve_source_item = None
+            self._curve_points_scene = []
+            self._curve_segment_index = -1
+
+        elif tool == Tool.TRIANGLE and self._preview_item:
+            item = self._preview_item
+            item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                          QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+            self.cw._push_undo(item)
+            self._preview_item = None
+
+        elif tool in (Tool.PENTAGON, Tool.HEXAGON) and self._preview_item:
             item = self._preview_item
             item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
                           QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
@@ -560,6 +1044,7 @@ class DrawingScene(QGraphicsScene):
             self._preview_item = None
 
         self._start = None
+        self._ruler_commit_on_release = False
 
     def keyPressEvent(self, event):
         # Enter ou Escape confirmam/saem do Free Transform
@@ -568,14 +1053,47 @@ class DrawingScene(QGraphicsScene):
                 self._exit_ft()
                 event.accept()
                 return
+
+        focus_item = self.focusItem()
+        if (
+            isinstance(focus_item, QGraphicsTextItem)
+            and focus_item.textInteractionFlags() != Qt.TextInteractionFlag.NoTextInteraction
+        ):
+            super().keyPressEvent(event)
+            return
+
+        step = 10.0 if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier) else 1.0
+        dx = 0.0
+        dy = 0.0
+        if event.key() == Qt.Key.Key_Left:
+            dx = -step
+        elif event.key() == Qt.Key.Key_Right:
+            dx = step
+        elif event.key() == Qt.Key.Key_Up:
+            dy = -step
+        elif event.key() == Qt.Key.Key_Down:
+            dy = step
+
+        if dx or dy:
+            selected = self.selectedItems()
+            if selected:
+                for item in selected:
+                    item.setPos(item.pos() + QPointF(dx, dy))
+                self.cw.changed.emit()
+                event.accept()
+                return
+
         if event.key() == Qt.Key.Key_Delete:
             for item in self.selectedItems():
                 self.removeItem(item)
+            self.cw.changed.emit()
+            event.accept()
+            return
         else:
             super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
-        """Duplo clique em texto → ativa edição inline."""
+        """Duplo clique em texto �?' ativa edição inline."""
         if (self.cw.tool == Tool.SELECT
                 and event.button() == Qt.MouseButton.LeftButton):
             item = self.itemAt(event.scenePos(), QTransform())
@@ -589,7 +1107,7 @@ class DrawingScene(QGraphicsScene):
         super().mouseDoubleClickEvent(event)
 
 
-# ── View com pan por botão do meio + Space+arraste ───────────────────────────
+# �"?�"? View com pan por botão do meio + Space+arraste �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 class DrawingView(QGraphicsView):
     """
     QGraphicsView com zoom por scroll e pan por botão do meio ou Space+drag.
@@ -607,20 +1125,20 @@ class DrawingView(QGraphicsView):
         vp.installEventFilter(self)
         vp.setMouseTracking(True)   # receber MouseMove sem botão pressionado
 
-    # ── Event filter no viewport ──────────────────────────────────────────────
+    # �"?�"? Event filter no viewport �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def eventFilter(self, obj, event):
         if obj is not self.viewport():
             return super().eventFilter(obj, event)
 
         t = event.type()
 
-        # ── Zoom por scroll ───────────────────────────────────────────────────
+        # �"?�"? Zoom por scroll �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
         if t == QEvent.Type.Wheel:
             factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
             self.scale(factor, factor)
             return True
 
-        # ── Início do pan ─────────────────────────────────────────────────────
+        # �"?�"? Início do pan �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
         if t == QEvent.Type.MouseButtonPress:
             mid        = event.button() == Qt.MouseButton.MiddleButton
             space_left = (event.button() == Qt.MouseButton.LeftButton
@@ -629,7 +1147,7 @@ class DrawingView(QGraphicsView):
                 self._start_pan(event.position().toPoint())
                 return True
 
-        # ── Arraste do pan ────────────────────────────────────────────────────
+        # �"?�"? Arraste do pan �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
         if t == QEvent.Type.MouseMove and self._panning:
             delta = event.position().toPoint() - self._pan_start
             self._pan_start = event.position().toPoint()
@@ -641,14 +1159,14 @@ class DrawingView(QGraphicsView):
             )
             return True
 
-        # ── Fim do pan ────────────────────────────────────────────────────────
+        # �"?�"? Fim do pan �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
         if t == QEvent.Type.MouseButtonRelease and self._panning:
             if event.button() in (Qt.MouseButton.MiddleButton,
                                    Qt.MouseButton.LeftButton):
                 self._stop_pan()
                 return True
 
-        # ── Cursor de rotação no Free Transform (hover sem botão) ─────────────
+        # �"?�"? Cursor de rotação no Free Transform (hover sem botão) �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
         if t == QEvent.Type.MouseMove and not self._panning:
             sc = self.scene()
             if hasattr(sc, "_ft_active") and sc._ft_active:
@@ -662,7 +1180,7 @@ class DrawingView(QGraphicsView):
 
         return super().eventFilter(obj, event)
 
-    # ── Space + arrastar ──────────────────────────────────────────────────────
+    # �"?�"? Space + arrastar �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._space_held = True
@@ -676,7 +1194,7 @@ class DrawingView(QGraphicsView):
                 self.setCursor(Qt.CursorShape.ArrowCursor)
         super().keyReleaseEvent(event)
 
-    # ── Helpers ───────────────────────────────────────────────────────────────
+    # �"?�"? Helpers �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _start_pan(self, pos):
         self._panning   = True
         self._pan_start = pos
@@ -690,7 +1208,7 @@ class DrawingView(QGraphicsView):
         self.setCursor(cursor)
 
 
-# ── Widget principal ──────────────────────────────────────────────────────────
+# �"?�"? Widget principal �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
 class DrawingCanvas(QWidget):
     changed = Signal()
 
@@ -705,9 +1223,12 @@ class DrawingCanvas(QWidget):
         self._undo_stack: list[QGraphicsItem] = []
         self._redo_stack: list[QGraphicsItem] = []
         self._attached_pdf: str = ""
+        self._clipboard_signature = ""
+        self._paste_serial = 0
+        self._last_click_scene_pos: QPointF | None = None
         self._setup_ui()
 
-    # ── UI ────────────────────────────────────────────────────────────────────
+    # �"?�"? UI �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -721,16 +1242,18 @@ class DrawingCanvas(QWidget):
         layout.addWidget(title)
 
         s  = self.scale
-        fh = max(24, int(28 * s))
+        fh = max(28, int(34 * s))
         fs = max(8, int(9 * s))
         lbl_style = f"color:{theme.TEXT_MEDIUM}; font-size:{fs}pt;"
 
         def _lbl(txt):
             l = QLabel(txt)
             l.setStyleSheet(lbl_style)
+            l.setMinimumHeight(fh)
+            l.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             return l
 
-        # ── Linha 1: Ferramentas + Cor + Estilo + Fonte ───────────────────────
+        # Linha 1: Ferramentas + Cor + Estilo + Fonte
         row1 = QHBoxLayout()
         row1.setSpacing(4)
         self._tool_btns: dict[Tool, QPushButton] = {}
@@ -740,6 +1263,12 @@ class DrawingCanvas(QWidget):
             (Tool.PEN,     "✏️ Caneta",   "P"),
             (Tool.ERASER,  "🧹 Borracha", "X"),
             (Tool.LINE,    "📏 Linha",    "L"),
+            (Tool.RULER,   "📐 Régua",    "U"),
+            (Tool.ARROW,   "➡ Seta",      "A"),
+            (Tool.CURVE,   "〰 Curva",    "C"),
+            (Tool.TRIANGLE, "△ Triang.", "G"),
+            (Tool.PENTAGON, "⬟ Penta",    "N"),
+            (Tool.HEXAGON,  "⬢ Hexa",      "H"),
             (Tool.RECT,    "⬛ Ret.",     "R"),
             (Tool.ELLIPSE, "⭕ Elipse",   "E"),
             (Tool.TEXT,    "T Texto",     "T"),
@@ -770,11 +1299,11 @@ class DrawingCanvas(QWidget):
         # Espessura
         row1.addWidget(_lbl("Esp.:"))
         self.spin_width = QSpinBox()
-        self.spin_width.setRange(1, 20)
+        self.spin_width.setRange(1, 26)
         self.spin_width.setValue(self.pen_width)
-        self.spin_width.setFixedWidth(max(44, int(52 * s)))
+        self.spin_width.setFixedWidth(max(56, int(68 * s)))
         self.spin_width.setFixedHeight(fh)
-        self.spin_width.valueChanged.connect(lambda v: setattr(self, "pen_width", v))
+        self.spin_width.valueChanged.connect(self._on_pen_width_changed)
         row1.addWidget(self.spin_width)
 
         row1.addSpacing(8)
@@ -783,7 +1312,7 @@ class DrawingCanvas(QWidget):
         row1.addWidget(_lbl("Linha:"))
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
-        self.combo_style.setFixedWidth(max(110, int(130 * s)))
+        self.combo_style.setFixedWidth(max(126, int(152 * s)))
         self.combo_style.addItem("─── Sólida",     Qt.PenStyle.SolidLine)
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
         self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
@@ -798,10 +1327,10 @@ class DrawingCanvas(QWidget):
         # Tamanho da fonte
         row1.addWidget(_lbl("Fonte:"))
         self.spin_font = QSpinBox()
-        self.spin_font.setRange(6, 96)
+        self.spin_font.setRange(6, 180)
         self.spin_font.setValue(self.font_size)
         self.spin_font.setSuffix(" pt")
-        self.spin_font.setFixedWidth(max(58, int(68 * s)))
+        self.spin_font.setFixedWidth(max(76, int(92 * s)))
         self.spin_font.setFixedHeight(fh)
         self.spin_font.valueChanged.connect(self._on_font_size_changed)
         row1.addWidget(self.spin_font)
@@ -809,7 +1338,7 @@ class DrawingCanvas(QWidget):
         row1.addStretch()
         layout.addLayout(row1)
 
-        # ── Linha 2: Ações ────────────────────────────────────────────────────
+        # Linha 2: Ações
         row2 = QHBoxLayout()
         row2.setSpacing(4)
 
@@ -871,19 +1400,20 @@ class DrawingCanvas(QWidget):
         row2.addStretch()
         layout.addLayout(row2)
 
-        # ── Dica de teclado ──────────────────────────────────────────────────
+        # Dica de teclado
         hint = QLabel(
-            "✨ Shift = traço reto  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ U = régua  |  Ctrl+Clique = fixar medição  |  F1 = fixar medição atual  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
+            "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
-            "Enter / Esc = confirmar  |  2× clique = editar texto"
+            "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
         hint.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
 
-        # ── Cena + View ──────────────────────────────────────────────────────
+        # Cena + View
         self.scene = DrawingScene(self)
         self.view  = DrawingView(self.scene)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -894,7 +1424,7 @@ class DrawingCanvas(QWidget):
         self.view.setMinimumHeight(max(250, int(300 * self.scale)))
         layout.addWidget(self.view)
 
-        # ── Painel de PDF ────────────────────────────────────────────────────
+        # Painel de PDF
         self.pdf_panel = QFrame()
         self.pdf_panel.setStyleSheet(
             f"background:{theme.SELECTION_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
@@ -935,6 +1465,12 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_P: Tool.PEN,
             Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
+            Qt.Key.Key_U: Tool.RULER,
+            Qt.Key.Key_A: Tool.ARROW,
+            Qt.Key.Key_C: Tool.CURVE,
+            Qt.Key.Key_G: Tool.TRIANGLE,
+            Qt.Key.Key_N: Tool.PENTAGON,
+            Qt.Key.Key_H: Tool.HEXAGON,
             Qt.Key.Key_R: Tool.RECT,
             Qt.Key.Key_E: Tool.ELLIPSE,
             Qt.Key.Key_T: Tool.TEXT,
@@ -955,13 +1491,30 @@ class DrawingCanvas(QWidget):
         redo_action.triggered.connect(self._redo)
         self.addAction(redo_action)
 
-        # Ctrl+T — Free Transform (estilo Photoshop)
+        copy_action = QAction(self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        copy_action.triggered.connect(self._copy_selection_to_clipboard)
+        self.addAction(copy_action)
+
+        paste_action = QAction(self)
+        paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        paste_action.triggered.connect(self._paste_from_clipboard)
+        self.addAction(paste_action)
+
+        # Ctrl+T �?" Free Transform (estilo Photoshop)
         ft_action = QAction(self)
         ft_action.setShortcut(QKeySequence("Ctrl+T"))
         ft_action.triggered.connect(self.scene._enter_ft)
         self.addAction(ft_action)
 
-    # ── Ferramentas ──────────────────────────────────────────────────────────
+        fix_measure_action = QAction(self)
+        fix_measure_action.setShortcut(QKeySequence(Qt.Key.Key_F1))
+        fix_measure_action.triggered.connect(self.scene.commit_ruler_overlay)
+        self.addAction(fix_measure_action)
+
+    # �"?�"? Ferramentas �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _set_tool(self, tool: Tool):
         self.tool = tool
         for t, btn in self._tool_btns.items():
@@ -995,6 +1548,12 @@ class DrawingCanvas(QWidget):
                 item.setFont(f)
         self.changed.emit()
 
+    def _on_pen_width_changed(self, v: int):
+        self.pen_width = v
+        if hasattr(self, "scene"):
+            self.scene._sync_ruler_visuals()
+        self.changed.emit()
+
     def _pick_color(self):
         color = QColorDialog.getColor(
             QColor(self.color),
@@ -1008,7 +1567,7 @@ class DrawingCanvas(QWidget):
                 f"background:{self.color}; border-radius:8px; border:1px solid {theme.BORDER_COLOR};"
             )
 
-    # ── Undo / Redo ──────────────────────────────────────────────────────────
+    # �"?�"? Undo / Redo �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _push_undo(self, item: QGraphicsItem):
         self._undo_stack.append(item)
         self._redo_stack.clear()
@@ -1028,7 +1587,7 @@ class DrawingCanvas(QWidget):
             self._undo_stack.append(item)
             self.changed.emit()
 
-    # ── Imagem ───────────────────────────────────────────────────────────────
+    # �"?�"? Imagem �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _insert_image(self, pos: QPointF = None):
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1042,20 +1601,9 @@ class DrawingCanvas(QWidget):
         pixmap = QPixmap(path)
         if pixmap.isNull():
             return
-        max_w = min(600, self.view.width() - 40)
-        if pixmap.width() > max_w:
-            pixmap = pixmap.scaledToWidth(max_w, Qt.TransformationMode.SmoothTransformation)
+        self._insert_image_from_pixmap(pixmap, pos=pos, path=path)
 
-        item = QGraphicsPixmapItem(pixmap)
-        p = pos or QPointF(10, 10)
-        item.setPos(p)
-        item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
-                      QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
-        item.setData(0, {"type": "image", "path": path})
-        self.scene.addItem(item)
-        self._push_undo(item)
-
-    # ── PDF ──────────────────────────────────────────────────────────────────
+    # �"?�"? PDF �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _attach_pdf(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1080,14 +1628,181 @@ class DrawingCanvas(QWidget):
         self.pdf_panel.setVisible(False)
         self.changed.emit()
 
-    # ── Limpar ───────────────────────────────────────────────────────────────
+    # �"?�"? Limpar �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def _clear(self):
         self.scene.clear()
+        self.scene._ruler_line_item = None
+        self.scene._ruler_text_item = None
         self._undo_stack.clear()
         self._redo_stack.clear()
         self.changed.emit()
 
-    # ── Serialização ─────────────────────────────────────────────────────────
+    def _copy_selection_to_clipboard(self):
+        if self._text_editor_active():
+            return
+
+        items = []
+        for item in self.scene.selectedItems():
+            item_data = self._item_to_dict(item)
+            if item_data:
+                items.append(item_data)
+        if not items:
+            return
+
+        payload = json.dumps({"version": 1, "items": items}, ensure_ascii=False)
+        mime = QMimeData()
+        mime.setData(_CANVAS_CLIPBOARD_MIME, QByteArray(payload.encode("utf-8")))
+        mime.setText(payload)
+        QGuiApplication.clipboard().setMimeData(mime)
+        self._clipboard_signature = payload
+        self._paste_serial = 0
+
+    def _paste_from_clipboard(self):
+        if self._text_editor_active():
+            return
+
+        clipboard = QGuiApplication.clipboard()
+        mime = clipboard.mimeData()
+        if mime is None:
+            return
+
+        payload_text = ""
+        if mime.hasFormat(_CANVAS_CLIPBOARD_MIME):
+            payload_text = bytes(mime.data(_CANVAS_CLIPBOARD_MIME)).decode("utf-8", errors="ignore")
+        elif mime.hasText():
+            payload_text = mime.text()
+
+        if payload_text:
+            try:
+                payload = json.loads(payload_text)
+            except (json.JSONDecodeError, TypeError):
+                payload = None
+            if isinstance(payload, dict) and isinstance(payload.get("items"), list):
+                self._paste_canvas_items(payload.get("items", []), payload_text)
+                return
+
+        pixmap = clipboard.pixmap()
+        if pixmap.isNull():
+            image = clipboard.image()
+            if not image.isNull():
+                pixmap = QPixmap.fromImage(image)
+
+        if not pixmap.isNull():
+            image_data = _pixmap_to_base64(pixmap)
+            insert_pos = self._default_insert_pos(pixmap)
+            self.scene.clearSelection()
+            item = self._insert_image_from_pixmap(
+                pixmap,
+                pos=insert_pos,
+                image_data=image_data,
+            )
+            if item:
+                item.setSelected(True)
+                self.changed.emit()
+
+    def _paste_canvas_items(self, items_data: list[dict], signature: str):
+        if not items_data:
+            return
+
+        if signature == self._clipboard_signature:
+            serial = self._paste_serial
+            self._paste_serial += 1
+        else:
+            self._clipboard_signature = signature
+            self._paste_serial = 1
+            serial = 0
+        offset = QPointF(20 * serial, 20 * serial)
+
+        self.scene.clearSelection()
+        created = []
+        for item_data in items_data:
+            item = self._item_from_dict(item_data)
+            if not item:
+                continue
+            created.append(item)
+
+        if not created:
+            return
+
+        bounds = QRectF()
+        for item in created:
+            sr = item.mapToScene(item.boundingRect()).boundingRect()
+            bounds = sr if bounds.isNull() else bounds.united(sr)
+
+        target = self._last_click_scene_pos or self.view.mapToScene(self.view.viewport().rect().center())
+        move = QPointF(
+            target.x() - bounds.center().x() + offset.x(),
+            target.y() - bounds.center().y() + offset.y(),
+        )
+
+        pasted = []
+        for item in created:
+            item.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            item.moveBy(move.x(), move.y())
+            self.scene.addItem(item)
+            item.setSelected(True)
+            self._undo_stack.append(item)
+            pasted.append(item)
+
+        if pasted:
+            self._redo_stack.clear()
+            self.changed.emit()
+
+    def _insert_image_from_pixmap(
+        self,
+        pixmap: QPixmap,
+        pos: QPointF | None = None,
+        path: str = "",
+        image_data: str = "",
+    ) -> QGraphicsPixmapItem | None:
+        if pixmap.isNull():
+            return None
+
+        display_pixmap = pixmap
+        max_w = min(600, self.view.width() - 40)
+        if max_w > 0 and display_pixmap.width() > max_w:
+            display_pixmap = display_pixmap.scaledToWidth(
+                max_w,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+        item = QGraphicsPixmapItem(display_pixmap)
+        item.setPos(pos or self._default_insert_pos(display_pixmap))
+        item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        item.setData(0, {
+            "type": "image",
+            "path": path,
+            "image_data": image_data,
+            "display_w": display_pixmap.width(),
+            "display_h": display_pixmap.height(),
+        })
+        self.scene.addItem(item)
+        self._push_undo(item)
+        return item
+
+    def _default_insert_pos(self, pixmap: QPixmap | None = None) -> QPointF:
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        if pixmap is not None and not pixmap.isNull():
+            return QPointF(
+                center.x() - (pixmap.width() / 2),
+                center.y() - (pixmap.height() / 2),
+            )
+        return QPointF(center.x() - 20, center.y() - 20)
+
+    def _text_editor_active(self) -> bool:
+        item = self.scene.focusItem()
+        return (
+            isinstance(item, QGraphicsTextItem)
+            and item.textInteractionFlags() != Qt.TextInteractionFlag.NoTextInteraction
+        )
+
+    # �"?�"? Serialização �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
     def to_json(self) -> str:
         items = []
         for item in self.scene.items():
@@ -1113,6 +1828,10 @@ class DrawingCanvas(QWidget):
         load_canvas_scene(self.scene, data, selectable=True)
 
     def _item_to_dict(self, item: QGraphicsItem) -> dict | None:
+        meta = item.data(0) or {}
+        if isinstance(meta, dict) and meta.get("type") == "ruler_overlay":
+            return None
+
         pen_data = lambda p: {
             "color": p.color().name(),
             "width": p.width(),
@@ -1123,20 +1842,28 @@ class DrawingCanvas(QWidget):
 
         if isinstance(item, QGraphicsLineItem):
             ln = item.line()
+            if isinstance(meta, dict) and meta.get("type") == "ruler_measure_line":
+                return {"type": "ruler_measure_line",
+                        "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
+                        "pos_x": item.pos().x(), "pos_y": item.pos().y(),
+                        "pen": pen_data(item.pen()), "rotation": rot}
             return {"type": "line",
                     "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
+                    "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                     "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsRectItem):
             r = item.rect()
             return {"type": "rect",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
+                    "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                     "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsEllipseItem):
             r = item.rect()
             return {"type": "ellipse",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
+                    "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                     "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsPathItem):
@@ -1146,12 +1873,20 @@ class DrawingCanvas(QWidget):
                 el = path.elementAt(i)
                 points.append([el.x, el.y])
             return {"type": "path", "points": points,
+                    "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                     "pen": pen_data(item.pen()), "rotation": rot}
 
         if isinstance(item, QGraphicsTextItem):
+            if isinstance(meta, dict) and meta.get("type") == "ruler_measure_text":
+                return {"type": "ruler_measure_text",
+                        "x": item.pos().x(), "y": item.pos().y(),
+                        "text": item.toPlainText(),
+                        "color": item.defaultTextColor().name(),
+                        "font_size": item.font().pointSize(),
+                        "rotation": rot}
             return {"type": "text",
                     "x": item.pos().x(), "y": item.pos().y(),
-                    "text": item.toPlainText(),
+                    "text": normalize_upper_text(item.toPlainText()),
                     "color": item.defaultTextColor().name(),
                     "font_size": item.font().pointSize(),
                     "rotation": rot}
@@ -1160,7 +1895,11 @@ class DrawingCanvas(QWidget):
             meta = item.data(0) or {}
             return {"type": "image",
                     "x": item.pos().x(), "y": item.pos().y(),
-                    "path": meta.get("path", ""), "rotation": rot}
+                    "path": meta.get("path", ""),
+                    "image_data": meta.get("image_data", ""),
+                    "display_w": meta.get("display_w", item.pixmap().width()),
+                    "display_h": meta.get("display_h", item.pixmap().height()),
+                    "rotation": rot}
 
         return None
 

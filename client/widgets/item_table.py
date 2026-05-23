@@ -3,9 +3,10 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QHeaderView, QAbstractItemView,
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPalette
 
 from ..core import theme
+from ..core.text_case import normalize_upper_text
 
 
 POSITION_COL = 0
@@ -31,6 +32,14 @@ COLUMNS = [
 ]
 
 POSITIONS = [chr(i) for i in range(ord("A"), ord("Z") + 1)]
+UPPERCASE_COLS = {
+    PRODUCT_CODE_COL,
+    PRODUCT_NAME_COL,
+    COMP_COL,
+    DESENV_COL,
+    CHAPA_COL,
+    TIPO_COL,
+}
 
 
 class ItemTable(QWidget):
@@ -47,12 +56,12 @@ class ItemTable(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        title = QLabel("ITENS DA REQUISIÇÃO")
+        self.title_label = QLabel("ITENS DA REQUISIÇÃO")
         fs_title = max(9, int(11 * self.scale))
-        title.setStyleSheet(
+        self.title_label.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{fs_title}pt; font-weight:bold;"
         )
-        layout.addWidget(title)
+        layout.addWidget(self.title_label)
 
         self.table = QTableWidget(10, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
@@ -62,19 +71,8 @@ class ItemTable(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(
             PRODUCT_NAME_COL, QHeaderView.ResizeMode.Stretch
         )
-        self.table.setStyleSheet(
-            f"QTableWidget {{"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(8, int(10 * self.scale))}pt;"
-            f"}}"
-            f"QHeaderView::section {{"
-            f"  background:{theme.TABLE_HEADER_BG}; color:#fff;"
-            f"  padding:6px; font-weight:bold; font-size:{max(8, int(9 * self.scale))}pt;"
-            f"  border:none;"
-            f"}}"
-            f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
-        )
+        self._apply_table_stylesheet()
+        self._apply_table_palette()
 
         for row in range(10):
             self._set_position_item(row)
@@ -96,23 +94,65 @@ class ItemTable(QWidget):
 
         footer.addStretch()
 
-        peso_label = QLabel("PESO TOTAL:")
-        peso_label.setStyleSheet(
+        self.peso_label = QLabel("PESO TOTAL:")
+        self.peso_label.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * self.scale))}pt; font-weight:bold;"
         )
         self.total_label = QLabel("0,00")
         self.total_label.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:bold;"
         )
-        footer.addWidget(peso_label)
+        footer.addWidget(self.peso_label)
         footer.addWidget(self.total_label)
         layout.addLayout(footer)
+
+    def _apply_table_stylesheet(self) -> None:
+        s = self.scale
+        self.table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+            f"  background:{theme.CARD_BG};"
+            f"  gridline-color:{theme.BORDER_COLOR}; font-size:{max(8, int(10 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.TABLE_HEADER_BG}; color:#fff;"
+            f"  padding:6px; font-weight:bold; font-size:{max(8, int(9 * s))}pt;"
+            f"  border:none;"
+            f"}}"
+            f"QTableWidget::item {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK}; }}"
+        )
+        self.table.viewport().setStyleSheet(f"background:{theme.CARD_BG};")
+
+    def _apply_table_palette(self) -> None:
+        pal = self.table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        self.table.setPalette(pal)
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        self._apply_table_stylesheet()
+        self._apply_table_palette()
+        self.title_label.setStyleSheet(
+            f"color:{theme.PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:bold;"
+        )
+        self.peso_label.setStyleSheet(
+            f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:bold;"
+        )
+        self.total_label.setStyleSheet(
+            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:bold;"
+        )
+        self.btn_add.setStyleSheet(theme.secondary_btn_style(s))
+        self.btn_clear_selected.setStyleSheet(theme.secondary_btn_style(s))
 
     def _default_position(self, row: int) -> str:
         return POSITIONS[row] if row < len(POSITIONS) else f"#{row + 1}"
 
     def _set_position_item(self, row: int, value: str | None = None):
-        text = (value or self._default_position(row)).strip().upper() or self._default_position(row)
+        text = normalize_upper_text(value or self._default_position(row)).strip() or self._default_position(row)
         item = QTableWidgetItem(text)
         item.setFlags(
             Qt.ItemFlag.ItemIsEnabled
@@ -163,12 +203,19 @@ class ItemTable(QWidget):
         col = item.column()
 
         if col == POSITION_COL:
-            text = item.text().strip().upper() or self._default_position(row)
+            text = normalize_upper_text(item.text()).strip() or self._default_position(row)
             self.table.blockSignals(True)
             item.setText(text)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.blockSignals(False)
             return
+
+        if col in UPPERCASE_COLS:
+            normalized = normalize_upper_text(item.text())
+            if normalized != item.text():
+                self.table.blockSignals(True)
+                item.setText(normalized)
+                self.table.blockSignals(False)
 
         if col == PRODUCT_CODE_COL:
             code = item.text().strip()
@@ -210,8 +257,8 @@ class ItemTable(QWidget):
 
     def apply_product_lookup(self, row: int, product: dict):
         self.table.blockSignals(True)
-        self._ensure_cell(row, PRODUCT_CODE_COL).setText(product.get("code", ""))
-        self._ensure_cell(row, PRODUCT_NAME_COL).setText(product.get("name", ""))
+        self._ensure_cell(row, PRODUCT_CODE_COL).setText(normalize_upper_text(product.get("code", "")))
+        self._ensure_cell(row, PRODUCT_NAME_COL).setText(normalize_upper_text(product.get("name", "")))
         self.table.blockSignals(False)
 
     def get_items(self) -> list[dict]:
@@ -244,20 +291,20 @@ class ItemTable(QWidget):
         for row, item in enumerate(items):
             self._set_position_item(row, item.get("position"))
             self.table.setItem(
-                row, PRODUCT_CODE_COL, QTableWidgetItem(item.get("product_code") or "")
+                row, PRODUCT_CODE_COL, QTableWidgetItem(normalize_upper_text(item.get("product_code") or ""))
             )
             self.table.setItem(
-                row, PRODUCT_NAME_COL, QTableWidgetItem(item.get("product_name") or "")
+                row, PRODUCT_NAME_COL, QTableWidgetItem(normalize_upper_text(item.get("product_name") or ""))
             )
             self.table.setItem(
                 row, QUANTITY_COL, QTableWidgetItem(str(item.get("quantity") or ""))
             )
-            self.table.setItem(row, COMP_COL, QTableWidgetItem(item.get("comp") or ""))
+            self.table.setItem(row, COMP_COL, QTableWidgetItem(normalize_upper_text(item.get("comp") or "")))
             self.table.setItem(
-                row, DESENV_COL, QTableWidgetItem(item.get("desenv") or "")
+                row, DESENV_COL, QTableWidgetItem(normalize_upper_text(item.get("desenv") or ""))
             )
-            self.table.setItem(row, CHAPA_COL, QTableWidgetItem(item.get("chapa") or ""))
-            self.table.setItem(row, TIPO_COL, QTableWidgetItem(item.get("tipo") or ""))
+            self.table.setItem(row, CHAPA_COL, QTableWidgetItem(normalize_upper_text(item.get("chapa") or "")))
+            self.table.setItem(row, TIPO_COL, QTableWidgetItem(normalize_upper_text(item.get("tipo") or "")))
             weight = item.get("weight")
             self.table.setItem(
                 row,

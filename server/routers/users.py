@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..dependencies import require_admin
+from ..dependencies import require_admin, require_manager_or_admin
 from ..models.user import Role, User
 from ..schemas.user import (
     UserBulkImportResult,
@@ -15,12 +15,13 @@ from ..schemas.user import (
     UserUpdate,
 )
 from ..services.auth_service import hash_password
+from ..services.text_normalizer import normalize_upper_required
 
 router = APIRouter(prefix="/users", tags=["Usuarios"])
 
 
 def _normalize_code(code: str) -> str:
-    return str(code or "").strip()
+    return normalize_upper_required(code)
 
 
 def _auto_email(code: str) -> str:
@@ -62,12 +63,12 @@ def _ensure_unique_identity(
 
 
 @router.get("/", response_model=List[UserResponse])
-def list_users(db: Session = Depends(get_db), _=Depends(require_admin)):
+def list_users(db: Session = Depends(get_db), _=Depends(require_manager_or_admin)):
     return db.query(User).order_by(User.code).all()
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def create_user(data: UserCreate, db: Session = Depends(get_db), _=Depends(require_admin)):
+def create_user(data: UserCreate, db: Session = Depends(get_db), _=Depends(require_manager_or_admin)):
     code = _normalize_code(data.code)
     if not code:
         raise HTTPException(status_code=400, detail="Informe o codigo do usuario")
@@ -98,7 +99,7 @@ def create_user(data: UserCreate, db: Session = Depends(get_db), _=Depends(requi
 def bulk_import_users(
     items: List[UserBulkItem],
     db: Session = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(require_manager_or_admin),
 ):
     result = UserBulkImportResult()
     existing = {user.code: user for user in db.query(User).all()}
@@ -151,7 +152,7 @@ def bulk_import_users(
 
 
 @router.get("/{user_id}", response_model=UserResponse)
-def get_user(user_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
+def get_user(user_id: int, db: Session = Depends(get_db), _=Depends(require_manager_or_admin)):
     return _get_user_or_404(db, user_id)
 
 
@@ -160,7 +161,7 @@ def update_user(
     user_id: int,
     data: UserUpdate,
     db: Session = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(require_manager_or_admin),
 ):
     user = _get_user_or_404(db, user_id)
     update_data = data.model_dump(exclude_unset=True)
@@ -202,7 +203,7 @@ def update_user(
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_user(
-    user_id: int, db: Session = Depends(get_db), _=Depends(require_admin)
+    user_id: int, db: Session = Depends(get_db), _=Depends(require_manager_or_admin)
 ):
     user = _get_user_or_404(db, user_id)
     user.is_active = False

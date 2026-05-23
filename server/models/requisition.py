@@ -12,7 +12,10 @@ from ..database import Base
 class RequisitionStatus(str, enum.Enum):
     EM_ANDAMENTO = "em_andamento"
     AGUARDANDO_RECEBIMENTO = "aguardando_recebimento"
+    AGUARDANDO_NA_FILA = "aguardando_na_fila"
+    AGUARDANDO_FATURAMENTO = "aguardando_faturamento"
     EM_PRODUCAO  = "em_producao"
+    FATURADO     = "faturado"
     CANCELADA    = "cancelada"
 
 
@@ -38,9 +41,11 @@ class Requisition(Base):
     weight: Mapped[float] = mapped_column(Float, default=0.0)
 
     status: Mapped[RequisitionStatus] = mapped_column(
-        SAEnum(RequisitionStatus, values_callable=lambda x: [e.value for e in x]),
+        SAEnum(RequisitionStatus, values_callable=lambda x: [e.value for e in x], native_enum=False),
         default=RequisitionStatus.EM_ANDAMENTO,
     )
+    production_destination: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    production_machine: Mapped[str | None] = mapped_column(String(255), nullable=True)
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

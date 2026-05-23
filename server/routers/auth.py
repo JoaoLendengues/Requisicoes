@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -29,6 +31,7 @@ def _build_token(user: User) -> Token:
         user_name=user.name,
         user_code=user.code,
         role=user.role,
+        whatsapp=user.whatsapp or "",
     )
 
 
@@ -62,6 +65,9 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Codigo ou senha invalidos",
         )
+    user.last_login_at = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
     return _build_token(user)
 
 
@@ -89,6 +95,7 @@ def first_access(data: FirstAccessRequest, db: Session = Depends(get_db)):
 
     user.hashed_password = hash_password(password)
     user.must_change_password = False
+    user.last_login_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
     return _build_token(user)

@@ -9,7 +9,9 @@ import io
 import json
 import os
 import re
+import unicodedata
 from datetime import datetime
+from ..core.datetime_utils import local_now
 
 try:
     from reportlab.lib import colors
@@ -17,6 +19,7 @@ try:
     from reportlab.lib.units import mm
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.pdfgen import canvas as pdfcanvas
 
     HAS_REPORTLAB = True
@@ -42,18 +45,39 @@ COMPANY_PHONES   = ("(61) 3354-8181", "(61) 3012-8181")
 COMPANY_SITE     = "www.pinheiroferragens.com.br"
 COMPANY_LOCATION = "SIA E TAGUATINGA"
 ITEM_POSITIONS   = list("ABCDEFGHIJ")
+ASSETS_DIR       = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets"))
+LOGO_PATHS       = [
+    r"Z:\REQUISIÇÕES (VENDAS)\logo_requisicao.png",
+    r"\\data04tg\TI\REQUISIÇÕES (VENDAS)\logo_requisicao.png",
+    os.path.join(ASSETS_DIR, "logo_requisicao.png"),
+    os.path.join(ASSETS_DIR, "logo.png"),
+]
+PDF_INFO_ICON_DIRS = [
+    r"Z:\REQUISIÇÕES (VENDAS)\ícones\EMOJI PDF",
+    r"\\data04tg\TI\REQUISIÇÕES (VENDAS)\ícones\EMOJI PDF",
+    os.path.join(ASSETS_DIR, "icons", "emoji_pdf"),
+]
+PDF_INFO_ICON_EXTENSIONS = (".png", ".webp", ".jpg", ".jpeg", ".bmp")
+FONT_DIR         = os.path.join(ASSETS_DIR, "fonts")
+FONT_REGULAR_TTF = os.path.join(FONT_DIR, "Montserrat-Regular.ttf")
+FONT_BOLD_TTF    = os.path.join(FONT_DIR, "Montserrat-Bold.ttf")
+PDF_FONT_REGULAR = "Helvetica"
+PDF_FONT_BOLD    = "Helvetica-Bold"
+QT_PDF_FONT      = "Montserrat"
+_PDF_FONTS_READY = False
+_QT_FONT_READY   = False
 
 # Colunas da tabela (9 colunas — soma = 1.00)
 TABLE_COLS = [
-    ("POS.",    0.06),
-    ("CÓDIGO",  0.11),
-    ("NOME",    0.20),
-    ("QUANT.",  0.08),
-    ("COMP.",   0.11),
-    ("DESENV.", 0.11),
-    ("CHAPA",   0.11),
-    ("TIPO.",   0.11),
-    ("PESO",    0.11),
+    ("POS.",    0.04),
+    ("C\u00d3DIGO",  0.08),
+    ("NOME",    0.36),
+    ("QUANT.",  0.06),
+    ("COMP.",   0.09),
+    ("DESENV.", 0.09),
+    ("CHAPA",   0.08),
+    ("TIPO.",   0.10),
+    ("PESO (KG)",    0.10),
 ]
 
 GAP = 6   # espaçamento padrão entre seções
@@ -65,27 +89,139 @@ def _clean_filename(text: str) -> str:
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", text).strip()[:80]
 
 
+def _path_exists(path: str) -> bool:
+    try:
+        return bool(path) and os.path.exists(path)
+    except OSError:
+        return False
+
+
+def _resolve_logo_path() -> str:
+    for path in LOGO_PATHS:
+        if _path_exists(path):
+            return path
+    return ""
+
+
+def _normalize_icon_name(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(text or ""))
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = re.sub(r"[^A-Za-z0-9]+", " ", normalized).strip()
+    return re.sub(r"\s+", "_", normalized).upper()
+
+
+def _resolve_info_icon_path(*names: str) -> str:
+    candidates: list[str] = []
+    for raw_name in names:
+        name = str(raw_name or "").strip()
+        if not name:
+            continue
+        base_name, ext = os.path.splitext(name)
+        variants = [name]
+        if base_name:
+            variants.append(base_name)
+            variants.append(base_name.replace("_", " "))
+            variants.append(_normalize_icon_name(base_name))
+            variants.append(_normalize_icon_name(base_name).replace("_", " "))
+        for variant in variants:
+            if variant and variant not in candidates:
+                candidates.append(variant)
+        if ext:
+            continue
+
+    for folder in PDF_INFO_ICON_DIRS:
+        if not _path_exists(folder):
+            continue
+        for candidate in candidates:
+            root, ext = os.path.splitext(candidate)
+            if ext:
+                icon_path = os.path.join(folder, candidate)
+                if _path_exists(icon_path):
+                    return icon_path
+                continue
+            for suffix in PDF_INFO_ICON_EXTENSIONS:
+                icon_path = os.path.join(folder, f"{candidate}{suffix}")
+                if _path_exists(icon_path):
+                    return icon_path
+    return ""
+
+
+def _register_pdf_fonts() -> None:
+    global PDF_FONT_REGULAR, PDF_FONT_BOLD, _PDF_FONTS_READY
+    if _PDF_FONTS_READY or not HAS_REPORTLAB:
+        return
+
+    if _path_exists(FONT_REGULAR_TTF) and _path_exists(FONT_BOLD_TTF):
+        try:
+            pdfmetrics.registerFont(TTFont("Montserrat", FONT_REGULAR_TTF))
+            pdfmetrics.registerFont(TTFont("Montserrat-Bold", FONT_BOLD_TTF))
+            PDF_FONT_REGULAR = "Montserrat"
+            PDF_FONT_BOLD = "Montserrat-Bold"
+        except Exception:
+            PDF_FONT_REGULAR = "Helvetica"
+            PDF_FONT_BOLD = "Helvetica-Bold"
+
+    _PDF_FONTS_READY = True
+
+
 def _fmt_qty(value: object) -> str:
     if value in (None, ""):
         return ""
-    try:
-        n = float(value)
-        return str(int(n)) if n == int(n) else f"{n:.2f}".replace(".", ",")
-    except (TypeError, ValueError):
-        return str(value)
+    parsed = _parse_number(value)
+    return str(value) if parsed is None else _fmt_number(parsed)
 
 
 def _fmt_kg(value: object) -> str:
     if value in (None, ""):
         return "0,00"
-    try:
-        return f"{float(value):.2f}".replace(".", ",")
-    except (TypeError, ValueError):
-        return str(value)
+    parsed = _parse_number(value)
+    return str(value) if parsed is None else _fmt_number(parsed, strip_zero_decimals=False)
 
 
 def _fmt_optional_kg(value: object) -> str:
     return "" if value in (None, "") else _fmt_kg(value)
+
+
+def _parse_number(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    cleaned = text.replace(" ", "")
+    if "," in cleaned and "." in cleaned:
+        if cleaned.rfind(",") > cleaned.rfind("."):
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+    elif "," in cleaned:
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+
+    try:
+        return float(cleaned)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmt_number(value: object, decimals: int = 2, strip_zero_decimals: bool = True) -> str:
+    parsed = _parse_number(value)
+    if parsed is None:
+        return str(value or "")
+
+    formatted = f"{parsed:,.{decimals}f}"
+    formatted = formatted.replace(",", "_").replace(".", ",").replace("_", ".")
+    if strip_zero_decimals and formatted.endswith(",00"):
+        return formatted[:-3]
+    return formatted
+
+
+def _fmt_ped(value: object) -> str:
+    parsed = _parse_number(value)
+    return str(value or "0") if parsed is None else _fmt_number(parsed, decimals=0)
 
 
 def _fmt_date(value: object, fallback: str = "--") -> str:
@@ -140,6 +276,50 @@ def _fit(text: str, font: str, size: float, max_w: float) -> str:
     return "..."
 
 
+def _wrap_text(text: str, font: str, size: float, max_w: float, max_lines: int | None = None) -> list[str]:
+    raw = str(text or "")
+    if not raw:
+        return []
+
+    lines: list[str] = []
+    paragraphs = raw.splitlines() or [raw]
+
+    for paragraph in paragraphs:
+        words = paragraph.split()
+        if not words:
+            if lines and (max_lines is None or len(lines) < max_lines):
+                lines.append("")
+            continue
+
+        current = ""
+        for word in words:
+            candidate = word if not current else f"{current} {word}"
+            if pdfmetrics.stringWidth(candidate, font, size) <= max_w:
+                current = candidate
+                continue
+
+            if current:
+                lines.append(current)
+                if max_lines is not None and len(lines) >= max_lines:
+                    lines[-1] = _fit(lines[-1], font, size, max_w)
+                    return lines
+
+            current = word
+            if pdfmetrics.stringWidth(current, font, size) > max_w:
+                current = _fit(current, font, size, max_w)
+
+        if current:
+            lines.append(current)
+            if max_lines is not None and len(lines) >= max_lines:
+                lines[-1] = _fit(lines[-1], font, size, max_w)
+                return lines
+
+    if max_lines is not None and len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = _fit(lines[-1], font, size, max_w)
+    return lines
+
+
 # ── Primitivos de desenho ─────────────────────────────────────────────────────
 
 def _txt(
@@ -154,7 +334,7 @@ def _txt(
     align: str = "left",
     max_w: float | None = None,
 ) -> None:
-    font = "Helvetica-Bold" if bold else "Helvetica"
+    font = PDF_FONT_BOLD if bold else PDF_FONT_REGULAR
     content = str(text or "")
     if max_w is not None:
         content = _fit(content, font, size, max_w)
@@ -194,6 +374,78 @@ def _line(pdf: pdfcanvas.Canvas, x1, y1, x2, y2, color=None, lw: float = 0.6) ->
     pdf.restoreState()
 
 
+def _draw_image_fit(
+    pdf: pdfcanvas.Canvas,
+    image_path: str,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> bool:
+    if not _path_exists(image_path):
+        return False
+    try:
+        img = ImageReader(image_path)
+        iw, ih = img.getSize()
+        if iw <= 0 or ih <= 0 or w <= 0 or h <= 0:
+            return False
+        scale = min(w / iw, h / ih)
+        dw, dh = iw * scale, ih * scale
+        dx = x + (w - dw) / 2
+        dy = y + (h - dh) / 2
+        pdf.drawImage(img, dx, dy, width=dw, height=dh, mask="auto")
+        return True
+    except Exception:
+        return False
+
+
+def _draw_centered_icon_label(
+    pdf: pdfcanvas.Canvas,
+    center_x: float,
+    baseline_y: float,
+    label: str,
+    *,
+    icon_names: tuple[str, ...],
+    font_size: float,
+    color,
+    max_w: float,
+    bold: bool = False,
+) -> None:
+    font = PDF_FONT_BOLD if bold else PDF_FONT_REGULAR
+    icon_path = _resolve_info_icon_path(*icon_names)
+    icon_size = min(14.5, max(11.0, font_size + 4.0))
+    icon_gap = 4.5
+    text_max_w = max_w
+    has_icon = bool(icon_path)
+
+    if has_icon:
+        text_max_w = max(12.0, max_w - icon_size - icon_gap)
+
+    fitted_label = _fit(label, font, font_size, text_max_w)
+    label_w = pdfmetrics.stringWidth(fitted_label, font, font_size)
+
+    if has_icon:
+        inline_w = min(max_w, icon_size + icon_gap + label_w)
+        left_x = center_x - inline_w / 2
+        icon_y = baseline_y - icon_size * 0.24
+        has_icon = _draw_image_fit(pdf, icon_path, left_x, icon_y, icon_size, icon_size)
+        if has_icon:
+            _txt(
+                pdf,
+                fitted_label,
+                left_x + icon_size + icon_gap,
+                baseline_y,
+                font_size,
+                color,
+                bold=bold,
+                align="left",
+                max_w=text_max_w,
+            )
+            return
+
+    _txt(pdf, fitted_label, center_x, baseline_y, font_size, color, bold=bold, align="center", max_w=max_w)
+
+
 def _grid(
     pdf: pdfcanvas.Canvas,
     x: float, y: float, w: float, h: float,
@@ -231,109 +483,127 @@ def _draw_header(
     ped: str,
     vendor_name: str,
 ) -> None:
-    """Cabeçalho completo: logo | contato || REQUISIÇÃO | data/vendedor || PED"""
+    """Cabe?alho completo: logo | contato | requisi??o | data/vendedor | PED"""
 
-    # ── proporções da faixa do cabeçalho
-    sep_gap   = 6
-    logo_w    = w * 0.245          # logo maior
-    contact_w = w * 0.185
-    ped_w     = w * 0.165          # PED box menor
-    title_w   = w - logo_w - contact_w - ped_w - sep_gap * 2 - 10
+    sep_gap = 6
+    block_gap = 6
+    logo_w = w * 0.27
+    side_w = w * 0.20
+    contact_w = side_w
+    ped_w = side_w
 
-    # --- Logo (esquerda) -----------------------------------------------------
-    logo_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "assets", "logo.png")
-    )
+    logo_path = _resolve_logo_path()
     logo_area_x = x
     logo_area_y = y
     logo_area_w = logo_w
     logo_area_h = h
 
-    if os.path.exists(logo_path):
+    if _path_exists(logo_path):
         try:
             img = ImageReader(logo_path)
             iw, ih = img.getSize()
-            # padding mínimo para logo maior
-            scale = min((logo_area_w - 4) / iw, (logo_area_h - 4) / ih)
+            scale = min((logo_area_w - 2) / iw, (logo_area_h - 2) / ih)
             dw, dh = iw * scale, ih * scale
-            dx = logo_area_x + (logo_area_w - dw) / 2
+            dx = logo_area_x + 2
             dy = logo_area_y + (logo_area_h - dh) / 2
             pdf.drawImage(img, dx, dy, width=dw, height=dh, mask="auto")
         except Exception:
-            _txt(pdf, "PINHEIRO FERRAGENS", logo_area_x + logo_area_w / 2,
-                 logo_area_y + logo_area_h / 2, 10, C_BRAND, bold=True, align="center")
+            _txt(pdf, "PINHEIRO FERRAGENS", logo_area_x + 4,
+                 logo_area_y + logo_area_h / 2 - 4, 10, C_BRAND, bold=True)
     else:
-        _txt(pdf, "PINHEIRO FERRAGENS", logo_area_x + logo_area_w / 2,
-             logo_area_y + logo_area_h / 2, 10, C_BRAND, bold=True, align="center")
+        _txt(pdf, "PINHEIRO FERRAGENS", logo_area_x + 4,
+             logo_area_y + logo_area_h / 2 - 4, 10, C_BRAND, bold=True)
 
-    # separador logo | contato
     sep_x = x + logo_w + sep_gap
     _line(pdf, sep_x, y + 6, sep_x, y + h - 6, C_BORDER, lw=1.0)
 
-    # --- Informações de contato -----------------------------------------------
-    contact_x = sep_x + sep_gap + 2
+    contact_area_x = sep_x + sep_gap + 8
+    contact_x = contact_area_x + 8
     icon_r = 2.8
-    line_h = 15
+    contact_icon_size = 11.5
+    contact_gap = 5.0
+    contact_text_size = 7.1
+    contact_icon_offset = max(3.0, (contact_icon_size - contact_text_size) / 2 + 0.8)
+    line_h = 13
     lines = [
-        (COMPANY_PHONES[0],),
-        (COMPANY_PHONES[1],),
-        (COMPANY_SITE,),
-        (COMPANY_LOCATION,),
+        (("TELEFONE", "TELEFONE 1", "FONE"), COMPANY_PHONES[0]),
+        (("TELEFONE", "TELEFONE 2", "FONE"), COMPANY_PHONES[1]),
+        (("SITE", "WEBSITE"), COMPANY_SITE),
+        (("LOCALIZAÇÃO", "LOCALIZACAO", "LOCAL"), COMPANY_LOCATION),
     ]
-    ty = y + h - 14
-    for (label,) in lines:
-        _small_dot(pdf, contact_x + icon_r, ty + 3.5, icon_r, C_BRAND)
-        _txt(pdf, label, contact_x + icon_r * 2 + 5, ty, 8, C_TEXT,
-             max_w=contact_w - 18)
+    ty = y + h - 12
+    for icon_names, label in lines:
+        icon_path = _resolve_info_icon_path(*icon_names)
+        has_icon = _draw_image_fit(
+            pdf,
+            icon_path,
+            contact_x,
+            ty - contact_icon_offset,
+            contact_icon_size,
+            contact_icon_size,
+        )
+        text_x = contact_x + contact_icon_size + contact_gap if has_icon else contact_x + icon_r * 2 + 5
+        if not has_icon:
+            _small_dot(pdf, contact_x + icon_r, ty + 3.5, icon_r, C_BRAND)
+        _txt(pdf, label, text_x, ty, contact_text_size, C_TEXT,
+             max_w=contact_w - 28)
         ty -= line_h
 
-    # separador contato | título
-    sep2_x = contact_x + contact_w
-    _line(pdf, sep2_x, y + 6, sep2_x, y + h - 6, C_BORDER, lw=1.0)
-
-    # --- Título + data + vendedor ---------------------------------------------
-    title_x = sep2_x + 6
-    tx_center = title_x + title_w / 2
-
-    _txt(pdf, "REQUISIÇÃO", tx_center, y + h - 28, 26,
+    ped_x = x + w - ped_w
+    title_x = contact_area_x + contact_w + block_gap
+    title_right = ped_x - block_gap
+    title_w = max(title_right - title_x, 120)
+    title_shift = min(30, title_w * 0.12)
+    group_center = title_x + title_w / 2 - title_shift
+    group_w = min(title_w * 0.70, 170)
+    _txt(pdf, "REQUISI\u00c7\u00c3O", group_center, y + h - 24, 26,
          C_BRAND, bold=True, align="center")
 
-    emission = _fmt_date(req.get("emission_date"), datetime.now().strftime("%d/%m/%Y"))
-    half_w = title_w / 2
-    date_cx = title_x + half_w * 0.37
-    vendor_cx = title_x + half_w * 0.37 + half_w
-
-    # data
+    emission = _fmt_date(req.get("emission_date"), local_now().strftime("%d/%m/%Y"))
+    meta_shift = min(10, group_w * 0.08)
+    date_cx = group_center - group_w * 0.25 - meta_shift
+    vendor_cx = group_center + group_w * 0.25 - meta_shift
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
-    _txt(pdf, "Data", date_cx, y + 18, 7, C_TEXT_SOFT, align="center")
-
-    # vendedor
+    _draw_centered_icon_label(
+        pdf,
+        date_cx,
+        y + 18,
+        "Data",
+        icon_names=("DATA",),
+        font_size=7,
+        color=C_TEXT_SOFT,
+        max_w=group_w * 0.40,
+    )
     _txt(pdf, vendor_name, vendor_cx, y + 30, 10, C_TEXT, bold=True,
-         align="center", max_w=half_w + 10)
-    _txt(pdf, "Vendedor", vendor_cx, y + 18, 7, C_TEXT_SOFT, align="center")
+         align="center", max_w=group_w * 0.52)
+    _draw_centered_icon_label(
+        pdf,
+        vendor_cx,
+        y + 18,
+        "Vendedor",
+        icon_names=("VENDEDOR",),
+        font_size=7,
+        color=C_TEXT_SOFT,
+        max_w=group_w * 0.52,
+    )
 
-    # --- PED box (direita) ---------------------------------------------------
-    ped_x = title_x + title_w + 6
-    ped_h = h
-    ped_label_w = ped_w * 0.38
+    ped_h = h * 0.68
+    ped_y = y + (h - ped_h) / 2
+    ped_label_w = ped_w * 0.34
+    _box(pdf, ped_x, ped_y, ped_w, ped_h, radius=8, fill=C_WHITE, stroke=C_BORDER)
 
-    # fundo geral
-    _box(pdf, ped_x, y, ped_w, ped_h, radius=8, fill=C_WHITE, stroke=C_BORDER)
-
-    # fundo do rótulo "PED:"
     pdf.saveState()
     pdf.setFillColor(C_BRAND)
-    pdf.roundRect(ped_x, y, ped_label_w, ped_h, 8, fill=1, stroke=0)
-    pdf.rect(ped_x + ped_label_w - 8, y, 8, ped_h, fill=1, stroke=0)
+    pdf.roundRect(ped_x, ped_y, ped_label_w, ped_h, 8, fill=1, stroke=0)
+    pdf.rect(ped_x + ped_label_w - 8, ped_y, 8, ped_h, fill=1, stroke=0)
     pdf.restoreState()
 
-    _txt(pdf, "PED:", ped_x + ped_label_w / 2, y + ped_h / 2 - 9,
-         14, C_WHITE, bold=True, align="center")
-
-    _txt(pdf, _safe(ped, "0"),
+    _txt(pdf, "PED:", ped_x + ped_label_w / 2, ped_y + ped_h / 2 - 6,
+         12.5, C_WHITE, bold=True, align="center")
+    _txt(pdf, _fmt_ped(ped),
          ped_x + ped_label_w + (ped_w - ped_label_w) / 2,
-         y + ped_h / 2 - 9,
-         20, C_RED, bold=True, align="center",
+         ped_y + ped_h / 2 - 7,
+         17.5, C_RED, bold=True, align="center",
          max_w=ped_w - ped_label_w - 10)
 
 
@@ -355,7 +625,7 @@ def _draw_info_bar(
         ("\U0001f69a", "RETIRADA",         _fmt_yes_no(req.get("retirada")),     0.18, C_BRAND),
         ("\U0001f69a", "ENTREGA",          _fmt_yes_no(req.get("entrega")),      0.18, C_BRAND),
         ("\U0001f4f1", vendor_phone,       "",                                   0.25, C_GREEN),
-        ("⚖",         "PESO:",            _fmt_kg(weight_val),                  0.15, C_TEXT),
+        ("⚖",         "PESO (KG):",            _fmt_kg(weight_val),                  0.15, C_TEXT),
     ]
 
     cx = x
@@ -384,6 +654,95 @@ def _draw_info_bar(
         cx += cw
 
 
+def _draw_info_bar_with_icons(
+    pdf: pdfcanvas.Canvas,
+    x: float, y: float, w: float, h: float,
+    req: dict,
+    client: dict | None,
+    items: list[dict],
+    vendor_phone: str = "--",
+) -> None:
+    """Barra de informações usando arquivos de ícone externos."""
+    _box(pdf, x, y, w, h, radius=8, fill=C_WHITE, stroke=C_BORDER)
+
+    weight_val = _resolve_weight(req, items)
+    cells = [
+        ("PRAZO DE ENTREGA", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")), 0.24, C_TEXT),
+        ("RETIRADA", "RETIRADA", _fmt_yes_no(req.get("retirada")), 0.18, C_BRAND),
+        ("ENTREGA", "ENTREGA", _fmt_yes_no(req.get("entrega")), 0.18, C_BRAND),
+        ("TELEFONE DO VENDEDOR", "CONTATO DO VENDEDOR", vendor_phone, 0.25, C_GREEN),
+        ("PESO (KG)", "PESO (KG):", _fmt_kg(weight_val), 0.15, C_TEXT),
+    ]
+
+    cx = x
+    for idx, (icon_name, label, value, ratio, val_color) in enumerate(cells):
+        cw = w * ratio
+        cy_center = y + h / 2
+
+        if idx > 0:
+            _line(pdf, cx, y + 4, cx, y + h - 4, C_BORDER, lw=0.5)
+
+        icon_path = _resolve_info_icon_path(
+            icon_name,
+            icon_name.replace(" ", "_"),
+            label,
+            label.replace(":", ""),
+            label.replace(":", "").replace(" ", "_"),
+        )
+        icon_size = min(12.0, max(9.5, h * 0.28))
+        icon_gap = 4.0
+        label_size = 7.1
+        value_size = 9.5
+        phone_size = 9.8
+        label_y = cy_center + 5
+        value_y = cy_center - 7
+        phone_y = value_y
+
+        has_icon = bool(icon_path)
+
+        if value:
+            if has_icon:
+                max_label_w = max(12.0, cw - icon_size - icon_gap - 8)
+                fitted_label = _fit(label, PDF_FONT_REGULAR, label_size, max_label_w)
+                label_w = pdfmetrics.stringWidth(fitted_label, PDF_FONT_REGULAR, label_size)
+                inline_w = min(cw - 8, icon_size + icon_gap + label_w)
+                inline_x = cx + (cw - inline_w) / 2
+                icon_y = label_y - icon_size * 0.30
+                has_icon = _draw_image_fit(pdf, icon_path, inline_x, icon_y, icon_size, icon_size)
+                if has_icon:
+                    _txt(pdf, label, inline_x + icon_size + icon_gap, label_y, label_size,
+                         C_TEXT_SOFT, align="left", max_w=max_label_w)
+                else:
+                    _txt(pdf, label, cx + cw / 2, label_y, label_size,
+                         C_TEXT_SOFT, align="center", max_w=cw - 8)
+            else:
+                _txt(pdf, label, cx + cw / 2, label_y, label_size,
+                     C_TEXT_SOFT, align="center", max_w=cw - 8)
+
+            _txt(pdf, value, cx + cw / 2, value_y, value_size,
+                 val_color, bold=True, align="center", max_w=cw - 8)
+        else:
+            if has_icon:
+                max_phone_w = max(12.0, cw - icon_size - icon_gap - 8)
+                fitted_phone = _fit(label, PDF_FONT_BOLD, phone_size, max_phone_w)
+                phone_w = pdfmetrics.stringWidth(fitted_phone, PDF_FONT_BOLD, phone_size)
+                inline_w = min(cw - 8, icon_size + icon_gap + phone_w)
+                inline_x = cx + (cw - inline_w) / 2
+                icon_y = phone_y - icon_size * 0.30
+                has_icon = _draw_image_fit(pdf, icon_path, inline_x, icon_y, icon_size, icon_size)
+                if has_icon:
+                    _txt(pdf, label, inline_x + icon_size + icon_gap, phone_y, phone_size,
+                         val_color, bold=True, align="left", max_w=max_phone_w)
+                else:
+                    _txt(pdf, label, cx + cw / 2, phone_y, phone_size,
+                         val_color, bold=True, align="center", max_w=cw - 8)
+            else:
+                _txt(pdf, label, cx + cw / 2, phone_y, phone_size,
+                     val_color, bold=True, align="center", max_w=cw - 8)
+
+        cx += cw
+
+
 def _draw_client_section(
     pdf: pdfcanvas.Canvas,
     x: float, y: float, w: float, h: float,
@@ -402,8 +761,8 @@ def _draw_client_section(
     _line(pdf, obra_x, split_y, obra_x, y + h, C_BORDER)
     _line(pdf, fone_end, y, fone_end, split_y, C_BORDER)
 
-    lbl_size  = 7.5
-    val_size  = 9.5
+    lbl_size  = 8
+    val_size  = 8
     pad       = 10
     lbl_color = C_TEXT_SOFT
     val_color = C_TEXT
@@ -418,9 +777,9 @@ def _draw_client_section(
     # linha superior: CLIENTE | OBRA
     def _label_val(lx, ly, lw, lh, lbl, val):
         _txt(pdf, lbl, lx + pad, ly + lh - 10, lbl_size, lbl_color, bold=True)
-        _txt(pdf, val, lx + pad + pdfmetrics.stringWidth(lbl, "Helvetica-Bold", lbl_size) + 5,
+        _txt(pdf, val, lx + pad + pdfmetrics.stringWidth(lbl, PDF_FONT_BOLD, lbl_size) + 5,
              ly + lh - 10, val_size, val_color,
-             max_w=lw - pad - pdfmetrics.stringWidth(lbl, "Helvetica-Bold", lbl_size) - 12)
+             max_w=lw - pad - pdfmetrics.stringWidth(lbl, PDF_FONT_BOLD, lbl_size) - 12)
 
     _label_val(x, split_y, obra_x - x, h / 2, "CLIENTE:", client_name)
     _label_val(obra_x, split_y, x + w - obra_x, h / 2, "OBRA:", obra)
@@ -428,49 +787,57 @@ def _draw_client_section(
     # linha inferior: FONE | ENDEREÇO
     _label_val(x, y, fone_end - x, h / 2, "FONE:", phone_display)
     _label_val(fone_end, y, x + w - fone_end, h / 2,
-               "ENDEREÇO A ENTREGAR:", address)
+               "ENDERE\u00c7O A ENTREGAR:", address)
+
+
+def _is_complete_item(item: dict) -> bool:
+    required = (
+        "product_code",
+        "product_name",
+        "quantity",
+        "comp",
+        "desenv",
+        "chapa",
+        "tipo",
+        "weight",
+    )
+    for key in required:
+        if str(item.get(key) or "").strip() == "":
+            return False
+    return True
 
 
 def _prepare_rows(items: list[dict]) -> list[dict]:
-    rows: list[dict | None] = [None] * len(ITEM_POSITIONS)
-    used: set[int] = set()
-
-    def next_free():
-        for i in range(len(rows)):
-            if i not in used:
-                return i
-        return None
-
-    for item in items[:len(ITEM_POSITIONS)]:
-        if not isinstance(item, dict):
+    prepared: list[tuple[int, int, dict]] = []
+    for original_idx, item in enumerate(items):
+        if not isinstance(item, dict) or not _is_complete_item(item):
             continue
         pos = _safe(item.get("position"), "").upper()
-        if pos in ITEM_POSITIONS:
-            slot = ITEM_POSITIONS.index(pos)
-            if rows[slot] is None:
-                rows[slot] = item
-                used.add(slot)
-                continue
-        fb = next_free()
-        if fb is not None:
-            rows[fb] = item
-            used.add(fb)
+        sort_idx = ITEM_POSITIONS.index(pos) if pos in ITEM_POSITIONS else len(ITEM_POSITIONS) + original_idx
+        prepared.append((sort_idx, original_idx, item))
 
-    result = []
-    for i, pos in enumerate(ITEM_POSITIONS):
-        item = rows[i] or {}
-        result.append({
-            "position":     pos,
+    prepared.sort(key=lambda entry: (entry[0], entry[1]))
+
+    rows: list[dict] = []
+    for _, _, item in prepared[:len(ITEM_POSITIONS)]:
+        pos = _safe(item.get("position"), "").upper()
+        rows.append({
+            "position":     pos or "-",
             "product_code": _safe(item.get("product_code"), ""),
             "product_name": _safe(item.get("product_name"), ""),
             "quantity":     _fmt_qty(item.get("quantity")),
-            "comp":         _safe(item.get("comp"), ""),
-            "desenv":       _safe(item.get("desenv"), ""),
+            "comp":         _fmt_qty(item.get("comp")),
+            "desenv":       _fmt_qty(item.get("desenv")),
             "chapa":        _safe(item.get("chapa"), ""),
             "tipo":         _safe(item.get("tipo"), ""),
-            "weight":       _fmt_optional_kg(item.get("weight")) if item else "",
+            "weight":       _fmt_optional_kg(item.get("weight")),
         })
-    return result
+    return rows
+
+
+def _items_table_height(items: list[dict]) -> float:
+    row_count = max(1, len(_prepare_rows(items)))
+    return 22 + row_count * 20
 
 
 def _draw_items_table(
@@ -481,8 +848,10 @@ def _draw_items_table(
     """Tabela de itens POSIÇÃO / QUANT. / COMP. / DESENV. / CHAPA / TIPO. / PESO"""
     _box(pdf, x, y, w, h, radius=8, fill=C_WHITE, stroke=C_BORDER)
 
+    rows = _prepare_rows(items)
+    row_count = max(1, len(rows))
     header_h = 22
-    row_h    = (h - header_h) / len(ITEM_POSITIONS)
+    row_h    = (h - header_h) / row_count
     edges    = [x]
     for _, ratio in TABLE_COLS:
         edges.append(edges[-1] + w * ratio)
@@ -508,13 +877,18 @@ def _draw_items_table(
     for edge in edges[1:-1]:
         pdf.line(edge, y, edge, y + h)
     pdf.line(x, y + h - header_h, x + w, y + h - header_h)
-    for ri in range(1, len(ITEM_POSITIONS)):
+    for ri in range(1, row_count):
         ry = y + h - header_h - ri * row_h
         pdf.line(x, ry, x + w, ry)
     pdf.restoreState()
 
+    if not rows:
+        _txt(pdf, "Nenhum item completo para exibir",
+             x + w / 2, y + (h - header_h) / 2 - 4,
+             8, C_TEXT_SOFT, align="center")
+        return
+
     # Dados das linhas
-    rows = _prepare_rows(items)
     for ri, row in enumerate(rows):
         base_y = y + h - header_h - (ri + 1) * row_h + row_h / 2 - 4
         values = [
@@ -534,8 +908,13 @@ def _draw_items_table(
             # NOME alinhado à esquerda; demais centrado
             align = "left" if ci == 2 else "center"
             pad   = 4 if ci == 2 else 0
+            font_size = 7.5
+            if ci == 2:
+                font_size = 7.3
+                while font_size > 5.8 and pdfmetrics.stringWidth(str(val or ""), PDF_FONT_REGULAR, font_size) > cw - 8:
+                    font_size -= 0.2
             _txt(pdf, val, cx + pad + (cw - pad) / 2 if align == "center" else cx + pad + 2,
-                 base_y, 7.5, C_TEXT,
+                 base_y, font_size, C_TEXT,
                  bold=(ci == 0), align=align, max_w=cw - 6)
 
 
@@ -558,10 +937,9 @@ def _draw_drawing_box(
     inner_w = w - 12
     inner_h = h - 22
 
-    # fundo interno
+    # fundo interno liso para o PDF
     _box(pdf, inner_x, inner_y, inner_w, inner_h,
-         radius=5, fill=C_MUTED_BG, stroke=C_GRID, lw=0.5)
-    _grid(pdf, inner_x + 2, inner_y + 2, inner_w - 4, inner_h - 4, step=14)
+         radius=5, fill=C_WHITE, stroke=C_BORDER, lw=0.5)
 
     if not canvas_result:
         return
@@ -614,73 +992,111 @@ def _draw_footer(
     obs: str,
     vendor_phone: str = "--",
 ) -> None:
-    """Rodapé:  [OBSERVAÇÃO]  /  [QR code]  [ASSINATURA DO CLIENTE: ____]"""
+    """Rodap? em tr?s caixas: observa??o, assinatura e QR code."""
 
-    right_x = x + w * 0.45   # bloco ocupa a metade direita
-    right_w = w - (right_x - x)
+    gap = 6
+    obs_w = w * 0.29
+    qr_box_w = max(20 * mm, h - 2)
+    sig_w = w - obs_w - gap * 2 - qr_box_w
 
-    gap   = 6
-    obs_h = max(26, (h - gap) * 0.40)
-    sig_h = h - obs_h - gap
+    _box(pdf, x, y, obs_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
+    lbl = "OBSERVA\u00c7\u00c3O:"
+    obs_label_y = y + h - 14
+    obs_text_x = x + 6
+    obs_text_y = obs_label_y - 11
+    obs_text_w = obs_w - 12
+    obs_text_size = 7.4
+    obs_leading = 8.6
+    max_obs_lines = max(1, int((h - 24) / obs_leading))
+    obs_lines = _wrap_text(
+        _safe(obs, ""),
+        PDF_FONT_REGULAR,
+        obs_text_size,
+        obs_text_w,
+        max_lines=max_obs_lines,
+    )
 
-    # ── Observação (em cima) ──────────────────────────────────────────────────
-    obs_y = y + sig_h + gap
-    _box(pdf, right_x, obs_y, right_w, obs_h, radius=6, fill=C_WHITE, stroke=C_BORDER)
-    lbl = "OBSERVAÇÃO:"
-    lbl_w = pdfmetrics.stringWidth(lbl, "Helvetica-Bold", 8) + 10
-    _txt(pdf, lbl, right_x + 8, obs_y + obs_h / 2 - 4, 8, C_TEXT, bold=True)
-    _txt(pdf, _safe(obs, ""), right_x + lbl_w, obs_y + obs_h / 2 - 4, 8.5,
-         C_TEXT_SOFT, max_w=right_w - lbl_w - 10)
+    _txt(pdf, lbl, obs_text_x, obs_label_y, 8, C_TEXT, bold=True)
+    current_y = obs_text_y
+    for line in obs_lines:
+        _txt(pdf, line, obs_text_x, current_y, obs_text_size, C_TEXT_SOFT)
+        current_y -= obs_leading
 
-    # ── Assinatura + QR (embaixo) ─────────────────────────────────────────────
-    sig_y  = y
-    qr_sz  = sig_h - 4          # QR ocupa quase toda a altura da linha
+    sig_x = x + obs_w + gap
+    _box(pdf, sig_x, y, sig_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
+    sig_line_y = y + 12
+    sig_text_y = y + h - 15
+    sig_lbl = "ASSINATURA DO CLIENTE:"
+    _txt(pdf, sig_lbl, sig_x + sig_w / 2, sig_text_y, 7.5, C_TEXT_SOFT,
+         bold=False, align="center")
+    _line(pdf, sig_x + 12, sig_line_y,
+          sig_x + sig_w - 12, sig_line_y, C_TEXT, lw=0.8)
 
-    # QR code — WhatsApp do vendedor
+    qr_x = sig_x + sig_w + gap
+    _box(pdf, qr_x, y, qr_box_w, h, radius=6, fill=C_WHITE, stroke=C_BORDER)
     digits = "".join(c for c in vendor_phone if c.isdigit())
     wa_url = f"https://wa.me/55{digits}" if digits else "https://wa.me/"
     qr_bytes = _make_qr_bytes(wa_url)
     if qr_bytes:
+        qr_size = min(qr_box_w, h) - 8
         pdf.drawImage(
             ImageReader(io.BytesIO(qr_bytes)),
-            right_x + 2, sig_y + 2, width=qr_sz, height=qr_sz,
-            preserveAspectRatio=True, mask="auto",
+            qr_x + (qr_box_w - qr_size) / 2,
+            y + (h - qr_size) / 2,
+            width=qr_size,
+            height=qr_size,
+            preserveAspectRatio=True,
+            mask="auto",
         )
 
-    # Linha de assinatura
-    after_qr = right_x + qr_sz + 8
-    sig_lbl  = "ASSINATURA DO CLIENTE:"
-    sig_mid  = sig_y + sig_h / 2
-    _txt(pdf, sig_lbl, after_qr, sig_mid + 2, 8, C_TEXT, bold=False)
-    line_x = after_qr + pdfmetrics.stringWidth(sig_lbl, "Helvetica", 8) + 6
-    _line(pdf, line_x, sig_mid, right_x + right_w, sig_mid, C_TEXT, lw=0.8)
-
-
-# ── Canvas → PNG ─────────────────────────────────────────────────────────────
 
 def _build_canvas_item(data: dict):
     try:
-        from PySide6.QtCore import QPointF, Qt
-        from PySide6.QtGui import QColor, QFont, QPainterPath, QPen, QPixmap
+        from PySide6.QtCore import QPointF, Qt, QByteArray
+        from PySide6.QtGui import QColor, QFont, QFontDatabase, QPainterPath, QPen, QPixmap
         from PySide6.QtWidgets import (
             QGraphicsEllipseItem, QGraphicsLineItem, QGraphicsPathItem,
             QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsTextItem,
         )
+        global _QT_FONT_READY
+        if not _QT_FONT_READY:
+            for font_path in (FONT_REGULAR_TTF, FONT_BOLD_TTF):
+                if _path_exists(font_path):
+                    QFontDatabase.addApplicationFont(font_path)
+            _QT_FONT_READY = True
+
         t = data.get("type")
         pen_d = data.get("pen", {})
         pen = QPen(QColor(pen_d.get("color", "#000000")), pen_d.get("width", 2))
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        rotation = float(data.get("rotation", 0) or 0)
+        pos = QPointF(float(data.get("pos_x", 0) or 0), float(data.get("pos_y", 0) or 0))
 
         if t == "line":
             it = QGraphicsLineItem(data["x1"], data["y1"], data["x2"], data["y2"])
-            it.setPen(pen); return it
+            it.setPen(pen)
+            it.setPos(pos)
+            if rotation:
+                it.setTransformOriginPoint(it.boundingRect().center())
+                it.setRotation(rotation)
+            return it
         if t == "rect":
             it = QGraphicsRectItem(data["x"], data["y"], data["w"], data["h"])
-            it.setPen(pen); return it
+            it.setPen(pen)
+            it.setPos(pos)
+            if rotation:
+                it.setTransformOriginPoint(it.boundingRect().center())
+                it.setRotation(rotation)
+            return it
         if t == "ellipse":
             it = QGraphicsEllipseItem(data["x"], data["y"], data["w"], data["h"])
-            it.setPen(pen); return it
+            it.setPen(pen)
+            it.setPos(pos)
+            if rotation:
+                it.setTransformOriginPoint(it.boundingRect().center())
+                it.setRotation(rotation)
+            return it
         if t == "path":
             path = QPainterPath()
             pts = data.get("points", [])
@@ -689,18 +1105,46 @@ def _build_canvas_item(data: dict):
                 for p in pts[1:]:
                     path.lineTo(QPointF(p[0], p[1]))
             it = QGraphicsPathItem(path)
-            it.setPen(pen); return it
+            it.setPen(pen)
+            it.setPos(pos)
+            if rotation:
+                it.setTransformOriginPoint(it.boundingRect().center())
+                it.setRotation(rotation)
+            return it
         if t == "text":
             it = QGraphicsTextItem(data.get("text", ""))
             it.setPos(QPointF(data.get("x", 0), data.get("y", 0)))
             it.setDefaultTextColor(QColor(data.get("color", "#000000")))
-            it.setFont(QFont("Segoe UI", data.get("font_size", 12)))
+            it.setFont(QFont(QT_PDF_FONT, data.get("font_size", 12)))
+            if rotation:
+                it.setTransformOriginPoint(it.boundingRect().center())
+                it.setRotation(rotation)
             return it
         if t == "image":
             path = data.get("path", "")
-            if path and os.path.exists(path):
-                it = QGraphicsPixmapItem(QPixmap(path))
+            image_data = data.get("image_data", "")
+            pixmap = QPixmap()
+            if path and _path_exists(path):
+                pixmap = QPixmap(path)
+            elif image_data:
+                pixmap.loadFromData(QByteArray.fromBase64(image_data.encode("ascii")), "PNG")
+            if not pixmap.isNull():
+                display_w = int(data.get("display_w", 0) or 0)
+                display_h = int(data.get("display_h", 0) or 0)
+                if display_w > 0 and display_h > 0 and (
+                    pixmap.width() != display_w or pixmap.height() != display_h
+                ):
+                    pixmap = pixmap.scaled(
+                        display_w,
+                        display_h,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                it = QGraphicsPixmapItem(pixmap)
                 it.setPos(QPointF(data.get("x", 0), data.get("y", 0)))
+                if rotation:
+                    it.setTransformOriginPoint(it.boundingRect().center())
+                    it.setRotation(rotation)
                 return it
     except Exception:
         pass
@@ -769,7 +1213,7 @@ def _draw_second_page(
     _box(pdf, mx, hdr_y, cw, 32, radius=8, fill=C_BRAND, stroke=C_BRAND)
     _txt(pdf, f"DESENHO TÉCNICO — REQUISIÇÃO {ped}",
          mx + 12, hdr_y + 11, 12, C_WHITE, bold=True)
-    _txt(pdf, datetime.now().strftime("%d/%m/%Y %H:%M"),
+    _txt(pdf, local_now().strftime("%d/%m/%Y %H:%M"),
          mx + cw - 10, hdr_y + 11, 8, C_WHITE, align="right")
 
     body_h = ph - 2 * my - 32 - 8
@@ -793,7 +1237,7 @@ def generate_pdf(
     ped_raw      = str(req.get("ped_number") or "0")
     ped_file     = ped_raw.zfill(6)
     client_name  = (client or {}).get("name", "") or f"ID{req.get('client_id', '')}"
-    date_str     = datetime.now().strftime("%Y%m%d")
+    date_str     = local_now().strftime("%Y%m%d")
     filename     = _clean_filename(f"REQ-{ped_file}-{date_str}-{client_name}") + ".pdf"
     filepath     = os.path.join(folder, filename)
 
@@ -812,7 +1256,15 @@ def generate_pdf(
     pdf.rect(0, 0, pw, ph, fill=1, stroke=0)
 
     vendor_name  = _safe(req.get("vendor_name"), _session.user_name or "--")
-    vendor_phone = _format_phone(_session.whatsapp or req.get("vendor_whatsapp") or "", "--")
+    # Telefone do vendedor: prioridade → session (usuário logado) → dados do req
+    _vendor_raw = (
+        _session.whatsapp
+        or (req.get("vendor") or {}).get("whatsapp")
+        or req.get("vendor_whatsapp")
+        or req.get("vendor_phone")
+        or ""
+    )
+    vendor_phone = _format_phone(_vendor_raw, "--")
     items_list   = req.get("items") or []
     if not isinstance(items_list, list):
         items_list = []
@@ -828,7 +1280,7 @@ def generate_pdf(
     # 2. BARRA DE INFORMAÇÕES ──────────────────────────────────────────────────
     bar_h = 42
     bar_y = top - bar_h
-    _draw_info_bar(pdf, mx, bar_y, cw, bar_h, req, client, items_list,
+    _draw_info_bar_with_icons(pdf, mx, bar_y, cw, bar_h, req, client, items_list,
                    vendor_phone=vendor_phone)
     top = bar_y - GAP
 
@@ -859,6 +1311,98 @@ def generate_pdf(
                  vendor_phone=vendor_phone)
 
     # 7. SEGUNDA PÁGINA (desenho em tela cheia, apenas se houver canvas) ───────
+    if canvas_result:
+        pdf.showPage()
+        _draw_second_page(pdf, _safe(ped_raw, "0"), canvas_result)
+
+    pdf.save()
+    return filepath
+
+
+def generate_pdf(
+    req: dict,
+    client: dict | None,
+    obs: str,
+    folder: str,
+    canvas_json: str = "{}",
+) -> str:
+    if not HAS_REPORTLAB:
+        raise ImportError("reportlab nÃ£o instalado. Execute: pip install reportlab>=4.0.0")
+
+    _register_pdf_fonts()
+    os.makedirs(folder, exist_ok=True)
+
+    ped_raw      = str(req.get("ped_number") or "0")
+    ped_file     = ped_raw.zfill(6)
+    client_name  = (client or {}).get("name", "") or f"ID{req.get('client_id', '')}"
+    date_str     = local_now().strftime("%Y%m%d")
+    filename     = _clean_filename(f"REQ-{ped_file}-{date_str}-{client_name}") + ".pdf"
+    filepath     = os.path.join(folder, filename)
+
+    from ..core.session import session as _session
+
+    pw, ph = landscape(A4)
+    mx, my = 10 * mm, 10 * mm
+    cw     = pw - 2 * mx
+
+    pdf = pdfcanvas.Canvas(filepath, pagesize=landscape(A4))
+    pdf.setTitle(f"Requisicao {ped_file} - Ferragens Pinheiro")
+    pdf.setAuthor("Ferragens Pinheiro")
+    pdf.setFillColor(C_WHITE)
+    pdf.rect(0, 0, pw, ph, fill=1, stroke=0)
+
+    vendor_name = _safe(req.get("vendor_name"), _session.user_name or "--")
+    vendor_raw = (
+        _session.whatsapp
+        or (req.get("vendor") or {}).get("whatsapp")
+        or req.get("vendor_whatsapp")
+        or req.get("vendor_phone")
+        or ""
+    )
+    vendor_phone = _format_phone(vendor_raw, "--")
+    items_list = req.get("items") or []
+    if not isinstance(items_list, list):
+        items_list = []
+
+    top = ph - my
+
+    hdr_h = 76
+    hdr_y = top - hdr_h
+    _draw_header(pdf, mx, hdr_y, cw, hdr_h, req, client, ped_raw, vendor_name)
+    top = hdr_y - GAP
+
+    bar_h = 42
+    bar_y = top - bar_h
+    _draw_info_bar_with_icons(pdf, mx, bar_y, cw, bar_h, req, client, items_list, vendor_phone=vendor_phone)
+    top = bar_y - GAP
+
+    cli_h = 46
+    cli_y = top - cli_h
+    _draw_client_section(pdf, mx, cli_y, cw, cli_h, req, client)
+    top = cli_y - GAP
+
+    canvas_result = _render_canvas(canvas_json)
+    footer_h = 60
+    foot_y = my
+    table_h = _items_table_height(items_list)
+    table_y = top - table_h
+    _draw_items_table(pdf, mx, table_y, cw, table_h, items_list)
+
+    draw_y = foot_y + footer_h + 2
+    draw_h = max(table_y - GAP - draw_y, 70)
+    _draw_drawing_box(
+        pdf,
+        mx,
+        draw_y,
+        cw,
+        draw_h,
+        canvas_result=canvas_result,
+        title="DESENHO TECNICO",
+    )
+
+    observation = obs or req.get("obs") or ""
+    _draw_footer(pdf, mx, foot_y, cw, footer_h, observation, vendor_phone=vendor_phone)
+
     if canvas_result:
         pdf.showPage()
         _draw_second_page(pdf, _safe(ped_raw, "0"), canvas_result)

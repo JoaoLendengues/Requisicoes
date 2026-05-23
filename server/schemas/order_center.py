@@ -7,7 +7,8 @@ from pydantic import BaseModel
 class OrderCenterStatsResponse(BaseModel):
     pedidos_aguardando_recebimento: int
     pedidos_em_producao: int
-    pedidos_finalizados: int
+    pedidos_aguardando_faturamento: int
+    pedidos_faturados: int
     pedidos_cancelados: int
     pedidos_atrasados: int
     tempo_medio_producao_segundos: Optional[int] = None
@@ -25,6 +26,7 @@ class OrderCenterItemResponse(BaseModel):
     waiting_minutes: Optional[int] = None
     received_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    invoiced_at: Optional[datetime] = None
     canceled_at: Optional[datetime] = None
     delay_days: Optional[int] = None
     production_time_seconds: Optional[int] = None
@@ -35,6 +37,7 @@ class OrderCenterResponse(BaseModel):
     stats: OrderCenterStatsResponse
     aguardando_recebimento: list[OrderCenterItemResponse]
     em_producao: list[OrderCenterItemResponse]
-    finalizados: list[OrderCenterItemResponse]
+    aguardando_faturamento: list[OrderCenterItemResponse]
+    faturados: list[OrderCenterItemResponse]
     cancelados: list[OrderCenterItemResponse]
     atrasados: list[OrderCenterItemResponse]

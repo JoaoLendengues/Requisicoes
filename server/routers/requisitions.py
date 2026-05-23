@@ -1,27 +1,43 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
+from pathlib import Path
+import shutil
 import unicodedata
+from ..config import settings
 from ..database import get_db
 from ..models.client import Client
+from ..models.production_machine import ProductionMachine
 from ..models.requisition import (
     Requisition, RequisitionItem, CanvasData, StatusHistory, RequisitionStatus,
 )
 from ..models.user import User, Role
 from ..schemas.dashboard import (
+    DashboardMachineUsageItem,
     DashboardReceiptAlertItem,
     DashboardRecentRequisitionItem,
     DashboardStatsResponse,
     DashboardVendorItem,
     ManagementDashboardResponse,
+    TechnicalPanelLoggedUserResponse,
+    TechnicalPanelResponse,
+    TechnicalPanelStatsResponse,
 )
 from ..schemas.order_center import (
     OrderCenterItemResponse,
     OrderCenterResponse,
     OrderCenterStatsResponse,
+)
+from ..schemas.production import (
+    ProductionDestinationSummaryResponse,
+    ProductionItemResponse,
+    ProductionMachineCardResponse,
+    ProductionMachineStatusResponse,
+    ProductionMachineStatusUpdate,
+    ProductionSummaryStatsResponse,
 )
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse,
@@ -29,10 +45,14 @@ from ..schemas.requisition import (
 )
 from ..dependencies import (
     get_current_user,
+    require_admin,
     require_creator,
     require_manager_or_admin,
     require_order_center_access,
 )
+from ..services.runtime_monitor import snapshot as runtime_snapshot
+from ..services.sse_manager import connected_user_ids
+from ..services.text_normalizer import normalize_canvas_json_text, normalize_upper_required
 
 router = APIRouter(prefix="/requisitions", tags=["Requisições"])
 
@@ -44,9 +64,14 @@ _LOAD_OPTS = [
     selectinload(Requisition.vendor),
 ]
 
+_LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo or timezone.utc
+
 _PROD_NOTE_PREFIX = "PRODUCAO"
 _PROD_SEND = "ENVIADA"
 _PROD_RECEIVED = "RECEBIDA"
+_PROD_QUEUED = "FILA"
+_PROD_STARTED = "INICIADA"
+_PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
 _PROD_FINISHED = "FINALIZADA"
 _PROD_CANCELED = "CANCELADA"
 _DESTINATION_AR = "A&R"
@@ -57,6 +82,46 @@ def _normalize_text(value: object) -> str:
     normalized = unicodedata.normalize("NFKD", str(value or ""))
     ascii_text = normalized.encode("ascii", "ignore").decode()
     return ascii_text.strip().casefold()
+
+
+def _parse_local_emission_datetime(value: object) -> datetime | None:
+    if value is None or value == "":
+        return None
+
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime.combine(value, time.min)
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(_LOCAL_TIMEZONE)
+
+
+def _matches_emission_period(req: Requisition, start: date | None, end: date | None) -> bool:
+    local_dt = _parse_local_emission_datetime(req.emission_date)
+    if local_dt is None:
+        return not start and not end
+
+    local_day = local_dt.date()
+    if start and local_day < start:
+        return False
+    if end and local_day > end:
+        return False
+    return True
+
+
+def _normalize_machine_name(value: object) -> str:
+    return normalize_upper_required(value)
 
 
 def _canonical_destination(value: object) -> str:
@@ -85,11 +150,50 @@ def _destination_for_role(role: Role | str) -> str | None:
     return None
 
 
+def _user_can_access_destination(current_user: User, destination: str) -> bool:
+    role = _role_key(current_user.role)
+    if role in (Role.ADMIN.value, Role.GERENTE.value):
+        return True
+    return _destination_for_role(role) == _canonical_destination(destination)
+
+
+def _ensure_destination_access(current_user: User, destination: str):
+    if not _user_can_access_destination(current_user, destination):
+        raise HTTPException(
+            status_code=403,
+            detail="Sem permissão para acessar este destino de produção",
+        )
+
+
 def _get_or_404(db: Session, req_id: int) -> Requisition:
     req = db.query(Requisition).options(*_LOAD_OPTS).filter(Requisition.id == req_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Requisição não encontrada")
     return req
+
+
+def _find_duplicate_ped_number(
+    db: Session,
+    ped_number: str,
+    exclude_req_id: int | None = None,
+) -> Requisition | None:
+    q = db.query(Requisition).filter(Requisition.ped_number == ped_number)
+    if exclude_req_id is not None:
+        q = q.filter(Requisition.id != exclude_req_id)
+    return q.order_by(Requisition.created_at.desc(), Requisition.id.desc()).first()
+
+
+def _ensure_unique_ped_number(
+    db: Session,
+    ped_number: str,
+    exclude_req_id: int | None = None,
+):
+    duplicate = _find_duplicate_ped_number(db, ped_number, exclude_req_id)
+    if duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"O número de PED {ped_number} já está salvo em outra requisição.",
+        )
 
 
 def _sum_item_weights(items: Optional[list]) -> float:
@@ -100,17 +204,41 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
     if not note:
         return None
 
-    parts = str(note).split("|", 3)
+    parts = [part.strip() for part in str(note).split("|")]
     if len(parts) < 3 or parts[0] != _PROD_NOTE_PREFIX:
         return None
 
     data = {
         "action": parts[1].strip(),
         "target": _canonical_destination(parts[2]),
+        "machine": "",
         "reason": "",
     }
-    if len(parts) > 3:
-        data["reason"] = parts[3].strip()
+
+    for raw_segment in parts[3:]:
+        segment = raw_segment.strip()
+        if not segment:
+            continue
+
+        if "=" in segment:
+            key, value = segment.split("=", 1)
+            normalized_key = _normalize_text(key)
+            normalized_value = value.strip()
+            if normalized_key == "machine":
+                data["machine"] = normalized_value
+                continue
+            if normalized_key == "reason":
+                data["reason"] = normalized_value
+                continue
+
+        if not data["machine"] and data["action"] in (
+            _PROD_STARTED,
+            _PROD_FINISHED,
+            _PROD_RETURNED_QUEUE,
+        ):
+            data["machine"] = segment
+        elif not data["reason"]:
+            data["reason"] = segment
     return data
 
 
@@ -137,16 +265,22 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         return
 
     action = prod_event["action"]
+    target = prod_event["target"] or req.production_destination or ""
+    machine = _normalize_machine_name(prod_event.get("machine"))
     reason = prod_event["reason"]
+    if target:
+        req.production_destination = target
 
     if action == _PROD_SEND:
         req.status = RequisitionStatus.AGUARDANDO_RECEBIMENTO
         req.finalized_at = None
+        req.production_machine = None
         return
 
     if action == _PROD_RECEIVED:
         if req.status not in (
             RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+            RequisitionStatus.AGUARDANDO_NA_FILA,
             RequisitionStatus.EM_PRODUCAO,
         ):
             raise HTTPException(
@@ -159,7 +293,57 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
                 detail="O recebimento desta requisição já foi confirmado",
             )
         req.status = RequisitionStatus.EM_PRODUCAO
-        req.finalized_at = datetime.utcnow()
+        req.finalized_at = req.finalized_at or datetime.utcnow()
+        req.production_machine = machine or req.production_machine
+        return
+
+    if action == _PROD_QUEUED:
+        if req.status not in (
+            RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+            RequisitionStatus.AGUARDANDO_NA_FILA,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Somente requisições aguardando recebimento podem entrar na fila",
+            )
+        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
+        req.finalized_at = req.finalized_at or datetime.utcnow()
+        req.production_machine = None
+        return
+
+    if action == _PROD_STARTED:
+        if req.status not in (
+            RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+            RequisitionStatus.AGUARDANDO_NA_FILA,
+            RequisitionStatus.EM_PRODUCAO,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Somente requisições aguardando recebimento ou em fila podem entrar em produção",
+            )
+        if not machine:
+            raise HTTPException(
+                status_code=400,
+                detail="Informe a máquina de destino para iniciar a produção",
+            )
+        if req.status == RequisitionStatus.EM_PRODUCAO and req.production_machine:
+            raise HTTPException(
+                status_code=400,
+                detail="Esta requisição já está vinculada a uma máquina",
+            )
+        req.status = RequisitionStatus.EM_PRODUCAO
+        req.finalized_at = req.finalized_at or datetime.utcnow()
+        req.production_machine = machine
+        return
+
+    if action == _PROD_RETURNED_QUEUE:
+        if req.status != RequisitionStatus.EM_PRODUCAO:
+            raise HTTPException(
+                status_code=400,
+                detail="Somente requisições em produção podem voltar para a fila",
+            )
+        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
+        req.production_machine = None
         return
 
     if action == _PROD_FINISHED:
@@ -173,7 +357,8 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
                 status_code=400,
                 detail="Confirme o recebimento antes de finalizar a produção",
             )
-        req.status = RequisitionStatus.EM_ANDAMENTO
+        req.status = RequisitionStatus.AGUARDANDO_FATURAMENTO
+        req.production_machine = None
         return
 
     if action == _PROD_CANCELED:
@@ -184,7 +369,36 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
             )
         req.status = RequisitionStatus.EM_ANDAMENTO
         req.finalized_at = None
+        req.production_machine = None
         return
+
+
+def _apply_manual_status_transition(
+    req: Requisition,
+    new_status: RequisitionStatus,
+):
+    if new_status == RequisitionStatus.FATURADO:
+        if req.status != RequisitionStatus.AGUARDANDO_FATURAMENTO:
+            raise HTTPException(
+                status_code=400,
+                detail="Somente pedidos aguardando faturamento podem ser marcados como faturados",
+            )
+        req.status = RequisitionStatus.FATURADO
+        return
+
+    if req.status == RequisitionStatus.AGUARDANDO_FATURAMENTO:
+        raise HTTPException(
+            status_code=400,
+            detail="Pedidos aguardando faturamento sÃ³ podem ser marcados como faturados",
+        )
+
+    if req.status == RequisitionStatus.FATURADO:
+        raise HTTPException(
+            status_code=400,
+            detail="Pedidos faturados nÃ£o podem retornar para outro status operacional",
+        )
+
+    req.status = new_status
 
 
 def _sorted_status_history(req: Requisition) -> list[StatusHistory]:
@@ -202,6 +416,7 @@ def _production_events(req: Requisition) -> list[dict]:
             {
                 "action": parsed["action"],
                 "target": parsed["target"],
+                "machine": _normalize_machine_name(parsed.get("machine", "")),
                 "reason": parsed["reason"],
                 "changed_at": entry.changed_at,
             }
@@ -210,11 +425,76 @@ def _production_events(req: Requisition) -> list[dict]:
 
 
 def _current_production_destination(req: Requisition) -> str:
+    if req.production_destination:
+        return _canonical_destination(req.production_destination)
     for event in reversed(_production_events(req)):
         target = _canonical_destination(event.get("target"))
         if target:
             return target
     return ""
+
+
+def _current_production_machine(req: Requisition) -> str:
+    if req.production_machine:
+        return _normalize_machine_name(req.production_machine)
+    if req.status != RequisitionStatus.EM_PRODUCAO:
+        return ""
+    for event in reversed(_production_events(req)):
+        machine = _normalize_machine_name(event.get("machine"))
+        if machine:
+            return machine
+    return ""
+
+
+def _history_production_machine(req: Requisition) -> str:
+    current_machine = _current_production_machine(req)
+    if current_machine:
+        return current_machine
+
+    latest_cycle = _latest_finished_cycle(req)
+    if latest_cycle:
+        machine = _normalize_machine_name(latest_cycle.get("machine"))
+        if machine:
+            return machine
+
+    return ""
+
+
+def _history_production_status(req: Requisition) -> str:
+    current_status = str(getattr(req.status, "value", req.status) or "")
+    if req.status == RequisitionStatus.CANCELADA:
+        return current_status
+    if req.status in (
+        RequisitionStatus.AGUARDANDO_FATURAMENTO,
+        RequisitionStatus.FATURADO,
+    ):
+        return current_status
+
+    latest_event = _latest_production_event(
+        req,
+        _PROD_SEND,
+        _PROD_RECEIVED,
+        _PROD_QUEUED,
+        _PROD_STARTED,
+        _PROD_RETURNED_QUEUE,
+        _PROD_FINISHED,
+        _PROD_CANCELED,
+    )
+    if not latest_event:
+        return current_status
+
+    action = latest_event["action"]
+    if action == _PROD_FINISHED:
+        return "finalizada_producao"
+    if action == _PROD_CANCELED:
+        return "cancelada_producao"
+    if action == _PROD_SEND:
+        return RequisitionStatus.AGUARDANDO_RECEBIMENTO.value
+    if action in (_PROD_QUEUED, _PROD_RETURNED_QUEUE):
+        return RequisitionStatus.AGUARDANDO_NA_FILA.value
+    if action in (_PROD_RECEIVED, _PROD_STARTED):
+        return RequisitionStatus.EM_PRODUCAO.value
+    return current_status
 
 
 def _can_view_requisition(req: Requisition, current_user: User) -> bool:
@@ -252,18 +532,17 @@ def _can_edit_requisition(req: Requisition, current_user: User) -> bool:
 
 
 def _is_open_requisition(req: Requisition) -> bool:
-    if req.status == RequisitionStatus.CANCELADA:
+    if req.status in (
+        RequisitionStatus.CANCELADA,
+        RequisitionStatus.FATURADO,
+    ):
         return False
-
-    events = _production_events(req)
-    if not events:
-        return True
-    return events[-1]["action"] != _PROD_FINISHED
+    return True
 
 
-def _latest_production_event(req: Requisition, action: str) -> dict | None:
+def _latest_production_event(req: Requisition, *actions: str) -> dict | None:
     for event in reversed(_production_events(req)):
-        if event["action"] == action:
+        if event["action"] in actions:
             return event
     return None
 
@@ -276,10 +555,11 @@ def _latest_status_changed_at(req: Requisition, status_value: str) -> datetime |
     return None
 
 
-def _latest_finished_cycle(req: Requisition) -> dict | None:
-    received_at: datetime | None = None
-    received_target: str | None = None
-    latest_cycle: dict | None = None
+def _all_finished_cycles(req: Requisition) -> list[dict]:
+    cycles: list[dict] = []
+    started_at: datetime | None = None
+    started_target: str | None = None
+    started_machine: str | None = None
 
     for event in _production_events(req):
         changed_at = event["changed_at"]
@@ -287,30 +567,190 @@ def _latest_finished_cycle(req: Requisition) -> dict | None:
             continue
 
         action = event["action"]
-        if action == _PROD_RECEIVED:
-            received_at = changed_at
-            received_target = event["target"] or None
+        machine = str(event.get("machine") or "").strip() or None
+        target = event.get("target") or None
+
+        if action in (_PROD_RECEIVED, _PROD_STARTED):
+            started_at = changed_at
+            started_target = target
+            started_machine = machine
             continue
 
         if action == _PROD_FINISHED:
-            if received_at is not None:
-                latest_cycle = {
-                    "received_at": received_at,
-                    "finished_at": changed_at,
-                    "target": received_target,
-                    "production_time_seconds": max(
-                        0, int((changed_at - received_at).total_seconds())
-                    ),
-                }
-            received_at = None
-            received_target = None
+            if started_at is not None:
+                cycles.append(
+                    {
+                        "received_at": started_at,
+                        "finished_at": changed_at,
+                        "target": started_target,
+                        "machine": started_machine,
+                        "production_time_seconds": max(
+                            0,
+                            int((changed_at - started_at).total_seconds()),
+                        ),
+                    }
+                )
+            started_at = None
+            started_target = None
+            started_machine = None
             continue
 
-        if action in (_PROD_SEND, _PROD_CANCELED):
-            received_at = None
-            received_target = None
+        if action in (
+            _PROD_SEND,
+            _PROD_QUEUED,
+            _PROD_RETURNED_QUEUE,
+            _PROD_CANCELED,
+        ):
+            started_at = None
+            started_target = None
+            started_machine = None
 
-    return latest_cycle
+    return cycles
+
+
+def _latest_finished_cycle(req: Requisition) -> dict | None:
+    cycles = _all_finished_cycles(req)
+    return cycles[-1] if cycles else None
+
+
+def _production_sort_anchor(item: ProductionItemResponse, field_name: str) -> datetime:
+    value = getattr(item, field_name, None)
+    if isinstance(value, datetime):
+        return value
+    return item.created_at or item.emission_date
+
+
+def _production_item(
+    req: Requisition,
+    *,
+    waiting_since: datetime | None = None,
+    production_started_at: datetime | None = None,
+    machine_name: str | None = None,
+) -> ProductionItemResponse:
+    status_value = getattr(req.status, "value", req.status)
+    return ProductionItemResponse(
+        id=req.id,
+        ped_number=req.ped_number,
+        client_name=req.client_name,
+        vendor_name=req.vendor_name,
+        obra=req.obra,
+        status=str(status_value),
+        emission_date=req.emission_date,
+        created_at=req.created_at,
+        delivery_date=req.delivery_date,
+        destination=_current_production_destination(req) or None,
+        machine_name=_normalize_machine_name(machine_name) or None,
+        waiting_since=waiting_since,
+        production_started_at=production_started_at,
+    )
+
+
+def _build_production_summary(
+    reqs: list[Requisition],
+    machines: list[ProductionMachine],
+    destination: str,
+) -> ProductionDestinationSummaryResponse:
+    normalized_destination = _canonical_destination(destination)
+    waiting_receipt: list[ProductionItemResponse] = []
+    waiting_queue: list[ProductionItemResponse] = []
+    machine_rows: dict[str, list[ProductionItemResponse]] = {
+        _normalize_machine_name(machine.name): []
+        for machine in machines
+    }
+    machine_cycles: dict[str, list[dict]] = {
+        _normalize_machine_name(machine.name): []
+        for machine in machines
+    }
+
+    for req in reqs:
+        current_destination = _current_production_destination(req)
+        if current_destination != normalized_destination:
+            continue
+
+        if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+            sent_event = _latest_production_event(req, _PROD_SEND)
+            waiting_receipt.append(
+                _production_item(
+                    req,
+                    waiting_since=sent_event["changed_at"] if sent_event else None,
+                )
+            )
+
+        current_machine = _current_production_machine(req)
+        if req.status == RequisitionStatus.AGUARDANDO_NA_FILA or (
+            req.status == RequisitionStatus.EM_PRODUCAO and not current_machine
+        ):
+            queue_event = _latest_production_event(
+                req,
+                _PROD_QUEUED,
+                _PROD_RETURNED_QUEUE,
+                _PROD_SEND,
+            )
+            waiting_queue.append(
+                _production_item(
+                    req,
+                    waiting_since=queue_event["changed_at"] if queue_event else None,
+                )
+            )
+
+        if req.status == RequisitionStatus.EM_PRODUCAO and current_machine in machine_rows:
+            started_event = _latest_production_event(req, _PROD_STARTED, _PROD_RECEIVED)
+            machine_rows[current_machine].append(
+                _production_item(
+                    req,
+                    machine_name=current_machine,
+                    production_started_at=started_event["changed_at"] if started_event else None,
+                )
+            )
+
+        for cycle in _all_finished_cycles(req):
+            if cycle.get("target") != normalized_destination:
+                continue
+            machine_name = _normalize_machine_name(cycle.get("machine"))
+            if machine_name in machine_cycles:
+                machine_cycles[machine_name].append(cycle)
+
+    waiting_receipt.sort(key=lambda item: _production_sort_anchor(item, "waiting_since"))
+    waiting_queue.sort(key=lambda item: _production_sort_anchor(item, "waiting_since"))
+
+    machine_cards: list[ProductionMachineCardResponse] = []
+    for machine in machines:
+        machine_name = _normalize_machine_name(machine.name)
+        rows = machine_rows.get(machine_name, [])
+        rows.sort(key=lambda item: _production_sort_anchor(item, "production_started_at"))
+        finished_cycles = machine_cycles.get(machine_name, [])
+        average_seconds = None
+        if finished_cycles:
+            average_seconds = int(
+                sum(cycle["production_time_seconds"] for cycle in finished_cycles)
+                / len(finished_cycles)
+            )
+        machine_cards.append(
+            ProductionMachineCardResponse(
+                id=machine.id,
+                destination=machine.destination,
+                name=machine_name,
+                sort_order=machine.sort_order,
+                status=machine.status,
+                quantity_in_production=len(rows),
+                finalized_count=len(finished_cycles),
+                average_seconds=average_seconds,
+                rows=rows,
+            )
+        )
+
+    return ProductionDestinationSummaryResponse(
+        generated_at=datetime.utcnow(),
+        destination=normalized_destination,
+        stats=ProductionSummaryStatsResponse(
+            aguardando_recebimento=len(waiting_receipt),
+            aguardando_na_fila=len(waiting_queue),
+            em_producao=sum(len(card.rows) for card in machine_cards),
+        ),
+        waiting_receipt=waiting_receipt,
+        waiting_queue=waiting_queue,
+        machines=machine_cards,
+    )
 
 
 def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
@@ -319,7 +759,8 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
 
     waiting_rows: list[OrderCenterItemResponse] = []
     production_rows: list[OrderCenterItemResponse] = []
-    finished_rows: list[OrderCenterItemResponse] = []
+    pending_invoice_rows: list[OrderCenterItemResponse] = []
+    billed_rows: list[OrderCenterItemResponse] = []
     canceled_rows: list[OrderCenterItemResponse] = []
     delayed_rows: list[OrderCenterItemResponse] = []
     production_durations: list[int] = []
@@ -350,8 +791,17 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                 )
             )
 
-        if req.status == RequisitionStatus.EM_PRODUCAO:
-            received_event = _latest_production_event(req, _PROD_RECEIVED)
+        if req.status in (
+            RequisitionStatus.AGUARDANDO_NA_FILA,
+            RequisitionStatus.EM_PRODUCAO,
+        ):
+            received_event = _latest_production_event(
+                req,
+                _PROD_STARTED,
+                _PROD_RECEIVED,
+                _PROD_QUEUED,
+                _PROD_RETURNED_QUEUE,
+            )
             production_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
@@ -370,19 +820,36 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         latest_event = events[-1] if events else None
         if latest_finished:
             production_durations.append(latest_finished["production_time_seconds"])
-        if latest_event and latest_event["action"] == _PROD_FINISHED and latest_finished:
-            finished_rows.append(
+        if req.status == RequisitionStatus.AGUARDANDO_FATURAMENTO and latest_finished:
+            pending_invoice_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
                     ped_number=req.ped_number,
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
-                    status="finalizado",
+                    status=RequisitionStatus.AGUARDANDO_FATURAMENTO.value,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
                     destination=latest_finished["target"] or destination,
                     received_at=latest_finished["received_at"],
                     finished_at=latest_finished["finished_at"],
+                    production_time_seconds=latest_finished["production_time_seconds"],
+                )
+            )
+        elif req.status == RequisitionStatus.FATURADO and latest_finished:
+            billed_rows.append(
+                OrderCenterItemResponse(
+                    id=req.id,
+                    ped_number=req.ped_number,
+                    client_name=req.client_name,
+                    vendor_name=req.vendor_name,
+                    status=RequisitionStatus.FATURADO.value,
+                    emission_date=req.emission_date,
+                    delivery_date=req.delivery_date,
+                    destination=latest_finished["target"] or destination,
+                    received_at=latest_finished["received_at"],
+                    finished_at=latest_finished["finished_at"],
+                    invoiced_at=_latest_status_changed_at(req, RequisitionStatus.FATURADO),
                     production_time_seconds=latest_finished["production_time_seconds"],
                 )
             )
@@ -418,7 +885,8 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
 
     waiting_rows.sort(key=lambda item: item.waiting_minutes or 0, reverse=True)
     production_rows.sort(key=lambda item: item.received_at or datetime.min, reverse=True)
-    finished_rows.sort(key=lambda item: item.finished_at or datetime.min, reverse=True)
+    pending_invoice_rows.sort(key=lambda item: item.finished_at or datetime.min)
+    billed_rows.sort(key=lambda item: item.invoiced_at or datetime.min, reverse=True)
     canceled_rows.sort(key=lambda item: item.canceled_at or datetime.min, reverse=True)
     delayed_rows.sort(key=lambda item: item.delay_days or 0, reverse=True)
 
@@ -431,20 +899,94 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         stats=OrderCenterStatsResponse(
             pedidos_aguardando_recebimento=len(waiting_rows),
             pedidos_em_producao=len(production_rows),
-            pedidos_finalizados=len(finished_rows),
+            pedidos_aguardando_faturamento=len(pending_invoice_rows),
+            pedidos_faturados=len(billed_rows),
             pedidos_cancelados=len(canceled_rows),
             pedidos_atrasados=len(delayed_rows),
             tempo_medio_producao_segundos=average_seconds,
         ),
         aguardando_recebimento=waiting_rows[:100],
         em_producao=production_rows[:100],
-        finalizados=finished_rows[:100],
+        aguardando_faturamento=pending_invoice_rows[:100],
+        faturados=billed_rows[:100],
         cancelados=canceled_rows[:100],
         atrasados=delayed_rows[:100],
     )
 
 
-def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardResponse:
+def _build_machine_usage_rows(
+    reqs: list[Requisition],
+    machines: list[ProductionMachine],
+    destination: str,
+) -> list[DashboardMachineUsageItem]:
+    normalized_destination = _canonical_destination(destination)
+    destination_machines = [
+        machine
+        for machine in machines
+        if _canonical_destination(machine.destination) == normalized_destination
+    ]
+    usage: dict[str, dict] = {
+        _normalize_machine_name(machine.name): {
+            "machine": machine,
+            "finished_count": 0,
+            "in_production_count": 0,
+            "durations": [],
+        }
+        for machine in destination_machines
+    }
+
+    for req in reqs:
+        if _current_production_destination(req) != normalized_destination:
+            continue
+
+        current_machine = _current_production_machine(req)
+        if req.status == RequisitionStatus.EM_PRODUCAO and current_machine in usage:
+            usage[current_machine]["in_production_count"] += 1
+
+        for cycle in _all_finished_cycles(req):
+            if _canonical_destination(cycle.get("target")) != normalized_destination:
+                continue
+            machine_name = _normalize_machine_name(cycle.get("machine"))
+            if machine_name not in usage:
+                continue
+            usage[machine_name]["finished_count"] += 1
+            production_seconds = cycle.get("production_time_seconds")
+            if isinstance(production_seconds, int):
+                usage[machine_name]["durations"].append(max(0, production_seconds))
+
+    rows: list[DashboardMachineUsageItem] = []
+    for machine in destination_machines:
+        machine_name = _normalize_machine_name(machine.name)
+        stats = usage[machine_name]
+        durations = stats["durations"]
+        average_seconds = None
+        if durations:
+            average_seconds = int(sum(durations) / len(durations))
+
+        rows.append(
+            DashboardMachineUsageItem(
+                machine_name=machine_name,
+                total_operations=int(stats["finished_count"]),
+                in_production_count=int(stats["in_production_count"]),
+                average_seconds=average_seconds,
+                machine_status=getattr(machine.status, "value", machine.status) or "",
+            )
+        )
+
+    rows.sort(
+        key=lambda item: (
+            -int(item.total_operations or 0),
+            -int(item.in_production_count or 0),
+            _normalize_text(item.machine_name),
+        )
+    )
+    return rows
+
+
+def _build_management_dashboard(
+    reqs: list[Requisition],
+    machines: list[ProductionMachine],
+) -> ManagementDashboardResponse:
     now = datetime.utcnow()
     today = now.date()
     one_hour_ago = now - timedelta(hours=1)
@@ -468,10 +1010,14 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
         destination = _current_production_destination(req)
         is_active_production = req.status in (
             RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+            RequisitionStatus.AGUARDANDO_NA_FILA,
             RequisitionStatus.EM_PRODUCAO,
         )
 
-        if req.status == RequisitionStatus.EM_PRODUCAO:
+        if req.status in (
+            RequisitionStatus.AGUARDANDO_NA_FILA,
+            RequisitionStatus.EM_PRODUCAO,
+        ):
             pedidos_em_producao += 1
 
         if is_active_production and destination == _DESTINATION_PINHEIRO:
@@ -511,29 +1057,11 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
                 )
             )
 
-        received_at: datetime | None = None
-        for event in _production_events(req):
-            action = event["action"]
-            changed_at = event["changed_at"]
-            if changed_at is None:
-                continue
-
-            if action == _PROD_RECEIVED:
-                received_at = changed_at
-                continue
-
-            if action == _PROD_FINISHED:
-                if received_at is not None:
-                    completion_durations.append(
-                        max(0, int((changed_at - received_at).total_seconds()))
-                    )
-                    received_at = None
-                if changed_at.date() == today:
-                    pedidos_finalizados_hoje += 1
-                continue
-
-            if action in (_PROD_SEND, _PROD_CANCELED):
-                received_at = None
+        for cycle in _all_finished_cycles(req):
+            completion_durations.append(cycle["production_time_seconds"])
+            finished_at = cycle.get("finished_at")
+            if isinstance(finished_at, datetime) and finished_at.date() == today:
+                pedidos_finalizados_hoje += 1
 
         recent_requisitions.append(
             DashboardRecentRequisitionItem(
@@ -560,6 +1088,17 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
     if completion_durations:
         average_seconds = int(sum(completion_durations) / len(completion_durations))
 
+    top_machines_industria = _build_machine_usage_rows(
+        reqs,
+        machines,
+        _DESTINATION_PINHEIRO,
+    )
+    top_machines_ar = _build_machine_usage_rows(
+        reqs,
+        machines,
+        _DESTINATION_AR,
+    )
+
     return ManagementDashboardResponse(
         generated_at=now,
         stats=DashboardStatsResponse(
@@ -575,6 +1114,130 @@ def _build_management_dashboard(reqs: list[Requisition]) -> ManagementDashboardR
         top_vendors=top_vendors,
         receipt_alerts=receipt_alerts[:10],
         recent_requisitions=recent_requisitions[:12],
+        top_machines_ar=top_machines_ar,
+        top_machines_industria=top_machines_industria,
+    )
+
+
+def _resolve_storage_root() -> Path:
+    if settings.DATABASE_TYPE == "sqlite" and settings.DATABASE_URL.startswith("sqlite:///"):
+        raw_path = settings.DATABASE_URL.replace("sqlite:///", "", 1)
+        db_path = Path(raw_path)
+        if not db_path.is_absolute():
+            db_path = (Path.cwd() / db_path).resolve()
+        return db_path.parent
+
+    shared_root = Path(settings.SHARED_FOLDER_PATH)
+    if not shared_root.is_absolute():
+        shared_root = (Path.cwd() / shared_root).resolve()
+    return shared_root if shared_root.exists() else Path.cwd()
+
+
+def _available_space_bytes() -> int | None:
+    root = _resolve_storage_root()
+    try:
+        return shutil.disk_usage(root).free
+    except (FileNotFoundError, OSError, PermissionError):
+        return None
+
+
+def _is_backup_candidate(path: Path) -> bool:
+    if not path.is_file():
+        return False
+
+    name = path.name.casefold()
+    if "backup" in name or "bkp" in name:
+        return True
+
+    return path.suffix.casefold() in {".bak", ".backup", ".dump", ".zip", ".7z"}
+
+
+def _find_latest_backup_at() -> datetime | None:
+    roots: list[Path] = [_resolve_storage_root(), Path.cwd()]
+    latest_timestamp = 0.0
+
+    for root in roots:
+        if not root.exists() or not root.is_dir():
+            continue
+
+        scan_dirs = [root]
+        for folder_name in ("backup", "backups", "bkp"):
+            candidate_dir = root / folder_name
+            if candidate_dir.exists() and candidate_dir.is_dir():
+                scan_dirs.append(candidate_dir)
+
+        for scan_dir in scan_dirs:
+            try:
+                for item in scan_dir.iterdir():
+                    if _is_backup_candidate(item):
+                        latest_timestamp = max(latest_timestamp, item.stat().st_mtime)
+            except (FileNotFoundError, PermissionError, OSError):
+                continue
+
+    if latest_timestamp <= 0:
+        return None
+
+    return datetime.fromtimestamp(latest_timestamp)
+
+
+def _database_connected(db: Session) -> bool:
+    try:
+        db.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
+def _logged_users_snapshot(db: Session) -> list[TechnicalPanelLoggedUserResponse]:
+    user_ids = connected_user_ids()
+    if not user_ids:
+        return []
+
+    users = (
+        db.query(User)
+        .filter(User.id.in_(user_ids))
+        .order_by(User.name.asc())
+        .all()
+    )
+    return [
+        TechnicalPanelLoggedUserResponse(
+            id=user.id,
+            name=user.name,
+            last_login_at=user.last_login_at,
+        )
+        for user in users
+    ]
+
+
+@router.get("/technical-panel/summary", response_model=TechnicalPanelResponse)
+def get_technical_panel_summary(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    now = datetime.utcnow()
+    today_start = datetime(now.year, now.month, now.day)
+    stats = runtime_snapshot()
+    logged_users = _logged_users_snapshot(db)
+
+    requisitions_today = (
+        db.query(Requisition)
+        .filter(Requisition.created_at >= today_start)
+        .count()
+    )
+
+    return TechnicalPanelResponse(
+        generated_at=now,
+        stats=TechnicalPanelStatsResponse(
+            system_online=True,
+            connected_users=len(logged_users),
+            requisitions_today=requisitions_today,
+            average_response_ms=stats.get("average_response_ms"),
+            last_backup_at=_find_latest_backup_at(),
+            database_connected=_database_connected(db),
+            available_space_bytes=_available_space_bytes(),
+            error_count_today=int(stats.get("error_count_today") or 0),
+        ),
+        logged_users=logged_users,
     )
 
 
@@ -583,6 +1246,11 @@ def list_requisitions(
     req_status: Optional[RequisitionStatus] = Query(None, alias="status"),
     client_id: Optional[int] = None,
     vendor_id: Optional[int] = None,
+    production_destination: Optional[str] = None,
+    production_machine: Optional[str] = None,
+    invoiced: Optional[bool] = None,
+    emission_date_start: Optional[date] = None,
+    emission_date_end: Optional[date] = None,
     search: Optional[str] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, le=200),
@@ -607,9 +1275,50 @@ def list_requisitions(
         ))
 
     # Vendedor e gerente só veem as próprias requisições
-    reqs = q.order_by(Requisition.created_at.desc()).all()
+    reqs = q.order_by(Requisition.emission_date.desc(), Requisition.created_at.desc()).all()
     visible = _filter_requisitions_for_user(reqs, current_user)
-    return visible[skip:skip + limit]
+
+    if emission_date_start or emission_date_end:
+        visible = [
+            req for req in visible
+            if _matches_emission_period(req, emission_date_start, emission_date_end)
+        ]
+
+    if production_destination:
+        normalized_destination = _canonical_destination(production_destination)
+        visible = [
+            req for req in visible
+            if _current_production_destination(req) == normalized_destination
+        ]
+
+    if production_machine:
+        machine_key = _normalize_text(production_machine)
+        visible = [
+            req for req in visible
+            if _normalize_text(_history_production_machine(req)) == machine_key
+        ]
+
+    if invoiced is not None:
+        visible = [
+            req for req in visible
+            if (req.status == RequisitionStatus.FATURADO) == invoiced
+        ]
+
+    paginated = visible[skip:skip + limit]
+    for req in paginated:
+        setattr(
+            req,
+            "production_destination_display",
+            _current_production_destination(req) or None,
+        )
+        setattr(
+            req,
+            "production_machine_display",
+            _history_production_machine(req) or None,
+        )
+        setattr(req, "production_status", _history_production_status(req))
+        setattr(req, "invoiced", req.status == RequisitionStatus.FATURADO)
+    return paginated
 
 
 @router.get("/dashboard/summary", response_model=ManagementDashboardResponse)
@@ -617,13 +1326,32 @@ def get_management_dashboard(
     db: Session = Depends(get_db),
     _: User = Depends(require_manager_or_admin),
 ):
+    from ..services.notification_service import (
+        dispatch as push_all,
+        ensure_pending_invoice_notifications,
+    )
+
+    notifications = ensure_pending_invoice_notifications(db)
+    if notifications:
+        db.commit()
+        push_all(notifications)
+
     reqs = (
         db.query(Requisition)
         .options(*_LOAD_OPTS)
         .order_by(Requisition.created_at.desc())
         .all()
     )
-    return _build_management_dashboard(reqs)
+    machines = (
+        db.query(ProductionMachine)
+        .order_by(
+            ProductionMachine.destination.asc(),
+            ProductionMachine.sort_order.asc(),
+            ProductionMachine.id.asc(),
+        )
+        .all()
+    )
+    return _build_management_dashboard(reqs, machines)
 
 
 @router.get("/order-center/summary", response_model=OrderCenterResponse)
@@ -631,6 +1359,16 @@ def get_order_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
+    from ..services.notification_service import (
+        dispatch as push_all,
+        ensure_pending_invoice_notifications,
+    )
+
+    notifications = ensure_pending_invoice_notifications(db)
+    if notifications:
+        db.commit()
+        push_all(notifications)
+
     reqs = (
         db.query(Requisition)
         .options(*_LOAD_OPTS)
@@ -640,6 +1378,93 @@ def get_order_center(
     return _build_order_center(_filter_requisitions_for_user(reqs, current_user))
 
 
+@router.get("/production/summary", response_model=ProductionDestinationSummaryResponse)
+def get_production_summary(
+    destination: str = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    normalized_destination = _canonical_destination(destination)
+    _ensure_destination_access(current_user, normalized_destination)
+
+    reqs = (
+        db.query(Requisition)
+        .options(*_LOAD_OPTS)
+        .order_by(Requisition.created_at.asc(), Requisition.id.asc())
+        .all()
+    )
+    visible = _filter_requisitions_for_user(reqs, current_user)
+    machines = (
+        db.query(ProductionMachine)
+        .filter(ProductionMachine.destination == normalized_destination)
+        .order_by(ProductionMachine.sort_order.asc(), ProductionMachine.id.asc())
+        .all()
+    )
+    return _build_production_summary(visible, machines, normalized_destination)
+
+
+@router.get("/production/machines", response_model=List[str])
+def list_production_machines(
+    destination: str = Query(...),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    normalized_destination = _canonical_destination(destination)
+    machines = (
+        db.query(ProductionMachine)
+        .filter(ProductionMachine.destination == normalized_destination)
+        .order_by(ProductionMachine.sort_order.asc(), ProductionMachine.id.asc())
+        .all()
+    )
+    return [
+        _normalize_machine_name(machine.name)
+        for machine in machines
+        if _normalize_machine_name(machine.name)
+    ]
+
+
+@router.patch(
+    "/production/machines/{machine_id}/status",
+    response_model=ProductionMachineStatusResponse,
+)
+def update_production_machine_status(
+    machine_id: int,
+    data: ProductionMachineStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from ..services.notification_service import (
+        dispatch as push_all,
+        notify_machine_status_change as build_machine_status_event,
+    )
+
+    machine = (
+        db.query(ProductionMachine)
+        .filter(ProductionMachine.id == machine_id)
+        .first()
+    )
+    if not machine:
+        raise HTTPException(status_code=404, detail="Máquina não encontrada")
+
+    _ensure_destination_access(current_user, machine.destination)
+
+    machine.status = data.status
+    machine.updated_by_id = current_user.id
+    machine.updated_at = datetime.utcnow()
+
+    notifications = build_machine_status_event(db, machine, current_user)
+    db.commit()
+    push_all(notifications)
+
+    return ProductionMachineStatusResponse(
+        id=machine.id,
+        destination=machine.destination,
+        name=_normalize_machine_name(machine.name),
+        status=machine.status,
+        updated_at=machine.updated_at,
+    )
+
+
 @router.post("/", response_model=RequisitionResponse, status_code=status.HTTP_201_CREATED)
 def create_requisition(
     data: RequisitionCreate,
@@ -647,6 +1472,7 @@ def create_requisition(
     current_user: User = Depends(require_creator),
 ):
     items_data = data.items
+    _ensure_unique_ped_number(db, data.ped_number)
     req = Requisition(
         **data.model_dump(exclude={"items", "weight"}),
         vendor_id=current_user.id,
@@ -677,7 +1503,7 @@ def get_requisition(
 ):
     req = _get_or_404(db, req_id)
     if not _can_view_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para visualizar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para visualizar esta requisição")
     return req
 
 
@@ -690,8 +1516,10 @@ def update_requisition(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_editable(req)
+    ped_number = data.ped_number if data.ped_number is not None else req.ped_number
+    _ensure_unique_ped_number(db, ped_number, exclude_req_id=req.id)
 
     for k, v in data.model_dump(exclude_unset=True, exclude={"items", "weight"}).items():
         setattr(req, k, v)
@@ -718,18 +1546,26 @@ def update_status(
     current_user: User = Depends(get_current_user),
 ):
     from ..services.notification_service import (
-        build_production_sent, build_vendor_event, push_all,
+        notify_production_team as build_production_sent,
+        notify_vendor          as build_vendor_event,
+        dispatch               as push_all,
     )
 
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
     old_status = req.status
     prod = _parse_production_note(data.note)
+    is_sending_to_production = (
+        (prod and prod["action"] == _PROD_SEND)
+        or (not prod and data.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO)
+    )
+    if is_sending_to_production:
+        _ensure_unique_ped_number(db, req.ped_number, exclude_req_id=req.id)
     if prod:
         _apply_production_transition(req, data)
     else:
-        req.status = data.status
+        _apply_manual_status_transition(req, data.status)
     new_status = req.status
 
     db.add(StatusHistory(
@@ -741,27 +1577,27 @@ def update_status(
     ))
 
     # Cria notificações dentro da mesma transação
-    notifications = []
+    notifications: list = []
     if prod:
         action = prod["action"]
         if action == _PROD_SEND:
             notifications.extend(build_production_sent(db, req, prod["target"]))
-        elif action == _PROD_RECEIVED:
-            n = build_vendor_event(db, req, "em_producao")
-            if n:
-                notifications.append(n)
+        elif action in (_PROD_RECEIVED, _PROD_STARTED):
+            notifications.extend(build_vendor_event(db, req, "em_producao"))
+        elif action in (_PROD_QUEUED, _PROD_RETURNED_QUEUE):
+            notifications.extend(build_vendor_event(db, req, "aguardando_na_fila"))
         elif action == _PROD_FINISHED:
-            n = build_vendor_event(db, req, "finalizada")
-            if n:
-                notifications.append(n)
+            notifications.extend(build_vendor_event(db, req, "aguardando_faturamento"))
         elif action == _PROD_CANCELED:
-            n = build_vendor_event(db, req, "prod_cancelada", prod.get("reason", ""))
-            if n:
-                notifications.append(n)
+            notifications.extend(build_vendor_event(db, req, "prod_cancelada", prod.get("reason", "")))
+    elif new_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+        notifications.extend(build_production_sent(db, req, ""))
+    elif new_status == RequisitionStatus.AGUARDANDO_NA_FILA:
+        notifications.extend(build_vendor_event(db, req, "aguardando_na_fila"))
+    elif new_status == RequisitionStatus.FATURADO:
+        notifications.extend(build_vendor_event(db, req, "faturado"))
     elif new_status == RequisitionStatus.CANCELADA:
-        n = build_vendor_event(db, req, "cancelada")
-        if n:
-            notifications.append(n)
+        notifications.extend(build_vendor_event(db, req, "cancelada"))
 
     db.commit()
     push_all(notifications)
@@ -777,12 +1613,13 @@ def update_canvas(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_editable(req)
+    normalized_json = normalize_canvas_json_text(data.json_data) or "{}"
     if req.canvas:
-        req.canvas.json_data = data.json_data
+        req.canvas.json_data = normalized_json
     else:
-        db.add(CanvasData(requisition_id=req.id, json_data=data.json_data))
+        db.add(CanvasData(requisition_id=req.id, json_data=normalized_json))
     db.commit()
     return _get_or_404(db, req_id)
 
@@ -796,7 +1633,7 @@ def attach_nf(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para editar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_editable(req)
     req.nf_attachment = nf_path
     db.commit()
@@ -809,11 +1646,14 @@ def cancel_requisition(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from ..services.notification_service import build_vendor_event, push_all
+    from ..services.notification_service import (
+        notify_vendor as build_vendor_event,
+        dispatch      as push_all,
+    )
 
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissao para cancelar esta requisicao")
+        raise HTTPException(status_code=403, detail="Sem permissão para cancelar esta requisição")
     old_status = req.status
     req.status = RequisitionStatus.CANCELADA
     db.add(StatusHistory(
@@ -823,11 +1663,21 @@ def cancel_requisition(
         changed_by_id=current_user.id,
     ))
 
-    notifications = []
+    notifications: list = []
     if req.vendor_id != current_user.id:
-        n = build_vendor_event(db, req, "cancelada")
-        if n:
-            notifications.append(n)
+        notifications.extend(build_vendor_event(db, req, "cancelada"))
+    else:
+        # Mesmo que o vendedor cancele a própria req, admins/gerentes são notificados
+        from ..services.notification_service import _notify_admins_gerentes
+        notifications.extend(
+            _notify_admins_gerentes(
+                db, "cancelada",
+                "Requisição Cancelada ❌",
+                f"PED #{req.ped_number} foi cancelada.",
+                req.id,
+                exclude_ids={current_user.id},
+            )
+        )
 
     db.commit()
     push_all(notifications)
