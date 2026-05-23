@@ -175,11 +175,15 @@ class ClientSearchBox(QWidget):
         self.scale = scale
         self._selected: dict | None = None
         self._threads: list = []
+        self._search_seq = 0
+        self._last_requested_term = ""
+        self._results_cache: dict[str, list] = {}
+        self._max_cache_entries = 40
 
         # Timer de debounce — dispara busca 300 ms após parar de digitar
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
-        self._debounce.setInterval(150)
+        self._debounce.setInterval(120)
         self._debounce.timeout.connect(self._do_search)
 
         self._setup_ui()
@@ -224,10 +228,15 @@ class ClientSearchBox(QWidget):
                 return
             self._selected = None
 
-        if len(text.strip()) < 2:
+        term = text.strip()
+        if len(term) < 2:
             self._debounce.stop()
             self._drop.hide()
             return
+
+        cached = self._results_cache.get(term)
+        if cached is not None:
+            self._render_results(cached)
 
         self._debounce.start()
 
@@ -235,6 +244,13 @@ class ClientSearchBox(QWidget):
         term = self.input.text().strip()
         if len(term) < 2:
             return
+
+        if term == self._last_requested_term:
+            cached = self._results_cache.get(term)
+            if cached is not None:
+                self._render_results(cached)
+            return
+        self._last_requested_term = term
 
         # Feedback visual imediato
         self._drop.clear()
@@ -244,14 +260,36 @@ class ClientSearchBox(QWidget):
         self._reposition()
         self._drop.show()
 
+        self._search_seq += 1
+        search_id = self._search_seq
         t, w = _run_in_thread(
             api.list_clients, term,
-            on_result=self._on_results,
-            on_error=lambda _: self._drop.hide(),
+            on_result=lambda clients, q=term, sid=search_id: self._on_results(q, sid, clients),
+            on_error=lambda _, q=term, sid=search_id: self._on_search_error(q, sid),
         )
-        self._threads.append((t, w))
+        self._track_thread(t, w)
 
-    def _on_results(self, clients: list):
+    def _on_results(self, term: str, search_id: int, clients: list):
+        if search_id != self._search_seq:
+            return
+        if self.input.text().strip() != term:
+            return
+
+        self._results_cache[term] = clients
+        if len(self._results_cache) > self._max_cache_entries:
+            first_key = next(iter(self._results_cache))
+            if first_key != term:
+                self._results_cache.pop(first_key, None)
+        self._render_results(clients)
+
+    def _on_search_error(self, term: str, search_id: int):
+        if search_id != self._search_seq:
+            return
+        if self.input.text().strip() != term:
+            return
+        self._drop.hide()
+
+    def _render_results(self, clients: list):
         self._drop.clear()
         if not clients:
             it = QListWidgetItem("  Nenhum cliente encontrado")
@@ -270,6 +308,20 @@ class ClientSearchBox(QWidget):
 
         self._reposition()
         self._drop.show()
+
+    def _track_thread(self, thread: QThread, worker: QObject) -> None:
+        pair = (thread, worker)
+        self._threads.append(pair)
+
+        def _cleanup():
+            try:
+                self._threads.remove(pair)
+            except ValueError:
+                pass
+            worker.deleteLater()
+            thread.deleteLater()
+
+        thread.finished.connect(_cleanup)
 
     def _reposition(self):
         s = self.scale
@@ -344,7 +396,7 @@ class ClientSearchBox(QWidget):
             on_result=self._on_client_loaded_by_id,
             on_error=lambda _: None,
         )
-        self._threads.append((t, w))
+        self._track_thread(t, w)
 
     def _on_client_loaded_by_id(self, client: dict):
         if not client:
@@ -356,6 +408,7 @@ class ClientSearchBox(QWidget):
 
     def clear(self):
         self._selected = None
+        self._last_requested_term = ""
         self.input.blockSignals(True)
         self.input.clear()
         self.input.blockSignals(False)
