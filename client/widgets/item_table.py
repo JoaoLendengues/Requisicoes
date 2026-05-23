@@ -76,7 +76,7 @@ class ItemTable(QWidget):
         self.table = _ItemGridTable(10, len(COLUMNS), self)
         self.table.setHorizontalHeaderLabels(COLUMNS)
         self.table.verticalHeader().setVisible(False)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         self.table.setAlternatingRowColors(True)
         self.table.setTabKeyNavigation(True)
         self.table.horizontalHeader().setSectionResizeMode(
