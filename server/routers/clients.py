@@ -45,10 +45,20 @@ def list_clients(
             Client.cnpj.ilike(s),
         ]
         if plain:
-            clean_code = func.replace(Client.code, ".", "")   # um único replace, não três
+            clean_code = func.replace(Client.code, ".", "")
+            # Extrai dígitos do campo cnpj bruto — fallback para registros com
+            # cnpj_digits = NULL (funciona em SQLite e PostgreSQL sem regexp).
+            cnpj_raw = func.replace(
+                func.replace(
+                    func.replace(
+                        func.replace(func.coalesce(Client.cnpj, ""), ".", ""),
+                        "-", ""),
+                    "/", ""),
+                " ", "")
             filters.extend([
                 clean_code.ilike(f"%{plain}%"),
-                Client.cnpj_digits.ilike(f"%{plain}%"),       # substitui triple-replace
+                Client.cnpj_digits.ilike(f"%{plain}%"),
+                cnpj_raw.ilike(f"%{plain}%"),          # fallback: cnpj sem pontuação
             ])
             if plain_nzero:
                 filters.append(func.ltrim(clean_code, "0").ilike(f"%{plain_nzero}%"))
@@ -62,9 +72,19 @@ def list_clients(
             (func.upper(Client.name).like(f"{term_upper}%"), 4),
         ]
         if plain:
+            # cnpj_raw reutilizado no ranking
+            cnpj_raw = func.replace(
+                func.replace(
+                    func.replace(
+                        func.replace(func.coalesce(Client.cnpj, ""), ".", ""),
+                        "-", ""),
+                    "/", ""),
+                " ", "")
             rank_rules.extend([
                 (Client.cnpj_digits == plain, 2),
                 (Client.cnpj_digits.like(f"{plain}%"), 3),
+                (cnpj_raw == plain, 2),
+                (cnpj_raw.like(f"{plain}%"), 3),
             ])
             plain_upper = plain.upper()
             clean_code_upper = func.upper(func.replace(Client.code, ".", ""))
