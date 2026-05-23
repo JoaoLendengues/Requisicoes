@@ -175,8 +175,8 @@ STATUS_LABELS: dict = {
 
 # ── Fontes (invariantes) ──────────────────────────────────────────────────────
 
-FONT_PRIMARY  = "Poppins"
-FONT_FALLBACK = "Inter"
+FONT_PRIMARY  = "Inter"
+FONT_FALLBACK = "Segoe UI"
 
 # ── Estado de modo e inicialização ────────────────────────────────────────────
 

@@ -13,7 +13,7 @@ if ROOT not in sys.path:
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QFontDatabase
 
 from client.core.resolution import res
 from client.core.session import session
@@ -50,12 +50,17 @@ def main():
     # Inicializa gerenciador de resolução (precisa de QApplication criada)
     res.init(app)
 
+    # Registra fontes Inter embutidas no pacote
+    _FONT_DIR = os.path.join(os.path.dirname(__file__), "assets", "fonts")
+    for _fname in ("Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf"):
+        _fpath = os.path.join(_FONT_DIR, _fname)
+        if os.path.exists(_fpath):
+            QFontDatabase.addApplicationFont(_fpath)
+
     # Fonte padrão adaptada à escala
     font = QFont(theme.FONT_PRIMARY, res.font(10))
     if not font.exactMatch():
         font = QFont(theme.FONT_FALLBACK, res.font(10))
-    if not font.exactMatch():
-        font = QFont("Segoe UI", res.font(10))
     app.setFont(font)
 
     # Estilo global
