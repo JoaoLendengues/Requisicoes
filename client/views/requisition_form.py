@@ -10,7 +10,7 @@ from datetime import date, datetime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
-    QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
+    QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog, QInputDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
     QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
 )
@@ -26,7 +26,7 @@ except ImportError:
 from ..core import theme
 from ..widgets.smooth_scroll import SmoothScrollArea
 from ..core.datetime_utils import local_now
-from ..core.dialogs import apply_message_box_theme
+from ..core.dialogs import apply_message_box_theme, ask_confirmation
 from ..core.resolution import res
 from ..core.session import session
 from ..core.text_case import bind_uppercase_line_edit, bind_uppercase_text_edit
@@ -824,6 +824,8 @@ class RequisitionForm(QWidget):
             "S": self._shortcut_save,
             "W": self._shortcut_send_whatsapp,
             "D": self._shortcut_open_drawing_editor,
+            "V": self._shortcut_open_drawing_viewer,
+            "N": self._shortcut_prompt_ped_action,
             "E": self._shortcut_set_delivery,
             "R": self._shortcut_set_pickup,
         }
@@ -889,6 +891,115 @@ class RequisitionForm(QWidget):
     def _shortcut_open_drawing_editor(self) -> None:
         if hasattr(self, "btn_canvas") and self.btn_canvas.isEnabled():
             self.btn_canvas.click()
+
+    def _shortcut_open_drawing_viewer(self) -> None:
+        if hasattr(self, "btn_canvas_view") and self.btn_canvas_view.isEnabled():
+            self.btn_canvas_view.click()
+
+    def _shortcut_prompt_ped_action(self) -> None:
+        action = self._ask_ped_shortcut_action()
+        if not action:
+            return
+
+        ped_number = self._ask_ped_number()
+        if not ped_number:
+            return
+
+        if action == "fill":
+            self.input_ped.setText(ped_number)
+            self.input_ped.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            self.input_ped.selectAll()
+            return
+
+        self._open_requisition_by_ped(ped_number)
+
+    def _ask_ped_shortcut_action(self) -> str | None:
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Atalho N")
+        msg.setText("O que você deseja fazer com o número do PED?")
+        btn_fill = msg.addButton("Preencher PED", QMessageBox.ButtonRole.AcceptRole)
+        btn_open = msg.addButton("Abrir requisição por PED", QMessageBox.ButtonRole.AcceptRole)
+        msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        apply_message_box_theme(msg)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked == btn_fill:
+            return "fill"
+        if clicked == btn_open:
+            return "open"
+        return None
+
+    @staticmethod
+    def _normalize_ped_number(value: str | None) -> str:
+        digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+        if not digits:
+            return ""
+        normalized = digits.lstrip("0")
+        return normalized or "0"
+
+    def _ask_ped_number(self) -> str | None:
+        default_value = (self.input_ped.text() or "").strip()
+        text, ok = QInputDialog.getText(
+            self,
+            "Número do PED",
+            "Digite o número do PED:",
+            QLineEdit.EchoMode.Normal,
+            default_value,
+        )
+        if not ok:
+            return None
+
+        ped_number = (text or "").strip()
+        if not ped_number:
+            return None
+        if not ped_number.isdigit():
+            QMessageBox.warning(self, "PED", "Digite apenas números no campo PED.")
+            return None
+        if self._normalize_ped_number(ped_number) == "0":
+            QMessageBox.warning(self, "PED", "Informe um número de PED válido.")
+            return None
+        return ped_number
+
+    def _open_requisition_by_ped(self, ped_number: str) -> None:
+        if self.has_unsaved_data():
+            if not ask_confirmation(
+                self,
+                "Abrir requisição por PED",
+                "Existem dados no formulário atual que serão substituídos.\n\nDeseja continuar?",
+                yes_text="Sim",
+                no_text="Não",
+            ):
+                return
+
+        normalized_target = self._normalize_ped_number(ped_number)
+        thread, worker = _run_in_thread(
+            api.list_requisitions,
+            search=ped_number,
+            limit=200,
+            on_result=lambda data, target=normalized_target: self._on_requisition_search_by_ped(data, target),
+            on_error=lambda msg: QMessageBox.critical(self, "PED", msg),
+        )
+        self._track_thread(thread, worker)
+
+    def _on_requisition_search_by_ped(self, results: list, normalized_target: str) -> None:
+        matches = []
+        for req in (results or []):
+            req_norm = self._normalize_ped_number(str(req.get("ped_number") or ""))
+            if req_norm == normalized_target:
+                matches.append(req)
+
+        if not matches:
+            QMessageBox.warning(self, "PED", "PED não encontrado.")
+            return
+
+        matches.sort(key=lambda req: int(req.get("id") or 0), reverse=True)
+        selected = matches[0]
+        self.load_requisition(
+            selected,
+            read_only=session.should_open_requisition_read_only("history"),
+        )
 
     def _shortcut_set_delivery(self) -> None:
         if hasattr(self, "chk_entrega") and self.chk_entrega.isEnabled():
