@@ -225,16 +225,16 @@ class ClientSearchBox(QWidget):
         self._all_clients = [c for c in clients if isinstance(c, dict)]
         # Pré-popula o cache vazio para que _render_cached_preview já funcione
         if self._all_clients:
-            self._results_cache[""] = self._all_clients[:20]
+            self._results_cache[""] = self._all_clients
         # Se o usuário já digitou algo antes da carga terminar, atualiza o dropdown
         current_term = self.input.text().strip()
         min_chars = 1 if self._looks_like_code_or_document(current_term) else 2
         if len(current_term) >= min_chars:
             try:
                 filtered = self._filter_cached_clients(self._all_clients, current_term)
-                self._render_results(filtered[:25])
+                self._render_results(filtered)
             except Exception:
-                self._render_results(self._all_clients[:25])
+                self._render_results(self._all_clients)
 
     # ── Interface ─────────────────────────────────────────────────────────────
 
@@ -290,10 +290,10 @@ class ClientSearchBox(QWidget):
         if self._all_clients:
             try:
                 filtered = self._filter_cached_clients(self._all_clients, term)
-                self._render_results(filtered[:25])
+                self._render_results(filtered)
             except Exception:
                 # Fallback defensivo: mostra os primeiros clientes sem filtro
-                self._render_results(self._all_clients[:25])
+                self._render_results(self._all_clients)
             return
         # ── Fallback: servidor (enquanto a carga inicial ainda não terminou) ─
 
@@ -387,14 +387,14 @@ class ClientSearchBox(QWidget):
             return
         filtered = self._filter_cached_clients(base, term)
         if filtered:
-            self._render_results(filtered[:80], show_empty=False)
+            self._render_results(filtered, show_empty=False)
 
     def _render_live_preview(self, term: str) -> None:
         if not self._live_candidates:
             return
         filtered = self._filter_cached_clients(self._live_candidates, term)
         if filtered:
-            self._render_results(filtered[:80], show_empty=False)
+            self._render_results(filtered, show_empty=False)
 
     def _best_cached_base(self, term: str) -> list:
         normalized_term = self._normalize_search_text(term)
@@ -586,7 +586,9 @@ class ClientSearchBox(QWidget):
                     return True
                 if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     if self._drop.isVisible() and self._drop.count():
-                        self._pick(self._first_selectable())
+                        first = self._first_selectable()
+                        if first:
+                            self._pick(first)
                     return True
 
             elif obj is self._drop:
