@@ -12,6 +12,7 @@ class Client(Base):
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
     cnpj: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
+    cnpj_digits: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     state: Mapped[str | None] = mapped_column(String(2), nullable=True)
