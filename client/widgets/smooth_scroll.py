@@ -15,10 +15,10 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QWheelEvent
 
 _FRAME_MS    = 16     # intervalo do timer → ~62.5 fps (PreciseTimer garante isso)
-_LERP        = 0.22   # fator por frame: 22% da distância restante
-_SNAP_PX     = 1.0    # trava quando diff < 1 px
-_STEP_RATIO  = 0.13   # passo por tick = 13% do pageStep (sensação natural)
-_STEP_MIN_PX = 40     # passo mínimo em pixels
+_LERP        = 0.38   # fator por frame: 38% da distância restante (~8 frames p/ completar)
+_SNAP_PX     = 1.5    # trava quando diff < 1.5 px
+_STEP_RATIO  = 0.20   # passo por tick = 20% do pageStep
+_STEP_MIN_PX = 80     # passo mínimo em pixels
 
 
 class SmoothScrollArea(QScrollArea):
