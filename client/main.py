@@ -105,6 +105,8 @@ def main():
             main_window = None
         login_view.input_pass.clear()
         login_view.error_label.hide()
+        # Avança o rodízio de fundo — mesmo comportamento de abrir o app do zero
+        login_view.reload_background()
         # Inicia invisível → fade-in suave enquanto o main faz o fade-out
         login_view.setWindowOpacity(0.0)
         login_view.show()

@@ -36,6 +36,17 @@ def _migrate():
         "WHERE status = 'em_producao' AND finalized_at IS NULL",
         "UPDATE requisitions SET status = 'aguardando_na_fila' "
         "WHERE status = 'em_producao' AND production_machine IS NULL AND finalized_at IS NOT NULL",
+
+        # ── Índices de busca rápida de clientes (pg_trgm) ─────────────────────
+        "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+        "ALTER TABLE clients ADD COLUMN cnpj_digits VARCHAR(20)",
+        # Backfill: extrai somente os dígitos do CNPJ existente
+        "UPDATE clients SET cnpj_digits = regexp_replace(coalesce(cnpj, ''), '[^0-9]', '', 'g') "
+        "WHERE cnpj IS NOT NULL AND cnpj_digits IS NULL",
+        "CREATE INDEX IF NOT EXISTS idx_clients_name_trgm  ON clients USING GIN (name  gin_trgm_ops)",
+        "CREATE INDEX IF NOT EXISTS idx_clients_code_trgm  ON clients USING GIN (code  gin_trgm_ops)",
+        "CREATE INDEX IF NOT EXISTS idx_clients_cnpj_trgm  ON clients USING GIN (cnpj  gin_trgm_ops)",
+        "CREATE INDEX IF NOT EXISTS idx_clients_cnpj_digits_trgm ON clients USING GIN (cnpj_digits gin_trgm_ops)",
     ]
     for stmt in stmts:
         try:

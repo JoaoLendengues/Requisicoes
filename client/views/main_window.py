@@ -547,15 +547,19 @@ class MainWindow(QMainWindow):
         Inclui tanto eventos iniciais (não lidas do banco ao conectar)
         quanto pushes em tempo real. _shown_notif_ids garante que o
         toast apareça exatamente uma vez por notificação.
+
+        Apenas eventos com id real (registros do banco) incrementam o badge.
+        Eventos virtuais como stuck_requisition_events (id=None) exibem
+        toast mas não alteram o contador — a central não os exibe.
         """
         nid = data.get("id")
         if nid:
             if nid in self._shown_notif_ids:
                 return          # já exibido — ignora
             self._shown_notif_ids.add(nid)
+            self._unread_count += 1
+            self.sidebar.set_notification_count(self._unread_count)
 
-        self._unread_count += 1
-        self.sidebar.set_notification_count(self._unread_count)
         self._toast_manager.show(data, on_action=self._on_toast_action)
 
     def _on_toast_action(self, req_id):

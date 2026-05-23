@@ -1,9 +1,91 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtWidgets import QMessageBox, QPushButton, QWidget
 
 from . import theme
+
+
+class _MessageBoxShortcutFilter(QObject):
+    """Atalhos escondidos para caixas de diálogo: S=Sim, N=Não, O=OK."""
+
+    def eventFilter(self, obj, event):
+        if not isinstance(obj, QMessageBox):
+            return False
+        if event.type() != QEvent.Type.KeyPress:
+            return False
+
+        if event.modifiers() not in (
+            Qt.KeyboardModifier.NoModifier,
+            Qt.KeyboardModifier.ShiftModifier,
+        ):
+            return False
+
+        key_map = {
+            Qt.Key.Key_S: "s",
+            Qt.Key.Key_N: "n",
+            Qt.Key.Key_O: "o",
+        }
+        letter = key_map.get(event.key())
+        if not letter:
+            return False
+
+        btn = _resolve_message_box_button(obj, letter)
+        if btn is None or not btn.isEnabled():
+            return False
+        btn.click()
+        return True
+
+
+def _clean_button_text(text: str) -> str:
+    return (text or "").replace("&", "").strip().lower()
+
+
+def _resolve_message_box_button(box: QMessageBox, letter: str):
+    candidates: list[tuple[int, QPushButton]] = []
+
+    for button in box.buttons():
+        if not isinstance(button, QPushButton):
+            continue
+        std = box.standardButton(button)
+        role = box.buttonRole(button)
+        txt = _clean_button_text(button.text())
+
+        priority = 99
+        if letter == "s":
+            if std == QMessageBox.StandardButton.Yes:
+                priority = 0
+            elif role == QMessageBox.ButtonRole.YesRole:
+                priority = 1
+            elif txt.startswith("s"):
+                priority = 2
+        elif letter == "n":
+            if std == QMessageBox.StandardButton.No:
+                priority = 0
+            elif role == QMessageBox.ButtonRole.NoRole:
+                priority = 1
+            elif role == QMessageBox.ButtonRole.RejectRole:
+                priority = 2
+            elif txt.startswith("n"):
+                priority = 3
+        elif letter == "o":
+            if std == QMessageBox.StandardButton.Ok:
+                priority = 0
+            elif role == QMessageBox.ButtonRole.AcceptRole:
+                priority = 1
+            elif txt.startswith("o") or txt == "ok":
+                priority = 2
+
+        if priority < 99:
+            candidates.append((priority, button))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0])
+    return candidates[0][1]
+
+
+_MESSAGE_BOX_SHORTCUT_FILTER = _MessageBoxShortcutFilter()
 
 
 def _message_box_style() -> str:
@@ -61,6 +143,7 @@ def _message_box_button_style() -> str:
 
 def apply_message_box_theme(box: QMessageBox) -> QMessageBox:
     box.setStyleSheet(_message_box_style())
+    box.installEventFilter(_MESSAGE_BOX_SHORTCUT_FILTER)
     for button in box.buttons():
         if isinstance(button, QPushButton):
             button.setStyleSheet(_message_box_button_style())

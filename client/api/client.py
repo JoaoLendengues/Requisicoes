@@ -1,3 +1,5 @@
+import threading
+
 import httpx
 from ..core.session import session
 from ..core.resolution import res
@@ -16,6 +18,37 @@ def _headers() -> dict:
 
 def _cli() -> httpx.Client:
     return httpx.Client(base_url=_url(), headers=_headers(), timeout=15.0)
+
+
+# ── Pool de conexão persistente ───────────────────────────────────────────────
+# httpx.Client é thread-safe para requisições concorrentes.  Reutilizar a
+# conexão TCP elimina o handshake a cada keystroke (~5–20 ms numa LAN).
+# Usado em list_clients/get_client (hot path da busca).  Outras funções
+# continuam usando _cli() (curta duração, headers embutidos no construtor).
+
+_pool_lock:     threading.Lock = threading.Lock()
+_pool:          httpx.Client | None = None
+_pool_base_url: str = ""
+
+
+def _get_pool() -> httpx.Client:
+    """Retorna o httpx.Client persistente, recriando se a URL do servidor mudou."""
+    global _pool, _pool_base_url
+    url = _url()
+    # Fast path — sem adquirir lock se já está OK
+    if _pool is not None and _pool_base_url == url and not _pool.is_closed:
+        return _pool
+    with _pool_lock:
+        # Verifica de novo dentro do lock (outro thread pode ter recriado)
+        if _pool is None or _pool_base_url != url or _pool.is_closed:
+            if _pool is not None:
+                try:
+                    _pool.close()
+                except Exception:
+                    pass
+            _pool = httpx.Client(base_url=url, timeout=10.0)
+            _pool_base_url = url
+    return _pool
 
 
 class APIError(Exception):
@@ -83,16 +116,15 @@ def deactivate_user(user_id: int):
 
 
 def list_clients(search: str = "", limit: int = 30) -> list:
-    with _cli() as client:
-        params: dict = {"limit": limit}
-        if search:
-            params["search"] = search
-        return _check(client.get("/clients/", params=params))
+    # Pool persistente: sem handshake TCP por keystroke
+    params: dict = {"limit": limit}
+    if search:
+        params["search"] = search
+    return _check(_get_pool().get("/clients/", params=params, headers=_headers()))
 
 
 def get_client(client_id: int) -> dict:
-    with _cli() as client:
-        return _check(client.get(f"/clients/{client_id}"))
+    return _check(_get_pool().get(f"/clients/{client_id}", headers=_headers()))
 
 
 def create_client(data: dict) -> dict:

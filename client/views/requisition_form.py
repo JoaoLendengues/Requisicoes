@@ -5,6 +5,7 @@ import os
 import io
 import shutil
 import tempfile
+import unicodedata
 from datetime import date, datetime
 
 from PySide6.QtWidgets import (
@@ -12,10 +13,10 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
     QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
-    QListWidget, QListWidgetItem, QStyle,
+    QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
 )
 from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression, QRectF, QSize
-from PySide6.QtGui import QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
+from PySide6.QtGui import QAction, QKeySequence, QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
 
 try:
     import qrcode
@@ -26,7 +27,7 @@ except ImportError:
 from ..core import theme
 from ..widgets.smooth_scroll import SmoothScrollArea
 from ..core.datetime_utils import local_now
-from ..core.dialogs import apply_message_box_theme
+from ..core.dialogs import apply_message_box_theme, ask_confirmation
 from ..core.resolution import res
 from ..core.session import session
 from ..core.text_case import bind_uppercase_line_edit, bind_uppercase_text_edit
@@ -164,8 +165,15 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
 # ── Campo de busca de cliente ─────────────────────────────────────────────────
 class ClientSearchBox(QWidget):
     """
-    Caixa de busca com dropdown em tempo real — filtragem no SERVIDOR.
-    Suporta 100k+ clientes. Debounce de 300 ms para não sobrecarregar a API.
+    Caixa de busca com dropdown em tempo real.
+
+    Estratégia de dois estágios:
+    1. Ao abrir o formulário, carrega TODOS os clientes ativos em background
+       (limit=9999).  Enquanto a carga não termina, usa busca no servidor com
+       debounce curto como fallback.
+    2. Após a carga (~1–3 s na LAN), toda busca é client-side puro — zero
+       requisições de rede, latência imperceptível a cada keystroke.
+
     Pesquisa por nome, código ou CPF/CNPJ (ignora pontuação).
     """
     client_selected = Signal(object)   # dict do cliente ou None
@@ -180,14 +188,55 @@ class ClientSearchBox(QWidget):
         self._results_cache: dict[str, list] = {}
         self._max_cache_entries = 40
         self._live_candidates: list = []
+        self._all_clients: list = []          # cache completo — preenchido em background
 
-        # Timer de debounce — dispara busca 300 ms após parar de digitar
+        # Timer de debounce — fallback enquanto _all_clients ainda carrega
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(120)
         self._debounce.timeout.connect(self._do_search)
 
         self._setup_ui()
+
+        # Carrega todos os clientes em background para busca client-side instantânea
+        self._load_all_clients()
+
+    # ── Carga completa em background ──────────────────────────────────────────
+
+    def _load_all_clients(self) -> None:
+        """
+        Busca todos os clientes ativos do servidor uma única vez.
+
+        Após a conclusão, cada keystroke passa a ser filtrado localmente em
+        Python puro, sem nenhuma requisição de rede.
+        """
+        t, w = _run_in_thread(
+            api.list_clients, "", 9999,
+            on_result=self._on_all_clients_loaded,
+            on_error=lambda _: None,
+        )
+        self._track_thread(t, w)
+
+    def _on_all_clients_loaded(self, clients: list) -> None:
+        # Garante que recebemos uma lista de dicts — descarta silenciosamente
+        # qualquer resposta inesperada para não quebrar o filtro.
+        if not isinstance(clients, list):
+            return
+        self._all_clients = [c for c in clients if isinstance(c, dict)]
+        # Pré-popula o cache vazio para que _render_cached_preview já funcione
+        if self._all_clients:
+            self._results_cache[""] = self._all_clients
+        # Se o usuário já digitou algo antes da carga terminar, atualiza o dropdown
+        current_term = self.input.text().strip()
+        min_chars = 1 if self._looks_like_code_or_document(current_term) else 2
+        if len(current_term) >= min_chars:
+            try:
+                filtered = self._filter_cached_clients(self._all_clients, current_term)
+                self._render_results(filtered)
+            except Exception:
+                self._render_results(self._all_clients)
+
+    # ── Interface ─────────────────────────────────────────────────────────────
 
     def _setup_ui(self):
         s = self.scale
@@ -196,7 +245,7 @@ class ClientSearchBox(QWidget):
         lay.setSpacing(0)
 
         self.input = QLineEdit()
-        self.input.setPlaceholderText("Buscar por nome, código ou CPF/CNPJ...")
+        self.input.setPlaceholderText("Nome, código ou CPF/CNPJ...")
         self.input.setFixedHeight(max(30, int(36 * s)))
         self.input.setStyleSheet(theme.input_style(s))
         self.input.textChanged.connect(self._on_text)
@@ -221,7 +270,7 @@ class ClientSearchBox(QWidget):
         self._drop.installEventFilter(self)
         self._drop.hide()
 
-    # ── Digitação → debounce → busca no servidor ──────────────────────────────
+    # ── Digitação → filtro local (ou debounce → servidor como fallback) ──────
     def _on_text(self, text: str):
         if self._selected:
             expected = f"{self._selected['code']} — {self._selected['name']}"
@@ -235,6 +284,18 @@ class ClientSearchBox(QWidget):
             self._debounce.stop()
             self._drop.hide()
             return
+
+        # ── Caminho rápido: busca local instantânea ────────────────────────
+        # Quando _all_clients já foi carregado, filtra em Python sem rede.
+        if self._all_clients:
+            try:
+                filtered = self._filter_cached_clients(self._all_clients, term)
+                self._render_results(filtered)
+            except Exception:
+                # Fallback defensivo: mostra os primeiros clientes sem filtro
+                self._render_results(self._all_clients)
+            return
+        # ── Fallback: servidor (enquanto a carga inicial ainda não terminou) ─
 
         cached = self._results_cache.get(term)
         if cached is not None:
@@ -250,6 +311,10 @@ class ClientSearchBox(QWidget):
             self._debounce.start(40)
 
     def _do_search(self):
+        # Carga completa já disponível — busca client-side em _on_text, nada a fazer.
+        if self._all_clients:
+            return
+
         term = self.input.text().strip()
         min_chars = 1 if self._looks_like_code_or_document(term) else 2
         if len(term) < min_chars:
@@ -265,7 +330,7 @@ class ClientSearchBox(QWidget):
         self._search_seq += 1
         search_id = self._search_seq
         t, w = _run_in_thread(
-            api.list_clients, term, 80,
+            api.list_clients, term, 9999,
             on_result=lambda clients, q=term, sid=search_id: self._on_results(q, sid, clients),
             on_error=lambda _, q=term, sid=search_id: self._on_search_error(q, sid),
         )
@@ -297,6 +362,7 @@ class ClientSearchBox(QWidget):
         if not clients and not show_empty:
             return
         self._drop.clear()
+
         if not clients:
             it = QListWidgetItem("  Nenhum cliente encontrado")
             it.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -321,14 +387,14 @@ class ClientSearchBox(QWidget):
             return
         filtered = self._filter_cached_clients(base, term)
         if filtered:
-            self._render_results(filtered[:80], show_empty=False)
+            self._render_results(filtered, show_empty=False)
 
     def _render_live_preview(self, term: str) -> None:
         if not self._live_candidates:
             return
         filtered = self._filter_cached_clients(self._live_candidates, term)
         if filtered:
-            self._render_results(filtered[:80], show_empty=False)
+            self._render_results(filtered, show_empty=False)
 
     def _best_cached_base(self, term: str) -> list:
         normalized_term = self._normalize_search_text(term)
@@ -342,32 +408,104 @@ class ClientSearchBox(QWidget):
                     best_size = len(clients)
         return best
 
+    # ── Helpers de normalização ───────────────────────────────────────────────
+
+    @staticmethod
+    def _alnum(value: str) -> str:
+        """
+        Lowercase, somente alfanumérico, SEM acentos.
+        'JOÃO PEDRO' → 'joaopedro', 'José' → 'jose', '067.1' → '0671'
+        """
+        nfd = unicodedata.normalize("NFD", (value or "").lower())
+        return "".join(
+            ch for ch in nfd
+            if ch.isalnum() and not unicodedata.combining(ch)
+        )
+
+    @staticmethod
+    def _digits(value: str) -> str:
+        """Somente dígitos — para comparar CPF/CNPJ independente da formatação."""
+        return "".join(ch for ch in (value or "") if ch.isdigit())
+
+    # ── Filtro unificado com ranking de relevância ────────────────────────────
+
+    @staticmethod
+    def _term_looks_like_document(term: str) -> bool:
+        """
+        Retorna True quando o termo digitado claramente representa um CPF/CNPJ:
+          • contém . / - (formatação típica de documento)
+          • OU tem 8 ou mais dígitos puros (longo demais para ser um código)
+        Dígitos curtos sem formatação (ex: '067', '1234') NÃO ativam a busca
+        por CNPJ, evitando que o código de cliente bata no CPF do cliente.
+        """
+        if any(ch in term for ch in "./-"):
+            return True
+        return sum(ch.isdigit() for ch in term) >= 8
+
     def _filter_cached_clients(self, clients: list, term: str) -> list:
-        normalized_term = self._normalize_search_text(term)
-        plain_term = "".join(ch for ch in normalized_term if ch.isalnum())
-        plain_term_nozero = plain_term.lstrip("0")
-        if not normalized_term:
+        """
+        Pesquisa unificada nas três colunas (name, code, cnpj) com ranking:
+
+          Tier 0 — match exato de código  OU  CPF/CNPJ completo
+          Tier 1 — código ou nome COMEÇA COM o termo
+          Tier 1 — CNPJ começa com os dígitos do termo  (somente se parecer documento)
+          Tier 2 — código, nome ou CNPJ CONTÉM o termo
+
+        Regra CNPJ: só é incluído na busca quando o termo tem formatação
+        de documento (. / -) ou ≥ 8 dígitos — para impedir que um código
+        curto como '067' traga todos os clientes com '067' no CPF.
+        """
+        t_raw = term.strip()
+        if not t_raw:
             return clients
 
-        output: list = []
-        for client in clients:
-            name = self._normalize_search_text(client.get("name") or "")
-            code = self._normalize_search_text(client.get("code") or "")
-            cnpj = self._normalize_search_text(client.get("cnpj") or "")
-            code_plain = "".join(ch for ch in code if ch.isalnum())
-            cnpj_plain = "".join(ch for ch in cnpj if ch.isalnum())
+        t_an    = self._alnum(t_raw)   # sem acento, lowercase, alfanumérico
+        t_d     = self._digits(t_raw)  # só dígitos (para CPF/CNPJ)
+        if not t_an:
+            return clients
 
-            if normalized_term in name or normalized_term in code or normalized_term in cnpj:
-                output.append(client)
+        t_nozero    = t_an.lstrip("0")
+        use_cnpj    = self._term_looks_like_document(t_raw)
+
+        tier0: list = []
+        tier1: list = []
+        tier2: list = []
+
+        for c in clients:
+            if not isinstance(c, dict):
                 continue
-            if plain_term and (plain_term in code_plain or plain_term in cnpj_plain):
-                output.append(client)
+            name    = self._alnum(c.get("name") or "")
+            code    = self._alnum(c.get("code") or "")
+            code_nz = code.lstrip("0")
+            cnpj_d  = self._digits(c.get("cnpj") or "") if use_cnpj else ""
+
+            # ── Tier 0: match exato ────────────────────────────────────────
+            if t_an == code:
+                tier0.append(c)
                 continue
-            if plain_term_nozero and plain_term_nozero in code_plain.lstrip("0"):
-                output.append(client)
-        return output
+            if use_cnpj and t_d and t_d == cnpj_d:
+                tier0.append(c)
+                continue
+
+            # ── Tier 1: começa com ─────────────────────────────────────────
+            if code.startswith(t_an) or name.startswith(t_an):
+                tier1.append(c)
+                continue
+            if use_cnpj and t_d and cnpj_d.startswith(t_d):
+                tier1.append(c)
+                continue
+
+            # ── Tier 2: contém em qualquer campo relevante ─────────────────
+            if (t_an in code
+                    or t_an in name
+                    or (t_nozero and t_nozero in code_nz)
+                    or (use_cnpj and t_d and t_d in cnpj_d)):
+                tier2.append(c)
+
+        return tier0 + tier1 + tier2
 
     def _normalize_search_text(self, value: str) -> str:
+        """Usado no caminho de fallback (servidor). Mantido por compatibilidade."""
         return (
             (value or "")
             .strip()
@@ -403,11 +541,23 @@ class ClientSearchBox(QWidget):
             return False
         return plain.isdigit() or term.isalnum()
 
+    def _first_selectable(self) -> QListWidgetItem | None:
+        """Retorna o primeiro item com dado de cliente (pula itens não-selecionáveis)."""
+        for i in range(self._drop.count()):
+            it = self._drop.item(i)
+            if it and it.data(Qt.ItemDataRole.UserRole) is not None:
+                return it
+        return None
+
     def _reposition(self):
         s = self.scale
         gpos = self.input.mapToGlobal(self.input.rect().bottomLeft())
-        rows = min(max(self._drop.count(), 1), 8)
         row_h = max(30, int(34 * s))
+        # Usa todo o espaço disponível abaixo do campo na tela
+        screen = QApplication.primaryScreen().availableGeometry()
+        available_h = screen.bottom() - gpos.y() - 10
+        max_by_screen = max(4, available_h // row_h)
+        rows = min(max(self._drop.count(), 1), max_by_screen)
         self._drop.move(gpos)
         self._drop.resize(self.input.width(), rows * row_h + 6)
 
@@ -433,13 +583,16 @@ class ClientSearchBox(QWidget):
                     self._drop.hide()
                     return True
                 if key == Qt.Key.Key_Down and self._drop.isVisible():
-                    if self._drop.count():
+                    first = self._first_selectable()
+                    if first:
                         self._drop.setFocus()
-                        self._drop.setCurrentRow(0)
+                        self._drop.setCurrentItem(first)
                     return True
                 if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     if self._drop.isVisible() and self._drop.count():
-                        self._pick(self._drop.item(0))
+                        first = self._first_selectable()
+                        if first:
+                            self._pick(first)
                     return True
 
             elif obj is self._drop:
@@ -697,6 +850,7 @@ class RequisitionForm(QWidget):
         self._threads: list = []
         self._canvas_json: str = "{}"   # armazena o JSON do desenho
         self._setup_ui()
+        self._setup_hidden_shortcuts()
         self._load_clients()
         self._update_canvas_preview()
 
@@ -814,6 +968,245 @@ class RequisitionForm(QWidget):
         self._set_form_locked(False)
 
         layout.addStretch()
+
+    def _setup_hidden_shortcuts(self) -> None:
+        """Atalhos escondidos da tela Nova Requisição (letras simples)."""
+        shortcuts = {
+            "C": self._shortcut_open_calculator,
+            "P": self._shortcut_send_production,
+            "S": self._shortcut_save,
+            "W": self._shortcut_send_whatsapp,
+            "D": self._shortcut_open_drawing_editor,
+            "V": self._shortcut_open_drawing_viewer,
+            "N": self._shortcut_prompt_ped_action,
+            "E": self._shortcut_set_delivery,
+            "R": self._shortcut_set_pickup,
+        }
+
+        self._hidden_shortcut_actions: list[QAction] = []
+        for sequence, callback in shortcuts.items():
+            action = QAction(self)
+            action.setShortcut(QKeySequence(sequence))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            action.triggered.connect(
+                lambda _checked=False, cb=callback: self._run_hidden_shortcut(cb)
+            )
+            self.addAction(action)
+            self._hidden_shortcut_actions.append(action)
+
+    def _run_hidden_shortcut(self, callback) -> None:
+        if not self._can_process_hidden_shortcut():
+            return
+        callback()
+
+    def _can_process_hidden_shortcut(self) -> bool:
+        if not self.isVisible():
+            return False
+
+        if QApplication.activeModalWidget() is not None:
+            return False
+
+        focus = QApplication.focusWidget()
+        if focus is None:
+            return True
+
+        editable_types = (
+            QLineEdit,
+            QTextEdit,
+            QPlainTextEdit,
+            QComboBox,
+            QDateEdit,
+            QAbstractItemView,
+        )
+        widget = focus
+        while widget is not None:
+            if isinstance(widget, editable_types):
+                return False
+            widget = widget.parentWidget()
+        return True
+
+    def _shortcut_open_calculator(self) -> None:
+        if hasattr(self, "btn_calc") and self.btn_calc.isEnabled():
+            self.btn_calc.click()
+
+    def _shortcut_send_production(self) -> None:
+        if hasattr(self, "btn_production") and self.btn_production.isEnabled():
+            self.btn_production.click()
+
+    def _shortcut_save(self) -> None:
+        if hasattr(self, "btn_save") and self.btn_save.isEnabled():
+            self.btn_save.click()
+
+    def _shortcut_send_whatsapp(self) -> None:
+        if hasattr(self, "btn_whatsapp") and self.btn_whatsapp.isEnabled():
+            self.btn_whatsapp.click()
+
+    def _shortcut_open_drawing_editor(self) -> None:
+        if hasattr(self, "btn_canvas") and self.btn_canvas.isEnabled():
+            self.btn_canvas.click()
+
+    def _shortcut_open_drawing_viewer(self) -> None:
+        if hasattr(self, "btn_canvas_view") and self.btn_canvas_view.isEnabled():
+            self.btn_canvas_view.click()
+
+    def _shortcut_prompt_ped_action(self) -> None:
+        action = self._ask_ped_shortcut_action()
+        if not action:
+            return
+
+        ped_number = self._ask_ped_number()
+        if not ped_number:
+            return
+
+        if action == "fill":
+            self.input_ped.setText(ped_number)
+            self.input_ped.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            self.input_ped.selectAll()
+            return
+
+        self._open_requisition_by_ped(ped_number)
+
+    def _ask_ped_shortcut_action(self) -> str | None:
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Pedido")
+        msg.setText("O que deseja fazer com o número do PED?")
+        btn_fill = msg.addButton("Preencher PED", QMessageBox.ButtonRole.AcceptRole)
+        btn_open = msg.addButton("Abrir por pedido", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+
+        # Atalhos locais do diálogo: P=Preencher, A=Abrir, C=Cancelar
+        for key, button in (("P", btn_fill), ("A", btn_open), ("C", btn_cancel)):
+            action = QAction(msg)
+            action.setShortcut(QKeySequence(key))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            action.triggered.connect(button.click)
+            msg.addAction(action)
+
+        apply_message_box_theme(msg)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked == btn_fill:
+            return "fill"
+        if clicked == btn_open:
+            return "open"
+        return None
+
+    @staticmethod
+    def _normalize_ped_number(value: str | None) -> str:
+        digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+        if not digits:
+            return ""
+        normalized = digits.lstrip("0")
+        return normalized or "0"
+
+    def _ask_ped_number(self) -> str | None:
+        default_value = (self.input_ped.text() or "").strip()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Pedido")
+        dialog.setModal(True)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dialog.setStyleSheet(
+            f"QDialog {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
+            f"}}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        lbl = QLabel("Digite o número do PED:")
+        lbl.setStyleSheet(f"font-size:{max(8, int(10 * self.scale))}pt;")
+        layout.addWidget(lbl)
+
+        input_ped = QLineEdit(default_value)
+        input_ped.setPlaceholderText("Ex.: 123456")
+        input_ped.setValidator(QRegularExpressionValidator(QRegularExpression(r"\d*")))
+        input_ped.setStyleSheet(theme.input_style(self.scale))
+        input_ped.setMinimumWidth(max(240, int(280 * self.scale)))
+        layout.addWidget(input_ped)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
+        btn_ok = QPushButton("Confirmar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        btn_ok.clicked.connect(dialog.accept)
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dialog.reject)
+        buttons.addWidget(btn_ok)
+        buttons.addWidget(btn_cancel)
+        layout.addLayout(buttons)
+
+        btn_ok.setDefault(True)
+        btn_ok.setAutoDefault(True)
+        input_ped.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        input_ped.selectAll()
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        ped_number = (input_ped.text() or "").strip()
+        if not ped_number:
+            return None
+        if not ped_number.isdigit():
+            QMessageBox.warning(self, "PED", "Digite apenas números no campo PED.")
+            return None
+        if self._normalize_ped_number(ped_number) == "0":
+            QMessageBox.warning(self, "PED", "Informe um número de PED válido.")
+            return None
+        return ped_number
+
+    def _open_requisition_by_ped(self, ped_number: str) -> None:
+        if self.has_unsaved_data():
+            if not ask_confirmation(
+                self,
+                "Abrir requisição por PED",
+                "Existem dados no formulário atual que serão substituídos.\n\nDeseja continuar?",
+                yes_text="Sim",
+                no_text="Não",
+            ):
+                return
+
+        normalized_target = self._normalize_ped_number(ped_number)
+        thread, worker = _run_in_thread(
+            api.list_requisitions,
+            search=ped_number,
+            limit=200,
+            on_result=lambda data, target=normalized_target: self._on_requisition_search_by_ped(data, target),
+            on_error=lambda msg: QMessageBox.critical(self, "PED", msg),
+        )
+        self._threads.append((thread, worker))
+
+    def _on_requisition_search_by_ped(self, results: list, normalized_target: str) -> None:
+        matches = []
+        for req in (results or []):
+            req_norm = self._normalize_ped_number(str(req.get("ped_number") or ""))
+            if req_norm == normalized_target:
+                matches.append(req)
+
+        if not matches:
+            QMessageBox.warning(self, "PED", "PED não encontrado.")
+            return
+
+        matches.sort(key=lambda req: int(req.get("id") or 0), reverse=True)
+        selected = matches[0]
+        self.load_requisition(
+            selected,
+            read_only=session.should_open_requisition_read_only("history"),
+        )
+
+    def _shortcut_set_delivery(self) -> None:
+        if hasattr(self, "chk_entrega") and self.chk_entrega.isEnabled():
+            self.chk_entrega.setChecked(True)
+
+    def _shortcut_set_pickup(self) -> None:
+        if hasattr(self, "chk_retirada") and self.chk_retirada.isEnabled():
+            self.chk_retirada.setChecked(True)
 
     # ── Cabeçalho ─────────────────────────────────────────────────────────────
     def _build_header(self) -> QFrame:
