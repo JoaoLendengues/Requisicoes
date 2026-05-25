@@ -32,9 +32,19 @@ import os
 from ..core.pdf_folders import vendor_subfolder as _vendor_subfolder
 
 
-def _vendor_pdf_folder(base_folder: str, user_code: str, user_name: str) -> str:
+def _vendor_pdf_folder(
+    base_folder: str,
+    user_code: str,
+    user_name: str,
+    user_role: str = "",
+    req_vendor_code: str = "",
+    req_vendor_name: str = "",
+) -> str:
     """Retorna base_folder/<SUBPASTA_VENDEDOR>."""
-    return os.path.join(base_folder, _vendor_subfolder(user_code, user_name))
+    return os.path.join(
+        base_folder,
+        _vendor_subfolder(user_code, user_name, user_role, req_vendor_code, req_vendor_name),
+    )
 
 
 PAGE_FORM = 0
@@ -493,7 +503,14 @@ class MainWindow(QMainWindow):
         if not base_folder:
             return ""
 
-        folder = _vendor_pdf_folder(base_folder, _session.user_code, _session.user_name)
+        folder = _vendor_pdf_folder(
+            base_folder,
+            _session.user_code,
+            _session.user_name,
+            _session.role,
+            str(req.get("vendor_code") or ""),
+            str(req.get("vendor_name") or ""),
+        )
 
         try:
             return generate_pdf(req, client, obs, folder, canvas_json)

@@ -1545,7 +1545,11 @@ class RequisitionForm(QWidget):
         if not ped_number or not ped_number.isdigit() or int(ped_number) == 0:
             raise RuntimeError("Informe um número de requisição válido antes de imprimir.")
 
-        folder = self._resolve_pdf_output_folder(require_configured_folder=True)
+        req_hint = {
+            "vendor_code": getattr(self, "_req_vendor_code", ""),
+            "vendor_name": getattr(self, "_req_vendor_name", ""),
+        }
+        folder = self._resolve_pdf_output_folder(require_configured_folder=True, req=req_hint)
         if not os.path.isdir(folder):
             raise RuntimeError("A pasta de PDFs configurada não foi encontrada.")
 
@@ -1573,11 +1577,21 @@ class RequisitionForm(QWidget):
         )
         return pdf_candidates[0]
 
-    def _resolve_pdf_output_folder(self, require_configured_folder: bool = True) -> str:
+    def _resolve_pdf_output_folder(
+        self,
+        require_configured_folder: bool = True,
+        req: dict | None = None,
+    ) -> str:
         from ..core.pdf_folders import vendor_subfolder as _vendor_subfolder
         base = res.pdf_folder.strip()
         if base:
-            subfolder = _vendor_subfolder(session.user_code, session.user_name)
+            subfolder = _vendor_subfolder(
+                session.user_code,
+                session.user_name,
+                session.role,
+                str((req or {}).get("vendor_code") or ""),
+                str((req or {}).get("vendor_name") or ""),
+            )
             return os.path.join(base, subfolder)
 
         if require_configured_folder:
@@ -1606,7 +1620,7 @@ class RequisitionForm(QWidget):
         if not HAS_REPORTLAB:
             raise RuntimeError("A geração de PDF está indisponível porque o ReportLab não está instalado.")
 
-        folder = self._resolve_pdf_output_folder(require_configured_folder=require_configured_folder)
+        folder = self._resolve_pdf_output_folder(require_configured_folder=require_configured_folder, req=req)
         return generate_pdf(req, client, obs or req.get("obs") or "", folder, canvas_json)
 
     def _generate_saved_pdf(self, req: dict) -> str:
@@ -2098,6 +2112,9 @@ class RequisitionForm(QWidget):
         """Popula o formulário com dados de uma requisição existente."""
         self._set_form_locked(False)
         self.req_id = data.get("id")
+        # Guarda info do vendedor para uso em _find_saved_pdf_for_print
+        self._req_vendor_code = str(data.get("vendor_code") or "")
+        self._req_vendor_name = str(data.get("vendor_name") or "")
         self.input_ped.setText(str(data.get("ped_number") or ""))
         self.input_obra.setText(data.get("obra") or "")
         self._set_phone_text(data.get("phone") or "")
