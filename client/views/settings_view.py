@@ -642,7 +642,19 @@ class SettingsView(QWidget):
         self._btn_browse_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
         self._btn_browse_bg_folder.clicked.connect(self._browse_bg_folder)
         bg_folder_row.addWidget(self._btn_browse_bg_folder)
+        self._btn_verify_bg_folder = QPushButton("Verificar")
+        self._btn_verify_bg_folder.setFixedHeight(max(38, int(44 * s)))
+        self._btn_verify_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_verify_bg_folder.clicked.connect(self._verify_bg_folder)
+        bg_folder_row.addWidget(self._btn_verify_bg_folder)
         bg_vl.addLayout(bg_folder_row)
+
+        self._lbl_bg_folder_status = QLabel("")
+        self._lbl_bg_folder_status.setWordWrap(True)
+        self._lbl_bg_folder_status.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
+        bg_vl.addWidget(self._lbl_bg_folder_status)
 
         bg_folder_hint = QLabel(
             "Pasta compartilhada (ex.: rede Z:\\) onde ficam as imagens e o config.json. "
@@ -910,6 +922,8 @@ class SettingsView(QWidget):
             # Admin / Gerente: salva aparência + prazo de faturamento no servidor
             pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
             res.save(**save_kwargs, pending_invoice_alert_days=pending_invoice_alert_days)
+            if session.settings_show_login_backgrounds:
+                self._refresh_bg_table()
             self._pending_save_context = {
                 "scale_changed": scale_changed,
                 "font_size_changed": font_size_changed,
@@ -923,6 +937,8 @@ class SettingsView(QWidget):
         else:
             # Demais roles: salva apenas aparência localmente
             res.save(**save_kwargs)
+            if session.settings_show_login_backgrounds:
+                self._refresh_bg_table()
             current = local_now()
             self.date_label.setText(_format_header_date(current))
             self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
@@ -944,6 +960,56 @@ class SettingsView(QWidget):
         )
         if path:
             self.input_bg_folder.setText(os.path.normpath(path))
+
+    def _verify_bg_folder(self) -> None:
+        """Verifica se a pasta de backgrounds está acessível e mostra quantas campanhas há."""
+        path = self.input_bg_folder.text().strip()
+        s = self.scale
+
+        if not path:
+            self._set_bg_folder_status("Informe um caminho de pasta.", theme.DANGER)
+            return
+
+        if not os.path.isdir(path):
+            self._set_bg_folder_status(
+                f"Pasta não encontrada ou inacessível: {path}", theme.DANGER
+            )
+            return
+
+        config_path = os.path.join(path, "config.json")
+        if not os.path.isfile(config_path):
+            self._set_bg_folder_status(
+                f"Pasta acessível, mas ainda sem campanhas (config.json não encontrado em {path}).",
+                theme.TEXT_MEDIUM,
+            )
+            return
+
+        # Lê diretamente do path informado (sem depender do valor salvo em settings)
+        import json as _json
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                data = _json.load(f)
+            campaigns = data if isinstance(data, list) else []
+        except Exception as exc:
+            self._set_bg_folder_status(f"Erro ao ler config.json: {exc}", theme.DANGER)
+            return
+
+        total = len(campaigns)
+        today = __import__("datetime").date.today().isoformat()
+        active = sum(
+            1 for c in campaigns
+            if c.get("start", "") <= today <= c.get("end", "")
+        )
+        self._set_bg_folder_status(
+            f"Pasta OK — {total} campanha(s) cadastrada(s), {active} ativa(s) hoje.",
+            theme.SUCCESS,
+        )
+
+    def _set_bg_folder_status(self, message: str, color: str) -> None:
+        self._lbl_bg_folder_status.setText(message)
+        self._lbl_bg_folder_status.setStyleSheet(
+            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{color};"
+        )
 
     def _refresh_bg_table(self) -> None:
         """Recarrega a tabela de campanhas a partir do config.json."""
@@ -1091,6 +1157,7 @@ class SettingsView(QWidget):
         if session.settings_show_login_backgrounds:
             self.input_bg_folder.setStyleSheet(_field_style(s))
             self._btn_browse_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
+            self._btn_verify_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
             self._btn_add_bg.setStyleSheet(_flat_secondary_btn_style(s))
             self._btn_remove_bg.setStyleSheet(_flat_secondary_btn_style(s))
             self._bg_table.setStyleSheet(_table_style())
