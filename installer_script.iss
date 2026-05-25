@@ -35,7 +35,7 @@ OutputBaseFilename=Requisicoes_Setup_v{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-SetupIconFile=client\assets\icons\icon.ico
+SetupIconFile=client\assets\icons\icon_setup.ico
 
 UninstallDisplayIcon={app}\requisicoes.exe
 CloseApplications=force
