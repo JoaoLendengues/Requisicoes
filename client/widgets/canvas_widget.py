@@ -1,4 +1,4 @@
-﻿"""
+"""
 Canvas de desenho técnico com suporte a:
 - Ferramentas: Seleção, Caneta livre, Linha, Retângulo, Elipse, Texto
 - Shift: trava linha em 0°/45°/90°
@@ -51,7 +51,7 @@ class Tool(Enum):
     IMAGE    = "image"
 
 
-# Mapeamento estilo de linha �?" string JSON
+# Mapeamento estilo de linha -> string JSON
 _STYLE_TO_STR = {
     Qt.PenStyle.SolidLine:   "solid",
     Qt.PenStyle.DashLine:    "dash",
@@ -185,7 +185,7 @@ def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False
     return {"items": count, "pdf": obj.get("pdf", "")}
 
 
-# �"?�"? Cena personalizada �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+# Cena personalizada
 class DrawingScene(QGraphicsScene):
     def __init__(self, canvas_widget):
         super().__init__()
@@ -215,7 +215,7 @@ class DrawingScene(QGraphicsScene):
 
         self.selectionChanged.connect(self._on_selection_changed)
 
-    # �"?�"? Grade de fundo (visual only �?" não serializada) �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Grade de fundo (somente visual, não serializada)
     GRID_MINOR = 20
     GRID_MAJOR = 100
     # Tamanho dos handles do bounding box do Free Transform
@@ -249,7 +249,7 @@ class DrawingScene(QGraphicsScene):
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
             y += step
 
-    # �"?�"? Free Transform �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Free Transform
     def _view(self):
         views = self.views()
         return views[0] if views else None
@@ -311,7 +311,7 @@ class DrawingScene(QGraphicsScene):
         self.update()
         self.cw.changed.emit()
 
-    # �"?�"? Snap to endpoints �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Snap to endpoints
     def _collect_snap_points(self) -> list:
         """Retorna todos os endpoints de itens existentes em coordenadas de cena."""
         points = []
@@ -410,7 +410,7 @@ class DrawingScene(QGraphicsScene):
 
         painter.restore()
 
-        # �"?�"? Indicador de snap (círculo laranja no ponto de conexão) �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+        # Indicador de snap (círculo laranja no ponto de conexão)
         if self._snap_point is not None:
             view = self._view()
             if view:
@@ -761,11 +761,11 @@ class DrawingScene(QGraphicsScene):
                     self._ft_is_rotating = True
                     event.accept()
                     return
-                # Clique fora da área do bounding box �?' sair do ft
+                # Clique fora da área do bounding box -> sair do FT
                 outer = self._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20)
                 if not outer.contains(vp_pos):
                     self._exit_ft()
-                    # não retorna �?" deixa a seleção normal acontecer
+                    # Não retorna: deixa a seleção normal acontecer
 
         if tool == Tool.SELECT:
             super().mousePressEvent(event)
@@ -1093,7 +1093,7 @@ class DrawingScene(QGraphicsScene):
             super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
-        """Duplo clique em texto �?' ativa edição inline."""
+        """Duplo clique em texto -> ativa edição inline."""
         if (self.cw.tool == Tool.SELECT
                 and event.button() == Qt.MouseButton.LeftButton):
             item = self.itemAt(event.scenePos(), QTransform())
@@ -1107,7 +1107,7 @@ class DrawingScene(QGraphicsScene):
         super().mouseDoubleClickEvent(event)
 
 
-# �"?�"? View com pan por botão do meio + Space+arraste �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+# View com pan por botão do meio + Space + arraste
 class DrawingView(QGraphicsView):
     """
     QGraphicsView com zoom por scroll e pan por botão do meio ou Space+drag.
@@ -1125,20 +1125,20 @@ class DrawingView(QGraphicsView):
         vp.installEventFilter(self)
         vp.setMouseTracking(True)   # receber MouseMove sem botão pressionado
 
-    # �"?�"? Event filter no viewport �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Event filter no viewport
     def eventFilter(self, obj, event):
         if obj is not self.viewport():
             return super().eventFilter(obj, event)
 
         t = event.type()
 
-        # �"?�"? Zoom por scroll �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+        # Zoom por scroll
         if t == QEvent.Type.Wheel:
             factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
             self.scale(factor, factor)
             return True
 
-        # �"?�"? Início do pan �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+        # Início do pan
         if t == QEvent.Type.MouseButtonPress:
             mid        = event.button() == Qt.MouseButton.MiddleButton
             space_left = (event.button() == Qt.MouseButton.LeftButton
@@ -1147,7 +1147,7 @@ class DrawingView(QGraphicsView):
                 self._start_pan(event.position().toPoint())
                 return True
 
-        # �"?�"? Arraste do pan �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+        # Arraste do pan
         if t == QEvent.Type.MouseMove and self._panning:
             delta = event.position().toPoint() - self._pan_start
             self._pan_start = event.position().toPoint()
@@ -1159,14 +1159,14 @@ class DrawingView(QGraphicsView):
             )
             return True
 
-        # �"?�"? Fim do pan �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+        # Fim do pan
         if t == QEvent.Type.MouseButtonRelease and self._panning:
             if event.button() in (Qt.MouseButton.MiddleButton,
                                    Qt.MouseButton.LeftButton):
                 self._stop_pan()
                 return True
 
-        # �"?�"? Cursor de rotação no Free Transform (hover sem botão) �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+        # Cursor de rotação no Free Transform (hover sem botão)
         if t == QEvent.Type.MouseMove and not self._panning:
             sc = self.scene()
             if hasattr(sc, "_ft_active") and sc._ft_active:
@@ -1180,7 +1180,7 @@ class DrawingView(QGraphicsView):
 
         return super().eventFilter(obj, event)
 
-    # �"?�"? Space + arrastar �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Space + arrastar
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._space_held = True
@@ -1194,7 +1194,7 @@ class DrawingView(QGraphicsView):
                 self.setCursor(Qt.CursorShape.ArrowCursor)
         super().keyReleaseEvent(event)
 
-    # �"?�"? Helpers �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Helpers
     def _start_pan(self, pos):
         self._panning   = True
         self._pan_start = pos
@@ -1208,7 +1208,7 @@ class DrawingView(QGraphicsView):
         self.setCursor(cursor)
 
 
-# �"?�"? Widget principal �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+# Widget principal
 class DrawingCanvas(QWidget):
     changed = Signal()
 
@@ -1228,7 +1228,7 @@ class DrawingCanvas(QWidget):
         self._last_click_scene_pos: QPointF | None = None
         self._setup_ui()
 
-    # �"?�"? UI �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # UI
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1503,7 +1503,7 @@ class DrawingCanvas(QWidget):
         paste_action.triggered.connect(self._paste_from_clipboard)
         self.addAction(paste_action)
 
-        # Ctrl+T �?" Free Transform (estilo Photoshop)
+        # Ctrl+T -> Free Transform (estilo Photoshop)
         ft_action = QAction(self)
         ft_action.setShortcut(QKeySequence("Ctrl+T"))
         ft_action.triggered.connect(self.scene._enter_ft)
@@ -1514,7 +1514,7 @@ class DrawingCanvas(QWidget):
         fix_measure_action.triggered.connect(self.scene.commit_ruler_overlay)
         self.addAction(fix_measure_action)
 
-    # �"?�"? Ferramentas �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Ferramentas
     def _set_tool(self, tool: Tool):
         self.tool = tool
         for t, btn in self._tool_btns.items():
@@ -1567,7 +1567,7 @@ class DrawingCanvas(QWidget):
                 f"background:{self.color}; border-radius:8px; border:1px solid {theme.BORDER_COLOR};"
             )
 
-    # �"?�"? Undo / Redo �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Undo / Redo
     def _push_undo(self, item: QGraphicsItem):
         self._undo_stack.append(item)
         self._redo_stack.clear()
@@ -1587,7 +1587,7 @@ class DrawingCanvas(QWidget):
             self._undo_stack.append(item)
             self.changed.emit()
 
-    # �"?�"? Imagem �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Imagem
     def _insert_image(self, pos: QPointF = None):
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1603,7 +1603,7 @@ class DrawingCanvas(QWidget):
             return
         self._insert_image_from_pixmap(pixmap, pos=pos, path=path)
 
-    # �"?�"? PDF �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # PDF
     def _attach_pdf(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1628,7 +1628,7 @@ class DrawingCanvas(QWidget):
         self.pdf_panel.setVisible(False)
         self.changed.emit()
 
-    # �"?�"? Limpar �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Limpar
     def _clear(self):
         self.scene.clear()
         self.scene._ruler_line_item = None
@@ -1802,7 +1802,7 @@ class DrawingCanvas(QWidget):
             and item.textInteractionFlags() != Qt.TextInteractionFlag.NoTextInteraction
         )
 
-    # �"?�"? Serialização �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?
+    # Serialização
     def to_json(self) -> str:
         items = []
         for item in self.scene.items():
