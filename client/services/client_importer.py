@@ -5,7 +5,7 @@ Colunas esperadas: Código, Nome, CPF/CNPJ
 Estratégia de performance:
   - Toda a planilha é lida e validada localmente com pandas (rápido).
   - Os registros válidos são enviados ao servidor numa única chamada HTTP
-    (POST /clients/bulk-import). O servidor resolve tudo numa transação.
+    (POST /clients/import/bulk). O servidor resolve tudo numa transação.
   - Resultado: segundos em vez de minutos, independente do tamanho da planilha.
 """
 import os
