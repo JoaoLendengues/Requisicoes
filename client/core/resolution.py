@@ -185,6 +185,10 @@ class ResolutionManager:
     def pdf_folder(self) -> str:
         return self._load_setting("pdf_folder") or r"Z:\REQUISIÇÕES (VENDAS)\PDF"
 
+    @property
+    def bg_folder(self) -> str:
+        return self._load_setting("bg_folder") or r"Z:\REQUISIÇÕES (VENDAS)\login_backgrounds"
+
     def save(self, **kwargs):
         data = self._read_file()
         for k, v in kwargs.items():
