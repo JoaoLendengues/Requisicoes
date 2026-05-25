@@ -342,7 +342,7 @@ class Sidebar(QWidget):
         self._active = "nova"
         self.setObjectName("SidebarColumn")
         self._setup_ui()
-        self.setFixedWidth(max(212, int(236 * scale)))
+        self.setFixedWidth(max(140, int(236 * scale)))
 
     def _setup_ui(self):
         self.setStyleSheet(
@@ -390,7 +390,7 @@ class Sidebar(QWidget):
         logo_label = QLabel()
         pix = QPixmap(LOGO_PATH)
         if not pix.isNull():
-            width = max(152, int(176 * self.scale))
+            width = max(100, int(176 * self.scale))
             pix = pix.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
             logo_label.setPixmap(pix)
         else:

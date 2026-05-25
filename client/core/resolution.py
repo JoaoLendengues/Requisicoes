@@ -6,6 +6,8 @@ SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "..", "settings.json")
 # ── Passos de escala disponíveis (referência: PROJECT_PARALLELv2) ─────────────
 # Cada entrada: (label exibida na UI, fator numérico ou None para automático)
 SCALE_STEPS: list[tuple[str, float | None]] = [
+    ("60%",  0.60),
+    ("75%",  0.75),
     ("85%",  0.85),
     ("90%",  0.90),
     ("100%", 1.00),
@@ -31,7 +33,25 @@ FONT_SIZE_FACTOR: dict[str, float] = {label: f for label, f in FONT_SIZE_STEPS}
 
 
 def _ratio_to_scale(ratio: float) -> float:
-    """Mapeia ratio de resolução (vs 1920×1080) para o fator de escala discreto."""
+    """Mapeia ratio de resolução (vs 1920×1080) para o fator de escala discreto.
+
+    Faixas (ratio = min(w/1920, h/1080)):
+      ≤ 0.50  →  60%   cobre 800×600  (0.42)
+      ≤ 0.60  →  75%   cobre 1024×768 (0.53)
+      ≤ 0.76  →  85%   cobre 1280×720 (0.67), 1366×768 (0.71), 1440×900 (0.75)
+      ≤ 0.88  →  90%   cobre 1600×900 (0.83)
+      ≤ 1.00  → 100%   cobre 1920×1080
+      ≤ 1.12  → 110%
+      ≤ 1.32  → 125%
+      ≤ 1.62  → 150%
+         >    → 175%   cobre 2560×1440 (1.33), 3840×2160 (2.0)
+    """
+    if ratio <= 0.50:
+        return 0.60
+    if ratio <= 0.60:
+        return 0.75
+    if ratio <= 0.76:
+        return 0.85
     if ratio <= 0.88:
         return 0.90
     if ratio <= 1.00:

@@ -59,8 +59,8 @@ class MainWindow(QMainWindow):
         if res.start_maximized:
             self.showMaximized()
         else:
-            width = max(1024, int(1280 * self.scale))
-            height = max(700, int(800 * self.scale))
+            width = max(640, int(1280 * self.scale))
+            height = max(480, int(800 * self.scale))
             self.resize(width, height)
         self._toast_manager = ToastManager(self)
         self._refresh_session_profile()
@@ -97,8 +97,8 @@ class MainWindow(QMainWindow):
         self.stack.setStyleSheet(f"background:{theme.CONTENT_BG};")
         # Tamanho mínimo escalado: abaixo disso o scroll entra em ação
         self.stack.setMinimumSize(
-            max(760, int(860 * self.scale)),
-            max(520, int(600 * self.scale)),
+            max(480, int(860 * self.scale)),
+            max(360, int(600 * self.scale)),
         )
 
         self._scroll_main = SmoothScrollArea()
