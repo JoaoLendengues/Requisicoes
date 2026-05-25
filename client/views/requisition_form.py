@@ -501,10 +501,16 @@ class CanvasDialog(QDialog):
     def _pin_to_primary_screen(self) -> None:
         """Dimensiona e posiciona o diálogo inteiramente na tela primária."""
         from PySide6.QtGui import QGuiApplication
+        from PySide6.QtWidgets import QLayout
         geo = QGuiApplication.primaryScreen().availableGeometry()
         w = int(geo.width()  * 0.90)
         h = int(geo.height() * 0.88)
-        # Hard cap: a janela nunca pode exceder os limites da tela
+        # Impede que o layout force a janela a crescer além dos limites da tela.
+        # SetNoConstraint: o layout para de propagar minimumSizeHint para a janela.
+        # setMinimumSize(1,1): remove qualquer mínimo explícito que o Qt tiver fixado.
+        if self.layout():
+            self.layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self.setMinimumSize(1, 1)
         self.setMaximumSize(geo.width(), geo.height())
         self.setGeometry(
             geo.x() + (geo.width()  - w) // 2,
