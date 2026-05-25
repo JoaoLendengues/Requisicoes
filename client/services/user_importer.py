@@ -3,17 +3,8 @@ Importacao de usuarios a partir de arquivo .ods / .xlsx.
 Colunas esperadas: Codigo, Nome, Contato e Setor.
 """
 
-import re
-import unicodedata
-
 from ..api import client as api
-from .client_importer import ImportResult, read_spreadsheet
-
-
-def _normalize(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", str(text).strip().lower())
-    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
-    return re.sub(r"[^a-z0-9]", "", normalized)
+from .client_importer import ImportResult, _is_blank, _normalize, read_spreadsheet
 
 
 _COL_MAP = {
@@ -33,13 +24,6 @@ _COL_MAP = {
     "departamento": "sector",
     "area": "sector",
 }
-
-
-def _is_blank(value) -> bool:
-    if value is None:
-        return True
-    text = str(value).strip()
-    return not text or text.lower() in {"nan", "none"}
 
 
 def _map_columns(labels) -> dict[str, str]:

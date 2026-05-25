@@ -111,7 +111,6 @@ def create_user(
 
 
 @router.post("/import/bulk", response_model=UserBulkImportResult)
-@router.post("/bulk-import", response_model=UserBulkImportResult)
 def bulk_import_users(
     items: List[UserBulkItem],
     db: Session = Depends(get_db),

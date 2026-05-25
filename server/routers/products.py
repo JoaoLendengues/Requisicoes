@@ -80,7 +80,6 @@ def update_product(
 
 
 @router.post("/import/bulk", response_model=ProductBulkImportResult)
-@router.post("/bulk-import", response_model=ProductBulkImportResult)
 def bulk_import_products(
     items: List[ProductBulkItem],
     db: Session = Depends(get_db),

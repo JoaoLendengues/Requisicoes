@@ -10,6 +10,7 @@ Estratégia de performance:
 """
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -47,18 +48,17 @@ class ImportResult:
 # ── Normalização de colunas ───────────────────────────────────────────────────
 def _normalize(text: str) -> str:
     """Remove acentos, espaços e converte para lowercase."""
-    replacements = {
-        "á":"a","à":"a","â":"a","ã":"a","ä":"a",
-        "é":"e","è":"e","ê":"e","ë":"e",
-        "í":"i","ì":"i","î":"i","ï":"i",
-        "ó":"o","ò":"o","ô":"o","õ":"o","ö":"o",
-        "ú":"u","ù":"u","û":"u","ü":"u",
-        "ç":"c","ñ":"n",
-    }
-    result = text.lower().strip()
-    for k, v in replacements.items():
-        result = result.replace(k, v)
-    return re.sub(r"[^a-z0-9/]", "", result)
+    normalized = unicodedata.normalize("NFKD", str(text).strip().lower())
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]", "", normalized)
+
+
+def _is_blank(value) -> bool:
+    """Retorna True se o valor é vazio, NaN ou None."""
+    if value is None:
+        return True
+    text = str(value).strip()
+    return not text or text.lower() in {"nan", "none"}
 
 
 _COL_MAP = {
@@ -69,7 +69,6 @@ _COL_MAP = {
     "name":        "name",
     "razaosocial": "name",
     "cpfcnpj":     "cnpj",
-    "cpf/cnpj":    "cnpj",
     "cnpj":        "cnpj",
     "cpf":         "cnpj",
 }
