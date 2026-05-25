@@ -370,7 +370,7 @@ class SettingsView(QWidget):
         title.setStyleSheet(
             f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
-        subtitle = QLabel("Preferencias e configuracoes do sistema.")
+        subtitle = QLabel("Preferências e configurações do sistema.")
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
@@ -398,7 +398,7 @@ class SettingsView(QWidget):
         self.date_label.setStyleSheet(
             f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
         )
-        self.updated_label = QLabel("Preferencias do sistema")
+        self.updated_label = QLabel("Preferências do sistema")
         self.updated_label.setProperty("muted", "1")
         self.updated_label.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
@@ -432,7 +432,7 @@ class SettingsView(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(max(16, int(18 * s)))
 
-        page_title = QLabel("CONFIGURACOES")
+        page_title = QLabel("CONFIGURAÇÕES")
         page_title.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
         )
@@ -469,10 +469,10 @@ class SettingsView(QWidget):
         self.input_url.setStyleSheet(_field_style(s))
         self.input_url.setPlaceholderText("http://192.168.1.100:5000")
         self.input_url.setReadOnly(True)
-        self.input_url.setToolTip("A URL do servidor e fixa e nao pode ser alterada nesta tela.")
+        self.input_url.setToolTip("A URL do servidor é fixa e não pode ser alterada nesta tela.")
         conn_grid.addWidget(self.input_url, 0, 1)
 
-        self.btn_test = QPushButton("Testar conexao")
+        self.btn_test = QPushButton("Testar conexão")
         self.btn_test.setFixedHeight(max(38, int(44 * s)))
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_test.clicked.connect(self._test_connection)
@@ -679,7 +679,7 @@ class SettingsView(QWidget):
 
         # ── Botão Salvar ──────────────────────────────────────────────────────
         layout.addSpacing(4)
-        self.btn_save = QPushButton("SALVAR CONFIGURACOES")
+        self.btn_save = QPushButton("SALVAR CONFIGURAÇÕES")
         self.btn_save.setFixedHeight(max(38, int(44 * s)))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_save.clicked.connect(self._save)
@@ -740,7 +740,7 @@ class SettingsView(QWidget):
     def _on_api_error(self, action: str, message: str):
         if action == "load_operational":
             self.operational_status.setText(
-                "Nao foi possivel sincronizar com o servidor. Usando valor local."
+                "Não foi possível sincronizar com o servidor. Usando valor local."
             )
             return
 
@@ -749,7 +749,7 @@ class SettingsView(QWidget):
 
     def _set_save_busy(self, busy: bool):
         self.btn_save.setEnabled(not busy)
-        self.btn_save.setText("SALVANDO..." if busy else "SALVAR CONFIGURACOES")
+        self.btn_save.setText("SALVANDO..." if busy else "SALVAR CONFIGURAÇÕES")
 
     def _finish_save(self, remote_ok: bool, error_message: str = ""):
         context = self._pending_save_context or {}
@@ -764,20 +764,20 @@ class SettingsView(QWidget):
             self.operational_status.setText(
                 f"Prazo sincronizado com o servidor: {self.input_pending_invoice_days.value()} dia(s)."
             )
-            QMessageBox.information(self, "Configuracoes", "Configuracoes aplicadas com sucesso.")
+            QMessageBox.information(self, "Configurações", "Configurações aplicadas com sucesso.")
             if scale_changed:
                 self.scale_changed.emit(res.scale)
             elif font_size_changed:
                 self.font_size_changed.emit()
         else:
             self.operational_status.setText(
-                "Nao foi possivel salvar o prazo no servidor. O valor local foi mantido."
+                "Não foi possível salvar o prazo no servidor. O valor local foi mantido."
             )
             QMessageBox.warning(
                 self,
-                "Atencao",
-                "As configuracoes locais foram salvas, mas o prazo de alerta "
-                f"de faturamento nao foi salvo no servidor.\n\n{error_message}",
+                "Atenção",
+                "As configurações locais foram salvas, mas o prazo de alerta "
+                f"de faturamento não foi salvo no servidor.\n\n{error_message}",
             )
             if scale_changed:
                 self.scale_changed.emit(res.scale)
@@ -820,12 +820,12 @@ class SettingsView(QWidget):
                 f"color:{theme.SUCCESS}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
         else:
-            self.lbl_conn_status.setText("Nao foi possivel conectar ao servidor")
+            self.lbl_conn_status.setText("Não foi possível conectar ao servidor")
             self.lbl_conn_status.setStyleSheet(
                 f"color:{theme.DANGER}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
         self.btn_test.setEnabled(True)
-        self.btn_test.setText("Testar conexao")
+        self.btn_test.setText("Testar conexão")
 
     def _save(self):
         selected_scale = next(
@@ -863,7 +863,7 @@ class SettingsView(QWidget):
             current = local_now()
             self.date_label.setText(_format_header_date(current))
             self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
-            QMessageBox.information(self, "Configuracoes", "Configuracoes aplicadas com sucesso.")
+            QMessageBox.information(self, "Configurações", "Configurações aplicadas com sucesso.")
             if scale_changed:
                 self.scale_changed.emit(res.scale)
             elif font_size_changed:
@@ -899,7 +899,7 @@ class SettingsView(QWidget):
             self._bg_table.setItem(row, 2, status_item)
 
     def _add_bg_campaign(self) -> None:
-        """Abre o dialog e adiciona uma nova campanha."""
+        """Abre o diálogo e adiciona uma nova campanha."""
         dialog = _CampaignDialog(self.scale, parent=self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -910,7 +910,7 @@ class SettingsView(QWidget):
             # Notifica LoginView se acessível via MainWindow
             self._notify_login_view_bg_changed()
         except Exception as exc:
-            QMessageBox.warning(self, "Erro", f"Nao foi possivel salvar a campanha.\n{exc}")
+            QMessageBox.warning(self, "Erro", f"Não foi possível salvar a campanha.\n{exc}")
 
     def _remove_bg_campaign(self) -> None:
         """Remove a campanha selecionada na tabela."""

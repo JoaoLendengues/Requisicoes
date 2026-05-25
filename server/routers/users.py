@@ -40,7 +40,7 @@ def _resolve_email(code: str, email: str | None) -> str:
 def _get_user_or_404(db: Session, user_id: int) -> User:
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Usuario nao encontrado")
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
     return user
 
 

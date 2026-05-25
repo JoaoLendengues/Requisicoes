@@ -127,7 +127,7 @@ def get_client(
 ):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Cliente nao encontrado")
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
     return client
 
 
@@ -140,7 +140,7 @@ def update_client(
 ):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Cliente nao encontrado")
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
 
     update_data = data.model_dump(exclude_unset=True)
     for k, v in update_data.items():
@@ -162,12 +162,12 @@ def bulk_import_clients(
 ):
     """
     Importa uma lista de clientes de uma vez.
-    Clientes com codigo ja existente sao atualizados; os demais sao criados.
-    Tudo ocorre numa unica transacao - muito mais rapido que chamadas individuais.
+    Clientes com código já existente são atualizados; os demais são criados.
+    Tudo ocorre numa única transação - muito mais rápido que chamadas individuais.
     """
     result = BulkImportResult()
 
-    # Carrega todos os clientes existentes indexados por codigo (uma so query)
+    # Carrega todos os clientes existentes indexados por código (uma só query)
     existing: dict[str, Client] = {
         c.code: c for c in db.query(Client).all()
     }
@@ -186,7 +186,7 @@ def bulk_import_clients(
             continue
 
         if code in existing:
-            # Atualiza nome e CNPJ (so sobrescreve CNPJ se nao conflitar)
+            # Atualiza nome e CNPJ (só sobrescreve CNPJ se não conflitar)
             cli = existing[code]
             cli.name = name
             if cnpj and (cnpj == cli.cnpj or cnpj not in cnpj_seen):
@@ -224,6 +224,6 @@ def deactivate_client(
 ):
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
-        raise HTTPException(status_code=404, detail="Cliente nao encontrado")
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
     client.is_active = False
     db.commit()

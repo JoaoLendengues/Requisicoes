@@ -86,13 +86,13 @@ def first_access(data: FirstAccessRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario nao encontrado para primeiro acesso",
+            detail="Usuário não encontrado para primeiro acesso",
         )
 
     if not user.must_change_password and (user.hashed_password or "").strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Esse usuario ja possui senha cadastrada. Use o login normal.",
+            detail="Esse usuário já possui senha cadastrada. Use o login normal.",
         )
 
     password = (data.password or "").strip()

@@ -99,10 +99,10 @@ def import_users(path: str, on_progress=None) -> ImportResult:
     df, col_map = _prepare_dataframe(df)
     if "code" not in col_map or "name" not in col_map:
         found_columns = [str(col).strip() for col in list(df.columns) if not _is_blank(col)]
-        found_text = ", ".join(found_columns[:8]) if found_columns else "nenhuma coluna legivel"
+        found_text = ", ".join(found_columns[:8]) if found_columns else "nenhuma coluna legível"
         result.errors.append(
-            "Colunas obrigatorias nao encontradas. "
-            "Esperado: 'Codigo' e 'Nome'. "
+            "Colunas obrigatórias não encontradas. "
+            "Esperado: 'Código' e 'Nome'. "
             f"Encontrado: {found_text}."
         )
         return result
@@ -130,7 +130,7 @@ def import_users(path: str, on_progress=None) -> ImportResult:
         items.append(item)
 
     if not items:
-        result.errors.append("Nenhum usuario valido encontrado na planilha.")
+        result.errors.append("Nenhum usuário válido encontrado na planilha.")
         return result
 
     if on_progress:
@@ -145,27 +145,27 @@ def import_users(path: str, on_progress=None) -> ImportResult:
     except api.APIError as exc:
         if exc.status_code == 405:
             result.errors.append(
-                "O servidor atual ainda nao reconheceu a importacao em lote de usuarios. "
+                "O servidor atual ainda não reconheceu a importação em lote de usuários. "
                 "Reinicie o servidor e tente novamente."
             )
         elif exc.status_code == 404:
             result.errors.append(
-                "A rota de importacao de usuarios nao foi encontrada no servidor atual. "
+                "A rota de importação de usuários não foi encontrada no servidor atual. "
                 "Reinicie o servidor e tente novamente."
             )
         elif exc.status_code == 403:
             result.errors.append(
-                "Seu usuario nao tem permissao para importar usuarios."
+                "Seu usuário não tem permissão para importar usuários."
             )
         elif exc.status_code == 401:
             result.errors.append(
-                "Sua sessao expirou. Faca login novamente e repita a importacao."
+                "Sua sessão expirou. Faça login novamente e repita a importação."
             )
         else:
             result.errors.append(str(exc))
         return result
     except Exception as exc:
-        result.errors.append(f"Erro na comunicacao com o servidor: {exc}")
+        result.errors.append(f"Erro na comunicação com o servidor: {exc}")
         return result
 
     if on_progress:

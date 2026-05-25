@@ -1327,7 +1327,7 @@ def generate_pdf(
     canvas_json: str = "{}",
 ) -> str:
     if not HAS_REPORTLAB:
-        raise ImportError("reportlab nÃ£o instalado. Execute: pip install reportlab>=4.0.0")
+        raise ImportError("reportlab não instalado. Execute: pip install reportlab>=4.0.0")
 
     _register_pdf_fonts()
     os.makedirs(folder, exist_ok=True)

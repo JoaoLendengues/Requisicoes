@@ -401,13 +401,13 @@ def _apply_manual_status_transition(
     if req.status == RequisitionStatus.AGUARDANDO_FATURAMENTO:
         raise HTTPException(
             status_code=400,
-            detail="Pedidos aguardando faturamento sÃ³ podem ser marcados como faturados",
+            detail="Pedidos aguardando faturamento só podem ser marcados como faturados",
         )
 
     if req.status == RequisitionStatus.FATURADO:
         raise HTTPException(
             status_code=400,
-            detail="Pedidos faturados nÃ£o podem retornar para outro status operacional",
+            detail="Pedidos faturados não podem retornar para outro status operacional",
         )
 
     req.status = new_status

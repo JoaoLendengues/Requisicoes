@@ -44,7 +44,7 @@ if "FATURADO" not in COLS:
 _LEGACY_INVOICED_OPTIONS = (
     ("TODOS", ""),
     ("SIM", "sim"),
-    ("NÃ£o", "nao"),
+    ("NÃO", "nao"),
 )
 
 INVOICED_OPTIONS = (

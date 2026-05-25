@@ -5,7 +5,7 @@ import webbrowser
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor, QPalette, QPixmap
+from PySide6.QtGui import QColor, QFontMetrics, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -483,7 +483,7 @@ class OrderCenterView(QWidget):
                 theme.WARNING,
             ),
             "em_producao": (
-                "Ordens em andamento com registro de recebimento na fabrica.",
+                "Ordens em andamento com registro de recebimento na fábrica.",
                 theme.PRIMARY,
             ),
             "aguardando_faturamento": (
@@ -491,7 +491,7 @@ class OrderCenterView(QWidget):
                 theme.SUCCESS,
             ),
             "faturados": (
-                "Pedidos faturados com consulta rÃ¡pida do PDF e histÃ³rico da operaÃ§Ã£o.",
+                "Pedidos faturados com consulta rápida do PDF e histórico da operação.",
                 theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
             ),
             "cancelados": (
@@ -504,11 +504,11 @@ class OrderCenterView(QWidget):
             ),
         }
         section_meta["aguardando_faturamento"] = (
-            "Pedidos finalizados na producao e aguardando faturamento do vendedor.",
+            "Pedidos finalizados na produção e aguardando faturamento do vendedor.",
             theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
         )
         section_meta["faturados"] = (
-            "Pedidos faturados com consulta rapida do PDF e historico da operacao.",
+            "Pedidos faturados com consulta rápida do PDF e histórico da operação.",
             theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
         )
         subtitle_text, accent_color = section_meta[key]
@@ -930,13 +930,17 @@ class OrderCenterView(QWidget):
         btn_receipt = box.addButton("Aguardando recebimento", QMessageBox.ButtonRole.ActionRole)
         btn_close = box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
         apply_message_box_theme(box)
-        # Mantém os botões com o mesmo padrão visual e evita corte de texto.
-        btn_wide = max(150, int(172 * self.scale))
-        btn_narrow = max(120, int(132 * self.scale))
-        btn_edit.setMinimumWidth(btn_wide)
-        btn_receipt.setMinimumWidth(btn_wide)
-        btn_close.setMinimumWidth(btn_narrow)
-        box.setMinimumWidth(max(560, int(620 * self.scale)))
+        # Ajusta as larguras pelo texto real para evitar truncamento em qualquer escala.
+        metrics = QFontMetrics(btn_edit.font())
+        horizontal_padding = max(44, int(52 * self.scale))
+        btn_edit_w = max(170, metrics.horizontalAdvance(btn_edit.text()) + horizontal_padding)
+        btn_receipt_w = max(170, metrics.horizontalAdvance(btn_receipt.text()) + horizontal_padding)
+        btn_close_w = max(120, metrics.horizontalAdvance(btn_close.text()) + horizontal_padding)
+        btn_edit.setMinimumWidth(btn_edit_w)
+        btn_receipt.setMinimumWidth(btn_receipt_w)
+        btn_close.setMinimumWidth(btn_close_w)
+        row_padding = max(88, int(96 * self.scale))
+        box.setMinimumWidth(max(620, btn_edit_w + btn_receipt_w + btn_close_w + row_padding))
         btn_receipt.setEnabled(bool(destination))
         box.exec()
 
