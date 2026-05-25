@@ -20,7 +20,14 @@ def _build_engine():
         return engine
 
     # Oracle / PostgreSQL — só muda a URL no .env
-    return create_engine(settings.DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
+    return create_engine(
+        settings.DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=25,        # conexões permanentes abertas no pool
+        max_overflow=75,     # conexões extras em pico → máximo 100 simultâneas
+        pool_timeout=30,     # segundos esperando por conexão livre antes de lançar erro
+        pool_recycle=3600,   # recria conexões a cada 1h (evita conexões zumbis)
+    )
 
 
 engine = _build_engine()

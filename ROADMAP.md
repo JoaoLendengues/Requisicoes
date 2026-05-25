@@ -19,30 +19,11 @@ Responsaveis:
 
 ## Correcao de Bugs
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-### 1. Calculadora de Peso
-Adicionar uma calculadora de peso acessível dentro do formulário de requisição.
-=======
 ### Prioridade Alta
-- [ ] Ajustar filtro de datas da tela "HISTORICO/BUSCA" (esta puxando datas anteriores, nao somente a data selecionada)
-- [ ] Corrigir bug da tela de desenho: linha iniciando em ponto pre-definido
-- [ ] Ajustar contador de notificacoes na tela de notificacoes
-- [ ] Arrumar o fuso horario do sistema
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
-### Prioridade Alta
->>>>>>> a4fc778e62679e8be666b78334a8349b15bcf1d2
 
-- [ ] [cappinho] Ajustar filtro de datas da tela "HISTORICO/BUSCA" (esta puxando datas anteriores, nao somente a data selecionada)
+- [ ] [cappinho] Ajustar filtro de datas da tela "HISTORICO/BUSCA" (puxando datas anteriores, nao somente a data selecionada)
 - [ ] [cappinho] Corrigir contador de notificacoes na tela de notificacoes (badge nao reflete contagem correta)
 - [ ] [victor]   Corrigir bug da tela de desenho: linha iniciando em ponto pre-definido
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 
 ### Prioridade Media
 
@@ -50,55 +31,55 @@ Adicionar uma calculadora de peso acessível dentro do formulário de requisiç�
 
 ### Prioridade Baixa
 
-- [ ] [victor]   Refinar o raio do ima para ficar mais amplo (expandir um pouco mais)
+- [ ] [victor]   Refinar o raio do ima para ficar mais amplo
+
+---
+
+## v1.1.0 — Em andamento
+
+### Prioridade Alta
+
+- [ ] [joao]     Guia rapido por nivel de acesso (tutorial interativo por role ao primeiro login)
+- [ ] [joao]     Sistema de backup periodico do banco de dados
+
+### Prioridade Media
+
+- [ ] [victor]   Melhorar velocidade de linhas no editor de desenho
+- [ ] [joao]     Alterar diretorio dos login_backgrounds para o servidor (\\10.1.1.140\ti\REQUISICOES (VENDAS)\login_backgrounds)
+
+### Prioridade Baixa
+
+- [ ] [victor]   Ajustar botoes do editor de desenho (nomes cortados em diferentes resolucoes)
+- [ ] [victor]   Mudar logo do sidebar nos widgets A&R e Pinheiro Industria
 
 ---
 
 ## Proximas Implementacoes
 
 ### Prioridade Alta
-<<<<<<< Updated upstream
 
-- [ ] [joao]     Implementar sistema de atualizacoes (publicar versoes no GitHub e gerar executavel com Inno Setup)
 - [ ] [joao]     Refinar niveis de acesso (revisar permissoes por role em todas as telas)
 
 ### Prioridade Media
 
 - [ ] [cappinho] Melhorar personalizacao da tela de configuracao
+- [ ] [cappinho] Implementar filtro por vendedor na tela "HISTORICO/BUSCA"
+- [ ] [victor]   Adicionar ferramenta Curva no editor de desenho (atalho: tecla C)
 - [ ] [victor]   Colocar emojis na impressao dos PDFs
+- [ ] [victor]   No PDF, alinhar mais a esquerda o titulo "Requisicao", data e nome do vendedor
 
 ### Prioridade Baixa
 
 - [ ] [victor]   Polimento geral do app
+- [ ] [joao]     Revisao geral do codigo
 
-<<<<<<< Updated upstream
 ---
-=======
-- [ ] Implementar sistema de atualizacoes (publicar versoes no GitHub e gerar executavel com Inno Setup)
-- [ ] Refinar niveis de acesso
-- [ ] Implementar sistema de backup periodico do banco de dados
-
-### Prioridade Media
-- [ ] Melhorar personalizacao da tela de configuracao
-- [ ] Colocar emojis na impressao dos PDFs
-- [ ] No PDF, alinhar mais a esquerda o titulo "Requisicao", data e nome do vendedor, aproximando de telefones, email e SIA/TAGUATINGA
-- [ ] Implementar filtro por vendedor na tela "HISTORICO/BUSCA"
-- [ ] Polimento de experiencia de usuario e performance do sistema
-- [ ] Adicionar ferramenta Curva no editor de desenho, com atalho de teclado na letra "C"
-
-### Prioridade Baixa
-- [ ] Polimento geral do app
-- [ ] Revisao geral do codigo
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 
 ## Novas Ideias
 
 ### Prioridade Alta
 
-- [ ] [victor]   Ajustar design dos pop-ups de notificacoes (minimalista e moderno ao mesmo tempo)
+- [ ] [victor]   Ajustar design dos pop-ups de notificacoes (minimalista e moderno)
 
 ### Prioridade Media
 
@@ -109,24 +90,20 @@ Adicionar uma calculadora de peso acessível dentro do formulário de requisiç�
 - [ ] [victor]   Criar checklist de consistencia visual antes de cada release
 
 ---
-=======
-### Prioridade Alta
-- [ ] Implementar sistema de atualizacoes (publicar versoes no GitHub e gerar executavel com Inno Setup)
-- [ ] Refinar niveis de acesso
-- [ ] Implementar sistema de backup periodico do banco de dados
 
-### Prioridade Media
-- [ ] Melhorar personalizacao da tela de configuracao
-- [ ] Colocar emojis na impressao dos PDFs
-- [ ] No PDF, alinhar mais a esquerda o titulo "Requisicao", data e nome do vendedor, aproximando de telefones, email e SIA/TAGUATINGA
-- [ ] Implementar filtro por vendedor na tela "HISTORICO/BUSCA"
-- [ ] Polimento de experiencia de usuario e performance do sistema
-- [ ] Adicionar ferramenta Curva no editor de desenho, com atalho de teclado na letra "C"
+## Concluido
 
-### Prioridade Baixa
-- [ ] Polimento geral do app
-- [ ] Revisao geral do codigo
->>>>>>> Stashed changes
+- [x] 2026-05-25 [joao]     Fix SSE: endpoint de notificacoes segurava conexao de banco por usuario logado (esgotava pool com 10+ usuarios)
+- [x] 2026-05-25 [joao]     Backend: adicionar indices de performance nas tabelas requisitions, requisition_items, status_history e notifications
+- [x] 2026-05-25 [joao]     Backend: aumentar pool de conexoes para 100 simultaneas (pool_size=25, max_overflow=75)
+- [x] 2026-05-25 [joao]     Corrigir alerta "Sem permissao para acessar destino de producao" exibido para vendedores ao login
+- [x] 2026-05-24 [joao]     Redirecionar PDF por vendedor: pasta por codigo de usuario em \\10.1.1.140\ti\REQUISICOES (VENDAS)\PDF\VENDEDORES
+- [x] 2026-05-24 [joao]     Gerentes redirecionam PDF para pasta do vendedor da requisicao
+- [x] 2026-05-24 [joao]     Implementar sistema de atualizacoes (GitHub Actions + executavel via Inno Setup)
+- [x] 2026-05-24 [joao]     Corrigir SECRET_KEY padrao exposta no config (adicionada ao .env)
+- [x] 2026-05-24 [joao]     Criar icone do app e configurar no executavel e instalador
+
+---
 
 ## Como usar este arquivo
 

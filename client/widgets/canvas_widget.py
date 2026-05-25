@@ -1255,63 +1255,70 @@ class DrawingCanvas(QWidget):
             l.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             return l
 
-        # Linha 1: Ferramentas + Cor + Estilo + Fonte
-        row1 = QHBoxLayout()
-        row1.setSpacing(4)
         self._tool_btns: dict[Tool, QPushButton] = {}
 
         tools = [
-            (Tool.SELECT,  "🖱️ Selec.",   "S"),
-            (Tool.PEN,     "✏️ Caneta",   "P"),
-            (Tool.ERASER,  "🧹 Borracha", "X"),
-            (Tool.LINE,    "📏 Linha",    "L"),
-            (Tool.RULER,   "📐 Régua",    "U"),
-            (Tool.ARROW,   "➡ Seta",      "A"),
-            (Tool.CURVE,   "〰 Curva",    "C"),
-            (Tool.TRIANGLE, "△ Triang.", "G"),
+            (Tool.SELECT,   "🖱️ Selec.",   "S"),
+            (Tool.PEN,      "✏️ Caneta",   "P"),
+            (Tool.ERASER,   "🧹 Borracha", "X"),
+            (Tool.LINE,     "📏 Linha",    "L"),
+            (Tool.RULER,    "📐 Régua",    "U"),
+            (Tool.ARROW,    "➡ Seta",      "A"),
+            (Tool.CURVE,    "〰 Curva",    "C"),
+            (Tool.TRIANGLE, "△ Triang.",  "G"),
             (Tool.PENTAGON, "⬟ Penta",    "N"),
-            (Tool.HEXAGON,  "⬢ Hexa",      "H"),
-            (Tool.RECT,    "⬛ Ret.",     "R"),
-            (Tool.ELLIPSE, "⭕ Elipse",   "E"),
-            (Tool.TEXT,    "T Texto",     "T"),
+            (Tool.HEXAGON,  "⬢ Hexa",     "H"),
+            (Tool.RECT,     "⬛ Ret.",     "R"),
+            (Tool.ELLIPSE,  "⭕ Elipse",   "E"),
+            (Tool.TEXT,     "T Texto",     "T"),
         ]
+
+        # Linha 1a: Ferramentas (separado das propriedades para não cortar nomes)
+        row_tools = QHBoxLayout()
+        row_tools.setSpacing(4)
         for t, label, key in tools:
-            btn = QPushButton(f"{label} [{key}]")
+            btn = QPushButton(label)
             btn.setCheckable(True)
             btn.setFixedHeight(fh)
+            btn.setToolTip(f"Atalho: {key}")
             btn.clicked.connect(lambda checked, tool=t: self._set_tool(tool))
             btn.setStyleSheet(self._tool_btn_style())
             self._tool_btns[t] = btn
-            row1.addWidget(btn)
+            row_tools.addWidget(btn)
+        row_tools.addStretch()
+        layout.addLayout(row_tools)
 
-        row1.addSpacing(8)
+        # Linha 1b: Propriedades do traço
+        row_props = QHBoxLayout()
+        row_props.setSpacing(4)
 
         # Cor
         self.btn_color = QPushButton("🎨")
         self.btn_color.setFixedSize(fh, fh)
+        self.btn_color.setToolTip("Cor do traço")
         self.btn_color.setStyleSheet(
             f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
             f"font-size:{fs}pt;"
         )
         self.btn_color.clicked.connect(self._pick_color)
-        row1.addWidget(self.btn_color)
+        row_props.addWidget(self.btn_color)
 
-        row1.addSpacing(8)
+        row_props.addSpacing(8)
 
         # Espessura
-        row1.addWidget(_lbl("Esp.:"))
+        row_props.addWidget(_lbl("Esp.:"))
         self.spin_width = QSpinBox()
         self.spin_width.setRange(1, 26)
         self.spin_width.setValue(self.pen_width)
         self.spin_width.setFixedWidth(max(56, int(68 * s)))
         self.spin_width.setFixedHeight(fh)
         self.spin_width.valueChanged.connect(self._on_pen_width_changed)
-        row1.addWidget(self.spin_width)
+        row_props.addWidget(self.spin_width)
 
-        row1.addSpacing(8)
+        row_props.addSpacing(8)
 
         # Estilo de linha
-        row1.addWidget(_lbl("Linha:"))
+        row_props.addWidget(_lbl("Linha:"))
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
         self.combo_style.setFixedWidth(max(126, int(152 * s)))
@@ -1322,12 +1329,12 @@ class DrawingCanvas(QWidget):
         self.combo_style.currentIndexChanged.connect(
             lambda i: setattr(self, "pen_style", self.combo_style.itemData(i))
         )
-        row1.addWidget(self.combo_style)
+        row_props.addWidget(self.combo_style)
 
-        row1.addSpacing(8)
+        row_props.addSpacing(8)
 
         # Tamanho da fonte
-        row1.addWidget(_lbl("Fonte:"))
+        row_props.addWidget(_lbl("Fonte:"))
         self.spin_font = QSpinBox()
         self.spin_font.setRange(6, 180)
         self.spin_font.setValue(self.font_size)
@@ -1335,10 +1342,10 @@ class DrawingCanvas(QWidget):
         self.spin_font.setFixedWidth(max(76, int(92 * s)))
         self.spin_font.setFixedHeight(fh)
         self.spin_font.valueChanged.connect(self._on_font_size_changed)
-        row1.addWidget(self.spin_font)
+        row_props.addWidget(self.spin_font)
 
-        row1.addStretch()
-        layout.addLayout(row1)
+        row_props.addStretch()
+        layout.addLayout(row_props)
 
         # Linha 2: Ações
         row2 = QHBoxLayout()

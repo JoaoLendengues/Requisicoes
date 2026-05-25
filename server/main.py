@@ -53,6 +53,18 @@ def _migrate():
         "CREATE INDEX IF NOT EXISTS idx_clients_code_trgm  ON clients USING GIN (code  gin_trgm_ops)",
         "CREATE INDEX IF NOT EXISTS idx_clients_cnpj_trgm  ON clients USING GIN (cnpj  gin_trgm_ops)",
         "CREATE INDEX IF NOT EXISTS idx_clients_cnpj_digits_trgm ON clients USING GIN (cnpj_digits gin_trgm_ops)",
+
+        # ── Índices de performance para requisições ───────────────────────────
+        # PostgreSQL NÃO cria índice automático em colunas FK — apenas em PK/UNIQUE.
+        # Estas colunas aparecem em filtros e ORDER BY em quase todos os endpoints.
+        "CREATE INDEX IF NOT EXISTS idx_requisitions_status          ON requisitions (status)",
+        "CREATE INDEX IF NOT EXISTS idx_requisitions_vendor_id       ON requisitions (vendor_id)",
+        "CREATE INDEX IF NOT EXISTS idx_requisitions_client_id       ON requisitions (client_id)",
+        "CREATE INDEX IF NOT EXISTS idx_requisitions_created_at      ON requisitions (created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_requisitions_prod_destination ON requisitions (production_destination)",
+        "CREATE INDEX IF NOT EXISTS idx_req_items_requisition_id     ON requisition_items (requisition_id)",
+        "CREATE INDEX IF NOT EXISTS idx_status_history_requisition_id ON status_history (requisition_id)",
+        "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread    ON notifications (user_id, read)",
     ]
     for stmt in stmts:
         try:

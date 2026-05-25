@@ -78,6 +78,12 @@ async def stream_notifications(
     if current_user.role in (Role.ADMIN, Role.GERENTE):
         initial.extend(stuck_requisition_events(db))
 
+    # Libera a conexão de banco ANTES de iniciar o stream.
+    # O SSE fica aberto enquanto o usuário estiver logado; sem este close()
+    # cada usuário conectado seguraria uma conexão do pool indefinidamente,
+    # esgotando o pool (pool_size=10) com ~10 usuários simultâneos.
+    db.close()
+
     return StreamingResponse(
         sse_manager.event_stream(current_user.id, initial),
         media_type="text/event-stream",

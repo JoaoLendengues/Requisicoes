@@ -274,7 +274,8 @@ class ProductionView(QWidget):
         self._machine_cards: dict[int, dict] = {}
         self._machines_data: list[dict] = []
         self._setup_ui()
-        self.refresh()
+        if self.destination in session.visible_production_destinations:
+            self.refresh()
 
     def _setup_ui(self):
         s = self.scale
