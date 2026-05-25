@@ -112,6 +112,38 @@ def _field_style(scale: float) -> str:
     )
 
 
+def _spinbox_style(scale: float) -> str:
+    """Estilo completo para QSpinBox: campo + botões arredondados + setas finas."""
+    fs   = max(9, int(10 * scale))
+    bw   = max(20, int(24 * scale))   # largura dos botões up/down
+    aw   = max(7,  int(9  * scale))   # tamanho das setas
+    return (
+        f"QSpinBox {{"
+        f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:14px;"
+        f"  padding:9px {bw + 4}px 9px 12px; font-size:{fs}pt; color:{theme.TEXT_DARK};"
+        f"  selection-background-color:{_rgba(theme.PRIMARY, 24)}; selection-color:{theme.TEXT_DARK};"
+        f"}}"
+        f"QSpinBox::up-button {{"
+        f"  subcontrol-origin:border; subcontrol-position:top right;"
+        f"  width:{bw}px; border:none; background:transparent;"
+        f"  border-top-right-radius:13px;"
+        f"}}"
+        f"QSpinBox::down-button {{"
+        f"  subcontrol-origin:border; subcontrol-position:bottom right;"
+        f"  width:{bw}px; border:none; background:transparent;"
+        f"  border-bottom-right-radius:13px;"
+        f"}}"
+        f"QSpinBox::up-button:hover, QSpinBox::down-button:hover {{"
+        f"  background:{_rgba(theme.PRIMARY, 18)};"
+        f"}}"
+        f"QSpinBox::up-button:pressed, QSpinBox::down-button:pressed {{"
+        f"  background:{_rgba(theme.PRIMARY, 36)};"
+        f"}}"
+        f"QSpinBox::up-arrow   {{ width:{aw}px; height:{aw}px; }}"
+        f"QSpinBox::down-arrow {{ width:{aw}px; height:{aw}px; }}"
+    )
+
+
 def _date_edit_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
@@ -561,26 +593,28 @@ class SettingsView(QWidget):
         billing_vl.addWidget(_section("Alertas de Faturamento", s))
         billing_vl.addWidget(_separator())
 
-        billing_grid = QGridLayout()
-        billing_grid.setSpacing(max(8, int(10 * s)))
+        billing_row = QHBoxLayout()
+        billing_row.setSpacing(max(8, int(10 * s)))
 
-        billing_grid.addWidget(self._lbl("Dias para notificar gerente:", s), 0, 0)
+        billing_row.addWidget(self._lbl("Dias para notificar gerente:", s))
         self.input_pending_invoice_days = QSpinBox()
         self.input_pending_invoice_days.setRange(1, 3650)
         self.input_pending_invoice_days.setValue(
             int(res._read_file().get("pending_invoice_alert_days", 1) or 1)
         )
         self.input_pending_invoice_days.setFixedHeight(max(38, int(44 * s)))
-        self.input_pending_invoice_days.setStyleSheet(_field_style(s))
-        billing_grid.addWidget(self.input_pending_invoice_days, 0, 1)
+        self.input_pending_invoice_days.setFixedWidth(max(110, int(130 * s)))
+        self.input_pending_invoice_days.setStyleSheet(_spinbox_style(s))
+        billing_row.addWidget(self.input_pending_invoice_days)
+        billing_row.addStretch()
+        billing_vl.addLayout(billing_row)
 
         self.operational_status = QLabel("Sincronizando prazo de alerta com o servidor...")
         self.operational_status.setProperty("muted", "1")
         self.operational_status.setStyleSheet(
             f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
         )
-        billing_grid.addWidget(self.operational_status, 1, 1, 1, 2)
-        billing_vl.addLayout(billing_grid)
+        billing_vl.addWidget(self.operational_status)
 
         layout.addWidget(self._billing_section)
         self._billing_section.setVisible(session.settings_show_billing)
@@ -1006,7 +1040,7 @@ class SettingsView(QWidget):
         self._page_content.setStyleSheet(f"QWidget#settingsContainer {{ background:{bg}; }}")
         self.input_url.setStyleSheet(_field_style(s))
         if session.settings_show_billing:
-            self.input_pending_invoice_days.setStyleSheet(_field_style(s))
+            self.input_pending_invoice_days.setStyleSheet(_spinbox_style(s))
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
