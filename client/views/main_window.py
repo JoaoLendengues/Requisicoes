@@ -28,14 +28,13 @@ from .feedback_view import FeedbackView
 
 
 import os
-import re
+
+from ..core.pdf_folders import vendor_subfolder as _vendor_subfolder
 
 
-def _vendor_pdf_folder(base_folder: str, user_name: str) -> str:
-    """Retorna base_folder/<NOME_VENDEDOR>, criando a subpasta se necessário."""
-    clean = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", user_name or "").strip()
-    subfolder = clean or "VENDEDOR"
-    return os.path.join(base_folder, subfolder)
+def _vendor_pdf_folder(base_folder: str, user_code: str, user_name: str) -> str:
+    """Retorna base_folder/<SUBPASTA_VENDEDOR>."""
+    return os.path.join(base_folder, _vendor_subfolder(user_code, user_name))
 
 
 PAGE_FORM = 0
@@ -494,7 +493,7 @@ class MainWindow(QMainWindow):
         if not base_folder:
             return ""
 
-        folder = _vendor_pdf_folder(base_folder, _session.user_name)
+        folder = _vendor_pdf_folder(base_folder, _session.user_code, _session.user_name)
 
         try:
             return generate_pdf(req, client, obs, folder, canvas_json)

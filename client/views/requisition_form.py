@@ -1574,11 +1574,11 @@ class RequisitionForm(QWidget):
         return pdf_candidates[0]
 
     def _resolve_pdf_output_folder(self, require_configured_folder: bool = True) -> str:
-        import re as _re
+        from ..core.pdf_folders import vendor_subfolder as _vendor_subfolder
         base = res.pdf_folder.strip()
         if base:
-            clean = _re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", session.user_name or "").strip()
-            return os.path.join(base, clean or "VENDEDOR")
+            subfolder = _vendor_subfolder(session.user_code, session.user_name)
+            return os.path.join(base, subfolder)
 
         if require_configured_folder:
             raise RuntimeError(
