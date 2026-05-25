@@ -77,29 +77,6 @@ def _notify_admins_gerentes(
     ]
 
 
-def _notify_gerentes(
-    db: Session,
-    type_: str,
-    title: str,
-    message: str,
-    req_id: int | None,
-    exclude_ids: set[int] | None = None,
-) -> list[Notification]:
-    users = (
-        db.query(User)
-        .filter(
-            User.role == Role.GERENTE,
-            User.is_active == True,
-        )
-        .all()
-    )
-    return [
-        _create(db, user.id, type_, title, message, req_id)
-        for user in users
-        if user.id not in (exclude_ids or set())
-    ]
-
-
 def _latest_status_changed_at(
     req: Requisition,
     status_value: RequisitionStatus | str,

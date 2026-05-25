@@ -183,7 +183,7 @@ class ResolutionManager:
 
     @property
     def pdf_folder(self) -> str:
-        return r"Z:\REQUISIÇÕES (VENDAS)\PDF"
+        return self._load_setting("pdf_folder") or r"Z:\REQUISIÇÕES (VENDAS)\PDF"
 
     def save(self, **kwargs):
         data = self._read_file()
@@ -197,8 +197,6 @@ class ResolutionManager:
                 self._server_url = v
             if k == "maximized":
                 self._maximized = v
-            if k == "pdf_folder":
-                self._pdf_folder = v
             if k == "dark_mode":
                 self._dark_mode = bool(v)
         self._write_file(data)

@@ -127,16 +127,6 @@ def get_client(client_id: int) -> dict:
     return _check(_get_pool().get(f"/clients/{client_id}", headers=_headers()))
 
 
-def create_client(data: dict) -> dict:
-    with _cli() as client:
-        return _check(client.post("/clients/", json=data))
-
-
-def update_client(client_id: int, data: dict) -> dict:
-    with _cli() as client:
-        return _check(client.patch(f"/clients/{client_id}", json=data))
-
-
 def bulk_import_clients(items: list) -> dict:
     with _cli() as client:
         return _check(client.post("/clients/import/bulk", json=items, timeout=120))
@@ -167,7 +157,6 @@ def list_requisitions(
     production_destination: str = "",
     production_machine: str = "",
     invoiced: bool | None = None,
-    created_by_user_id: int | None = None,
 ) -> list:
     with _cli() as client:
         params: dict = {"skip": skip, "limit": limit}
@@ -185,8 +174,6 @@ def list_requisitions(
             params["production_machine"] = production_machine
         if invoiced is not None:
             params["invoiced"] = invoiced
-        if created_by_user_id is not None:
-            params["created_by_user_id"] = created_by_user_id
         return _check(client.get("/requisitions/", params=params))
 
 
@@ -200,12 +187,9 @@ def get_technical_panel_summary() -> dict:
         return _check(client.get("/requisitions/technical-panel/summary"))
 
 
-def get_order_center(created_by_user_id: int | None = None) -> dict:
+def get_order_center() -> dict:
     with _cli() as client:
-        params: dict = {}
-        if created_by_user_id is not None:
-            params["created_by_user_id"] = created_by_user_id
-        return _check(client.get("/requisitions/order-center/summary", params=params))
+        return _check(client.get("/requisitions/order-center/summary"))
 
 
 def get_operational_settings() -> dict:
