@@ -17,6 +17,12 @@ arquivos/
 *.pdf
 *.xlsm
 
+# Build / empacotamento (PyInstaller + Inno Setup)
+build/
+dist/
+installer_output/
+*.spec.bak
+
 # Preferências locais do cliente (tema, escala, etc.) — não versionar
 client/settings.json
 
