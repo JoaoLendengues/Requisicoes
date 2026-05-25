@@ -1120,7 +1120,9 @@ class DrawingView(QGraphicsView):
         self._pan_start  = None
         self._space_held = False
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        # AnchorViewCenter: mantém o centro ao redimensionar (AnchorUnderMouse causava
+        # scroll incorreto no primeiro show, pois o mouse ainda não está no canvas)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         vp = self.viewport()
         vp.installEventFilter(self)
         vp.setMouseTracking(True)   # receber MouseMove sem botão pressionado
@@ -1408,6 +1410,7 @@ class DrawingCanvas(QWidget):
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
+        hint.setWordWrap(True)
         hint.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
         )
@@ -1415,6 +1418,10 @@ class DrawingCanvas(QWidget):
 
         # Cena + View
         self.scene = DrawingScene(self)
+        # sceneRect fixo: impede que o viewport role quando o primeiro item é
+        # adicionado (sem rect fixo, Qt recalcula os limites e causa um scroll
+        # que faz o ponto inicial aparecer deslocado em relação ao clique)
+        self.scene.setSceneRect(-5000, -5000, 10000, 10000)
         self.view  = DrawingView(self.scene)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -1422,6 +1429,8 @@ class DrawingCanvas(QWidget):
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
         self.view.setMinimumHeight(max(250, int(300 * self.scale)))
+        # Garante que a origem (0,0) da cena começa centralizada no viewport
+        self.view.centerOn(QPointF(0, 0))
         layout.addWidget(self.view)
 
         # Painel de PDF
@@ -1631,6 +1640,8 @@ class DrawingCanvas(QWidget):
     # Limpar
     def _clear(self):
         self.scene.clear()
+        # Restaura o sceneRect fixo (scene.clear() o remove)
+        self.scene.setSceneRect(-5000, -5000, 10000, 10000)
         self.scene._ruler_line_item = None
         self.scene._ruler_text_item = None
         self._undo_stack.clear()

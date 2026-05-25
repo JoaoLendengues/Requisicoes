@@ -459,10 +459,8 @@ class CanvasDialog(QDialog):
             f"QLabel {{ background-color:transparent; }}"
         )
 
-        # Tamanho: 90% da tela disponível
-        from PySide6.QtWidgets import QApplication
-        screen = QApplication.primaryScreen().availableGeometry()
-        self.resize(int(screen.width() * 0.90), int(screen.height() * 0.88))
+        # Dimensiona na tela primária (posição definitiva aplicada no showEvent)
+        self._pin_to_primary_screen()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -496,6 +494,32 @@ class CanvasDialog(QDialog):
 
     def get_json(self) -> str:
         return self.canvas.to_json()
+
+    # ------------------------------------------------------------------
+    # Contenção de monitor: sempre exibe na tela primária, sem vazar
+    # ------------------------------------------------------------------
+    def _pin_to_primary_screen(self) -> None:
+        """Dimensiona e posiciona o diálogo inteiramente na tela primária."""
+        from PySide6.QtGui import QGuiApplication
+        geo = QGuiApplication.primaryScreen().availableGeometry()
+        w = int(geo.width()  * 0.90)
+        h = int(geo.height() * 0.88)
+        # Hard cap: a janela nunca pode exceder os limites da tela
+        self.setMaximumSize(geo.width(), geo.height())
+        self.setGeometry(
+            geo.x() + (geo.width()  - w) // 2,
+            geo.y() + (geo.height() - h) // 2,
+            w,
+            h,
+        )
+
+    def showEvent(self, event) -> None:
+        """Após o Windows terminar de posicionar a janela, força a posição correta."""
+        super().showEvent(event)
+        # QTimer.singleShot(0) garante que o reposicionamento ocorre DEPOIS
+        # que o gerenciador de janelas do Windows terminar qualquer ajuste próprio.
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._pin_to_primary_screen)
 
 
 class _CanvasReadOnlyView(QGraphicsView):
