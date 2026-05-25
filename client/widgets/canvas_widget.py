@@ -1416,6 +1416,12 @@ class DrawingCanvas(QWidget):
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
 
+        btn_dim = QPushButton("📏 Cota (M)")
+        btn_dim.setFixedHeight(fh)
+        btn_dim.setToolTip("Adicionar/editar cota manual (atalho: M)")
+        btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
+        btn_dim.setStyleSheet(self._tool_btn_style())
+
         btn_clear = QPushButton("🗑️ Limpar")
         btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
@@ -1427,6 +1433,7 @@ class DrawingCanvas(QWidget):
         )
         row2.addWidget(btn_img)
         row2.addWidget(btn_pdf)
+        row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
         layout.addLayout(row2)
@@ -1436,7 +1443,7 @@ class DrawingCanvas(QWidget):
             "✨ U = régua  |  Ctrl+Clique = fixar medição  |  F1 = fixar medição atual  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
-            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
+            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
         hint.setWordWrap(True)
@@ -1551,6 +1558,69 @@ class DrawingCanvas(QWidget):
         fix_measure_action.setShortcut(QKeySequence(Qt.Key.Key_F1))
         fix_measure_action.triggered.connect(self.scene.commit_ruler_overlay)
         self.addAction(fix_measure_action)
+
+        manual_dimension_action = QAction(self)
+        manual_dimension_action.setShortcut(QKeySequence(Qt.Key.Key_M))
+        manual_dimension_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        manual_dimension_action.triggered.connect(self._add_or_edit_manual_dimension)
+        self.addAction(manual_dimension_action)
+
+    def _add_or_edit_manual_dimension(self):
+        """
+        MVP de cota manual:
+        - Se houver texto selecionado, edita o conteúdo.
+        - Caso contrário, cria um texto de cota próximo ao último clique (ou no centro).
+        """
+        selected = self.scene.selectedItems()
+        target_text = None
+        for item in selected:
+            if isinstance(item, QGraphicsTextItem):
+                target_text = item
+                break
+
+        default_value = target_text.toPlainText() if target_text else "Ø 12 mm"
+        text, ok = QInputDialog.getText(
+            self,
+            "Cota manual",
+            "Informe a cota (ex.: Ø 12 mm, 350 mm, 1.20 m):",
+            text=default_value,
+        )
+        if not ok:
+            return
+
+        label = normalize_upper_text(text)
+        label = (label or "").strip()
+        if not label:
+            return
+
+        if target_text is not None:
+            target_text.setPlainText(label)
+            self.changed.emit()
+            return
+
+        anchor = None
+        if selected:
+            base = selected[0]
+            bounds = base.mapToScene(base.boundingRect()).boundingRect()
+            anchor = QPointF(bounds.right() + 10.0, bounds.top() - 10.0)
+        elif self._last_click_scene_pos is not None:
+            anchor = QPointF(self._last_click_scene_pos.x(), self._last_click_scene_pos.y())
+        else:
+            anchor = self._default_insert_pos()
+
+        dim_item = QGraphicsTextItem(label)
+        dim_item.setPos(anchor)
+        dim_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+        font = QFont(theme.FONT_PRIMARY, self.font_size)
+        dim_item.setFont(font)
+        dim_item.setData(0, {"type": "manual_dimension_text"})
+        dim_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.scene.addItem(dim_item)
+        self._push_undo(dim_item)
+        self.changed.emit()
 
     # Ferramentas
     def _set_tool(self, tool: Tool):
