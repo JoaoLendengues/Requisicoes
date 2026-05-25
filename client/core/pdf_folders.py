@@ -44,7 +44,7 @@ def vendor_subfolder(
     - Vendedor  → pasta mapeada pelo próprio código.
     - Gerente / Admin → pasta mapeada pelo código do vendedor da requisição;
                         se não encontrar, usa o nome do vendedor da requisição.
-    - Fallback  → primeiro nome limpo do usuário logado.
+    - Fallback  -> primeiro nome limpo do usuario logado.
     """
     import re
 
