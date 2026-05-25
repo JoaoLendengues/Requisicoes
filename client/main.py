@@ -5,11 +5,44 @@ Execute: .venv/Scripts/python -m client.main
 """
 import sys
 import os
+import logging
+import traceback
 
 # Garante que o diretório raiz esteja no path
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+
+
+# ── Log em arquivo (executável windowed não tem console) ──────────────────────
+def _setup_logging() -> None:
+    log_dir = os.path.join(os.environ.get("LOCALAPPDATA", ROOT), "Requisicoes", "logs")
+    os.makedirs(log_dir, exist_ok=True)
+
+    log_file = os.path.join(log_dir, "app.log")
+
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[
+            logging.FileHandler(log_file, encoding="utf-8"),
+        ],
+    )
+
+    # Captura exceções não tratadas e grava no log antes de fechar
+    def _handle_exception(exc_type, exc_value, exc_tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+            return
+        logging.critical(
+            "Exceção não tratada:\n%s",
+            "".join(traceback.format_exception(exc_type, exc_value, exc_tb)),
+        )
+
+    sys.excepthook = _handle_exception
+
+
+_setup_logging()
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
