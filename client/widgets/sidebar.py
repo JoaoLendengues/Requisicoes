@@ -12,8 +12,6 @@ from ..core.session import session
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_sidebar.png")
 
 SIDEBAR_ICON_DIRS = [
-    r"Z:\REQUISIÇÕES (VENDAS)\ícones\PAINEL GERENCIAL\emoji\barral_lateral",
-    r"\\data04tg\TI\REQUISIÇÕES (VENDAS)\ícones\PAINEL GERENCIAL\emoji\barral_lateral",
     os.path.join(os.path.dirname(__file__), "..", "assets", "sidebar_icons"),
 ]
 
