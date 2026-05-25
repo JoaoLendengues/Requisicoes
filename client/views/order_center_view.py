@@ -122,6 +122,19 @@ def _primary_action_btn_style(scale: float) -> str:
     )
 
 
+def _success_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.SUCCESS}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:#1F9E55; }}"
+        f"QPushButton:pressed {{ background:#188546; }}"
+        f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
+    )
+
+
 def _format_duration(seconds: object) -> str:
     if seconds in (None, "", "-"):
         return "-"
@@ -560,7 +573,7 @@ class OrderCenterView(QWidget):
         if invoice_action:
             btn_invoice = QPushButton("FATURAR")
             btn_invoice.setFixedHeight(max(34, int(38 * s)))
-            btn_invoice.setStyleSheet(_primary_action_btn_style(s))
+            btn_invoice.setStyleSheet(_success_action_btn_style(s))
             btn_invoice.clicked.connect(self._mark_selected_invoiced)
             title_row.addWidget(btn_invoice)
 
