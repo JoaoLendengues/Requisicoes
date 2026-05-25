@@ -1565,7 +1565,7 @@ class DrawingCanvas(QWidget):
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
 
-        btn_dim = QPushButton("📏 Cota MM")
+        btn_dim = QPushButton("📏 MM")
         btn_dim.setFixedHeight(fh)
         btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
         btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
