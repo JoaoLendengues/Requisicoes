@@ -212,6 +212,7 @@ class DrawingScene(QGraphicsScene):
 
         # Snap to endpoints
         self._snap_point: QPointF | None = None
+        self._snap_points_cache: list[QPointF] = []
 
         self.selectionChanged.connect(self._on_selection_changed)
 
@@ -312,10 +313,19 @@ class DrawingScene(QGraphicsScene):
         self.cw.changed.emit()
 
     # Snap to endpoints
-    def _collect_snap_points(self) -> list:
+    def _collect_snap_points(self, skip_items: set[QGraphicsItem] | None = None) -> list:
         """Retorna todos os endpoints de itens existentes em coordenadas de cena."""
+        skip_items = skip_items or set()
         points = []
         for item in self.items():
+            if item in skip_items:
+                continue
+            meta = item.data(0) or {}
+            # Ignora overlays/itens transitórios para o snap não "grudar" no próprio preview.
+            if isinstance(meta, dict) and meta.get("type") in {"ruler_overlay", "ruler_measure_line", "ruler_measure_text"}:
+                continue
+            if not item.isVisible():
+                continue
             if isinstance(item, QGraphicsLineItem):
                 ln = item.line()
                 points.append(item.mapToScene(ln.p1()))
@@ -333,7 +343,12 @@ class DrawingScene(QGraphicsScene):
                     points.append(item.mapToScene(QPointF(en.x, en.y)))
         return points
 
-    def _find_snap(self, scene_pos: QPointF) -> QPointF | None:
+    def _find_snap(
+        self,
+        scene_pos: QPointF,
+        *,
+        candidates: list[QPointF] | None = None,
+    ) -> QPointF | None:
         """
         Retorna o endpoint mais próximo de scene_pos se estiver dentro de
         SNAP_RADIUS pixels de tela. Usa distância de viewport para que o
@@ -345,7 +360,8 @@ class DrawingScene(QGraphicsScene):
         vp_pos = QPointF(view.mapFromScene(scene_pos))
         best_pt = None
         best_dist = self.SNAP_RADIUS
-        for pt in self._collect_snap_points():
+        source = candidates if candidates is not None else self._collect_snap_points()
+        for pt in source:
             vp_pt = QPointF(view.mapFromScene(pt))
             d = math.hypot(vp_pos.x() - vp_pt.x(), vp_pos.y() - vp_pt.y())
             if d < best_dist:
@@ -795,6 +811,7 @@ class DrawingScene(QGraphicsScene):
             return
 
         self._snap_point = None
+        self._snap_points_cache = []
         self._start = QPointF(pos.x(), pos.y())
         self._ruler_commit_on_release = (
             tool == Tool.RULER
@@ -809,6 +826,8 @@ class DrawingScene(QGraphicsScene):
 
         elif tool == Tool.LINE:
             self._start = QPointF(pos.x(), pos.y())
+            # Cache de snap para a sessão atual de desenho da linha (evita varredura a cada mouse move).
+            self._snap_points_cache = self._collect_snap_points()
             # Pequeno segmento inicial para feedback visual instantâneo no primeiro clique.
             self._preview_item = self.addLine(
                 self._start.x(), self._start.y(),
@@ -916,7 +935,8 @@ class DrawingScene(QGraphicsScene):
             self._path_item.setPath(self._painter_path)
 
         elif tool == Tool.LINE and self._preview_item:
-            snap = self._find_snap(pos)
+            snap = self._find_snap(pos, candidates=self._snap_points_cache)
+            old_snap = self._snap_point
             if snap is not None:
                 end = snap
                 self._snap_point = snap
@@ -925,7 +945,8 @@ class DrawingScene(QGraphicsScene):
                 self._snap_point = None
             self._preview_item.setLine(self._start.x(), self._start.y(),
                                        end.x(), end.y())
-            self.update()
+            if old_snap != self._snap_point:
+                self.update()
 
         elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
@@ -985,7 +1006,7 @@ class DrawingScene(QGraphicsScene):
 
         elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
             if tool == Tool.LINE:
-                snap = self._find_snap(pos)
+                snap = self._find_snap(pos, candidates=self._snap_points_cache)
                 if snap is not None:
                     end = snap
                 elif shift:
@@ -1044,6 +1065,7 @@ class DrawingScene(QGraphicsScene):
             self._preview_item = None
 
         self._start = None
+        self._snap_points_cache = []
         self._ruler_commit_on_release = False
 
     def keyPressEvent(self, event):
