@@ -628,6 +628,31 @@ class SettingsView(QWidget):
         bg_vl.addWidget(_section("Fundo da Tela de Login", s))
         bg_vl.addWidget(_separator())
 
+        # ── Pasta de backgrounds ─────────────────────────────────────────────
+        bg_folder_row = QHBoxLayout()
+        bg_folder_row.setSpacing(max(8, int(10 * s)))
+        bg_folder_row.addWidget(self._lbl("Pasta de imagens:", s))
+        self.input_bg_folder = QLineEdit(res.bg_folder)
+        self.input_bg_folder.setFixedHeight(max(38, int(44 * s)))
+        self.input_bg_folder.setStyleSheet(_field_style(s))
+        self.input_bg_folder.setPlaceholderText(r"Z:\REQUISIÇÕES (VENDAS)\login_backgrounds")
+        bg_folder_row.addWidget(self.input_bg_folder, 1)
+        self._btn_browse_bg_folder = QPushButton("Procurar")
+        self._btn_browse_bg_folder.setFixedHeight(max(38, int(44 * s)))
+        self._btn_browse_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_browse_bg_folder.clicked.connect(self._browse_bg_folder)
+        bg_folder_row.addWidget(self._btn_browse_bg_folder)
+        bg_vl.addLayout(bg_folder_row)
+
+        bg_folder_hint = QLabel(
+            "Pasta compartilhada (ex.: rede Z:\\) onde ficam as imagens e o config.json. "
+            "Todos que apontarem para o mesmo caminho verão as mesmas campanhas."
+        )
+        bg_folder_hint.setWordWrap(True)
+        bg_folder_hint.setProperty("muted", "1")
+        bg_folder_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        bg_vl.addWidget(bg_folder_hint)
+
         # Tabela de campanhas
         self._bg_table = QTableWidget(0, 3)
         apply_smooth_scroll(self._bg_table)
@@ -874,14 +899,17 @@ class SettingsView(QWidget):
         scale_changed     = (selected_scale != res._user_scale)
         font_size_changed = (selected_font_size != res.font_size_label)
 
+        # Coleta kwargs comuns (aparência + pasta de bg se visível)
+        save_kwargs: dict = dict(font_scale=selected_scale, font_size=selected_font_size)
+        if session.settings_show_login_backgrounds:
+            bg_folder_val = self.input_bg_folder.text().strip()
+            if bg_folder_val:
+                save_kwargs["bg_folder"] = bg_folder_val
+
         if session.settings_show_billing:
             # Admin / Gerente: salva aparência + prazo de faturamento no servidor
             pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
-            res.save(
-                font_scale=selected_scale,
-                font_size=selected_font_size,
-                pending_invoice_alert_days=pending_invoice_alert_days,
-            )
+            res.save(**save_kwargs, pending_invoice_alert_days=pending_invoice_alert_days)
             self._pending_save_context = {
                 "scale_changed": scale_changed,
                 "font_size_changed": font_size_changed,
@@ -894,7 +922,7 @@ class SettingsView(QWidget):
             )
         else:
             # Demais roles: salva apenas aparência localmente
-            res.save(font_scale=selected_scale, font_size=selected_font_size)
+            res.save(**save_kwargs)
             current = local_now()
             self.date_label.setText(_format_header_date(current))
             self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
@@ -905,6 +933,17 @@ class SettingsView(QWidget):
                 self.font_size_changed.emit()
 
     # ── Fundo da Tela de Login ────────────────────────────────────────────────
+
+    def _browse_bg_folder(self) -> None:
+        """Abre seletor de pasta para o caminho de imagens de fundo."""
+        current = self.input_bg_folder.text().strip()
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Selecionar Pasta de Backgrounds",
+            current if os.path.isdir(current) else "",
+        )
+        if path:
+            self.input_bg_folder.setText(os.path.normpath(path))
 
     def _refresh_bg_table(self) -> None:
         """Recarrega a tabela de campanhas a partir do config.json."""
@@ -1050,6 +1089,8 @@ class SettingsView(QWidget):
         for btn in self._font_size_btns.values():
             btn.setStyleSheet(btn_style)
         if session.settings_show_login_backgrounds:
+            self.input_bg_folder.setStyleSheet(_field_style(s))
+            self._btn_browse_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
             self._btn_add_bg.setStyleSheet(_flat_secondary_btn_style(s))
             self._btn_remove_bg.setStyleSheet(_flat_secondary_btn_style(s))
             self._bg_table.setStyleSheet(_table_style())
