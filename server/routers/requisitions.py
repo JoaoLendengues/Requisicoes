@@ -780,6 +780,12 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
     for req in reqs:
         destination = _current_production_destination(req) or None
         events = _production_events(req)
+        latest_event = events[-1] if events else None
+        legacy_production_canceled = (
+            req.status != RequisitionStatus.CANCELADA
+            and bool(latest_event)
+            and latest_event.get("action") == _PROD_CANCELED
+        )
 
         if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
             sent_event = _latest_production_event(req, _PROD_SEND)
@@ -829,7 +835,6 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
             )
 
         latest_finished = _latest_finished_cycle(req)
-        latest_event = events[-1] if events else None
         if latest_finished:
             production_durations.append(latest_finished["production_time_seconds"])
         if req.status == RequisitionStatus.AGUARDANDO_FATURAMENTO and latest_finished:
@@ -866,22 +871,25 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                 )
             )
 
-        if req.status == RequisitionStatus.CANCELADA:
+        if req.status == RequisitionStatus.CANCELADA or legacy_production_canceled:
+            canceled_at = _latest_status_changed_at(req, RequisitionStatus.CANCELADA)
+            if canceled_at is None and latest_event:
+                canceled_at = latest_event.get("changed_at")
             canceled_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
                     ped_number=req.ped_number,
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
-                    status=req.status,
+                    status=RequisitionStatus.CANCELADA.value,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
                     destination=destination,
-                    canceled_at=_latest_status_changed_at(req, RequisitionStatus.CANCELADA),
+                    canceled_at=canceled_at,
                 )
             )
 
-        if req.delivery_date and req.delivery_date < today and _is_open_requisition(req):
+        if req.delivery_date and req.delivery_date < today and _is_open_requisition(req) and not legacy_production_canceled:
             delayed_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
