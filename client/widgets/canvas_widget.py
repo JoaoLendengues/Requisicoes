@@ -1565,9 +1565,9 @@ class DrawingCanvas(QWidget):
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
 
-        btn_dim = QPushButton("📏 Cota (M)")
+        btn_dim = QPushButton("📏 Cota MM")
         btn_dim.setFixedHeight(fh)
-        btn_dim.setToolTip("Adicionar/editar cota manual (atalho: M)")
+        btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
         btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
         btn_dim.setStyleSheet(self._tool_btn_style())
 
@@ -1592,7 +1592,7 @@ class DrawingCanvas(QWidget):
             "✨ U = régua  |  Ctrl+Clique = fixar medição  |  F1 = fixar medição atual  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
-            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual (2 cliques na linha)  |  "
+            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
         hint.setWordWrap(True)
