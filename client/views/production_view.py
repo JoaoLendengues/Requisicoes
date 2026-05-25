@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
-from ..widgets.smooth_scroll import SmoothScrollArea
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
     format_header_date as _format_header_date,
@@ -591,6 +591,7 @@ class ProductionView(QWidget):
         pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
+        apply_smooth_scroll(table)
         return table
 
     def refresh(self):

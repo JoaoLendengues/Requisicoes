@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
-from ..widgets.smooth_scroll import SmoothScrollArea
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
@@ -461,6 +461,7 @@ class UserCenterView(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setFrameShape(QFrame.Shape.NoFrame)
         self.table.setShowGrid(False)
+        apply_smooth_scroll(self.table)
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.table.doubleClicked.connect(self._load_selected_user)
         self.table.itemSelectionChanged.connect(self._load_current_selection)

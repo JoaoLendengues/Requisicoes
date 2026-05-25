@@ -11,7 +11,7 @@ from PySide6.QtGui import QBrush, QColor
 
 from ..core import theme
 from ..core import login_backgrounds
-from ..widgets.smooth_scroll import SmoothScrollArea
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
     format_header_date as _format_header_date,
@@ -596,6 +596,7 @@ class SettingsView(QWidget):
 
         # Tabela de campanhas
         self._bg_table = QTableWidget(0, 3)
+        apply_smooth_scroll(self._bg_table)
         self._bg_table.setHorizontalHeaderLabels(["Nome", "Período", "Status"])
         self._bg_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Stretch

@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
-from ..widgets.smooth_scroll import SmoothScrollArea
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.session import session
 from ..core.dialogs import apply_message_box_theme, ask_confirmation
 from ..core.datetime_utils import (
@@ -674,6 +674,7 @@ class OrderCenterView(QWidget):
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
         table.setMinimumHeight(max(220, int(240 * s)))
+        apply_smooth_scroll(table)
         return table
 
     def refresh(self):

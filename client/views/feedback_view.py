@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..core.session import session
+from ..widgets.smooth_scroll import apply_smooth_scroll
 
 MAX_FEEDBACK_LEN = 150
 
@@ -146,6 +147,7 @@ class FeedbackView(QWidget):
         admin_layout.addLayout(admin_title_row)
 
         self.feedback_list = QListWidget()
+        apply_smooth_scroll(self.feedback_list)
         self.feedback_list.setWordWrap(True)
         self.feedback_list.setUniformItemSizes(False)
         self.feedback_list.currentRowChanged.connect(self._on_admin_selection_changed)
