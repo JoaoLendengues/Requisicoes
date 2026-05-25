@@ -457,7 +457,7 @@ class SettingsView(QWidget):
         conn_vl.setContentsMargins(0, 0, 0, 0)
         conn_vl.setSpacing(max(8, int(10 * s)))
 
-        conn_vl.addWidget(_section("Conexao com o Servidor", s))
+        conn_vl.addWidget(_section("Conexão com o Servidor", s))
         conn_vl.addWidget(_separator())
 
         conn_grid = QGridLayout()
@@ -490,7 +490,7 @@ class SettingsView(QWidget):
         self._conn_section.setVisible(session.settings_show_connection)
 
         # ── Aparência (todos) ─────────────────────────────────────────────────
-        layout.addWidget(_section("Aparencia", s))
+        layout.addWidget(_section("Aparência", s))
         layout.addWidget(_separator())
 
         scale_row = QHBoxLayout()
@@ -513,7 +513,7 @@ class SettingsView(QWidget):
         layout.addLayout(scale_row)
 
         self.screen_info = QLabel(
-            f"Resolucao detectada: {res.screen_width}x{res.screen_height}  |  "
+            f"Resolução detectada: {res.screen_width}x{res.screen_height}  |  "
             f"DPI: {res.dpi:.0f}  |  Recomendado: {res.recommended_label}"
         )
         self.screen_info.setProperty("muted", "1")
@@ -648,14 +648,14 @@ class SettingsView(QWidget):
             self._refresh_bg_table()
 
         # ── Atualizações do Sistema (todos) ───────────────────────────────────
-        layout.addWidget(_section("Atualizacoes do Sistema", s))
+        layout.addWidget(_section("Atualizações do Sistema", s))
         layout.addWidget(_separator())
 
         update_row = QHBoxLayout()
         update_row.setSpacing(max(8, int(10 * s)))
 
         from ..version import CURRENT_VERSION as _CURRENT_VERSION
-        self._version_label = QLabel(f"Versao atual: v{_CURRENT_VERSION}")
+        self._version_label = QLabel(f"Versão atual: v{_CURRENT_VERSION}")
         self._version_label.setProperty("muted", "1")
         self._version_label.setStyleSheet(
             f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
@@ -663,7 +663,7 @@ class SettingsView(QWidget):
         update_row.addWidget(self._version_label)
         update_row.addStretch()
 
-        self.btn_check_update = QPushButton("Verificar atualizacoes")
+        self.btn_check_update = QPushButton("Verificar atualizações")
         self.btn_check_update.setFixedHeight(max(38, int(44 * s)))
         self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_check_update.clicked.connect(self._check_updates)
@@ -969,9 +969,9 @@ class SettingsView(QWidget):
     def _on_update_found(self, update_info: dict) -> None:
         from ..widgets.update_dialog import UpdateAvailableDialog
         self.btn_check_update.setEnabled(True)
-        self.btn_check_update.setText("Verificar atualizacoes")
+        self.btn_check_update.setText("Verificar atualizações")
         self._update_status_label.setText(
-            f"Nova versao disponivel: v{update_info['version']}"
+            f"Nova versão disponível: v{update_info['version']}"
         )
         self._update_status_label.setStyleSheet(
             f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600;"
@@ -981,8 +981,8 @@ class SettingsView(QWidget):
 
     def _on_no_update(self) -> None:
         self.btn_check_update.setEnabled(True)
-        self.btn_check_update.setText("Verificar atualizacoes")
-        self._update_status_label.setText("Voce ja tem a versao mais recente.")
+        self.btn_check_update.setText("Verificar atualizações")
+        self._update_status_label.setText("Você já tem a versão mais recente.")
         self._update_status_label.setStyleSheet(
             f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600;"
             f"color:{theme.SUCCESS};"
@@ -990,7 +990,7 @@ class SettingsView(QWidget):
 
     def _on_update_check_error(self, error_msg: str) -> None:
         self.btn_check_update.setEnabled(True)
-        self.btn_check_update.setText("Verificar atualizacoes")
+        self.btn_check_update.setText("Verificar atualizações")
         self._update_status_label.setText(f"Erro ao verificar: {error_msg}")
         self._update_status_label.setStyleSheet(
             f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600;"
