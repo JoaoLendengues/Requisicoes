@@ -64,7 +64,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")  # renderização consistente e eficiente em todas as plataformas
-    app.setApplicationName("Requisições — Ferragens Pinheiro")
+    app.setApplicationName("Requisições App")
     app.setOrganizationName("Pinheiro Ferragens")
 
     # Inicializa gerenciador de resolução (precisa de QApplication criada)

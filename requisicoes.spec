@@ -87,7 +87,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # icon='client/assets/logo.ico',  # descomente quando tiver um .ico
+    icon='client/assets/icons/icon.ico',
 )
 
 coll = COLLECT(

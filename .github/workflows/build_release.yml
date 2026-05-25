@@ -126,7 +126,7 @@ jobs:
         if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: "Requisições Pinheiro v${{ steps.version.outputs.VERSION }}"
+          name: "Requisições App v${{ steps.version.outputs.VERSION }}"
           generate_release_notes: true
           files: |
             installer_output/Requisicoes_Setup_v${{ steps.version.outputs.VERSION }}.exe
