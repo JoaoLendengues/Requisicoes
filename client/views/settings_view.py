@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtGui import QColor
 
 from ..core import theme
 from ..core import login_backgrounds
@@ -484,26 +484,20 @@ class SettingsView(QWidget):
         bg_vl.addWidget(self._lbl_bg_folder_status)
 
         bg_folder_hint = QLabel(
-            "Pasta compartilhada (ex.: rede Z:\\) onde ficam as imagens e o config.json. "
-            "Todos que apontarem para o mesmo caminho verão as mesmas campanhas."
+            "Pasta compartilhada (ex.: rede Z:\\) onde ficam as imagens de fundo. "
+            "Todos que apontarem para o mesmo caminho verão as mesmas imagens."
         )
         bg_folder_hint.setWordWrap(True)
         bg_folder_hint.setProperty("muted", "1")
         bg_folder_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
         bg_vl.addWidget(bg_folder_hint)
 
-        # Tabela de campanhas
-        self._bg_table = QTableWidget(0, 3)
+        # Tabela de imagens
+        self._bg_table = QTableWidget(0, 1)
         apply_smooth_scroll(self._bg_table)
-        self._bg_table.setHorizontalHeaderLabels(["Nome", "Período", "Status"])
+        self._bg_table.setHorizontalHeaderLabels(["Arquivo"])
         self._bg_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Stretch
-        )
-        self._bg_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents
-        )
-        self._bg_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeMode.ResizeToContents
         )
         self._bg_table.verticalHeader().setVisible(False)
         self._bg_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -534,8 +528,8 @@ class SettingsView(QWidget):
         bg_vl.addLayout(bg_btn_row)
 
         bg_hint = QLabel(
-            "Coloque as imagens e o config.json na pasta acima. "
-            "Clique em 'Abrir Pasta' para gerenciá-la pelo Explorador de Arquivos, "
+            "Coloque as imagens diretamente na pasta acima (PNG, JPG, BMP, WEBP). "
+            "Clique em 'Abrir Pasta' para acessá-la pelo Explorador de Arquivos "
             "e 'Atualizar' para recarregar a lista."
         )
         bg_hint.setWordWrap(True)
@@ -811,9 +805,8 @@ class SettingsView(QWidget):
             self.input_bg_folder.setText(os.path.normpath(path))
 
     def _verify_bg_folder(self) -> None:
-        """Verifica se a pasta de backgrounds está acessível e mostra quantas campanhas há."""
+        """Verifica se a pasta de backgrounds está acessível e conta as imagens."""
         path = self.input_bg_folder.text().strip()
-        s = self.scale
 
         if not path:
             self._set_bg_folder_status("Informe um caminho de pasta.", theme.DANGER)
@@ -825,34 +818,27 @@ class SettingsView(QWidget):
             )
             return
 
-        config_path = os.path.join(path, "config.json")
-        if not os.path.isfile(config_path):
+        exts = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+        try:
+            images = [
+                f for f in os.listdir(path)
+                if os.path.splitext(f.lower())[1] in exts
+            ]
+        except Exception as exc:
+            self._set_bg_folder_status(f"Erro ao ler a pasta: {exc}", theme.DANGER)
+            return
+
+        total = len(images)
+        if total == 0:
             self._set_bg_folder_status(
-                f"Pasta acessível, mas ainda sem campanhas (config.json não encontrado em {path}).",
+                "Pasta acessível, mas nenhuma imagem encontrada ainda.",
                 theme.TEXT_MEDIUM,
             )
-            return
-
-        # Lê diretamente do path informado (sem depender do valor salvo em settings)
-        import json as _json
-        try:
-            with open(config_path, encoding="utf-8") as f:
-                data = _json.load(f)
-            campaigns = data if isinstance(data, list) else []
-        except Exception as exc:
-            self._set_bg_folder_status(f"Erro ao ler config.json: {exc}", theme.DANGER)
-            return
-
-        total = len(campaigns)
-        today = __import__("datetime").date.today().isoformat()
-        active = sum(
-            1 for c in campaigns
-            if c.get("start", "") <= today <= c.get("end", "")
-        )
-        self._set_bg_folder_status(
-            f"Pasta OK — {total} campanha(s) cadastrada(s), {active} ativa(s) hoje.",
-            theme.SUCCESS,
-        )
+        else:
+            self._set_bg_folder_status(
+                f"Pasta OK — {total} imagem(ns) encontrada(s).",
+                theme.SUCCESS,
+            )
 
     def _set_bg_folder_status(self, message: str, color: str) -> None:
         self._lbl_bg_folder_status.setText(message)
@@ -861,31 +847,13 @@ class SettingsView(QWidget):
         )
 
     def _refresh_bg_table(self) -> None:
-        """Recarrega a tabela de campanhas a partir do config.json."""
-        campaigns = login_backgrounds.load_all()
+        """Recarrega a tabela com as imagens encontradas na pasta."""
+        images = login_backgrounds.load_all()
         self._bg_table.setRowCount(0)
-        _STATUS_COLORS = {
-            "Ativa":       theme.SUCCESS,
-            "Programada":  theme.PRIMARY_LIGHT,
-            "Expirada":    theme.TEXT_LIGHT,
-        }
-        for camp in campaigns:
+        for filename in images:
             row = self._bg_table.rowCount()
             self._bg_table.insertRow(row)
-
-            name_item = QTableWidgetItem(camp.get("name", ""))
-            name_item.setData(Qt.ItemDataRole.UserRole, camp.get("id", 0))
-            self._bg_table.setItem(row, 0, name_item)
-
-            start = camp.get("start", "")
-            end   = camp.get("end",   "")
-            period = f"{login_backgrounds.fmt_date(start)} – {login_backgrounds.fmt_date(end)}"
-            self._bg_table.setItem(row, 1, QTableWidgetItem(period))
-
-            status = login_backgrounds.campaign_status(start, end)
-            status_item = QTableWidgetItem(status)
-            status_item.setForeground(QBrush(QColor(_STATUS_COLORS.get(status, theme.TEXT_DARK))))
-            self._bg_table.setItem(row, 2, status_item)
+            self._bg_table.setItem(row, 0, QTableWidgetItem(filename))
 
     def _notify_login_view_bg_changed(self) -> None:
         """Avisa o LoginView para recarregar o fundo, se acessível."""
