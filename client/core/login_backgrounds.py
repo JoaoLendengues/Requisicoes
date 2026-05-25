@@ -1,7 +1,8 @@
 """
 Gerenciador de campanhas de fundo da tela de login.
 
-Estrutura do config.json em assets/login_backgrounds/:
+Estrutura do config.json em bg_folder (caminho configurável em settings.json,
+padrão: Z:\\REQUISIÇÕES (VENDAS)\\login_backgrounds):
 [
   {
     "id": 1,
@@ -17,23 +18,33 @@ Quando múltiplas campanhas estão ativas no mesmo dia, o sistema alterna
 entre elas em rodízio a cada abertura do app (round-robin por ID,
 persistido em _state.json).
 
-A pasta inteira é ignorada pelo .gitignore — imagens e configurações são
-dados do usuário, não código versionado.
+A pasta fica em rede (Z:\\) para que todas as máquinas compartilhem as
+mesmas campanhas automaticamente. O caminho pode ser customizado via
+settings.json ("bg_folder").
 """
 import json
 import os
 import shutil
 from datetime import date
 
-_BG_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "assets", "login_backgrounds")
-)
-_CONFIG = os.path.join(_BG_DIR, "config.json")
-_STATE  = os.path.join(_BG_DIR, "_state.json")   # estado de rotação (runtime)
+from .resolution import res
+
+
+def _bg_dir() -> str:
+    """Retorna o caminho da pasta de backgrounds (lido do settings a cada chamada)."""
+    return res.bg_folder
+
+
+def _config_path() -> str:
+    return os.path.join(_bg_dir(), "config.json")
+
+
+def _state_path() -> str:
+    return os.path.join(_bg_dir(), "_state.json")
 
 
 def _ensure_dir() -> None:
-    os.makedirs(_BG_DIR, exist_ok=True)
+    os.makedirs(_bg_dir(), exist_ok=True)
 
 
 # ── Leitura / escrita de campanhas ────────────────────────────────────────────
@@ -41,7 +52,7 @@ def _ensure_dir() -> None:
 def load_all() -> list[dict]:
     """Lê todas as campanhas do config.json. Retorna lista vazia se não houver."""
     try:
-        with open(_CONFIG, encoding="utf-8") as f:
+        with open(_config_path(), encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, list) else []
     except (FileNotFoundError, json.JSONDecodeError):
@@ -51,7 +62,7 @@ def load_all() -> list[dict]:
 def save_all(campaigns: list[dict]) -> None:
     """Grava a lista de campanhas no config.json."""
     _ensure_dir()
-    with open(_CONFIG, "w", encoding="utf-8") as f:
+    with open(_config_path(), "w", encoding="utf-8") as f:
         json.dump(campaigns, f, indent=2, ensure_ascii=False)
 
 
@@ -59,7 +70,7 @@ def save_all(campaigns: list[dict]) -> None:
 
 def _read_state() -> dict:
     try:
-        with open(_STATE, encoding="utf-8") as f:
+        with open(_state_path(), encoding="utf-8") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
@@ -67,7 +78,7 @@ def _read_state() -> dict:
 
 def _write_state(data: dict) -> None:
     _ensure_dir()
-    with open(_STATE, "w", encoding="utf-8") as f:
+    with open(_state_path(), "w", encoding="utf-8") as f:
         json.dump(data, f)
 
 
@@ -84,11 +95,12 @@ def get_active_background() -> str | None:
     """
     today = date.today().isoformat()
 
+    bg = _bg_dir()
     active = [
         c for c in load_all()
         if c.get("start", "") <= today <= c.get("end", "")
         and c.get("image")
-        and os.path.isfile(os.path.join(_BG_DIR, c["image"]))
+        and os.path.isfile(os.path.join(bg, c["image"]))
     ]
 
     if not active:
@@ -99,14 +111,14 @@ def get_active_background() -> str | None:
 
     if len(active) == 1:
         # Não precisa persistir estado para uma única campanha
-        return os.path.join(_BG_DIR, active[0]["image"])
+        return os.path.join(bg, active[0]["image"])
 
     # Round-robin: próxima após o último ID exibido
     last_id   = _read_state().get("last_shown_id", -1)
     next_camp = next((c for c in active if c["id"] > last_id), active[0])
 
     _write_state({"last_shown_id": next_camp["id"]})
-    return os.path.join(_BG_DIR, next_camp["image"])
+    return os.path.join(bg, next_camp["image"])
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -122,7 +134,7 @@ def add_campaign(name: str, start: str, end: str, src_path: str) -> dict:
     ext       = os.path.splitext(src_path)[1].lower() or ".jpg"
     slug      = "".join(c if c.isalnum() else "_" for c in name.lower())[:40]
     filename  = f"{new_id}_{slug}{ext}"
-    dest      = os.path.join(_BG_DIR, filename)
+    dest      = os.path.join(_bg_dir(), filename)
     shutil.copy2(src_path, dest)
     campaign = {
         "id":    new_id,
