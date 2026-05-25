@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollA
 
 from ..core import theme
 from ..core.session import session
+from .smooth_scroll import apply_smooth_scroll
 
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_sidebar.png")
@@ -356,6 +357,7 @@ class Sidebar(QWidget):
         # ── ScrollArea que envolve TODO o conteúdo da sidebar ─────────────────
         # Barra fina e discreta aparece automaticamente quando a escala for grande.
         self._sidebar_scroll = QScrollArea()
+        apply_smooth_scroll(self._sidebar_scroll)
         self._sidebar_scroll.setWidgetResizable(True)
         self._sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._sidebar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)

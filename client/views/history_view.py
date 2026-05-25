@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..core.session import session
+from ..widgets.smooth_scroll import apply_smooth_scroll
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -675,6 +676,7 @@ class HistoryView(QWidget):
         self.table.setFrameShape(QFrame.Shape.NoFrame)
         self.table.setShowGrid(False)
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        apply_smooth_scroll(self.table)
         header_widget = self.table.horizontalHeader()
         stretch_columns = {1, 2}
         for col in range(len(COLS)):

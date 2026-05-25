@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..core import theme
+from .smooth_scroll import apply_smooth_scroll
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -299,6 +300,7 @@ class NotificationDrawer(QWidget):
 
     def _build_list(self, root: QVBoxLayout):
         scroll = QScrollArea()
+        apply_smooth_scroll(scroll)
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet(

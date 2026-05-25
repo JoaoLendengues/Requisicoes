@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
-from ..widgets.smooth_scroll import SmoothScrollArea
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -542,6 +542,7 @@ class DashboardView(QWidget):
         pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
+        apply_smooth_scroll(table)
         return table
 
     def _build_top_vendors_table(self) -> QTableWidget:
