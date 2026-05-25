@@ -27,7 +27,7 @@ from ..api import client as api
 from ..core import theme
 from ..widgets.smooth_scroll import SmoothScrollArea
 from ..core.session import session
-from ..core.dialogs import ask_confirmation
+from ..core.dialogs import apply_message_box_theme, ask_confirmation
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -929,6 +929,14 @@ class OrderCenterView(QWidget):
         btn_edit = box.addButton("Nova requisição (editar)", QMessageBox.ButtonRole.AcceptRole)
         btn_receipt = box.addButton("Aguardando recebimento", QMessageBox.ButtonRole.ActionRole)
         btn_close = box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        apply_message_box_theme(box)
+        # Mantém os botões com o mesmo padrão visual e evita corte de texto.
+        btn_wide = max(150, int(172 * self.scale))
+        btn_narrow = max(120, int(132 * self.scale))
+        btn_edit.setMinimumWidth(btn_wide)
+        btn_receipt.setMinimumWidth(btn_wide)
+        btn_close.setMinimumWidth(btn_narrow)
+        box.setMinimumWidth(max(560, int(620 * self.scale)))
         btn_receipt.setEnabled(bool(destination))
         box.exec()
 
