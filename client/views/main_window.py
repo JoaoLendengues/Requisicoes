@@ -27,6 +27,17 @@ from .user_center_view import UserCenterView
 from .feedback_view import FeedbackView
 
 
+import os
+import re
+
+
+def _vendor_pdf_folder(base_folder: str, user_name: str) -> str:
+    """Retorna base_folder/<NOME_VENDEDOR>, criando a subpasta se necessário."""
+    clean = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", user_name or "").strip()
+    subfolder = clean or "VENDEDOR"
+    return os.path.join(base_folder, subfolder)
+
+
 PAGE_FORM = 0
 PAGE_HISTORY = 1
 PAGE_DASHBOARD = 2
@@ -477,10 +488,13 @@ class MainWindow(QMainWindow):
             return ""
 
         from ..core.resolution import res as _res
+        from ..core.session import session as _session
 
-        folder = _res.pdf_folder.strip()
-        if not folder:
+        base_folder = _res.pdf_folder.strip()
+        if not base_folder:
             return ""
+
+        folder = _vendor_pdf_folder(base_folder, _session.user_name)
 
         try:
             return generate_pdf(req, client, obs, folder, canvas_json)

@@ -203,7 +203,7 @@ class ResolutionManager:
 
     @property
     def pdf_folder(self) -> str:
-        return self._load_setting("pdf_folder") or r"Z:\REQUISIÇÕES (VENDAS)\PDF"
+        return self._load_setting("pdf_folder") or r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\PDF\VENDEDORES"
 
     @property
     def bg_folder(self) -> str:
