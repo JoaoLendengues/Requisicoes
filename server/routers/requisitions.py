@@ -51,6 +51,14 @@ from ..dependencies import (
     require_order_center_access,
 )
 from ..services.audit_service import diff_fields, log_action
+from ..services.notification_service import (
+    _notify_admins_gerentes,
+    dispatch               as push_all,
+    ensure_pending_invoice_notifications,
+    notify_machine_status_change as build_machine_status_event,
+    notify_production_team as build_production_sent,
+    notify_vendor          as build_vendor_event,
+)
 from ..services.runtime_monitor import snapshot as runtime_snapshot
 from ..services.sse_manager import connected_user_ids
 from ..services.text_normalizer import normalize_canvas_json_text, normalize_upper_required
@@ -1342,20 +1350,20 @@ def list_requisitions(
     return paginated
 
 
+def _check_invoice_alerts(db: Session) -> None:
+    """Verifica alertas de faturamento pendentes e envia notificações SSE."""
+    notifications = ensure_pending_invoice_notifications(db)
+    if notifications:
+        db.commit()
+        push_all(notifications)
+
+
 @router.get("/dashboard/summary", response_model=ManagementDashboardResponse)
 def get_management_dashboard(
     db: Session = Depends(get_db),
     _: User = Depends(require_manager_or_admin),
 ):
-    from ..services.notification_service import (
-        dispatch as push_all,
-        ensure_pending_invoice_notifications,
-    )
-
-    notifications = ensure_pending_invoice_notifications(db)
-    if notifications:
-        db.commit()
-        push_all(notifications)
+    _check_invoice_alerts(db)
 
     reqs = (
         db.query(Requisition)
@@ -1380,15 +1388,7 @@ def get_order_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
-    from ..services.notification_service import (
-        dispatch as push_all,
-        ensure_pending_invoice_notifications,
-    )
-
-    notifications = ensure_pending_invoice_notifications(db)
-    if notifications:
-        db.commit()
-        push_all(notifications)
+    _check_invoice_alerts(db)
 
     reqs = (
         db.query(Requisition)
@@ -1454,11 +1454,6 @@ def update_production_machine_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from ..services.notification_service import (
-        dispatch as push_all,
-        notify_machine_status_change as build_machine_status_event,
-    )
-
     machine = (
         db.query(ProductionMachine)
         .filter(ProductionMachine.id == machine_id)
@@ -1587,12 +1582,6 @@ def update_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from ..services.notification_service import (
-        notify_production_team as build_production_sent,
-        notify_vendor          as build_vendor_event,
-        dispatch               as push_all,
-    )
-
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
@@ -1688,10 +1677,6 @@ def cancel_requisition(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from ..services.notification_service import (
-        notify_vendor as build_vendor_event,
-        dispatch      as push_all,
-    )
 
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
@@ -1718,7 +1703,6 @@ def cancel_requisition(
         notifications.extend(build_vendor_event(db, req, "cancelada"))
     else:
         # Mesmo que o vendedor cancele a própria req, admins/gerentes são notificados
-        from ..services.notification_service import _notify_admins_gerentes
         notifications.extend(
             _notify_admins_gerentes(
                 db, "cancelada",

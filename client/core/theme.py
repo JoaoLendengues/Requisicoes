@@ -87,7 +87,7 @@ _LIGHT: dict = {
     "DRAWER_SHADOW":     "rgba(0,44,109,0.14)",  # sombra lateral
 }
 
-# ── Paleta escura (modo dark — implementação futura) ──────────────────────────
+# ── Paleta escura (modo dark) ─────────────────────────────────────────────────
 
 _DARK: dict = {
     # Sidebar / rodapé
