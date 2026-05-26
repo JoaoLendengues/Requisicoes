@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsTextItem,
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
-    QSizePolicy, QFrame, QComboBox,
+    QSizePolicy, QFrame, QComboBox, QApplication,
 )
 from ..core import theme
 from ..core.text_case import normalize_upper_text
@@ -1710,9 +1710,23 @@ class DrawingCanvas(QWidget):
 
         manual_dimension_action = QAction(self)
         manual_dimension_action.setShortcut(QKeySequence(Qt.Key.Key_M))
-        manual_dimension_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        manual_dimension_action.triggered.connect(self._add_or_edit_manual_dimension)
+        manual_dimension_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        manual_dimension_action.triggered.connect(self._trigger_manual_dimension_shortcut)
         self.addAction(manual_dimension_action)
+
+    def _trigger_manual_dimension_shortcut(self):
+        if not self.isVisible():
+            return
+        focus = QApplication.focusWidget()
+        if focus and (
+            focus.inherits("QLineEdit")
+            or focus.inherits("QTextEdit")
+            or focus.inherits("QPlainTextEdit")
+            or focus.inherits("QAbstractSpinBox")
+            or focus.inherits("QComboBox")
+        ):
+            return
+        self._add_or_edit_manual_dimension()
 
     def _add_or_edit_manual_dimension(self):
         """
