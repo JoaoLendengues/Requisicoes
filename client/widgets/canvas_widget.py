@@ -663,12 +663,50 @@ class DrawingScene(QGraphicsScene):
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         return pen
 
-    def _ruler_label_pos(self, start: QPointF, end: QPointF) -> QPointF:
+    def _smart_label_pos(self, start: QPointF, end: QPointF, label: str = "") -> QPointF:
+        """
+        Posiciona o texto da cota evitando sobreposição com outros elementos.
+
+        Linha vertical  → padrão à direita; se houver colisão, vai à esquerda.
+        Linha horizontal→ padrão acima;    se houver colisão, vai abaixo.
+        """
         mid_x = (start.x() + end.x()) / 2.0
         mid_y = (start.y() + end.y()) / 2.0
-        # Quanto maior a espessura, mais sobe a label para não ficar tampada.
-        y_offset = 22.0 + (float(max(1, self.cw.pen_width)) * 0.9)
-        return QPointF(mid_x + 8.0, mid_y - y_offset)
+        dx    = abs(end.x() - start.x())
+        dy    = abs(end.y() - start.y())
+
+        # Estimativa do tamanho do texto em coordenadas de cena
+        fs  = max(8, int(9 * self.cw.scale))
+        tw  = max(40, int(len(label) * fs * 0.72 + 12)) if label else 60
+        th  = int(fs * 2.2)
+        gap = max(8, int(fs * 1.3))
+
+        if dy > dx:
+            # Linha mais vertical → padrão: texto à DIREITA
+            def_x, def_y = mid_x + gap,          mid_y - th / 2
+            alt_x, alt_y = mid_x - gap - tw,     mid_y - th / 2
+        else:
+            # Linha mais horizontal → padrão: texto ACIMA
+            def_x, def_y = mid_x - tw / 2,  mid_y - gap - th
+            alt_x, alt_y = mid_x - tw / 2,  mid_y + gap
+
+        if self._has_collision_at(QRectF(def_x, def_y, tw, th)):
+            return QPointF(alt_x, alt_y)
+        return QPointF(def_x, def_y)
+
+    def _has_collision_at(self, rect: QRectF) -> bool:
+        """True se há itens de desenho reais (não cota/régua) na área indicada."""
+        _ignore = {
+            "ruler_overlay", "manual_dimension_overlay",
+            "ruler_measure_line", "ruler_measure_text",
+            "manual_dimension_line", "manual_dimension_text",
+        }
+        for item in self.items(rect):
+            meta = item.data(0)
+            if isinstance(meta, dict) and meta.get("type") in _ignore:
+                continue
+            return True
+        return False
 
     def _format_ruler_text(self, start: QPointF, end: QPointF) -> tuple[str, float]:
         dx = end.x() - start.x()
@@ -721,7 +759,7 @@ class DrawingScene(QGraphicsScene):
         text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
         text_item.setZValue(9001)
         text_item.setData(0, {"type": "ruler_measure_text"})
-        text_item.setPos(self._ruler_label_pos(start, end))
+        text_item.setPos(self._smart_label_pos(start, end, label))
         text_item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
             QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -780,7 +818,7 @@ class DrawingScene(QGraphicsScene):
         self._ruler_line_item.setLine(start.x(), start.y(), end.x(), end.y())
         text, _dist_mm = self._format_ruler_text(start, end)
         self._ruler_text_item.setPlainText(text)
-        self._ruler_text_item.setPos(self._ruler_label_pos(start, end))
+        self._ruler_text_item.setPos(self._smart_label_pos(start, end, text))
 
     def _ensure_manual_dimension_items(self):
         if self._manual_dim_line_item is None:
@@ -804,7 +842,7 @@ class DrawingScene(QGraphicsScene):
             return
         self._manual_dim_line_item.setLine(start.x(), start.y(), end.x(), end.y())
         self._manual_dim_text_item.setPlainText(self._manual_dim_label)
-        self._manual_dim_text_item.setPos(self._ruler_label_pos(start, end))
+        self._manual_dim_text_item.setPos(self._smart_label_pos(start, end, self._manual_dim_label))
 
     def _clear_manual_dimension_overlay(self):
         if self._manual_dim_line_item is not None:
@@ -848,7 +886,7 @@ class DrawingScene(QGraphicsScene):
         text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
         text_item.setZValue(9001)
         text_item.setData(0, {"type": "manual_dimension_text"})
-        text_item.setPos(self._ruler_label_pos(start, end))
+        text_item.setPos(self._smart_label_pos(start, end, self._manual_dim_label))
         text_item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
