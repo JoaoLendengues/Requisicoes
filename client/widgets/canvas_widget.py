@@ -219,6 +219,12 @@ class DrawingScene(QGraphicsScene):
         self._manual_dim_line_item: QGraphicsLineItem | None = None
         self._manual_dim_text_item: QGraphicsTextItem | None = None
         self._manual_dim_block_release: bool = False
+        self._mirror_axis_active: bool = False
+        self._mirror_axis_start: QPointF | None = None
+        self._mirror_axis_line_item: QGraphicsLineItem | None = None
+        self._mirror_axis_block_release: bool = False
+        self._pen_last_point: QPointF | None = None
+        self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
 
         # Estado do Free Transform (Ctrl+T)
@@ -242,7 +248,8 @@ class DrawingScene(QGraphicsScene):
     FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
     FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
     # Snap to endpoints
-    SNAP_RADIUS    = 30    # raio de detecção em px de tela (constante com zoom)
+    SNAP_RADIUS    = 16    # raio de detecção em px de tela (constante com zoom)
+    PEN_MIN_STEP   = 0.8   # distância mínima para adicionar ponto no traço livre
     RULER_PX_PER_MM = 3.78
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
@@ -348,6 +355,7 @@ class DrawingScene(QGraphicsScene):
                 "manual_dimension_overlay",
                 "manual_dimension_line",
                 "manual_dimension_text",
+                "mirror_axis_overlay",
             }:
                 continue
             if not item.isVisible():
@@ -700,6 +708,7 @@ class DrawingScene(QGraphicsScene):
             "ruler_overlay", "manual_dimension_overlay",
             "ruler_measure_line", "ruler_measure_text",
             "manual_dimension_line", "manual_dimension_text",
+            "mirror_axis_overlay",
         }
         for item in self.items(rect):
             meta = item.data(0)
@@ -785,6 +794,8 @@ class DrawingScene(QGraphicsScene):
             self._ruler_line_item.setPen(self._ruler_pen(cosmetic=True))
         if self._manual_dim_line_item is not None:
             self._manual_dim_line_item.setPen(self._ruler_pen(cosmetic=True))
+        if self._mirror_axis_line_item is not None:
+            self._mirror_axis_line_item.setPen(self._ruler_pen(cosmetic=True))
         for item in self.items():
             meta = item.data(0) or {}
             if (
@@ -867,6 +878,39 @@ class DrawingScene(QGraphicsScene):
         self._manual_dim_block_release = False
         self._clear_manual_dimension_overlay()
 
+    def _ensure_mirror_axis_item(self):
+        if self._mirror_axis_line_item is None:
+            self._mirror_axis_line_item = self.addLine(0, 0, 0, 0, self._ruler_pen(cosmetic=True))
+            self._mirror_axis_line_item.setZValue(10000)
+            self._mirror_axis_line_item.setData(0, {"type": "mirror_axis_overlay"})
+        else:
+            self._mirror_axis_line_item.setPen(self._ruler_pen(cosmetic=True))
+
+    def _update_mirror_axis_preview(self, start: QPointF, end: QPointF):
+        self._ensure_mirror_axis_item()
+        if self._mirror_axis_line_item is None:
+            return
+        self._mirror_axis_line_item.setLine(start.x(), start.y(), end.x(), end.y())
+
+    def _clear_mirror_axis_overlay(self):
+        if self._mirror_axis_line_item is not None:
+            self.removeItem(self._mirror_axis_line_item)
+            self._mirror_axis_line_item = None
+
+    def begin_mirror_axis(self):
+        self.cancel_mirror_axis()
+        self.cancel_manual_dimension()
+        if self._ft_active:
+            self._exit_ft()
+        self._mirror_axis_active = True
+        self._mirror_axis_start = None
+
+    def cancel_mirror_axis(self):
+        self._mirror_axis_active = False
+        self._mirror_axis_start = None
+        self._mirror_axis_block_release = False
+        self._clear_mirror_axis_overlay()
+
     def _commit_manual_dimension(self, start: QPointF, end: QPointF):
         if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
             return
@@ -904,6 +948,23 @@ class DrawingScene(QGraphicsScene):
 
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
+            return
+
+        if self._mirror_axis_active:
+            self._mirror_axis_block_release = True
+            if self._mirror_axis_start is None:
+                self._mirror_axis_start = QPointF(pos.x(), pos.y())
+                self._update_mirror_axis_preview(self._mirror_axis_start, self._mirror_axis_start)
+            else:
+                end = (
+                    self._constrain(self._mirror_axis_start, pos)
+                    if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                    else QPointF(pos.x(), pos.y())
+                )
+                start = self._mirror_axis_start
+                self.cw._mirror_selected_about_axis(start, end)
+                self.cancel_mirror_axis()
+            event.accept()
             return
 
         if self._manual_dim_active:
@@ -977,6 +1038,7 @@ class DrawingScene(QGraphicsScene):
         self._snap_point = None
         self._snap_points_cache = []
         self._start = QPointF(pos.x(), pos.y())
+        self._pen_last_point = None
         self._ruler_commit_on_release = (
             tool == Tool.RULER
             and bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
@@ -987,6 +1049,7 @@ class DrawingScene(QGraphicsScene):
             self._path_item = QGraphicsPathItem()
             self._path_item.setPen(self._pen())
             self.addItem(self._path_item)
+            self._pen_last_point = QPointF(pos.x(), pos.y())
 
         elif tool == Tool.LINE:
             self._start = QPointF(pos.x(), pos.y())
@@ -1067,6 +1130,16 @@ class DrawingScene(QGraphicsScene):
         tool = self.cw.tool
         pos  = event.scenePos()
 
+        if self._mirror_axis_active and self._mirror_axis_start is not None:
+            end = (
+                self._constrain(self._mirror_axis_start, pos)
+                if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                else QPointF(pos.x(), pos.y())
+            )
+            self._update_mirror_axis_preview(self._mirror_axis_start, end)
+            event.accept()
+            return
+
         if self._manual_dim_active and self._manual_dim_start is not None:
             end = (
                 self._constrain(self._manual_dim_start, pos)
@@ -1105,8 +1178,13 @@ class DrawingScene(QGraphicsScene):
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
 
         if tool == Tool.PEN and self._painter_path and self._path_item:
+            if self._pen_last_point is not None:
+                if math.hypot(pos.x() - self._pen_last_point.x(), pos.y() - self._pen_last_point.y()) < self.PEN_MIN_STEP:
+                    event.accept()
+                    return
             self._painter_path.lineTo(pos)
             self._path_item.setPath(self._painter_path)
+            self._pen_last_point = QPointF(pos.x(), pos.y())
 
         elif tool == Tool.LINE and self._preview_item:
             snap = self._find_snap(pos, candidates=self._snap_points_cache)
@@ -1154,6 +1232,14 @@ class DrawingScene(QGraphicsScene):
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
 
     def mouseReleaseEvent(self, event):
+        if self._mirror_axis_block_release and event.button() == Qt.MouseButton.LeftButton:
+            self._mirror_axis_block_release = False
+            event.accept()
+            return
+        if self._mirror_axis_active and event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            return
+
         if self._manual_dim_block_release and event.button() == Qt.MouseButton.LeftButton:
             self._manual_dim_block_release = False
             event.accept()
@@ -1185,6 +1271,7 @@ class DrawingScene(QGraphicsScene):
             self.cw._push_undo(item)
             self._path_item = None
             self._painter_path = None
+            self._pen_last_point = None
 
         elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
             if tool == Tool.LINE:
@@ -1257,6 +1344,11 @@ class DrawingScene(QGraphicsScene):
                 self._exit_ft()
                 event.accept()
                 return
+
+        if self._mirror_axis_active and event.key() == Qt.Key.Key_Escape:
+            self.cancel_mirror_axis()
+            event.accept()
+            return
 
         if self._manual_dim_active and event.key() == Qt.Key.Key_Escape:
             self.cancel_manual_dimension()
@@ -1603,6 +1695,13 @@ class DrawingCanvas(QWidget):
         btn_mirror_v.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_mirror_v)
 
+        btn_mirror_axis = QPushButton("Eixo")
+        btn_mirror_axis.setFixedHeight(fh)
+        btn_mirror_axis.setToolTip("Espelhar com cópia por eixo manual (Ctrl+K)")
+        btn_mirror_axis.clicked.connect(self._start_manual_mirror_axis)
+        btn_mirror_axis.setStyleSheet(self._tool_btn_style())
+        row2.addWidget(btn_mirror_axis)
+
         row2.addSpacing(8)
 
         btn_img = QPushButton("🖼️ Imagem")
@@ -1643,6 +1742,7 @@ class DrawingCanvas(QWidget):
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
+            "Ctrl+K = espelhar com cópia por eixo manual  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
@@ -1660,6 +1760,10 @@ class DrawingCanvas(QWidget):
         self.scene.setSceneRect(-5000, -5000, 10000, 10000)
         self.view  = DrawingView(self.scene)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.view.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate)
+        self.view.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontSavePainterState, True)
+        self.view.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontAdjustForAntialiasing, True)
+        self.view.setCacheMode(QGraphicsView.CacheModeFlag.CacheBackground)
         self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.view.setStyleSheet(
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
@@ -1766,6 +1870,12 @@ class DrawingCanvas(QWidget):
         mirror_v_action.triggered.connect(self._mirror_selected_vertical)
         self.addAction(mirror_v_action)
 
+        mirror_axis_action = QAction(self)
+        mirror_axis_action.setShortcut(QKeySequence("Ctrl+K"))
+        mirror_axis_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        mirror_axis_action.triggered.connect(self._start_manual_mirror_axis)
+        self.addAction(mirror_axis_action)
+
         fix_measure_action = QAction(self)
         fix_measure_action.setShortcut(QKeySequence(Qt.Key.Key_F1))
         fix_measure_action.triggered.connect(self.scene.commit_ruler_overlay)
@@ -1828,6 +1938,8 @@ class DrawingCanvas(QWidget):
 
     # Ferramentas
     def _set_tool(self, tool: Tool):
+        if hasattr(self, "scene") and self.scene._mirror_axis_active:
+            self.scene.cancel_mirror_axis()
         if hasattr(self, "scene") and self.scene._manual_dim_active:
             self.scene.cancel_manual_dimension()
         self.tool = tool
@@ -1924,6 +2036,72 @@ class DrawingCanvas(QWidget):
 
     def _mirror_selected_vertical(self):
         self._mirror_selected(horizontal=False)
+
+    def _start_manual_mirror_axis(self):
+        if self._text_editor_active():
+            return
+        selected = self.scene.selectedItems()
+        mirror_items = [item for item in selected if not isinstance(item, QGraphicsTextItem)]
+        if not mirror_items:
+            return
+        self._set_tool(Tool.SELECT)
+        self.scene.begin_mirror_axis()
+
+    def _mirror_selected_about_axis(self, axis_start: QPointF, axis_end: QPointF):
+        if self._text_editor_active():
+            return
+        if math.hypot(axis_end.x() - axis_start.x(), axis_end.y() - axis_start.y()) < 1e-6:
+            return
+
+        selected = self.scene.selectedItems()
+        if not selected:
+            return
+        mirror_items = [item for item in selected if not isinstance(item, QGraphicsTextItem)]
+        if not mirror_items:
+            return
+
+        clones: list[QGraphicsItem] = []
+        for item in mirror_items:
+            item_dict = self._item_to_dict(item)
+            if not item_dict:
+                continue
+            clone = self._item_from_dict(item_dict)
+            if clone is None:
+                continue
+            clone.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+                | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            clone.setZValue(item.zValue())
+            self.scene.addItem(clone)
+
+            p1_local = clone.mapFromScene(axis_start)
+            p2_local = clone.mapFromScene(axis_end)
+            dx = p2_local.x() - p1_local.x()
+            dy = p2_local.y() - p1_local.y()
+            if math.hypot(dx, dy) < 1e-6:
+                self.scene.removeItem(clone)
+                continue
+
+            angle_deg = math.degrees(math.atan2(dy, dx))
+            mirror = QTransform()
+            mirror.translate(p1_local.x(), p1_local.y())
+            mirror.rotate(angle_deg)
+            mirror.scale(1.0, -1.0)
+            mirror.rotate(-angle_deg)
+            mirror.translate(-p1_local.x(), -p1_local.y())
+            clone.setTransform(mirror, True)
+            clones.append(clone)
+
+        if not clones:
+            return
+
+        for item in selected:
+            item.setSelected(False)
+        for clone in clones:
+            clone.setSelected(True)
+            self._push_undo(clone)
+        self.changed.emit()
 
     def _on_font_size_changed(self, v: int):
         self.font_size = v
@@ -2044,6 +2222,7 @@ class DrawingCanvas(QWidget):
 
     # Limpar
     def _clear(self):
+        self.scene.cancel_mirror_axis()
         self.scene.cancel_manual_dimension()
         self.scene.clear()
         # Restaura o sceneRect fixo (scene.clear() o remove)
@@ -2052,6 +2231,7 @@ class DrawingCanvas(QWidget):
         self.scene._ruler_text_item = None
         self.scene._manual_dim_line_item = None
         self.scene._manual_dim_text_item = None
+        self.scene._mirror_axis_line_item = None
         self._undo_stack.clear()
         self._redo_stack.clear()
         self.changed.emit()
@@ -2248,7 +2428,7 @@ class DrawingCanvas(QWidget):
 
     def _item_to_dict(self, item: QGraphicsItem) -> dict | None:
         meta = item.data(0) or {}
-        if isinstance(meta, dict) and meta.get("type") in {"ruler_overlay", "manual_dimension_overlay"}:
+        if isinstance(meta, dict) and meta.get("type") in {"ruler_overlay", "manual_dimension_overlay", "mirror_axis_overlay"}:
             return None
 
         pen_data = lambda p: {
