@@ -41,55 +41,6 @@ Substitui o processo manual em papel e planilhas por uma aplicação desktop com
 
 ---
 
-## Configuração
-
-### 1. Clone e ambiente virtual
-
-```bash
-git clone https://github.com/JoaoLendengues/Requisicoes.git
-cd Requisicoes
-python -m venv .venv
-.venv\Scripts\activate      # Windows
-pip install -r requirements.txt
-```
-
-### 2. Variáveis de ambiente
-
-Crie um arquivo `.env` na raiz com base nas variáveis abaixo:
-
-```env
-DATABASE_URL=postgresql://usuario:senha@host:5432/requisicoes
-DATABASE_TYPE=postgresql
-SECRET_KEY=sua-chave-secreta-aqui
-ACCESS_TOKEN_EXPIRE_MINUTES=480
-
-# Pasta compartilhada de rede para PDFs e arquivos
-SHARED_FOLDER_PATH=\\servidor\pasta
-
-# Backup automático
-BACKUP_FOLDER=\\servidor\backup_bd
-BACKUP_DAILY_HOUR=2
-BACKUP_DB_HOST=host
-BACKUP_DB_PORT=5432
-BACKUP_DB_USER=usuario
-BACKUP_DB_PASSWORD=senha
-BACKUP_DB_NAME=requisicoes
-```
-
-> O arquivo `.env` está no `.gitignore` — nunca commite credenciais.
-
-### 3. Banco de dados
-
-```bash
-# Criar as tabelas e dados iniciais
-python server/seed.py
-
-# Criar o primeiro usuário administrador
-python criar_admin.py
-```
-
----
-
 ## Executando
 
 ### Servidor
