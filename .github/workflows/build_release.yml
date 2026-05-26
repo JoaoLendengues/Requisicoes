@@ -1,4 +1,4 @@
-name: Build & Release
+﻿name: Build & Release
 
 # Dispara automaticamente quando uma tag v1.0.0 é publicada,
 # ou manualmente pelo GitHub Actions (útil para testes de build).
@@ -82,6 +82,20 @@ jobs:
           Write-Host "client/version.py atualizado para $v"
 
       # ── 6. Build com PyInstaller (app principal) ─────────────────────────────
+
+      # -- 5b. Criar settings.json padrao (nao esta no repositorio -- .gitignore) --
+      - name: Criar settings.json padrao
+        shell: pwsh
+        run: |
+          $defaults = @{
+            dark_mode               = $false
+            font_size               = "Normal"
+            font_scale              = "100%"
+            pending_invoice_alert_days = 1
+            bg_folder               = ""
+          } | ConvertTo-Json
+          Set-Content -Path "client/settings.json" -Value $defaults -Encoding utf8
+          Write-Host "client/settings.json criado com valores padrao"
       - name: Build com PyInstaller
         shell: pwsh
         run: |
@@ -145,3 +159,4 @@ jobs:
           Get-ChildItem installer_output/ -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
           Write-Host "Portatil:"
           Get-ChildItem dist/*.zip       -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+
