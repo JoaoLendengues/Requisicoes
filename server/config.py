@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     BACKUP_RETENTION: int = 15   # número máximo de arquivos por tipo antes de rotacionar
     BACKUP_DAILY_HOUR: int = 2   # hora do backup diário automático (formato 24h)
 
+    # Conexão explícita para pg_dump (evita problemas de parsing da DATABASE_URL)
+    BACKUP_DB_HOST: str = "10.1.1.151"
+    BACKUP_DB_PORT: int = 5432
+    BACKUP_DB_USER: str = "tipinheiro"
+    BACKUP_DB_PASSWORD: str = "Pinheiro123"
+    BACKUP_DB_NAME: str = "requisicoes"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8-sig"  # suporta arquivos salvos com BOM no Windows

@@ -20,7 +20,6 @@ import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta
-from urllib.parse import urlparse
 
 from ..config import settings
 
@@ -41,15 +40,14 @@ def _find_pg_dump() -> str | None:
     return None
 
 
-def _parse_db_url() -> dict:
-    """Extrai host, port, user, password e dbname da DATABASE_URL."""
-    parsed = urlparse(settings.DATABASE_URL)
+def _get_db_params() -> dict:
+    """Retorna os parâmetros de conexão para o pg_dump a partir das settings."""
     return {
-        "host":     parsed.hostname or "localhost",
-        "port":     str(parsed.port or 5432),
-        "user":     parsed.username or "",
-        "password": parsed.password or "",
-        "dbname":   (parsed.path or "").lstrip("/"),
+        "host":     settings.BACKUP_DB_HOST,
+        "port":     str(settings.BACKUP_DB_PORT),
+        "user":     settings.BACKUP_DB_USER,
+        "password": settings.BACKUP_DB_PASSWORD,
+        "dbname":   settings.BACKUP_DB_NAME,
     }
 
 
@@ -111,7 +109,7 @@ def run_backup(backup_type: str = "manual") -> dict:
         prefix   = "backup_diario_"
 
     filepath = os.path.join(folder, filename)
-    params   = _parse_db_url()
+    params   = _get_db_params()
 
     env = os.environ.copy()
     env["PGPASSWORD"] = params["password"]
