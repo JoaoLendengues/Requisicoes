@@ -1079,20 +1079,260 @@ class MainWindow(QMainWindow):
         self._switch_anim.finished.connect(self.close)
         self._switch_anim.start()
 
-    # ── Guia rápido (onboarding) ─────────────────────────────────────────────
+    # ── Tour guiado (spotlight) ───────────────────────────────────────────────
 
     def _maybe_show_onboarding(self) -> None:
-        """Exibe o guia rápido na primeira vez que este perfil faz login."""
+        """Exibe o tour spotlight na primeira vez que este perfil faz login."""
         if not res.guide_shown(session.role):
-            from ..widgets.onboarding_dialog import OnboardingDialog
-            dlg = OnboardingDialog(session.role, self.scale, show_dont_show=True, parent=self)
-            dlg.exec()
+            self._start_tour()
 
     def show_onboarding(self) -> None:
-        """Abre o guia rápido manualmente (chamado por Configurações)."""
-        from ..widgets.onboarding_dialog import OnboardingDialog
-        dlg = OnboardingDialog(session.role, self.scale, show_dont_show=False, parent=self)
-        dlg.exec()
+        """Abre o tour manualmente (chamado por Configurações)."""
+        self._start_tour()
+
+    def _start_tour(self) -> None:
+        from ..widgets.spotlight_overlay import SpotlightOverlay
+        steps = self._build_tour_steps(session.role)
+        overlay = SpotlightOverlay(self, steps, self.scale, role=session.role)
+        overlay.start()
+
+    def _build_tour_steps(self, role: str) -> list:
+        from ..widgets.spotlight_overlay import TourStep
+
+        mw = self
+
+        # ── Getters de widgets ────────────────────────────────────────────────
+        def nav(key):
+            """Getter para botão da barra lateral."""
+            return lambda: mw.sidebar._nav_btns.get(key)
+
+        def bell():
+            return mw.sidebar._bell
+
+        def form(attr):
+            """Getter para atributo do formulário."""
+            return lambda: getattr(mw.form_view, attr, None)
+
+        # ── Passo de boas-vindas (sem spotlight) ──────────────────────────────
+        welcome = TourStep(
+            title="Bem-vindo ao Sistema de Requisições!",
+            body=(
+                "Este tour rápido apresenta as principais funcionalidades "
+                "disponíveis para o seu perfil.<br><br>"
+                "Clique em <b>Próximo</b> para começar, ou "
+                "<b>Pular tour</b> para ir direto ao sistema."
+            ),
+            tooltip_side="center",
+        )
+
+        # ── Passos por perfil ─────────────────────────────────────────────────
+        if role == "admin":
+            return [
+                welcome,
+                TourStep(
+                    "Nova Requisição",
+                    "Crie e edite pedidos de compra. Preencha o PED, "
+                    "selecione o cliente, adicione os itens e defina o prazo. "
+                    "O <b>PDF é gerado automaticamente</b> ao salvar.",
+                    nav("nova"), "right", "nova",
+                ),
+                TourStep(
+                    "Central de Usuários",
+                    "Cadastre, edite e desative membros da equipe. "
+                    "Defina o nível de acesso de cada um: "
+                    "<b>Vendedor, Gerente, Produção, Indústria ou Entrega</b>.",
+                    nav("usuarios"), "right", "usuarios",
+                ),
+                TourStep(
+                    "Dashboard",
+                    "Visão geral da operação: volume de requisições, "
+                    "prazos de entrega, status de produção e "
+                    "faturamentos pendentes.",
+                    nav("dashboard"), "right", "dashboard",
+                ),
+                TourStep(
+                    "Configurações",
+                    "Gerencie o <b>backup automático</b> do banco de dados, "
+                    "altere sua senha, ajuste a escala da interface e "
+                    "configure alertas de faturamento.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Painel Técnico",
+                    "Monitore a saúde do servidor em tempo real: "
+                    "tempo de resposta, conexões ativas e histórico de erros.",
+                    nav("tecnico"), "right",
+                ),
+                TourStep(
+                    "Notificações",
+                    "O sino exibe alertas em tempo real para eventos do sistema. "
+                    "Um <b>badge vermelho</b> indica notificações não lidas.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "gerente":
+            return [
+                welcome,
+                TourStep(
+                    "Nova Requisição",
+                    "Crie requisições para qualquer vendedor da equipe. "
+                    "Como gerente, você tem acesso a <b>todos os pedidos</b>.",
+                    nav("nova"), "right", "nova",
+                ),
+                TourStep(
+                    "Dashboard",
+                    "Indicadores da operação em tempo real: "
+                    "volume de pedidos, prazos, produção e faturamentos.",
+                    nav("dashboard"), "right", "dashboard",
+                ),
+                TourStep(
+                    "Central de Pedidos",
+                    "Acompanhe e gerencie todos os pedidos em andamento. "
+                    "Filtre por status, vendedor ou período.",
+                    nav("pedidos"), "right", "pedidos",
+                ),
+                TourStep(
+                    "Histórico",
+                    "Busque qualquer requisição por status, cliente ou data. "
+                    "Clique duas vezes para abrir os detalhes completos.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Notificações",
+                    "Receba alertas em tempo real sobre pedidos, "
+                    "produções e faturamentos.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "vendedor":
+            return [
+                welcome,
+                TourStep(
+                    "Nova Requisição",
+                    "Sua tela principal. Preencha o <b>PED</b>, selecione o cliente, "
+                    "adicione os itens e salve. "
+                    "O PDF vai automaticamente para a pasta da rede.",
+                    nav("nova"), "right", "nova",
+                ),
+                TourStep(
+                    "Número do PED",
+                    "Digite aqui o número do pedido. "
+                    "É obrigatório para salvar a requisição.",
+                    form("input_ped"), "bottom", "nova",
+                ),
+                TourStep(
+                    "Busca de Cliente",
+                    "Pesquise pelo nome ou código do cliente. "
+                    "O sistema busca em tempo real enquanto você digita.",
+                    form("client_search"), "bottom",
+                ),
+                TourStep(
+                    "Histórico",
+                    "Todas as suas requisições ficam aqui. "
+                    "Filtre por status, data ou cliente e clique duas vezes "
+                    "para abrir qualquer pedido.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Notificações",
+                    "Receba alertas quando sua requisição entrar em produção, "
+                    "for finalizada ou faturada.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "producao":
+            return [
+                welcome,
+                TourStep(
+                    "Fila A&R",
+                    "Sua tela principal. Acompanhe todos os pedidos "
+                    "enviados para produção na <b>A&R</b>. "
+                    "Use as abas para filtrar por etapa.",
+                    nav("ar"), "right", "ar",
+                ),
+                TourStep(
+                    "Histórico",
+                    "Busque qualquer requisição. Clique duas vezes "
+                    "para abrir e atualizar o status.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Notificações",
+                    "Receba alertas quando novos pedidos chegarem "
+                    "à fila da A&R.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "industria":
+            return [
+                welcome,
+                TourStep(
+                    "Pinheiro Indústria",
+                    "Sua tela principal. Acompanhe todos os pedidos "
+                    "destinados à <b>Pinheiro Indústria</b>.",
+                    nav("pinheiro_industria"), "right", "pinheiro_industria",
+                ),
+                TourStep(
+                    "Histórico",
+                    "Busque qualquer requisição. Clique duas vezes "
+                    "para abrir e atualizar o status.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Notificações",
+                    "Receba alertas quando novos pedidos chegarem "
+                    "à fila da Indústria.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "entrega":
+            return [
+                welcome,
+                TourStep(
+                    "Fila de Entrega",
+                    "Acompanhe os pedidos aguardando recebimento "
+                    "e entrega na <b>A&R</b>. "
+                    "Use as abas para filtrar por etapa.",
+                    nav("ar"), "right", "ar",
+                ),
+                TourStep(
+                    "Histórico",
+                    "Consulte o histórico completo de requisições "
+                    "e mantenha o status sempre atualizado.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Notificações",
+                    "Receba alertas quando novos pedidos chegarem "
+                    "para entrega.",
+                    bell, "right",
+                ),
+            ]
+
+        # Fallback genérico
+        return [
+            welcome,
+            TourStep(
+                "Nova Requisição",
+                "Crie e gerencie requisições.",
+                nav("nova"), "right", "nova",
+            ),
+            TourStep(
+                "Histórico",
+                "Busque e filtre todas as requisições.",
+                nav("historico"), "right", "historico",
+            ),
+            TourStep(
+                "Configurações",
+                "Personalize a aparência e gerencie sua conta.",
+                nav("config"), "right", "config",
+            ),
+        ]
 
     def _stop_runtime_services(self):
         if hasattr(self, "_notif_timer") and self._notif_timer is not None:
