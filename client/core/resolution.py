@@ -210,11 +210,9 @@ class ResolutionManager:
         configured = self._load_setting("bg_folder")
         if configured:
             return configured
-        # Padrão: pasta local dentro do projeto (retrocompatível com
-        # instalações existentes que já tinham campanhas ali)
-        return os.path.normpath(
-            os.path.join(os.path.dirname(__file__), "..", "assets", "login_backgrounds")
-        )
+        # Padrão: pasta compartilhada na rede — todas as máquinas apontam
+        # para o mesmo local sem precisar de configuração manual.
+        return r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\login_backgrounds"
 
     def save(self, **kwargs):
         data = self._read_file()
