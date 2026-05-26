@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsTextItem,
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
-    QSizePolicy, QFrame, QComboBox,
+    QSizePolicy, QFrame, QComboBox, QApplication,
 )
 from ..core import theme
 from ..core.text_case import normalize_upper_text
@@ -92,6 +92,11 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setPen(pen)
         item.setData(0, {"type": "ruler_measure_line"})
 
+    elif t == "manual_dimension_line":
+        item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
+        item.setPen(pen)
+        item.setData(0, {"type": "manual_dimension_line"})
+
     elif t == "rect":
         item = QGraphicsRectItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
@@ -124,6 +129,14 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
         item.setFont(font)
         item.setData(0, {"type": "ruler_measure_text"})
+
+    elif t == "manual_dimension_text":
+        item = QGraphicsTextItem(d.get("text", ""))
+        item.setPos(QPointF(d["x"], d["y"]))
+        item.setDefaultTextColor(QColor(d.get("color", "#000000")))
+        font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
+        item.setFont(font)
+        item.setData(0, {"type": "manual_dimension_text"})
 
     elif t == "image":
         path = d.get("path", "")
@@ -200,6 +213,12 @@ class DrawingScene(QGraphicsScene):
         self._curve_points_scene: list[QPointF] = []
         self._curve_segment_index: int = -1
         self._ruler_commit_on_release: bool = False
+        self._manual_dim_active: bool = False
+        self._manual_dim_label: str = ""
+        self._manual_dim_start: QPointF | None = None
+        self._manual_dim_line_item: QGraphicsLineItem | None = None
+        self._manual_dim_text_item: QGraphicsTextItem | None = None
+        self._manual_dim_block_release: bool = False
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
 
         # Estado do Free Transform (Ctrl+T)
@@ -322,7 +341,14 @@ class DrawingScene(QGraphicsScene):
                 continue
             meta = item.data(0) or {}
             # Ignora overlays/itens transitórios para o snap não "grudar" no próprio preview.
-            if isinstance(meta, dict) and meta.get("type") in {"ruler_overlay", "ruler_measure_line", "ruler_measure_text"}:
+            if isinstance(meta, dict) and meta.get("type") in {
+                "ruler_overlay",
+                "ruler_measure_line",
+                "ruler_measure_text",
+                "manual_dimension_overlay",
+                "manual_dimension_line",
+                "manual_dimension_text",
+            }:
                 continue
             if not item.isVisible():
                 continue
@@ -719,9 +745,15 @@ class DrawingScene(QGraphicsScene):
     def _sync_ruler_visuals(self):
         if self._ruler_line_item is not None:
             self._ruler_line_item.setPen(self._ruler_pen(cosmetic=True))
+        if self._manual_dim_line_item is not None:
+            self._manual_dim_line_item.setPen(self._ruler_pen(cosmetic=True))
         for item in self.items():
             meta = item.data(0) or {}
-            if isinstance(meta, dict) and meta.get("type") == "ruler_measure_line" and isinstance(item, QGraphicsLineItem):
+            if (
+                isinstance(meta, dict)
+                and meta.get("type") in {"ruler_measure_line", "manual_dimension_line"}
+                and isinstance(item, QGraphicsLineItem)
+            ):
                 item.setPen(self._ruler_pen(cosmetic=True))
 
     def _ensure_ruler_items(self):
@@ -750,6 +782,83 @@ class DrawingScene(QGraphicsScene):
         self._ruler_text_item.setPlainText(text)
         self._ruler_text_item.setPos(self._ruler_label_pos(start, end))
 
+    def _ensure_manual_dimension_items(self):
+        if self._manual_dim_line_item is None:
+            self._manual_dim_line_item = self.addLine(0, 0, 0, 0, self._ruler_pen(cosmetic=True))
+            self._manual_dim_line_item.setZValue(10000)
+            self._manual_dim_line_item.setData(0, {"type": "manual_dimension_overlay"})
+        else:
+            self._manual_dim_line_item.setPen(self._ruler_pen(cosmetic=True))
+
+        if self._manual_dim_text_item is None:
+            self._manual_dim_text_item = QGraphicsTextItem("")
+            self._manual_dim_text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+            self._manual_dim_text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+            self._manual_dim_text_item.setZValue(10001)
+            self._manual_dim_text_item.setData(0, {"type": "manual_dimension_overlay"})
+            self.addItem(self._manual_dim_text_item)
+
+    def _update_manual_dimension_preview(self, start: QPointF, end: QPointF):
+        self._ensure_manual_dimension_items()
+        if self._manual_dim_line_item is None or self._manual_dim_text_item is None:
+            return
+        self._manual_dim_line_item.setLine(start.x(), start.y(), end.x(), end.y())
+        self._manual_dim_text_item.setPlainText(self._manual_dim_label)
+        self._manual_dim_text_item.setPos(self._ruler_label_pos(start, end))
+
+    def _clear_manual_dimension_overlay(self):
+        if self._manual_dim_line_item is not None:
+            self.removeItem(self._manual_dim_line_item)
+            self._manual_dim_line_item = None
+        if self._manual_dim_text_item is not None:
+            self.removeItem(self._manual_dim_text_item)
+            self._manual_dim_text_item = None
+
+    def begin_manual_dimension(self, label: str):
+        self.cancel_manual_dimension()
+        if self._ft_active:
+            self._exit_ft()
+        self._manual_dim_active = True
+        self._manual_dim_label = label
+        self._manual_dim_start = None
+
+    def cancel_manual_dimension(self):
+        self._manual_dim_active = False
+        self._manual_dim_label = ""
+        self._manual_dim_start = None
+        self._manual_dim_block_release = False
+        self._clear_manual_dimension_overlay()
+
+    def _commit_manual_dimension(self, start: QPointF, end: QPointF):
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+
+        line_item = QGraphicsLineItem(start.x(), start.y(), end.x(), end.y())
+        line_item.setPen(self._ruler_pen(cosmetic=True))
+        line_item.setZValue(9000)
+        line_item.setData(0, {"type": "manual_dimension_line"})
+        line_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(line_item)
+
+        text_item = QGraphicsTextItem(self._manual_dim_label)
+        text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+        text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+        text_item.setZValue(9001)
+        text_item.setData(0, {"type": "manual_dimension_text"})
+        text_item.setPos(self._ruler_label_pos(start, end))
+        text_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(text_item)
+
+        self.cw._push_undo(line_item)
+        self.cw._push_undo(text_item)
+        self.cw.changed.emit()
+
     def mousePressEvent(self, event):
         tool = self.cw.tool
         pos  = event.scenePos()
@@ -757,6 +866,23 @@ class DrawingScene(QGraphicsScene):
 
         if event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
+            return
+
+        if self._manual_dim_active:
+            self._manual_dim_block_release = True
+            if self._manual_dim_start is None:
+                self._manual_dim_start = QPointF(pos.x(), pos.y())
+                self._update_manual_dimension_preview(self._manual_dim_start, self._manual_dim_start)
+            else:
+                end = (
+                    self._constrain(self._manual_dim_start, pos)
+                    if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                    else QPointF(pos.x(), pos.y())
+                )
+                start = self._manual_dim_start
+                self._commit_manual_dimension(start, end)
+                self.cancel_manual_dimension()
+            event.accept()
             return
 
         # Free Transform ativo: verificar zona de rotação nos cantos
@@ -903,6 +1029,16 @@ class DrawingScene(QGraphicsScene):
         tool = self.cw.tool
         pos  = event.scenePos()
 
+        if self._manual_dim_active and self._manual_dim_start is not None:
+            end = (
+                self._constrain(self._manual_dim_start, pos)
+                if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                else QPointF(pos.x(), pos.y())
+            )
+            self._update_manual_dimension_preview(self._manual_dim_start, end)
+            event.accept()
+            return
+
         # Free Transform: rotação fluida
         if self._ft_is_rotating and self._ft_rotate_pivot is not None:
             angle = math.atan2(
@@ -980,6 +1116,14 @@ class DrawingScene(QGraphicsScene):
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
 
     def mouseReleaseEvent(self, event):
+        if self._manual_dim_block_release and event.button() == Qt.MouseButton.LeftButton:
+            self._manual_dim_block_release = False
+            event.accept()
+            return
+        if self._manual_dim_active and event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            return
+
         # Free Transform: fim da rotação (mantém ft ativo para mais ajustes)
         if self._ft_is_rotating:
             self._ft_is_rotating = False
@@ -1075,6 +1219,11 @@ class DrawingScene(QGraphicsScene):
                 self._exit_ft()
                 event.accept()
                 return
+
+        if self._manual_dim_active and event.key() == Qt.Key.Key_Escape:
+            self.cancel_manual_dimension()
+            event.accept()
+            return
 
         focus_item = self.focusItem()
         if (
@@ -1416,6 +1565,12 @@ class DrawingCanvas(QWidget):
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
 
+        btn_dim = QPushButton("📏 MM")
+        btn_dim.setFixedHeight(fh)
+        btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
+        btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
+        btn_dim.setStyleSheet(self._tool_btn_style())
+
         btn_clear = QPushButton("🗑️ Limpar")
         btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
@@ -1427,6 +1582,7 @@ class DrawingCanvas(QWidget):
         )
         row2.addWidget(btn_img)
         row2.addWidget(btn_pdf)
+        row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
         layout.addLayout(row2)
@@ -1436,7 +1592,7 @@ class DrawingCanvas(QWidget):
             "✨ U = régua  |  Ctrl+Clique = fixar medição  |  F1 = fixar medição atual  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
-            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
+            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
         hint.setWordWrap(True)
@@ -1552,8 +1708,65 @@ class DrawingCanvas(QWidget):
         fix_measure_action.triggered.connect(self.scene.commit_ruler_overlay)
         self.addAction(fix_measure_action)
 
+        manual_dimension_action = QAction(self)
+        manual_dimension_action.setShortcut(QKeySequence(Qt.Key.Key_M))
+        manual_dimension_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        manual_dimension_action.triggered.connect(self._trigger_manual_dimension_shortcut)
+        self.addAction(manual_dimension_action)
+
+    def _trigger_manual_dimension_shortcut(self):
+        if not self.isVisible():
+            return
+        focus = QApplication.focusWidget()
+        if focus and (
+            focus.inherits("QLineEdit")
+            or focus.inherits("QTextEdit")
+            or focus.inherits("QPlainTextEdit")
+            or focus.inherits("QAbstractSpinBox")
+            or focus.inherits("QComboBox")
+        ):
+            return
+        self._add_or_edit_manual_dimension()
+
+    def _add_or_edit_manual_dimension(self):
+        """
+        Cota manual:
+        - Se houver texto selecionado, edita o conteúdo.
+        - Caso contrário, inicia o modo de cota manual (2 cliques para posicionar a linha).
+        """
+        selected = self.scene.selectedItems()
+        target_text = None
+        for item in selected:
+            if isinstance(item, QGraphicsTextItem):
+                target_text = item
+                break
+
+        default_value = target_text.toPlainText() if target_text else "Ø 12 mm"
+        text, ok = QInputDialog.getText(
+            self,
+            "Cota manual",
+            "Informe a cota (ex.: Ø 12 mm, 350 mm, 1.20 m):",
+            text=default_value,
+        )
+        if not ok:
+            return
+
+        label = normalize_upper_text(text)
+        label = (label or "").strip()
+        if not label:
+            return
+
+        if target_text is not None:
+            target_text.setPlainText(label)
+            self.changed.emit()
+            return
+        self._set_tool(Tool.SELECT)
+        self.scene.begin_manual_dimension(label)
+
     # Ferramentas
     def _set_tool(self, tool: Tool):
+        if hasattr(self, "scene") and self.scene._manual_dim_active:
+            self.scene.cancel_manual_dimension()
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
@@ -1668,11 +1881,14 @@ class DrawingCanvas(QWidget):
 
     # Limpar
     def _clear(self):
+        self.scene.cancel_manual_dimension()
         self.scene.clear()
         # Restaura o sceneRect fixo (scene.clear() o remove)
         self.scene.setSceneRect(-5000, -5000, 10000, 10000)
         self.scene._ruler_line_item = None
         self.scene._ruler_text_item = None
+        self.scene._manual_dim_line_item = None
+        self.scene._manual_dim_text_item = None
         self._undo_stack.clear()
         self._redo_stack.clear()
         self.changed.emit()
@@ -1869,7 +2085,7 @@ class DrawingCanvas(QWidget):
 
     def _item_to_dict(self, item: QGraphicsItem) -> dict | None:
         meta = item.data(0) or {}
-        if isinstance(meta, dict) and meta.get("type") == "ruler_overlay":
+        if isinstance(meta, dict) and meta.get("type") in {"ruler_overlay", "manual_dimension_overlay"}:
             return None
 
         pen_data = lambda p: {
@@ -1884,6 +2100,11 @@ class DrawingCanvas(QWidget):
             ln = item.line()
             if isinstance(meta, dict) and meta.get("type") == "ruler_measure_line":
                 return {"type": "ruler_measure_line",
+                        "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
+                        "pos_x": item.pos().x(), "pos_y": item.pos().y(),
+                        "pen": pen_data(item.pen()), "rotation": rot}
+            if isinstance(meta, dict) and meta.get("type") == "manual_dimension_line":
+                return {"type": "manual_dimension_line",
                         "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
                         "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                         "pen": pen_data(item.pen()), "rotation": rot}
@@ -1919,6 +2140,13 @@ class DrawingCanvas(QWidget):
         if isinstance(item, QGraphicsTextItem):
             if isinstance(meta, dict) and meta.get("type") == "ruler_measure_text":
                 return {"type": "ruler_measure_text",
+                        "x": item.pos().x(), "y": item.pos().y(),
+                        "text": item.toPlainText(),
+                        "color": item.defaultTextColor().name(),
+                        "font_size": item.font().pointSize(),
+                        "rotation": rot}
+            if isinstance(meta, dict) and meta.get("type") == "manual_dimension_text":
+                return {"type": "manual_dimension_text",
                         "x": item.pos().x(), "y": item.pos().y(),
                         "text": item.toPlainText(),
                         "color": item.defaultTextColor().name(),
