@@ -1551,14 +1551,14 @@ class DrawingCanvas(QWidget):
         btn_rotate.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_rotate)
 
-        btn_mirror_h = QPushButton("Espelhar H")
+        btn_mirror_h = QPushButton("Horizontal")
         btn_mirror_h.setFixedHeight(fh)
         btn_mirror_h.setToolTip("Espelhar com cópia na horizontal (Ctrl+Shift+H)")
         btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
         btn_mirror_h.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_mirror_h)
 
-        btn_mirror_v = QPushButton("Espelhar V")
+        btn_mirror_v = QPushButton("Vertical")
         btn_mirror_v.setFixedHeight(fh)
         btn_mirror_v.setToolTip("Espelhar com cópia na vertical (Ctrl+J)")
         btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
