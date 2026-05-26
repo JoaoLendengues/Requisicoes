@@ -1067,13 +1067,22 @@ def _build_canvas_item(data: dict):
 
         t = data.get("type")
         pen_d = data.get("pen", {})
+        _PEN_STYLES = {
+            "solid":   Qt.PenStyle.SolidLine,
+            "dash":    Qt.PenStyle.DashLine,
+            "dot":     Qt.PenStyle.DotLine,
+            "dashdot": Qt.PenStyle.DashDotLine,
+        }
         pen = QPen(QColor(pen_d.get("color", "#000000")), pen_d.get("width", 2))
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pen.setStyle(_PEN_STYLES.get(pen_d.get("style", "solid"), Qt.PenStyle.SolidLine))
         rotation = float(data.get("rotation", 0) or 0)
         pos = QPointF(float(data.get("pos_x", 0) or 0), float(data.get("pos_y", 0) or 0))
 
-        if t == "line":
+        # "ruler_measure_line" e "manual_dimension_line" têm a mesma estrutura
+        # que "line" — apenas o campo "type" difere.
+        if t in ("line", "ruler_measure_line", "manual_dimension_line"):
             it = QGraphicsLineItem(data["x1"], data["y1"], data["x2"], data["y2"])
             it.setPen(pen)
             it.setPos(pos)
@@ -1111,7 +1120,9 @@ def _build_canvas_item(data: dict):
                 it.setTransformOriginPoint(it.boundingRect().center())
                 it.setRotation(rotation)
             return it
-        if t == "text":
+        # "ruler_measure_text" e "manual_dimension_text" têm a mesma estrutura
+        # que "text" — posição em "x"/"y", campo "text", "color" e "font_size".
+        if t in ("text", "ruler_measure_text", "manual_dimension_text"):
             it = QGraphicsTextItem(data.get("text", ""))
             it.setPos(QPointF(data.get("x", 0), data.get("y", 0)))
             it.setDefaultTextColor(QColor(data.get("color", "#000000")))
