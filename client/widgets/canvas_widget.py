@@ -1551,6 +1551,20 @@ class DrawingCanvas(QWidget):
         btn_rotate.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_rotate)
 
+        btn_mirror_h = QPushButton("Espelhar H")
+        btn_mirror_h.setFixedHeight(fh)
+        btn_mirror_h.setToolTip("Espelhar horizontal (Ctrl+H)")
+        btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
+        btn_mirror_h.setStyleSheet(self._tool_btn_style())
+        row2.addWidget(btn_mirror_h)
+
+        btn_mirror_v = QPushButton("Espelhar V")
+        btn_mirror_v.setFixedHeight(fh)
+        btn_mirror_v.setToolTip("Espelhar vertical (Ctrl+J)")
+        btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
+        btn_mirror_v.setStyleSheet(self._tool_btn_style())
+        row2.addWidget(btn_mirror_v)
+
         row2.addSpacing(8)
 
         btn_img = QPushButton("🖼️ Imagem")
@@ -1590,6 +1604,7 @@ class DrawingCanvas(QWidget):
             "✨ U = régua  |  Ctrl+Clique = fixar medição  |  F1 = fixar medição atual  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
+            "Ctrl+H = espelhar horizontal  |  Ctrl+J = espelhar vertical  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
@@ -1701,6 +1716,18 @@ class DrawingCanvas(QWidget):
         ft_action.triggered.connect(self.scene._enter_ft)
         self.addAction(ft_action)
 
+        mirror_h_action = QAction(self)
+        mirror_h_action.setShortcut(QKeySequence("Ctrl+H"))
+        mirror_h_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        mirror_h_action.triggered.connect(self._mirror_selected_horizontal)
+        self.addAction(mirror_h_action)
+
+        mirror_v_action = QAction(self)
+        mirror_v_action.setShortcut(QKeySequence("Ctrl+J"))
+        mirror_v_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        mirror_v_action.triggered.connect(self._mirror_selected_vertical)
+        self.addAction(mirror_v_action)
+
         fix_measure_action = QAction(self)
         fix_measure_action.setShortcut(QKeySequence(Qt.Key.Key_F1))
         fix_measure_action.triggered.connect(self.scene.commit_ruler_overlay)
@@ -1785,6 +1812,32 @@ class DrawingCanvas(QWidget):
             item.setTransformOriginPoint(item.boundingRect().center())
             item.setRotation(item.rotation() + angle)
         self.changed.emit()
+
+    def _mirror_selected(self, horizontal: bool):
+        if self._text_editor_active():
+            return
+        selected = self.scene.selectedItems()
+        if not selected:
+            return
+
+        for item in selected:
+            center = item.boundingRect().center()
+            mirror = QTransform()
+            mirror.translate(center.x(), center.y())
+            if horizontal:
+                mirror.scale(-1.0, 1.0)
+            else:
+                mirror.scale(1.0, -1.0)
+            mirror.translate(-center.x(), -center.y())
+            item.setTransform(mirror, True)
+
+        self.changed.emit()
+
+    def _mirror_selected_horizontal(self):
+        self._mirror_selected(horizontal=True)
+
+    def _mirror_selected_vertical(self):
+        self._mirror_selected(horizontal=False)
 
     def _on_font_size_changed(self, v: int):
         self.font_size = v
