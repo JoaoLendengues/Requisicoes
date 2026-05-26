@@ -50,7 +50,7 @@ Responsaveis:
 ### Prioridade Baixa
 
 - [x] 2026-05-25 [joao]     Ajustar botoes do editor de desenho (nomes cortados em diferentes resolucoes)
-- [ ] [victor]   Mudar logo do sidebar nos widgets A&R e Pinheiro Industria
+- [x] 2026-05-26 [joao]     Mudar logo do sidebar nos widgets A&R e Pinheiro Industria
 
 ---
 

@@ -44,8 +44,8 @@ NAV_ITEMS = [
     ("dashboard", "PAINEL GERENCIAL",   "dashboard"),
     ("tecnico",   "PAINEL TÉCNICO",     "tecnico"),
     ("pedidos",   "CENTRAL DE PEDIDOS", "pedidos"),
-    ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "producao"),
-    ("ar",        "A&&R",               "producao"),
+    ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "pinheiro_industria"),
+    ("ar",        "A&&R",               "ar"),
     ("historico", "HISTÓRICO / BUSCA",  "historico"),
     ("feedback",  "FEEDBACKS",          "feedback"),
     ("usuarios",  "CENTRAL DE USUÁRIOS","usuarios"),
@@ -60,8 +60,8 @@ NAV_GROUPS = [
     [
         ("nova", "NOVA REQUISIÇÃO", "nova"),
         ("pedidos", "CENTRAL DE PEDIDOS", "pedidos"),
-        ("ar", "A&&R", "producao"),
-        ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "producao"),
+        ("ar", "A&&R", "ar"),
+        ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "pinheiro_industria"),
     ],
     [
         ("dashboard", "PAINEL GERENCIAL", "dashboard"),
