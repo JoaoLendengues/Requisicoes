@@ -1553,7 +1553,7 @@ class DrawingCanvas(QWidget):
 
         btn_mirror_h = QPushButton("Espelhar H")
         btn_mirror_h.setFixedHeight(fh)
-        btn_mirror_h.setToolTip("Espelhar horizontal (Ctrl+H)")
+        btn_mirror_h.setToolTip("Espelhar horizontal (Ctrl+Shift+H)")
         btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
         btn_mirror_h.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_mirror_h)
@@ -1604,7 +1604,7 @@ class DrawingCanvas(QWidget):
             "✨ U = régua  |  Ctrl+Clique = fixar medição  |  F1 = fixar medição atual  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
-            "Ctrl+H = espelhar horizontal  |  Ctrl+J = espelhar vertical  |  "
+            "Ctrl+Shift+H = espelhar horizontal  |  Ctrl+J = espelhar vertical  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
@@ -1717,7 +1717,7 @@ class DrawingCanvas(QWidget):
         self.addAction(ft_action)
 
         mirror_h_action = QAction(self)
-        mirror_h_action.setShortcut(QKeySequence("Ctrl+H"))
+        mirror_h_action.setShortcut(QKeySequence("Ctrl+Shift+H"))
         mirror_h_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         mirror_h_action.triggered.connect(self._mirror_selected_horizontal)
         self.addAction(mirror_h_action)
