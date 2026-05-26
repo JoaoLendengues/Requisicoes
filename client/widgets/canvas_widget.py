@@ -1563,7 +1563,6 @@ class DrawingCanvas(QWidget):
             (Tool.PEN,      "✏️ Caneta",   "P"),
             (Tool.ERASER,   "🧹 Borracha", "X"),
             (Tool.LINE,     "📏 Linha",    "L"),
-            (Tool.RULER,    "📐 Régua",    "U"),
             (Tool.ARROW,    "➡ Seta",      "A"),
             (Tool.CURVE,    "〰 Curva",    "C"),
             (Tool.TRIANGLE, "△ Triang.",  "G"),
@@ -1738,7 +1737,7 @@ class DrawingCanvas(QWidget):
 
         # Dica de teclado
         hint = QLabel(
-            "✨ U = régua  |  Ctrl+Clique = fixar medição  |  F1 = fixar medição atual  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
@@ -1814,7 +1813,6 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_P: Tool.PEN,
             Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
-            Qt.Key.Key_U: Tool.RULER,
             Qt.Key.Key_A: Tool.ARROW,
             Qt.Key.Key_C: Tool.CURVE,
             Qt.Key.Key_G: Tool.TRIANGLE,
@@ -1875,11 +1873,6 @@ class DrawingCanvas(QWidget):
         mirror_axis_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         mirror_axis_action.triggered.connect(self._start_manual_mirror_axis)
         self.addAction(mirror_axis_action)
-
-        fix_measure_action = QAction(self)
-        fix_measure_action.setShortcut(QKeySequence(Qt.Key.Key_F1))
-        fix_measure_action.triggered.connect(self.scene.commit_ruler_overlay)
-        self.addAction(fix_measure_action)
 
         manual_dimension_action = QAction(self)
         manual_dimension_action.setShortcut(QKeySequence(Qt.Key.Key_M))
