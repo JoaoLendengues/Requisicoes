@@ -473,6 +473,7 @@ class UserCenterView(QWidget):
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
+        self.table.setSortingEnabled(True)
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{theme.CARD_BG};"
@@ -483,6 +484,7 @@ class UserCenterView(QWidget):
             f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
+            f"QHeaderView::section:hover {{ background:{theme.PRIMARY_HOVER}; }}"
             f"QTableWidget::item {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
             f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
@@ -707,6 +709,7 @@ class UserCenterView(QWidget):
         self._fill_table()
 
     def _fill_table(self):
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         for user in self._users_visible:
             if not isinstance(user, dict):
@@ -726,6 +729,7 @@ class UserCenterView(QWidget):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(row, col, item)
+        self.table.setSortingEnabled(True)
 
         if self._pending_code:
             matched = False

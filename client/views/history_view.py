@@ -23,6 +23,7 @@ from ..api import client as api
 from ..core import theme
 from ..core.session import session
 from ..widgets.smooth_scroll import apply_smooth_scroll
+from ..widgets.sortable_item import SortableItem
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -698,6 +699,7 @@ class HistoryView(QWidget):
         self.table.setColumnWidth(6, max(110, int(130 * s)))
         self.table.setColumnWidth(7, max(150, int(170 * s)))
         self.table.setColumnWidth(8, max(220, int(260 * s)))
+        self.table.setSortingEnabled(True)
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{theme.CARD_BG};"
@@ -708,6 +710,7 @@ class HistoryView(QWidget):
             f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
+            f"QHeaderView::section:hover {{ background:{theme.PRIMARY_HOVER}; }}"
             f"QTableWidget::item {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
             f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
@@ -888,6 +891,7 @@ class HistoryView(QWidget):
             return
 
         self._reqs = [req for req in reqs if isinstance(req, dict)]
+        self.table.setSortingEnabled(False)
         self.table.clearSpans()
         self.table.setRowCount(0)
 
@@ -897,9 +901,11 @@ class HistoryView(QWidget):
             for req in self._reqs:
                 row = self.table.rowCount()
                 self.table.insertRow(row)
-                status = str(req.get("production_status") or req.get("status") or "")
+                status      = str(req.get("production_status") or req.get("status") or "")
+                ped_raw     = req.get("ped_number")
+                date_raw    = str(req.get("emission_date") or "")
                 values = [
-                    str(req.get("ped_number") or "-"),
+                    str(ped_raw or "-"),
                     str(req.get("client_name") or req.get("client_id") or "-"),
                     str(req.get("obra") or "-"),
                     str(req.get("vendor_name") or req.get("vendor_id") or "-"),
@@ -938,10 +944,25 @@ class HistoryView(QWidget):
                             f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                         )
                         self.table.setCellWidget(row, col, badge)
+                    elif col == 0:
+                        # Ordena PED numericamente
+                        try:
+                            sort_key = int(ped_raw)
+                        except (TypeError, ValueError):
+                            sort_key = 0
+                        item = SortableItem(value, sort_key=sort_key)
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(row, col, item)
+                    elif col == 4:
+                        # Ordena DATA pela string ISO (YYYY-MM-DD... ordena lexicograficamente)
+                        item = SortableItem(value, sort_key=date_raw)
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(row, col, item)
                     else:
                         item = QTableWidgetItem(value)
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(row, col, item)
+        self.table.setSortingEnabled(True)
 
         current = local_now()
         self.date_label.setText(_format_header_date(current))

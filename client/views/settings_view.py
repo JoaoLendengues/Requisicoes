@@ -203,6 +203,11 @@ class SettingsApiWorker(QObject):
                 result = api.trigger_backup()
             elif self.action == "list_backups":
                 result = api.list_backups()
+            elif self.action == "change_password":
+                result = api.change_password(
+                    self.payload["current_password"],
+                    self.payload["new_password"],
+                )
             elif self.action == "get_backup_settings":
                 result = api.get_backup_settings()
             elif self.action == "save_backup_settings":
@@ -435,6 +440,54 @@ class SettingsView(QWidget):
         font_size_hint.setProperty("muted", "1")
         font_size_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
         layout.addWidget(font_size_hint)
+
+        # ── Alterar Senha (todos) ─────────────────────────────────────────────
+        layout.addWidget(_section("Alterar Senha", s))
+        layout.addWidget(_separator())
+
+        pwd_grid = QGridLayout()
+        pwd_grid.setSpacing(max(8, int(10 * s)))
+
+        pwd_grid.addWidget(self._lbl("Senha atual:", s), 0, 0)
+        self._input_pwd_current = QLineEdit()
+        self._input_pwd_current.setEchoMode(QLineEdit.EchoMode.Password)
+        self._input_pwd_current.setPlaceholderText("Digite sua senha atual")
+        self._input_pwd_current.setFixedHeight(max(38, int(44 * s)))
+        self._input_pwd_current.setStyleSheet(_field_style(s))
+        pwd_grid.addWidget(self._input_pwd_current, 0, 1)
+
+        pwd_grid.addWidget(self._lbl("Nova senha:", s), 1, 0)
+        self._input_pwd_new = QLineEdit()
+        self._input_pwd_new.setEchoMode(QLineEdit.EchoMode.Password)
+        self._input_pwd_new.setPlaceholderText("Mínimo 6 caracteres")
+        self._input_pwd_new.setFixedHeight(max(38, int(44 * s)))
+        self._input_pwd_new.setStyleSheet(_field_style(s))
+        pwd_grid.addWidget(self._input_pwd_new, 1, 1)
+
+        pwd_grid.addWidget(self._lbl("Confirmar nova senha:", s), 2, 0)
+        self._input_pwd_confirm = QLineEdit()
+        self._input_pwd_confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        self._input_pwd_confirm.setPlaceholderText("Repita a nova senha")
+        self._input_pwd_confirm.setFixedHeight(max(38, int(44 * s)))
+        self._input_pwd_confirm.setStyleSheet(_field_style(s))
+        pwd_grid.addWidget(self._input_pwd_confirm, 2, 1)
+
+        layout.addLayout(pwd_grid)
+
+        pwd_action_row = QHBoxLayout()
+        pwd_action_row.setSpacing(max(8, int(10 * s)))
+        self._btn_change_pwd = QPushButton("Alterar Senha")
+        self._btn_change_pwd.setFixedHeight(max(38, int(44 * s)))
+        self._btn_change_pwd.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_change_pwd.clicked.connect(self._on_change_password)
+        pwd_action_row.addWidget(self._btn_change_pwd)
+        self._lbl_pwd_status = QLabel("")
+        self._lbl_pwd_status.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
+        pwd_action_row.addWidget(self._lbl_pwd_status)
+        pwd_action_row.addStretch()
+        layout.addLayout(pwd_action_row)
 
         # ── Alertas de Faturamento (admin + gerente) ──────────────────────────
         self._billing_section = QWidget()
@@ -887,6 +940,18 @@ class SettingsView(QWidget):
             entries = payload if isinstance(payload, list) else []
             self._populate_backup_table(entries)
 
+        if action == "change_password":
+            self._btn_change_pwd.setEnabled(True)
+            self._btn_change_pwd.setText("Alterar Senha")
+            self._input_pwd_current.clear()
+            self._input_pwd_new.clear()
+            self._input_pwd_confirm.clear()
+            s = self.scale
+            self._lbl_pwd_status.setText("Senha alterada com sucesso!")
+            self._lbl_pwd_status.setStyleSheet(
+                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
+            )
+
         if action == "get_backup_settings":
             data = payload if isinstance(payload, dict) else {}
             self._chk_daily.setChecked(bool(data.get("daily_enabled", True)))
@@ -928,6 +993,15 @@ class SettingsView(QWidget):
         if action == "list_backups":
             self._btn_refresh_backup_table.setEnabled(True)
             self._btn_refresh_backup_table.setText("Atualizar Lista")
+
+        if action == "change_password":
+            self._btn_change_pwd.setEnabled(True)
+            self._btn_change_pwd.setText("Alterar Senha")
+            s = self.scale
+            self._lbl_pwd_status.setText(f"Erro: {message}")
+            self._lbl_pwd_status.setStyleSheet(
+                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
+            )
 
         if action == "get_backup_settings":
             pass  # mantém os valores padrão já exibidos nos controles
@@ -1170,6 +1244,38 @@ class SettingsView(QWidget):
 
     # ── Backup do Banco de Dados ─────────────────────────────────────────────
 
+    # ── Alterar Senha ────────────────────────────────────────────────────────
+
+    def _on_change_password(self) -> None:
+        current = self._input_pwd_current.text()
+        new     = self._input_pwd_new.text()
+        confirm = self._input_pwd_confirm.text()
+        s = self.scale
+
+        def _set_status(msg: str, color: str):
+            self._lbl_pwd_status.setText(msg)
+            self._lbl_pwd_status.setStyleSheet(
+                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{color};"
+            )
+
+        if not current:
+            _set_status("Informe a senha atual.", theme.DANGER)
+            return
+        if len(new) < 6:
+            _set_status("A nova senha precisa ter pelo menos 6 caracteres.", theme.DANGER)
+            return
+        if new != confirm:
+            _set_status("As senhas não coincidem.", theme.DANGER)
+            return
+
+        self._btn_change_pwd.setEnabled(False)
+        self._btn_change_pwd.setText("Alterando...")
+        self._lbl_pwd_status.setText("")
+        self._start_api_worker("change_password", {
+            "current_password": current,
+            "new_password":     new,
+        })
+
     def _on_save_backup_settings(self) -> None:
         """Envia as configurações de agendamento ao servidor."""
         self._btn_save_backup_settings.setEnabled(False)
@@ -1285,6 +1391,10 @@ class SettingsView(QWidget):
         if session.settings_show_billing:
             self.input_pending_invoice_days.setStyleSheet(_spinbox_style(s))
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
+        self._input_pwd_current.setStyleSheet(_field_style(s))
+        self._input_pwd_new.setStyleSheet(_field_style(s))
+        self._input_pwd_confirm.setStyleSheet(_field_style(s))
+        self._btn_change_pwd.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
         btn_style = self._scale_btn_style(s)

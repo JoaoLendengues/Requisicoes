@@ -80,6 +80,14 @@ def first_access(code: str, password: str) -> dict:
         return _check(client.post("/auth/first-access", json={"code": code, "password": password}))
 
 
+def change_password(current_password: str, new_password: str) -> dict:
+    with _cli() as client:
+        return _check(client.post(
+            "/auth/change-password",
+            json={"current_password": current_password, "new_password": new_password},
+        ))
+
+
 def get_first_access_status(code: str) -> dict:
     with _cli() as client:
         return _check(client.get("/auth/first-access-status", params={"code": code}))

@@ -7,6 +7,7 @@ from ..database import get_db
 from ..dependencies import get_current_user
 from ..models.user import User
 from ..schemas.auth import (
+    ChangePasswordRequest,
     FirstAccessRequest,
     FirstAccessStatusResponse,
     LoginRequest,
@@ -19,6 +20,7 @@ from ..services.auth_service import (
     create_access_token,
     get_active_user_by_code,
     hash_password,
+    verify_password,
 )
 
 router = APIRouter(prefix="/auth", tags=["Autenticacao"])
@@ -113,3 +115,28 @@ def first_access(data: FirstAccessRequest, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 def me(current_user: UserResponse = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/change-password")
+def change_password(
+    data: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_pwd = (data.current_password or "").strip()
+    new_pwd     = (data.new_password     or "").strip()
+
+    if not current_pwd:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Informe a senha atual.")
+    if len(new_pwd) < 6:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="A nova senha precisa ter pelo menos 6 caracteres.")
+    if not verify_password(current_pwd, current_user.hashed_password or ""):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Senha atual incorreta.")
+
+    current_user.hashed_password    = hash_password(new_pwd)
+    current_user.must_change_password = False
+    db.commit()
+    return {"message": "Senha alterada com sucesso."}

@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.sortable_item import SortableItem
 from ..core.dialogs import apply_message_box_theme, ask_confirmation
 from ..core.datetime_utils import (
     format_date as _format_date,
@@ -656,6 +657,7 @@ class OrderCenterView(QWidget):
             table.setColumnWidth(4, max(210, int(240 * s)))
             table.verticalHeader().setDefaultSectionSize(max(36, int(42 * s)))
 
+        table.setSortingEnabled(True)
         table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{theme.CARD_BG};"
@@ -666,6 +668,7 @@ class OrderCenterView(QWidget):
             f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
+            f"QHeaderView::section:hover {{ background:{theme.PRIMARY_HOVER}; }}"
             f"QTableWidget::item {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
             f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
@@ -757,6 +760,7 @@ class OrderCenterView(QWidget):
             self._set_empty_message(table, "Nenhum pedido encontrado nesta etapa.")
             return
 
+        table.setSortingEnabled(False)
         for row_data in rows:
             if not isinstance(row_data, dict):
                 continue
@@ -764,53 +768,78 @@ class OrderCenterView(QWidget):
             row = table.rowCount()
             table.insertRow(row)
 
+            ped_raw = row_data.get("ped_number")
+            try:
+                ped_sort = int(ped_raw)
+            except (TypeError, ValueError):
+                ped_sort = 0
+
             if key == "aguardando_recebimento":
                 values = [
-                    str(row_data.get("ped_number") or "-"),
+                    str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
                     str(row_data.get("vendor_name") or "-"),
                     _format_date(row_data.get("delivery_date")),
                     _format_waiting_minutes(row_data.get("waiting_minutes")),
                 ]
+                sort_keys = [ped_sort, None, None,
+                             str(row_data.get("delivery_date") or ""),
+                             row_data.get("waiting_minutes") or 0]
             elif key == "em_producao":
                 values = [
-                    str(row_data.get("ped_number") or "-"),
+                    str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
                     str(row_data.get("vendor_name") or "-"),
                     _format_datetime(row_data.get("received_at")),
                     str(row_data.get("destination") or "-"),
                 ]
+                sort_keys = [ped_sort, None, None,
+                             str(row_data.get("received_at") or ""), None]
             elif key == "aguardando_faturamento":
                 values = [
-                    str(row_data.get("ped_number") or "-"),
+                    str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
                     _format_datetime(row_data.get("finished_at")),
                     _format_duration(row_data.get("production_time_seconds")),
                     str(row_data.get("destination") or "-"),
                 ]
+                sort_keys = [ped_sort, None,
+                             str(row_data.get("finished_at") or ""),
+                             row_data.get("production_time_seconds") or 0,
+                             None]
             elif key == "faturados":
                 values = [
-                    str(row_data.get("ped_number") or "-"),
+                    str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
                     _format_datetime(row_data.get("invoiced_at")),
                     _format_datetime(row_data.get("finished_at")),
                     str(row_data.get("destination") or "-"),
                 ]
+                sort_keys = [ped_sort, None,
+                             str(row_data.get("invoiced_at") or ""),
+                             str(row_data.get("finished_at") or ""),
+                             None]
             elif key == "cancelados":
                 values = [
-                    str(row_data.get("ped_number") or "-"),
+                    str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
                     str(row_data.get("vendor_name") or "-"),
                     _format_datetime(row_data.get("canceled_at")),
                 ]
-            else:
+                sort_keys = [ped_sort, None, None,
+                             str(row_data.get("canceled_at") or "")]
+            else:  # atrasados
                 values = [
-                    str(row_data.get("ped_number") or "-"),
+                    str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
                     _format_date(row_data.get("delivery_date")),
                     f"{row_data.get('delay_days') or 0} dia(s)",
                     str(row_data.get("status") or "-"),
                 ]
+                sort_keys = [ped_sort, None,
+                             str(row_data.get("delivery_date") or ""),
+                             row_data.get("delay_days") or 0,
+                             None]
 
             for col, value in enumerate(values):
                 if key == "atrasados" and col == 4:
@@ -833,9 +862,11 @@ class OrderCenterView(QWidget):
                     )
                     table.setCellWidget(row, col, badge)
                 else:
-                    item = QTableWidgetItem(value)
+                    sk = sort_keys[col] if col < len(sort_keys) else None
+                    item = SortableItem(value, sort_key=sk) if sk is not None else QTableWidgetItem(value)
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(row, col, item)
+        table.setSortingEnabled(True)
 
     def _set_empty_message(self, table: QTableWidget, message: str):
         table.setRowCount(1)
