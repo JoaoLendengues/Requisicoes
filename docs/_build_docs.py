@@ -471,303 +471,267 @@ def card(slide, x, y, w, h, icon, title, bullets, bg_color=AZUL_C, text_color=AZ
         p.font.name = 'Calibri'
 
 
+def _bullets(slide, x, y, w, h, items, size=Pt(16), gap=Pt(14)):
+    """Render a simple emoji-bullet list."""
+    tb = slide.shapes.add_textbox(x, y, w, h)
+    tf = tb.text_frame
+    tf.word_wrap = True
+    for i, (emoji, text) in enumerate(items):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.text = f'{emoji}  {text}' if emoji else text
+        p.font.size = size
+        p.font.color.rgb = PptxRGB(0x22, 0x22, 0x22)
+        p.font.name = 'Calibri'
+        p.space_after = gap
+
+
 def build_pptx():
     prs = prs_new()
 
     # ── SLIDE 1 — Capa ────────────────────────────────────────────────────────
     s = blank_slide(prs)
-    title_slide_layout(s,
-        'Requisições App',
-        'Sistema de Gestão de Requisições',
-        'Ferragens Pinheiro  |  v1.1.0  |  Maio de 2026'
-    )
+    bg(s, AZUL)
+    # Bottom accent strip
+    strip = box(s, Inches(0), Inches(6.1), W, Inches(1.4), fill_color=PptxRGB(0x16, 0x2D, 0x4F))
+    strip.line.fill.background()
+    txbox(s, Inches(1), Inches(1.9), Inches(11.3), Inches(1.4),
+          'Requisições App', size=Pt(52), color=BRANCO_P, bold=True, align=PP_ALIGN.CENTER)
+    txbox(s, Inches(1), Inches(3.5), Inches(11.3), Inches(0.8),
+          'Ferragens Pinheiro', size=Pt(26), color=AZUL_C, align=PP_ALIGN.CENTER)
+    txbox(s, Inches(1), Inches(6.2), Inches(11.3), Inches(0.6),
+          'Maio de 2026  |  v1.1.0', size=Pt(14),
+          color=PptxRGB(0xAA, 0xBB, 0xCC), align=PP_ALIGN.CENTER)
 
-    # ── SLIDE 2 — O Desafio ───────────────────────────────────────────────────
+    # ── SLIDE 2 — Antes: papel ────────────────────────────────────────────────
     s = blank_slide(prs)
     bg(s, BRANCO_P)
-    content_title(s, 'O Desafio')
-    challenges = [
-        ('📄', 'Processos manuais', 'Requisições feitas em papel ou planilhas descentralizadas'),
-        ('🔍', 'Sem rastreabilidade', 'Nenhum controle de status dos pedidos em tempo real'),
-        ('⚠️', 'Erros humanos', 'PDFs gerados manualmente, sujeitos a inconsistências'),
-        ('🔌', 'Equipes desconectadas', 'Produção e indústria sem acesso às informações'),
-        ('📁', 'Histórico disperso', 'Consultas difíceis, dados espalhados sem padronização'),
-    ]
-    for i, (icon, title, desc) in enumerate(challenges):
-        row = i // 3
-        col = i % 3 if i < 3 else (i - 3)
-        if i < 3:
-            cx = Inches(0.4 + col * 4.3)
-            cy = Inches(1.5)
-        else:
-            cx = Inches(2.55 + (i - 3) * 4.3)
-            cy = Inches(4.1)
-        c = box(s, cx, cy, Inches(4.0), Inches(2.2), fill_color=AZUL_C, line_color=AZUL_M, line_width=Pt(1))
-        txbox(s, cx + Inches(0.15), cy + Inches(0.1), Inches(3.7), Inches(0.5),
-              f'{icon}  {title}', size=Pt(13), color=AZUL, bold=True)
-        txbox(s, cx + Inches(0.15), cy + Inches(0.65), Inches(3.7), Inches(1.4),
-              desc, size=Pt(11), color=AZUL, wrap=True)
+    content_title(s, 'Como era antes: o papel')
+    txbox(s, Inches(10.3), Inches(1.8), Inches(2.5), Inches(2.5),
+          '📄', size=Pt(90), align=PP_ALIGN.CENTER, color=PptxRGB(0xCC, 0xCC, 0xCC))
+    _bullets(s, Inches(0.6), Inches(1.4), Inches(9.4), Inches(5.5), [
+        ('→', 'Requisições escritas à mão, sem padronização'),
+        ('→', 'Nenhum registro centralizado — cada um guardava o seu'),
+        ('→', 'Impossível consultar o histórico de forma rápida'),
+        ('→', 'Informações chegavam incompletas ou com atraso às equipes'),
+        ('→', 'Erros de transcrição e muito retrabalho'),
+    ])
 
-    # ── SLIDE 3 — A Solução ───────────────────────────────────────────────────
+    # ── SLIDE 3 — Evolução: Excel ─────────────────────────────────────────────
     s = blank_slide(prs)
     bg(s, BRANCO_P)
-    content_title(s, 'A Solução Desenvolvida')
-    cols = [
-        ('🖥️', 'Desktop App', ['PySide6 / Qt6', 'Interface nativa Windows', 'Escala adaptativa', 'Atualização automática']),
-        ('🌐', 'API Central', ['FastAPI + Uvicorn', 'REST + SSE em tempo real', 'Autenticação JWT', 'Documentação interativa']),
-        ('🗄️', 'Banco de Dados', ['PostgreSQL 12+', 'Índices GIN trigram', 'Backup automático', '12 tabelas estruturadas']),
-    ]
-    for i, (icon, title, bullets) in enumerate(cols):
-        cx = Inches(0.5 + i * 4.27)
-        card(s, cx, Inches(1.3), Inches(4.0), Inches(4.8), icon, title, bullets)
-    txbox(s, Inches(0.5), Inches(6.7), Inches(12.3), Inches(0.5),
-          '100% desenvolvido internamente para as necessidades da Ferragens Pinheiro',
-          size=Pt(11), color=AZUL_M, align=PP_ALIGN.CENTER)
+    content_title(s, 'A evolução: a planilha Excel')
+    txbox(s, Inches(10.3), Inches(1.8), Inches(2.5), Inches(2.5),
+          '📊', size=Pt(90), align=PP_ALIGN.CENTER, color=PptxRGB(0xCC, 0xCC, 0xCC))
 
-    # ── SLIDE 4 — Perfis ─────────────────────────────────────────────────────
+    txbox(s, Inches(0.6), Inches(1.35), Inches(9.4), Inches(0.5),
+          'O que melhorou:', size=Pt(15), color=PptxRGB(0x27, 0xAE, 0x60), bold=True)
+    _bullets(s, Inches(0.6), Inches(1.85), Inches(9.4), Inches(1.8), [
+        ('✅', 'Requisições digitadas e editáveis'),
+        ('✅', 'Fácil duplicar pedidos semelhantes'),
+        ('✅', 'Mais fácil corrigir erros'),
+    ], size=Pt(15), gap=Pt(8))
+
+    txbox(s, Inches(0.6), Inches(3.75), Inches(9.4), Inches(0.5),
+          'O que ainda faltava:', size=Pt(15), color=PptxRGB(0xC0, 0x39, 0x2B), bold=True)
+    _bullets(s, Inches(0.6), Inches(4.25), Inches(9.4), Inches(2.8), [
+        ('❌', 'Sem rastreamento de status em tempo real'),
+        ('❌', 'Produção e indústria sem acesso direto às informações'),
+        ('❌', 'Histórico espalhado, difícil de consultar'),
+        ('❌', 'Atualizações recorrentes eram inviáveis na planilha'),
+    ], size=Pt(15), gap=Pt(8))
+
+    # ── SLIDE 4 — Apresentando o app ──────────────────────────────────────────
+    s = blank_slide(prs)
+    bg(s, AZUL)
+    txbox(s, Inches(1), Inches(1.5), Inches(11.3), Inches(0.8),
+          'A solução:', size=Pt(22), color=AZUL_C, align=PP_ALIGN.CENTER)
+    txbox(s, Inches(1), Inches(2.3), Inches(11.3), Inches(1.4),
+          'Requisições App', size=Pt(52), color=BRANCO_P, bold=True, align=PP_ALIGN.CENTER)
+    txbox(s, Inches(1), Inches(3.75), Inches(11.3), Inches(0.65),
+          'Desenvolvido especialmente para a Ferragens Pinheiro',
+          size=Pt(18), color=AZUL_C, align=PP_ALIGN.CENTER)
+    # 4 highlights
+    highlights = [
+        ('🖥️', 'Desktop\nnativo'),
+        ('⚡', 'Tempo\nreal'),
+        ('🔐', 'Perfis e\npermissões'),
+        ('🔄', 'Atualização\nautomática'),
+    ]
+    for i, (icon, label) in enumerate(highlights):
+        cx = Inches(1.1 + i * 2.85)
+        pb = box(s, cx, Inches(4.7), Inches(2.5), Inches(2.35), fill_color=PptxRGB(0x16, 0x2D, 0x4F))
+        pb.line.fill.background()
+        txbox(s, cx, Inches(4.75), Inches(2.5), Inches(0.8),
+              icon, size=Pt(30), align=PP_ALIGN.CENTER, color=BRANCO_P)
+        txbox(s, cx, Inches(5.55), Inches(2.5), Inches(1.3),
+              label, size=Pt(14), align=PP_ALIGN.CENTER, color=AZUL_C, wrap=True)
+
+    # ── SLIDE 5 — Interface e Navegação ──────────────────────────────────────
     s = blank_slide(prs)
     bg(s, BRANCO_P)
-    content_title(s, '6 Perfis de Acesso')
-    from pptx.util import Inches as I2
-    perfis = [
-        ('👑', 'Admin', 'Acesso total — usuários, painel técnico, configurações'),
-        ('📊', 'Gerente', 'Dashboard, pedidos, histórico, gestão de usuários'),
-        ('🛒', 'Vendedor', 'Criar e acompanhar suas requisições, histórico'),
-        ('🔧', 'Produção (A&R)', 'Visualizar requisições e tela de A&R em leitura'),
-        ('🏭', 'Indústria', 'Visualizar requisições e tela de Indústria em leitura'),
-        ('🚚', 'Entrega', 'Visualizar Central de Pedidos em modo leitura'),
-    ]
-    for i, (icon, name, desc) in enumerate(perfis):
-        cy = Inches(1.3 + i * 0.95)
-        col = PptxRGB(0xD6, 0xE4, 0xF0) if i % 2 == 0 else BRANCO_P
-        b = box(s, Inches(0.5), cy, Inches(12.3), Inches(0.88), fill_color=col)
-        b.line.fill.background()
-        txbox(s, Inches(0.6), cy + Inches(0.1), Inches(2.2), Inches(0.68),
-              f'{icon}  {name}', size=Pt(13), color=AZUL, bold=True)
-        txbox(s, Inches(2.9), cy + Inches(0.1), Inches(9.7), Inches(0.68),
-              desc, size=Pt(12), color=PptxRGB(0x33, 0x33, 0x33))
+    content_title(s, 'Interface e Navegação')
+    _bullets(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.5), [
+        ('🏠', 'Tela de login com imagem de fundo personalizável'),
+        ('🗂️', 'Barra lateral com acesso rápido a todas as telas do seu perfil'),
+        ('🌙', 'Tema claro e escuro, alternável a qualquer momento'),
+        ('🔤', 'Tamanho de fonte configurável individualmente'),
+        ('🎓', 'Guia Rápido interativo para novos usuários (e revisão quando quiser)'),
+        ('📐', 'Interface adaptável a qualquer resolução — de projetores a telas 4K'),
+    ])
 
-    # ── SLIDE 5 — Funcionalidades ─────────────────────────────────────────────
-    s = blank_slide(prs)
-    bg(s, BRANCO_P)
-    content_title(s, 'O Que o Sistema Faz')
-    features = [
-        ('📋', 'Central de Pedidos', 'Criação, acompanhamento e busca de requisições em tempo real'),
-        ('📄', 'PDF Automático', 'Geração e envio do PDF para a pasta de rede ao salvar'),
-        ('🔔', 'Notificações', 'Alertas em tempo real via SSE com toasts e painel lateral'),
-        ('🖊️', 'Editor de Desenho', 'Croquis e cotas MM integrados à requisição'),
-        ('📊', 'Dashboard', 'KPIs, gráficos e relatórios para gerentes e admins'),
-        ('🔄', 'Auto-Update', 'Atualização automática sem intervenção de TI'),
-    ]
-    for i, (icon, title, desc) in enumerate(features):
-        row, col_ = divmod(i, 3)
-        cx = Inches(0.4 + col_ * 4.3)
-        cy = Inches(1.4 + row * 2.7)
-        c = box(s, cx, cy, Inches(4.1), Inches(2.4), fill_color=AZUL_C, line_color=AZUL_M, line_width=Pt(1))
-        txbox(s, cx + Inches(0.15), cy + Inches(0.12), Inches(3.8), Inches(0.55),
-              f'{icon}  {title}', size=Pt(14), color=AZUL, bold=True)
-        txbox(s, cx + Inches(0.15), cy + Inches(0.72), Inches(3.8), Inches(1.55),
-              desc, size=Pt(11), color=AZUL, wrap=True)
-
-    # ── SLIDE 6 — Central de Pedidos ──────────────────────────────────────────
+    # ── SLIDE 6 — Central de Pedidos ─────────────────────────────────────────
     s = blank_slide(prs)
     bg(s, BRANCO_P)
     content_title(s, 'Central de Pedidos')
-    bullets_cp = [
-        'Busca inteligente de clientes (112 mil+ registros)',
-        'Status em tempo real: Em andamento → Em produção → Faturado',
-        'Busca por nome, CNPJ, código ou número do pedido',
-        'Ordenação por qualquer coluna com um clique',
-        'PDF gerado e enviado automaticamente para a pasta de rede',
-    ]
-    tb = slide.shapes if False else None
-    tb = s.shapes.add_textbox(Inches(0.5), Inches(1.3), Inches(6.8), Inches(5.5))
-    tf = tb.text_frame; tf.word_wrap = True
-    for i, b_text in enumerate(bullets_cp):
-        if i == 0: p = tf.paragraphs[0]
-        else: p = tf.add_paragraph()
-        p.text = f'• {b_text}'
-        p.font.size = Pt(13); p.font.color.rgb = AZUL; p.font.name = 'Calibri'
-        p.space_after = Pt(8)
 
-    # Status box (right)
-    status_items = [
-        (PptxRGB(0x41, 0x8B, 0xCA), '🔵 Em andamento'),
-        (PptxRGB(0xF3, 0x9C, 0x12), '🟡 Aguardando recebimento'),
-        (PptxRGB(0xE6, 0x7E, 0x22), '🟠 Em produção'),
-        (PptxRGB(0x27, 0xAE, 0x60), '🟢 Faturado'),
-        (PptxRGB(0xE7, 0x4C, 0x3C), '🔴 Cancelada'),
+    _bullets(s, Inches(0.6), Inches(1.4), Inches(7.8), Inches(5.5), [
+        ('📋', 'Visualização de todas as requisições em tempo real'),
+        ('🔍', 'Busca por cliente, CNPJ, número do pedido ou vendedor'),
+        ('➕', 'Criação rápida com busca inteligente de clientes'),
+        ('📄', 'PDF gerado e enviado automaticamente para a pasta de rede'),
+        ('↕️', 'Ordenação por qualquer coluna com um clique'),
+    ])
+
+    # Status sidebar
+    hb = box(s, Inches(8.8), Inches(1.4), Inches(4.0), Inches(0.55), fill_color=AZUL)
+    hb.line.fill.background()
+    txbox(s, Inches(8.8), Inches(1.4), Inches(4.0), Inches(0.55),
+          'Status dos pedidos', size=Pt(13), color=BRANCO_P, bold=True, align=PP_ALIGN.CENTER)
+    status_colors = [
+        (PptxRGB(0x41, 0x8B, 0xCA), 'Em andamento'),
+        (PptxRGB(0xF3, 0x9C, 0x12), 'Aguardando recebimento'),
+        (PptxRGB(0xE6, 0x7E, 0x22), 'Em produção'),
+        (PptxRGB(0x27, 0xAE, 0x60), 'Faturado'),
+        (PptxRGB(0xE7, 0x4C, 0x3C), 'Cancelada'),
     ]
-    hdr_b = box(s, Inches(7.7), Inches(1.3), Inches(5.1), Inches(0.55), fill_color=AZUL)
-    hdr_b.line.fill.background()
-    txbox(s, Inches(7.7), Inches(1.3), Inches(5.1), Inches(0.55),
-          'Status das Requisições', size=Pt(13), color=BRANCO_P, bold=True, align=PP_ALIGN.CENTER)
-    for i, (color, label) in enumerate(status_items):
-        cy = Inches(1.85 + i * 0.82)
-        b2 = box(s, Inches(7.7), cy, Inches(5.1), Inches(0.75),
-                 fill_color=PptxRGB(0xF0, 0xF4, 0xF8) if i % 2 == 0 else BRANCO_P)
-        b2.line.fill.background()
-        dot = box(s, Inches(7.85), cy + Inches(0.2), Inches(0.35), Inches(0.35), fill_color=color)
+    for i, (color, label) in enumerate(status_colors):
+        cy = Inches(1.95 + i * 0.78)
+        sb = box(s, Inches(8.8), cy, Inches(4.0), Inches(0.72),
+                 fill_color=AZUL_C if i % 2 == 0 else BRANCO_P)
+        sb.line.fill.background()
+        dot = box(s, Inches(9.0), cy + Inches(0.18), Inches(0.35), Inches(0.35), fill_color=color)
         dot.line.fill.background()
-        txbox(s, Inches(8.3), cy + Inches(0.1), Inches(4.3), Inches(0.55),
-              label, size=Pt(12), color=AZUL)
+        txbox(s, Inches(9.45), cy + Inches(0.1), Inches(3.2), Inches(0.52),
+              label, size=Pt(12), color=PptxRGB(0x22, 0x22, 0x22))
 
-    # ── SLIDE 7 — Editor de Desenho ───────────────────────────────────────────
+    # ── SLIDE 7 — Criando uma Requisição ─────────────────────────────────────
+    s = blank_slide(prs)
+    bg(s, BRANCO_P)
+    content_title(s, 'Criando uma Requisição')
+    steps_req = [
+        ('Clique em  + Nova Requisição  na Central de Pedidos',),
+        ('Busque o cliente por nome, código ou CNPJ',),
+        ('Preencha o número do pedido e defina se é retirada ou entrega',),
+        ('Adicione os itens: produto, quantidade e preço unitário',),
+        ('Inclua observações ou um croqui no editor de desenho (opcional)',),
+        ('Salve — o PDF é gerado e enviado automaticamente para a rede',),
+    ]
+    for i, (text,) in enumerate(steps_req):
+        cy = Inches(1.4 + i * 0.97)
+        circ = s.shapes.add_shape(9, Inches(0.5), cy + Inches(0.1), Inches(0.65), Inches(0.65))
+        circ.fill.solid()
+        circ.fill.fore_color.rgb = AZUL
+        circ.line.fill.background()
+        txbox(s, Inches(0.5), cy + Inches(0.1), Inches(0.65), Inches(0.65),
+              str(i + 1), size=Pt(15), color=BRANCO_P, bold=True, align=PP_ALIGN.CENTER)
+        txbox(s, Inches(1.35), cy + Inches(0.05), Inches(11.5), Inches(0.85),
+              text, size=Pt(15), color=PptxRGB(0x22, 0x22, 0x22))
+
+    # ── SLIDE 8 — Editor de Desenho ───────────────────────────────────────────
     s = blank_slide(prs)
     bg(s, BRANCO_P)
     content_title(s, 'Editor de Desenho Integrado')
-    items_ed = [
-        ('🖊️', 'Croquis integrados', 'Desenhos e medidas diretamente na requisição'),
-        ('📐', '9 Ferramentas', 'Caneta, linha, seta, retângulo, triângulo, texto, cota MM, borracha e seleção'),
-        ('🎯', 'Posicionamento inteligente', 'Rótulos MM movem automaticamente para evitar sobreposição'),
-        ('🔗', 'Snap de extremidades', 'Linhas se conectam precisamente a outros pontos'),
-        ('📄', 'Exporta para PDF', 'Todo o desenho aparece no PDF da requisição'),
-        ('⌨️', 'Atalhos de teclado', 'P, L, A, R, T, X, M, E, S — uma tecla por ferramenta'),
-    ]
-    for i, (icon, title, desc) in enumerate(items_ed):
-        row, col_ = divmod(i, 2)
-        cx = Inches(0.4 + col_ * 6.45)
-        cy = Inches(1.4 + row * 1.95)
-        b = box(s, cx, cy, Inches(6.1), Inches(1.75), fill_color=AZUL_C, line_color=AZUL_M, line_width=Pt(1))
-        txbox(s, cx + Inches(0.15), cy + Inches(0.1), Inches(5.8), Inches(0.5),
-              f'{icon}  {title}', size=Pt(13), color=AZUL, bold=True)
-        txbox(s, cx + Inches(0.15), cy + Inches(0.65), Inches(5.8), Inches(0.95),
-              desc, size=Pt(11), color=AZUL, wrap=True)
+    _bullets(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.5), [
+        ('✏️', 'Croquis e medidas criados diretamente dentro da requisição'),
+        ('🛠️', '9 ferramentas: caneta, linha, seta, retângulo, texto, cota MM e mais'),
+        ('📏', 'Cota MM calcula e posiciona o rótulo automaticamente, sem sobreposição'),
+        ('🔗', 'Snap de extremidades para linhas precisas e bem conectadas'),
+        ('⌨️', 'Atalho de teclado para cada ferramenta — P, L, A, R, M...'),
+        ('📄', 'O desenho é exportado junto com o PDF da requisição'),
+    ])
 
-    # ── SLIDE 8 — Infraestrutura ──────────────────────────────────────────────
+    # ── SLIDE 9 — Notificações ────────────────────────────────────────────────
     s = blank_slide(prs)
     bg(s, BRANCO_P)
-    content_title(s, 'Infraestrutura e Confiabilidade')
-    # Left column - Notificações
-    b_left = box(s, Inches(0.4), Inches(1.3), Inches(6.1), Inches(5.7), fill_color=AZUL_C, line_color=AZUL_M, line_width=Pt(1))
-    txbox(s, Inches(0.55), Inches(1.4), Inches(5.8), Inches(0.55),
-          '🔔  Notificações em Tempo Real', size=Pt(14), color=AZUL, bold=True)
-    notif_items = [
-        'Tecnologia Server-Sent Events (SSE)',
-        'Toasts animados + painel lateral dedicado',
-        'Admins e gerentes recebem todas as notificações',
-        'Reconexão automática em caso de queda de rede',
-        'Badge com contador de não lidas na sidebar',
-    ]
-    tb2 = s.shapes.add_textbox(Inches(0.55), Inches(2.05), Inches(5.8), Inches(4.7))
-    tf2 = tb2.text_frame; tf2.word_wrap = True
-    for i, item in enumerate(notif_items):
-        p = tf2.paragraphs[0] if i == 0 else tf2.add_paragraph()
-        p.text = f'• {item}'; p.font.size = Pt(12); p.font.color.rgb = AZUL
-        p.font.name = 'Calibri'; p.space_after = Pt(8)
+    content_title(s, 'Notificações em Tempo Real')
+    _bullets(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.5), [
+        ('🔔', 'Badge na sidebar indica quantas notificações estão não lidas'),
+        ('💬', 'Pop-ups aparecem automaticamente ao surgir um evento'),
+        ('📋', 'Painel lateral com histórico completo de notificações'),
+        ('⚡', 'Atualizações instantâneas — sem precisar recarregar a tela'),
+        ('📡', 'Reconexão automática em caso de queda de rede'),
+        ('👤', 'Cada perfil recebe apenas as notificações pertinentes à sua função'),
+    ])
 
-    # Right column - Backup
-    b_right = box(s, Inches(6.8), Inches(1.3), Inches(6.1), Inches(5.7), fill_color=PptxRGB(0xE8, 0xF5, 0xE9), line_color=PptxRGB(0x27, 0xAE, 0x60), line_width=Pt(1))
-    txbox(s, Inches(6.95), Inches(1.4), Inches(5.8), Inches(0.55),
-          '🗄️  Backup Automático', size=Pt(14), color=PptxRGB(0x1B, 0x5E, 0x20), bold=True)
-    backup_items = [
-        'pg_dump agendado (horário configurável)',
-        'Retenção: diário, semanal e mensal',
-        'Salvo em pasta de rede protegida (TI)',
-        'Configurável pelo administrador no próprio app',
-        'Restauração rápida em caso de incidente',
-    ]
-    tb3 = s.shapes.add_textbox(Inches(6.95), Inches(2.05), Inches(5.8), Inches(4.7))
-    tf3 = tb3.text_frame; tf3.word_wrap = True
-    for i, item in enumerate(backup_items):
-        p = tf3.paragraphs[0] if i == 0 else tf3.add_paragraph()
-        p.text = f'• {item}'; p.font.size = Pt(12); p.font.color.rgb = PptxRGB(0x1B, 0x5E, 0x20)
-        p.font.name = 'Calibri'; p.space_after = Pt(8)
-
-    # ── SLIDE 9 — Atualização Automática ──────────────────────────────────────
+    # ── SLIDE 10 — Mais Recursos ──────────────────────────────────────────────
     s = blank_slide(prs)
     bg(s, BRANCO_P)
-    content_title(s, 'Atualização Sem Intervenção Técnica')
-    steps_upd = [
-        ('1', 'Nova versão\npublicada\nno GitHub'),
-        ('2', 'App detecta\nautomaticamente\nno startup'),
-        ('3', 'Usuário clica\n"Atualizar\nagora"'),
-        ('4', 'App fecha,\natualiza e\nreabre sozinho'),
-    ]
-    colors_upd = [AZUL, AZUL_M, PptxRGB(0x16, 0x78, 0x9A), PptxRGB(0x27, 0xAE, 0x60)]
-    for i, (num, txt) in enumerate(steps_upd):
-        cx = Inches(0.7 + i * 3.1)
-        # Circle number
-        circ = s.shapes.add_shape(9, cx + Inches(0.95), Inches(1.6), Inches(0.9), Inches(0.9))  # oval
-        circ.fill.solid(); circ.fill.fore_color.rgb = colors_upd[i]; circ.line.fill.background()
-        txbox(s, cx + Inches(0.95), Inches(1.6), Inches(0.9), Inches(0.9),
-              num, size=Pt(18), color=BRANCO_P, bold=True, align=PP_ALIGN.CENTER)
-        # Step box
-        b_s = box(s, cx, Inches(2.65), Inches(2.8), Inches(2.5), fill_color=AZUL_C, line_color=colors_upd[i], line_width=Pt(2))
-        txbox(s, cx + Inches(0.1), Inches(2.75), Inches(2.6), Inches(2.3),
-              txt, size=Pt(13), color=AZUL, bold=True, align=PP_ALIGN.CENTER, wrap=True)
-        # Arrow between steps
-        if i < 3:
-            txbox(s, cx + Inches(2.85), Inches(3.55), Inches(0.4), Inches(0.55),
-                  '→', size=Pt(24), color=AZUL_M, align=PP_ALIGN.CENTER)
+    content_title(s, 'Mais Recursos do Sistema')
+    _bullets(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.5), [
+        ('📅', 'Histórico — filtre e exporte todas as requisições por data, status ou vendedor'),
+        ('⚖️', 'Calculadora de Peso — calcule a massa de perfis metálicos por dimensão'),
+        ('🔒', 'Perfis de Acesso — 6 perfis, cada usuário vê e faz apenas o da sua função'),
+        ('🔄', 'Atualização Automática — nova versão detectada no startup, instala com um clique'),
+        ('🌙', 'Personalização — tema claro/escuro e tamanho de fonte por usuário'),
+        ('💾', 'Backup Automático — banco de dados salvo diariamente em pasta de rede'),
+    ])
 
-    txbox(s, Inches(0.5), Inches(5.5), Inches(12.3), Inches(0.45),
-          '✅  Configurações e dados do usuário são preservados durante a atualização',
-          size=Pt(12), color=PptxRGB(0x27, 0xAE, 0x60), align=PP_ALIGN.CENTER, bold=True)
-    txbox(s, Inches(0.5), Inches(6.0), Inches(12.3), Inches(0.45),
-          'Versão atual: v1.1.0  |  Versões futuras seguem o mesmo processo automático',
-          size=Pt(11), color=AZUL_M, align=PP_ALIGN.CENTER)
-
-    # ── SLIDE 10 — Resultados ─────────────────────────────────────────────────
+    # ── SLIDE 11 — O que mudou na prática ────────────────────────────────────
     s = blank_slide(prs)
     bg(s, BRANCO_P)
-    content_title(s, 'Resultados')
-    metrics = [('6', 'Perfis de acesso'), ('12', 'Tabelas no banco'), ('11', 'Telas'), ('100%', 'Interno')]
-    for i, (num, label) in enumerate(metrics):
-        cx = Inches(0.4 + i * 3.2)
-        m_box = box(s, cx, Inches(1.3), Inches(2.9), Inches(2.0), fill_color=AZUL, line_color=AZUL_M, line_width=Pt(1))
-        txbox(s, cx, Inches(1.3), Inches(2.9), Inches(1.2),
-              num, size=Pt(40), color=BRANCO_P, bold=True, align=PP_ALIGN.CENTER)
-        txbox(s, cx, Inches(2.5), Inches(2.9), Inches(0.7),
-              label, size=Pt(12), color=AZUL_C, align=PP_ALIGN.CENTER)
-    results = [
-        '✅  Rastreabilidade completa de todas as requisições',
-        '✅  PDFs padronizados e organizados por vendedor automaticamente',
-        '✅  Equipes de produção com acesso em tempo real',
-        '✅  Backup automático do banco de dados sem intervenção',
-        '✅  Atualização automática — usuário instala com um clique',
-        '✅  Interface adaptável a qualquer resolução de tela',
-    ]
-    tb_r = s.shapes.add_textbox(Inches(0.5), Inches(3.55), Inches(12.3), Inches(3.6))
-    tf_r = tb_r.text_frame; tf_r.word_wrap = True
-    for i, item in enumerate(results):
-        p = tf_r.paragraphs[0] if i == 0 else tf_r.add_paragraph()
-        p.text = item; p.font.size = Pt(13); p.font.name = 'Calibri'
-        p.font.color.rgb = PptxRGB(0x27, 0xAE, 0x60) if '✅' in item else AZUL
-        p.space_after = Pt(4)
+    content_title(s, 'O que mudou na prática')
+    _bullets(s, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.5), [
+        ('✅', 'Rastreabilidade total de cada requisição, do pedido ao faturamento'),
+        ('✅', 'Produção e indústria com acesso em tempo real, sem depender de ninguém'),
+        ('✅', 'PDFs padronizados, gerados automaticamente e organizados por vendedor'),
+        ('✅', 'Histórico completo e pesquisável — anos de pedidos a um clique'),
+        ('✅', 'Menos retrabalho, menos erros, menos tempo perdido'),
+        ('✅', 'Sistema atualizado automaticamente, sem precisar chamar a TI'),
+    ], size=Pt(17), gap=Pt(16))
 
-    # ── SLIDE 11 — Roadmap ────────────────────────────────────────────────────
+    # ── SLIDE 12 — Próximos Passos ────────────────────────────────────────────
     s = blank_slide(prs)
     bg(s, BRANCO_P)
     content_title(s, 'Próximos Passos')
     roadmap_items = [
-        (PptxRGB(0x27, 0xAE, 0x60), '✅  v1.1.0 — Atual',
-         'Guia Rápido por perfil • Backup automático • Editor de desenho aprimorado • Atualização automática • Notificações em tempo real'),
-        (PptxRGB(0xF3, 0x9C, 0x12), '🚧  v1.2.x — Próximo',
-         'Melhorias no dashboard gerencial • Integração WhatsApp • Relatórios exportáveis em Excel • Filtros avançados no histórico'),
+        (PptxRGB(0x27, 0xAE, 0x60), '✅  Atual  —  v1.1.0',
+         'Guia Rápido · Backup automático · Editor de desenho aprimorado · '
+         'Atualização automática · Notificações em tempo real'),
+        (PptxRGB(0xF3, 0x9C, 0x12), '🔜  Próxima versão',
+         'Melhorias no dashboard · Integração com WhatsApp · '
+         'Relatórios exportáveis · Filtros avançados no histórico'),
         (PptxRGB(0x95, 0xA5, 0xA6), '🔮  Futuro',
-         'App mobile para visualização • Portal web para clientes • Integração com sistema ERP • Módulo de aprovação de pedidos'),
+         'App mobile para visualização · Portal web para clientes · Integração com ERP'),
     ]
     for i, (color, title_r, desc_r) in enumerate(roadmap_items):
-        cy = Inches(1.4 + i * 1.95)
-        # Left color bar
-        cb = box(s, Inches(0.4), cy, Inches(0.22), Inches(1.7), fill_color=color)
+        cy = Inches(1.4 + i * 1.6)
+        cb = box(s, Inches(0.4), cy, Inches(0.2), Inches(1.4), fill_color=color)
         cb.line.fill.background()
-        b_r = box(s, Inches(0.65), cy, Inches(12.1), Inches(1.7),
-                  fill_color=PptxRGB(0xF8, 0xF9, 0xFA) if i % 2 == 0 else BRANCO_P)
-        b_r.line.fill.background()
-        txbox(s, Inches(0.8), cy + Inches(0.1), Inches(11.8), Inches(0.5),
+        br = box(s, Inches(0.65), cy, Inches(12.1), Inches(1.4),
+                 fill_color=PptxRGB(0xF8, 0xF9, 0xFA) if i % 2 == 0 else BRANCO_P)
+        br.line.fill.background()
+        txbox(s, Inches(0.85), cy + Inches(0.1), Inches(11.7), Inches(0.48),
               title_r, size=Pt(14), color=color, bold=True)
-        txbox(s, Inches(0.8), cy + Inches(0.65), Inches(11.8), Inches(0.9),
-              desc_r, size=Pt(11), color=PptxRGB(0x44, 0x44, 0x44), wrap=True)
+        txbox(s, Inches(0.85), cy + Inches(0.6), Inches(11.7), Inches(0.7),
+              desc_r, size=Pt(12), color=PptxRGB(0x44, 0x44, 0x44), wrap=True)
 
-    # ── SLIDE 12 — Encerramento ───────────────────────────────────────────────
+    txbox(s, Inches(0.4), Inches(6.35), Inches(12.5), Inches(0.7),
+          '💬  As próximas melhorias serão guiadas pelo feedback dos usuários — suas sugestões são bem-vindas!',
+          size=Pt(13), color=AZUL_M, wrap=True)
+
+    # ── SLIDE 13 — Encerramento ───────────────────────────────────────────────
     s = blank_slide(prs)
-    title_slide_layout(s,
-        'Obrigado',
-        'Requisições App — desenvolvido para a Ferragens Pinheiro',
-        'Dúvidas e sugestões: fale com a equipe de TI'
-    )
+    bg(s, AZUL)
+    strip2 = box(s, Inches(0), Inches(6.1), W, Inches(1.4), fill_color=PptxRGB(0x16, 0x2D, 0x4F))
+    strip2.line.fill.background()
+    txbox(s, Inches(1), Inches(2.2), Inches(11.3), Inches(1.4),
+          'Obrigado', size=Pt(56), color=BRANCO_P, bold=True, align=PP_ALIGN.CENTER)
+    txbox(s, Inches(1), Inches(3.8), Inches(11.3), Inches(0.7),
+          'Requisições App — Ferragens Pinheiro',
+          size=Pt(20), color=AZUL_C, align=PP_ALIGN.CENTER)
+    txbox(s, Inches(1), Inches(6.2), Inches(11.3), Inches(0.6),
+          'Dúvidas e sugestões: fale com a equipe de TI',
+          size=Pt(14), color=PptxRGB(0xAA, 0xBB, 0xCC), align=PP_ALIGN.CENTER)
 
     out = r'C:\Users\João\Desktop\requisicoes\docs\Apresentacao_Requisicoes_App.pptx'
     prs.save(out)
@@ -775,6 +739,12 @@ def build_pptx():
 
 
 if __name__ == '__main__':
-    build_docx()
-    build_pptx()
+    import sys
+    if '--docx' in sys.argv:
+        build_docx()
+    elif '--pptx' in sys.argv:
+        build_pptx()
+    else:
+        build_docx()
+        build_pptx()
     print('Concluído!')
