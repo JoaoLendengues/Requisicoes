@@ -41,26 +41,6 @@ Substitui o processo manual em papel e planilhas por uma aplicação desktop com
 
 ---
 
-## Executando
-
-### Servidor
-
-```bash
-python run.py
-# ou
-INICIAR_SERVIDOR.bat
-```
-
-### Cliente
-
-```bash
-python run_client.py
-# ou
-INICIAR_CLIENTE.bat
-```
-
----
-
 ## Estrutura do projeto
 
 ```
@@ -84,22 +64,6 @@ requisicoes/
 ├── criar_admin.py          # Script para criar usuário admin
 └── requirements.txt
 ```
-
----
-
-## Build e distribuição
-
-O executável é gerado com **PyInstaller** e empacotado com **Inno Setup**:
-
-```bash
-# Gerar executável
-pyinstaller requisicoes.spec
-
-# O instalador .exe é publicado automaticamente via GitHub Actions
-# a cada novo push de tag (ex: git tag v1.2.0 && git push origin v1.2.0)
-```
-
-Veja o workflow em `.github/workflows/build_release.yml`.
 
 ---
 
