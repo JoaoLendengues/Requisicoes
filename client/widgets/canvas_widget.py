@@ -1694,13 +1694,6 @@ class DrawingCanvas(QWidget):
         btn_mirror_v.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_mirror_v)
 
-        btn_mirror_axis = QPushButton("Eixo")
-        btn_mirror_axis.setFixedHeight(fh)
-        btn_mirror_axis.setToolTip("Espelhar com cópia por eixo manual (Ctrl+K)")
-        btn_mirror_axis.clicked.connect(self._start_manual_mirror_axis)
-        btn_mirror_axis.setStyleSheet(self._tool_btn_style())
-        row2.addWidget(btn_mirror_axis)
-
         row2.addSpacing(8)
 
         btn_img = QPushButton("🖼️ Imagem")
@@ -1741,7 +1734,6 @@ class DrawingCanvas(QWidget):
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
-            "Ctrl+K = espelhar com cópia por eixo manual  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
@@ -1867,12 +1859,6 @@ class DrawingCanvas(QWidget):
         mirror_v_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         mirror_v_action.triggered.connect(self._mirror_selected_vertical)
         self.addAction(mirror_v_action)
-
-        mirror_axis_action = QAction(self)
-        mirror_axis_action.setShortcut(QKeySequence("Ctrl+K"))
-        mirror_axis_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        mirror_axis_action.triggered.connect(self._start_manual_mirror_axis)
-        self.addAction(mirror_axis_action)
 
         manual_dimension_action = QAction(self)
         manual_dimension_action.setShortcut(QKeySequence(Qt.Key.Key_M))
