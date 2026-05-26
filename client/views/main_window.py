@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
         self._refresh_session_profile()
         self._start_notification_listener()
         self._navigate_to_home()
+        QTimer.singleShot(600, self._maybe_show_onboarding)
 
     def _setup_ui(self):
         self.setStyleSheet(f"background:{theme.CONTENT_BG};")
@@ -193,6 +194,7 @@ class MainWindow(QMainWindow):
         self.form_view.save_requested.connect(self._save_requisition)
         self.settings_view.scale_changed.connect(self._on_scale_changed)
         self.settings_view.font_size_changed.connect(lambda: self._on_scale_changed(res.scale))
+        self.settings_view.show_guide_requested.connect(self.show_onboarding)
 
         # ── Visibilidade dos botões da sidebar por perfil ─────────────────────
         nav_visible = {
@@ -1076,6 +1078,21 @@ class MainWindow(QMainWindow):
         self._switch_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._switch_anim.finished.connect(self.close)
         self._switch_anim.start()
+
+    # ── Guia rápido (onboarding) ─────────────────────────────────────────────
+
+    def _maybe_show_onboarding(self) -> None:
+        """Exibe o guia rápido na primeira vez que este perfil faz login."""
+        if not res.guide_shown(session.role):
+            from ..widgets.onboarding_dialog import OnboardingDialog
+            dlg = OnboardingDialog(session.role, self.scale, show_dont_show=True, parent=self)
+            dlg.exec()
+
+    def show_onboarding(self) -> None:
+        """Abre o guia rápido manualmente (chamado por Configurações)."""
+        from ..widgets.onboarding_dialog import OnboardingDialog
+        dlg = OnboardingDialog(session.role, self.scale, show_dont_show=False, parent=self)
+        dlg.exec()
 
     def _stop_runtime_services(self):
         if hasattr(self, "_notif_timer") and self._notif_timer is not None:

@@ -226,6 +226,7 @@ class SettingsApiWorker(QObject):
 class SettingsView(QWidget):
     scale_changed = Signal(float)
     font_size_changed = Signal()
+    show_guide_requested = Signal()
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -844,6 +845,21 @@ class SettingsView(QWidget):
 
         layout.addLayout(update_row)
 
+        # Linha do guia rápido
+        guide_row = QHBoxLayout()
+        guide_row.setSpacing(max(8, int(10 * s)))
+        guide_hint = QLabel("Precisa relembrar alguma funcionalidade?")
+        guide_hint.setProperty("muted", "1")
+        guide_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        guide_row.addWidget(guide_hint)
+        guide_row.addStretch()
+        self.btn_show_guide = QPushButton("📖  Ver Guia Rápido")
+        self.btn_show_guide.setFixedHeight(max(38, int(44 * s)))
+        self.btn_show_guide.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_show_guide.clicked.connect(self.show_guide_requested)
+        guide_row.addWidget(self.btn_show_guide)
+        layout.addLayout(guide_row)
+
         self._update_status_label = QLabel("")
         self._update_status_label.setProperty("muted", "1")
         self._update_status_label.setStyleSheet(
@@ -1397,6 +1413,7 @@ class SettingsView(QWidget):
         self._btn_change_pwd.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_show_guide.setStyleSheet(_flat_secondary_btn_style(s))
         btn_style = self._scale_btn_style(s)
         for btn in self._scale_btns.values():
             btn.setStyleSheet(btn_style)

@@ -230,6 +230,15 @@ class ResolutionManager:
                 self._dark_mode = bool(v)
         self._write_file(data)
 
+    # ── Guia rápido (onboarding) ─────────────────────────────────────────────
+    def guide_shown(self, role: str) -> bool:
+        """True se o guia rápido já foi exibido (e dispensado) para este role."""
+        return bool(self._read_file().get(f"guide_shown_{role}", False))
+
+    def mark_guide_shown(self, role: str) -> None:
+        """Salva em settings.json que o guia foi exibido para este role."""
+        self.save(**{f"guide_shown_{role}": True})
+
     # ── Helpers ─────────────────────────────────────────────────────────────
     def _load_setting(self, key: str, default=None):
         return self._read_file().get(key, default)
