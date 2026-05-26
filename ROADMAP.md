@@ -44,7 +44,7 @@ Responsaveis:
 
 ### Prioridade Media
 
-- [ ] [victor]   Melhorar velocidade de linhas no editor de desenho
+- [x] 2026-05-25 [victor]    Melhorar velocidade de linhas no editor de desenho
 - [ ] [joao]     Alterar diretorio dos login_backgrounds para o servidor (\\10.1.1.140\ti\REQUISICOES (VENDAS)\login_backgrounds)
 
 ### Prioridade Baixa
