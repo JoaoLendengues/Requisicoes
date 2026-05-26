@@ -1857,10 +1857,13 @@ class DrawingCanvas(QWidget):
         selected = self.scene.selectedItems()
         if not selected:
             return
+        mirror_items = [item for item in selected if not isinstance(item, QGraphicsTextItem)]
+        if not mirror_items:
+            return
 
         source_rect = QRectF()
         has_rect = False
-        for item in selected:
+        for item in mirror_items:
             item_scene_rect = item.mapToScene(item.boundingRect()).boundingRect()
             if not has_rect:
                 source_rect = item_scene_rect
@@ -1871,7 +1874,7 @@ class DrawingCanvas(QWidget):
             return
 
         clones: list[QGraphicsItem] = []
-        for item in selected:
+        for item in mirror_items:
             item_dict = self._item_to_dict(item)
             if not item_dict:
                 continue
