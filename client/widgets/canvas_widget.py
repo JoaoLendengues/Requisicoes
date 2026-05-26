@@ -1497,9 +1497,7 @@ class DrawingCanvas(QWidget):
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
         self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
         self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
-        self.combo_style.currentIndexChanged.connect(
-            lambda i: setattr(self, "pen_style", self.combo_style.itemData(i))
-        )
+        self.combo_style.currentIndexChanged.connect(self._on_pen_style_changed)
         row_props.addWidget(self.combo_style)
 
         row_props.addSpacing(8)
@@ -1803,6 +1801,32 @@ class DrawingCanvas(QWidget):
         self.pen_width = v
         if hasattr(self, "scene"):
             self.scene._sync_ruler_visuals()
+        self.changed.emit()
+
+    def _on_pen_style_changed(self, index: int):
+        self.pen_style = self.combo_style.itemData(index)
+        if not hasattr(self, "scene"):
+            return
+
+        for item in self.scene.selectedItems():
+            if not isinstance(
+                item,
+                (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem),
+            ):
+                continue
+            meta = item.data(0) or {}
+            if isinstance(meta, dict) and meta.get("type") in {
+                "ruler_overlay",
+                "ruler_measure_line",
+                "manual_dimension_overlay",
+                "manual_dimension_line",
+            }:
+                continue
+            pen = item.pen()
+            pen.setStyle(self.pen_style)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            item.setPen(pen)
+
         self.changed.emit()
 
     def _pick_color(self):
