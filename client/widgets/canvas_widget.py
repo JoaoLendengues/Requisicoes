@@ -1553,14 +1553,14 @@ class DrawingCanvas(QWidget):
 
         btn_mirror_h = QPushButton("Espelhar H")
         btn_mirror_h.setFixedHeight(fh)
-        btn_mirror_h.setToolTip("Espelhar horizontal (Ctrl+Shift+H)")
+        btn_mirror_h.setToolTip("Espelhar com cópia na horizontal (Ctrl+Shift+H)")
         btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
         btn_mirror_h.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_mirror_h)
 
         btn_mirror_v = QPushButton("Espelhar V")
         btn_mirror_v.setFixedHeight(fh)
-        btn_mirror_v.setToolTip("Espelhar vertical (Ctrl+J)")
+        btn_mirror_v.setToolTip("Espelhar com cópia na vertical (Ctrl+J)")
         btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
         btn_mirror_v.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_mirror_v)
@@ -1604,7 +1604,7 @@ class DrawingCanvas(QWidget):
             "✨ U = régua  |  Ctrl+Clique = fixar medição  |  F1 = fixar medição atual  |  Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
-            "Ctrl+Shift+H = espelhar horizontal  |  Ctrl+J = espelhar vertical  |  "
+            "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
@@ -1820,7 +1820,33 @@ class DrawingCanvas(QWidget):
         if not selected:
             return
 
+        source_rect = QRectF()
+        has_rect = False
         for item in selected:
+            item_scene_rect = item.mapToScene(item.boundingRect()).boundingRect()
+            if not has_rect:
+                source_rect = item_scene_rect
+                has_rect = True
+            else:
+                source_rect = source_rect.united(item_scene_rect)
+        if not has_rect:
+            return
+
+        clones: list[QGraphicsItem] = []
+        for item in selected:
+            item_dict = self._item_to_dict(item)
+            if not item_dict:
+                continue
+            clone = self._item_from_dict(item_dict)
+            if clone is None:
+                continue
+            clone.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+                | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            clone.setZValue(item.zValue())
+            self.scene.addItem(clone)
+
             center = item.boundingRect().center()
             mirror = QTransform()
             mirror.translate(center.x(), center.y())
@@ -1829,7 +1855,26 @@ class DrawingCanvas(QWidget):
             else:
                 mirror.scale(1.0, -1.0)
             mirror.translate(-center.x(), -center.y())
-            item.setTransform(mirror, True)
+            clone.setTransform(mirror, True)
+            clones.append(clone)
+
+        if not clones:
+            return
+
+        gap = 20.0
+        source_center = source_rect.center()
+        if horizontal:
+            target_center = QPointF(source_center.x() + source_rect.width() + gap, source_center.y())
+        else:
+            target_center = QPointF(source_center.x(), source_center.y() + source_rect.height() + gap)
+        delta = target_center - source_center
+
+        for item in selected:
+            item.setSelected(False)
+        for clone in clones:
+            clone.setPos(clone.pos() + delta)
+            clone.setSelected(True)
+            self._push_undo(clone)
 
         self.changed.emit()
 
