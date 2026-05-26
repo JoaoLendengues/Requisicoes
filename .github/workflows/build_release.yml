@@ -63,6 +63,7 @@ jobs:
           pip install `
             PySide6==6.11.1 `
             requests `
+            httpx `
             reportlab `
             "qrcode[pil]" `
             Pillow `
