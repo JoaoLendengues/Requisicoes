@@ -3,7 +3,7 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
     QLabel, QLineEdit, QPushButton, QFrame, QGraphicsDropShadowEffect,
-    QMessageBox, QSpinBox, QFileDialog,
+    QMessageBox, QSpinBox, QFileDialog, QCheckBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 from PySide6.QtCore import Qt, Signal, QThread, QObject
@@ -145,6 +145,23 @@ def _spinbox_style(scale: float) -> str:
 
 
 
+def _checkbox_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    sz = max(14, int(16 * scale))
+    return (
+        f"QCheckBox {{ font-size:{fs}pt; color:{theme.TEXT_DARK}; spacing:8px; }}"
+        f"QCheckBox::indicator {{"
+        f"  width:{sz}px; height:{sz}px;"
+        f"  border:1.5px solid {theme.BORDER_COLOR}; border-radius:4px;"
+        f"  background:{theme.CARD_BG};"
+        f"}}"
+        f"QCheckBox::indicator:checked {{"
+        f"  background:{theme.PRIMARY}; border-color:{theme.PRIMARY};"
+        f"}}"
+        f"QCheckBox::indicator:hover {{ border-color:{theme.PRIMARY}; }}"
+    )
+
+
 def _table_style() -> str:
     return (
         f"QTableWidget {{"
@@ -186,6 +203,10 @@ class SettingsApiWorker(QObject):
                 result = api.trigger_backup()
             elif self.action == "list_backups":
                 result = api.list_backups()
+            elif self.action == "get_backup_settings":
+                result = api.get_backup_settings()
+            elif self.action == "save_backup_settings":
+                result = api.update_backup_settings(self.payload)
             else:
                 raise ValueError(f"Acao invalida: {self.action}")
             self.result.emit(self.action, result)
@@ -566,12 +587,123 @@ class SettingsView(QWidget):
         _backup_folder_display.setToolTip(
             "O destino do backup é configurado no servidor (.env / config.py)."
         )
-        # Mostra o valor via API se disponível; por enquanto exibe o padrão.
         _backup_folder_display.setText(r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\backup_bd")
         backup_folder_row.addWidget(_backup_folder_display, 1)
         backup_vl.addLayout(backup_folder_row)
 
-        # Linha de ação
+        # ── Agendamento ───────────────────────────────────────────────────────
+        sched_title = QLabel("Agendamento:")
+        sched_title.setStyleSheet(
+            f"font-size:{max(9,int(10*s))}pt; font-weight:700; padding-top:6px;"
+        )
+        backup_vl.addWidget(sched_title)
+
+        sched_grid = QGridLayout()
+        sched_grid.setSpacing(max(6, int(8 * s)))
+        sched_grid.setColumnMinimumWidth(0, max(90, int(110 * s)))
+
+        chk_style = _checkbox_style(s)
+        spn_style = _spinbox_style(s)
+
+        # Linha 0 — Diário
+        self._chk_daily = QCheckBox("Diário")
+        self._chk_daily.setChecked(True)
+        self._chk_daily.setStyleSheet(chk_style)
+        sched_grid.addWidget(self._chk_daily, 0, 0)
+
+        hour_row = QHBoxLayout()
+        hour_row.setSpacing(max(4, int(6 * s)))
+        hour_row.addWidget(self._lbl("Horário:", s))
+        self._spin_daily_hour = QSpinBox()
+        self._spin_daily_hour.setRange(0, 23)
+        self._spin_daily_hour.setValue(2)
+        self._spin_daily_hour.setSuffix("h")
+        self._spin_daily_hour.setFixedHeight(max(32, int(36 * s)))
+        self._spin_daily_hour.setFixedWidth(max(72, int(84 * s)))
+        self._spin_daily_hour.setStyleSheet(spn_style)
+        hour_row.addWidget(self._spin_daily_hour)
+        hour_row.addStretch()
+        sched_grid.addLayout(hour_row, 0, 1)
+
+        ret_d_row = QHBoxLayout()
+        ret_d_row.setSpacing(max(4, int(6 * s)))
+        ret_d_row.addWidget(self._lbl("Retenção:", s))
+        self._spin_ret_daily = QSpinBox()
+        self._spin_ret_daily.setRange(1, 365)
+        self._spin_ret_daily.setValue(15)
+        self._spin_ret_daily.setSuffix(" arqs.")
+        self._spin_ret_daily.setFixedHeight(max(32, int(36 * s)))
+        self._spin_ret_daily.setFixedWidth(max(90, int(104 * s)))
+        self._spin_ret_daily.setStyleSheet(spn_style)
+        ret_d_row.addWidget(self._spin_ret_daily)
+        ret_d_row.addStretch()
+        sched_grid.addLayout(ret_d_row, 0, 2)
+
+        # Linha 1 — Semanal
+        self._chk_weekly = QCheckBox("Semanal")
+        self._chk_weekly.setChecked(True)
+        self._chk_weekly.setStyleSheet(chk_style)
+        sched_grid.addWidget(self._chk_weekly, 1, 0)
+
+        sched_grid.addWidget(self._lbl("toda segunda-feira", s, italic=True), 1, 1)
+
+        ret_w_row = QHBoxLayout()
+        ret_w_row.setSpacing(max(4, int(6 * s)))
+        ret_w_row.addWidget(self._lbl("Retenção:", s))
+        self._spin_ret_weekly = QSpinBox()
+        self._spin_ret_weekly.setRange(1, 52)
+        self._spin_ret_weekly.setValue(8)
+        self._spin_ret_weekly.setSuffix(" arqs.")
+        self._spin_ret_weekly.setFixedHeight(max(32, int(36 * s)))
+        self._spin_ret_weekly.setFixedWidth(max(90, int(104 * s)))
+        self._spin_ret_weekly.setStyleSheet(spn_style)
+        ret_w_row.addWidget(self._spin_ret_weekly)
+        ret_w_row.addStretch()
+        sched_grid.addLayout(ret_w_row, 1, 2)
+
+        # Linha 2 — Mensal
+        self._chk_monthly = QCheckBox("Mensal")
+        self._chk_monthly.setChecked(False)
+        self._chk_monthly.setStyleSheet(chk_style)
+        sched_grid.addWidget(self._chk_monthly, 2, 0)
+
+        sched_grid.addWidget(self._lbl("dia 1 de cada mês", s, italic=True), 2, 1)
+
+        ret_m_row = QHBoxLayout()
+        ret_m_row.setSpacing(max(4, int(6 * s)))
+        ret_m_row.addWidget(self._lbl("Retenção:", s))
+        self._spin_ret_monthly = QSpinBox()
+        self._spin_ret_monthly.setRange(1, 24)
+        self._spin_ret_monthly.setValue(6)
+        self._spin_ret_monthly.setSuffix(" arqs.")
+        self._spin_ret_monthly.setFixedHeight(max(32, int(36 * s)))
+        self._spin_ret_monthly.setFixedWidth(max(90, int(104 * s)))
+        self._spin_ret_monthly.setStyleSheet(spn_style)
+        ret_m_row.addWidget(self._spin_ret_monthly)
+        ret_m_row.addStretch()
+        sched_grid.addLayout(ret_m_row, 2, 2)
+
+        backup_vl.addLayout(sched_grid)
+
+        # Salvar agendamento
+        save_sched_row = QHBoxLayout()
+        save_sched_row.setSpacing(max(8, int(10 * s)))
+        self._btn_save_backup_settings = QPushButton("Salvar Agendamento")
+        self._btn_save_backup_settings.setFixedHeight(max(36, int(42 * s)))
+        self._btn_save_backup_settings.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_save_backup_settings.clicked.connect(self._on_save_backup_settings)
+        save_sched_row.addWidget(self._btn_save_backup_settings)
+        self._lbl_sched_status = QLabel("")
+        self._lbl_sched_status.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
+        save_sched_row.addWidget(self._lbl_sched_status)
+        save_sched_row.addStretch()
+        backup_vl.addLayout(save_sched_row)
+
+        backup_vl.addWidget(_separator())
+
+        # ── Backup manual ─────────────────────────────────────────────────────
         backup_action_row = QHBoxLayout()
         backup_action_row.setSpacing(max(8, int(10 * s)))
 
@@ -620,8 +752,9 @@ class SettingsView(QWidget):
         backup_vl.addWidget(self._backup_table)
 
         backup_hint = QLabel(
-            "Backups diários às 02h e semanais toda segunda-feira são gerados automaticamente. "
-            "São mantidos os 15 arquivos mais recentes de cada tipo."
+            "Os backups automáticos são executados no horário configurado acima. "
+            "Retenção: número máximo de arquivos mantidos por tipo — os mais antigos "
+            "são excluídos automaticamente."
         )
         backup_hint.setWordWrap(True)
         backup_hint.setProperty("muted", "1")
@@ -631,6 +764,7 @@ class SettingsView(QWidget):
         layout.addWidget(self._backup_section)
         self._backup_section.setVisible(session.settings_show_backup)
         if session.settings_show_backup:
+            self._start_api_worker("get_backup_settings")
             self._on_refresh_backup_table()
 
         # ── Atualizações do Sistema (todos) ───────────────────────────────────
@@ -753,6 +887,25 @@ class SettingsView(QWidget):
             entries = payload if isinstance(payload, list) else []
             self._populate_backup_table(entries)
 
+        if action == "get_backup_settings":
+            data = payload if isinstance(payload, dict) else {}
+            self._chk_daily.setChecked(bool(data.get("daily_enabled", True)))
+            self._chk_weekly.setChecked(bool(data.get("weekly_enabled", True)))
+            self._chk_monthly.setChecked(bool(data.get("monthly_enabled", False)))
+            self._spin_daily_hour.setValue(int(data.get("daily_hour", 2)))
+            self._spin_ret_daily.setValue(int(data.get("retention_daily", 15)))
+            self._spin_ret_weekly.setValue(int(data.get("retention_weekly", 8)))
+            self._spin_ret_monthly.setValue(int(data.get("retention_monthly", 6)))
+
+        if action == "save_backup_settings":
+            self._btn_save_backup_settings.setEnabled(True)
+            self._btn_save_backup_settings.setText("Salvar Agendamento")
+            s = self.scale
+            self._lbl_sched_status.setText("Agendamento salvo!")
+            self._lbl_sched_status.setStyleSheet(
+                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
+            )
+
     def _on_api_error(self, action: str, message: str):
         if action == "load_operational":
             self.operational_status.setText(
@@ -775,6 +928,18 @@ class SettingsView(QWidget):
         if action == "list_backups":
             self._btn_refresh_backup_table.setEnabled(True)
             self._btn_refresh_backup_table.setText("Atualizar Lista")
+
+        if action == "get_backup_settings":
+            pass  # mantém os valores padrão já exibidos nos controles
+
+        if action == "save_backup_settings":
+            self._btn_save_backup_settings.setEnabled(True)
+            self._btn_save_backup_settings.setText("Salvar Agendamento")
+            s = self.scale
+            self._lbl_sched_status.setText(f"Erro: {message}")
+            self._lbl_sched_status.setStyleSheet(
+                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
+            )
 
     def _set_save_busy(self, busy: bool):
         self.btn_save.setEnabled(not busy)
@@ -1005,6 +1170,22 @@ class SettingsView(QWidget):
 
     # ── Backup do Banco de Dados ─────────────────────────────────────────────
 
+    def _on_save_backup_settings(self) -> None:
+        """Envia as configurações de agendamento ao servidor."""
+        self._btn_save_backup_settings.setEnabled(False)
+        self._btn_save_backup_settings.setText("Salvando...")
+        self._lbl_sched_status.setText("")
+        payload = {
+            "daily_enabled":     self._chk_daily.isChecked(),
+            "weekly_enabled":    self._chk_weekly.isChecked(),
+            "monthly_enabled":   self._chk_monthly.isChecked(),
+            "daily_hour":        self._spin_daily_hour.value(),
+            "retention_daily":   self._spin_ret_daily.value(),
+            "retention_weekly":  self._spin_ret_weekly.value(),
+            "retention_monthly": self._spin_ret_monthly.value(),
+        }
+        self._start_api_worker("save_backup_settings", payload)
+
     def _on_backup_run(self) -> None:
         """Dispara backup manual via API."""
         s = self.scale
@@ -1120,6 +1301,16 @@ class SettingsView(QWidget):
             self._bg_table.setStyleSheet(_table_style())
             self._refresh_bg_table()
         if session.settings_show_backup:
+            chk_style = _checkbox_style(s)
+            spn_style = _spinbox_style(s)
+            self._chk_daily.setStyleSheet(chk_style)
+            self._chk_weekly.setStyleSheet(chk_style)
+            self._chk_monthly.setStyleSheet(chk_style)
+            self._spin_daily_hour.setStyleSheet(spn_style)
+            self._spin_ret_daily.setStyleSheet(spn_style)
+            self._spin_ret_weekly.setStyleSheet(spn_style)
+            self._spin_ret_monthly.setStyleSheet(spn_style)
+            self._btn_save_backup_settings.setStyleSheet(_flat_secondary_btn_style(s))
             self._btn_run_backup.setStyleSheet(_primary_action_btn_style(s))
             self._btn_refresh_backup_table.setStyleSheet(_flat_secondary_btn_style(s))
             self._backup_table.setStyleSheet(_table_style())

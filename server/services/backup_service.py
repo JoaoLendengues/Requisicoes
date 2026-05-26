@@ -6,11 +6,13 @@ settings.BACKUP_FOLDER.  O agendador interno (backup_scheduler) roda
 como task asyncio em background — iniciado no lifespan do FastAPI.
 
 Tipos de backup:
-  diario   → backup_diario_YYYY-MM-DD.sql         (todo dia às BACKUP_DAILY_HOUR)
-  semanal  → backup_semanal_YYYY_SXX.sql           (toda segunda-feira)
-  manual   → backup_manual_YYYY-MM-DD_HH-MM-SS.sql (disparado pelo admin via API)
+  diario   → backup_diario_YYYY-MM-DD.sql          (todo dia às daily_hour)
+  semanal  → backup_semanal_YYYY_SXX.sql            (toda segunda-feira)
+  mensal   → backup_mensal_YYYY-MM.sql              (dia 1 de cada mês)
+  manual   → backup_manual_YYYY-MM-DD_HH-MM-SS.sql  (disparado pelo admin via API)
 
-Rotação: mantém os BACKUP_RETENTION arquivos mais recentes de cada tipo.
+Rotação: mantém os N arquivos mais recentes de cada tipo, conforme
+configurado em backup_settings.json (via backup_settings_service).
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ import subprocess
 from datetime import datetime, timedelta
 
 from ..config import settings
+from .backup_settings_service import load_backup_settings
 
 log = logging.getLogger(__name__)
 
@@ -53,14 +56,14 @@ def _get_db_params() -> dict:
 
 # ── Rotação de arquivos ───────────────────────────────────────────────────────
 
-def _rotate(folder: str, prefix: str) -> None:
+def _rotate(folder: str, prefix: str, retention: int) -> None:
     """Apaga os backups mais antigos quando passa do limite de retenção."""
     try:
         files = sorted(
             f for f in os.listdir(folder)
             if f.startswith(prefix) and f.endswith(".sql")
         )
-        while len(files) > settings.BACKUP_RETENTION:
+        while len(files) > retention:
             os.remove(os.path.join(folder, files.pop(0)))
     except Exception as exc:
         log.warning("Rotação de backups falhou: %s", exc)
@@ -97,16 +100,25 @@ def run_backup(backup_type: str = "manual") -> dict:
         }
 
     now = datetime.now()
+    cfg = load_backup_settings()
+
     if backup_type == "semanal":
-        week = now.isocalendar()[1]
+        week     = now.isocalendar()[1]
         filename = f"backup_semanal_{now.year}_S{week:02d}.sql"
         prefix   = "backup_semanal_"
+        retention = cfg.get("retention_weekly", 8)
+    elif backup_type == "mensal":
+        filename  = f"backup_mensal_{now.strftime('%Y-%m')}.sql"
+        prefix    = "backup_mensal_"
+        retention = cfg.get("retention_monthly", 6)
     elif backup_type == "manual":
-        filename = f"backup_manual_{now.strftime('%Y-%m-%d_%H-%M-%S')}.sql"
-        prefix   = "backup_manual_"
-    else:
-        filename = f"backup_diario_{now.strftime('%Y-%m-%d')}.sql"
-        prefix   = "backup_diario_"
+        filename  = f"backup_manual_{now.strftime('%Y-%m-%d_%H-%M-%S')}.sql"
+        prefix    = "backup_manual_"
+        retention = cfg.get("retention_daily", 15)   # manual usa retenção do diário
+    else:  # diario
+        filename  = f"backup_diario_{now.strftime('%Y-%m-%d')}.sql"
+        prefix    = "backup_diario_"
+        retention = cfg.get("retention_daily", 15)
 
     filepath = os.path.join(folder, filename)
     params   = _get_db_params()
@@ -145,7 +157,7 @@ def run_backup(backup_type: str = "manual") -> dict:
     except Exception:
         size = 0
 
-    _rotate(folder, prefix)
+    _rotate(folder, prefix, retention)
     log.info("Backup '%s' concluído (%d bytes).", filename, size)
 
     return {
@@ -188,39 +200,54 @@ async def backup_scheduler() -> None:
     Task asyncio que dispara os backups automáticos.
     Deve ser iniciada no lifespan do FastAPI.
 
-    Lógica:
-      - Calcula o tempo até às BACKUP_DAILY_HOUR:00 do próximo dia.
-      - Aguarda esse intervalo, então executa:
-          - backup diário (sempre)
-          - backup semanal (somente segunda-feira)
-      - Repete indefinidamente.
+    A cada ciclo:
+      1. Lê as configurações atuais (daily_hour, flags de ativação).
+      2. Dorme até o próximo daily_hour:00.
+      3. Executa os tipos habilitados:
+           - diário  → sempre que daily_enabled
+           - semanal → se weekly_enabled E for segunda-feira (weekday 0)
+           - mensal  → se monthly_enabled E for dia 1 do mês
     """
-    log.info("Agendador de backup iniciado (backup diário às %02dh).", settings.BACKUP_DAILY_HOUR)
+    log.info("Agendador de backup iniciado.")
     loop = asyncio.get_event_loop()
 
     while True:
-        now  = datetime.now()
-        next_run = now.replace(
-            hour=settings.BACKUP_DAILY_HOUR, minute=0, second=0, microsecond=0
-        )
+        cfg        = load_backup_settings()
+        daily_hour = int(cfg.get("daily_hour", 2))
+
+        now      = datetime.now()
+        next_run = now.replace(hour=daily_hour, minute=0, second=0, microsecond=0)
         if next_run <= now:
             next_run += timedelta(days=1)
 
         wait = (next_run - datetime.now()).total_seconds()
-        log.info("Próximo backup automático em %.0f segundos (%s).", wait, next_run.strftime("%Y-%m-%d %H:%M"))
+        log.info(
+            "Próximo backup automático em %.0f s (%s).",
+            wait, next_run.strftime("%Y-%m-%d %H:%M"),
+        )
         await asyncio.sleep(wait)
 
-        # Backup diário
-        result = await loop.run_in_executor(None, lambda: run_backup("diario"))
-        if result["success"]:
-            log.info("Backup diário concluído: %s", result.get("filename"))
-        else:
-            log.error("Backup diário falhou: %s", result.get("error"))
+        # Re-lê as configurações no momento da execução (podem ter mudado)
+        cfg = load_backup_settings()
+        now = datetime.now()
 
-        # Backup semanal toda segunda-feira (weekday 0)
-        if datetime.now().weekday() == 0:
+        if cfg.get("daily_enabled", True):
+            result = await loop.run_in_executor(None, lambda: run_backup("diario"))
+            if result["success"]:
+                log.info("Backup diário concluído: %s", result.get("filename"))
+            else:
+                log.error("Backup diário falhou: %s", result.get("error"))
+
+        if cfg.get("weekly_enabled", True) and now.weekday() == 0:
             result = await loop.run_in_executor(None, lambda: run_backup("semanal"))
             if result["success"]:
                 log.info("Backup semanal concluído: %s", result.get("filename"))
             else:
                 log.error("Backup semanal falhou: %s", result.get("error"))
+
+        if cfg.get("monthly_enabled", False) and now.day == 1:
+            result = await loop.run_in_executor(None, lambda: run_backup("mensal"))
+            if result["success"]:
+                log.info("Backup mensal concluído: %s", result.get("filename"))
+            else:
+                log.error("Backup mensal falhou: %s", result.get("error"))

@@ -318,3 +318,15 @@ def list_backups() -> list:
     """Retorna lista de backups existentes no servidor."""
     with _cli() as client:
         return _check(client.get("/backup/list"))
+
+
+def get_backup_settings() -> dict:
+    """Retorna as configurações de agendamento de backup."""
+    with _cli() as client:
+        return _check(client.get("/backup/settings"))
+
+
+def update_backup_settings(payload: dict) -> dict:
+    """Salva as configurações de agendamento de backup."""
+    with _cli() as client:
+        return _check(client.patch("/backup/settings", json=payload))
