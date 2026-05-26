@@ -34,7 +34,7 @@ from ..core.text_case import bind_uppercase_line_edit, bind_uppercase_text_edit
 from ..api import client as api
 from ..widgets.status_badge import StatusBadge
 from ..widgets.item_table import ItemTable
-from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_scene
+from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_scene, Tool
 
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
@@ -494,6 +494,17 @@ class CanvasDialog(QDialog):
 
     def get_json(self) -> str:
         return self.canvas.to_json()
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        """Esc desmarca a ferramenta ativa; não fecha o editor."""
+        if event.key() == Qt.Key.Key_Escape:
+            if self.canvas.tool != Tool.SELECT:
+                # Tinha ferramenta selecionada → volta para cursor de seleção
+                self.canvas._set_tool(Tool.SELECT)
+            # Em ambos os casos consome o evento — QDialog não vai chamar reject()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     # ------------------------------------------------------------------
     # Contenção de monitor: sempre exibe na tela primária, sem vazar
