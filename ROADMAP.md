@@ -40,7 +40,7 @@ Responsaveis:
 ### Prioridade Alta
 
 - [ ] [joao]     Guia rapido por nivel de acesso (tutorial interativo por role ao primeiro login)
-- [ ] [joao]     Sistema de backup periodico do banco de dados
+- [x] 2026-05-26 [joao]     Sistema de backup periodico do banco de dados
 
 ### Prioridade Media
 

@@ -182,6 +182,10 @@ class SettingsApiWorker(QObject):
                 result = api.get_operational_settings()
             elif self.action == "save_operational":
                 result = api.update_operational_settings(self.payload)
+            elif self.action == "trigger_backup":
+                result = api.trigger_backup()
+            elif self.action == "list_backups":
+                result = api.list_backups()
             else:
                 raise ValueError(f"Acao invalida: {self.action}")
             self.result.emit(self.action, result)
@@ -542,6 +546,93 @@ class SettingsView(QWidget):
         if session.settings_show_login_backgrounds:
             self._refresh_bg_table()
 
+        # ── Backup do Banco de Dados (admin only) ─────────────────────────────
+        self._backup_section = QWidget()
+        backup_vl = QVBoxLayout(self._backup_section)
+        backup_vl.setContentsMargins(0, 0, 0, 0)
+        backup_vl.setSpacing(max(8, int(10 * s)))
+
+        backup_vl.addWidget(_section("Backup do Banco de Dados", s))
+        backup_vl.addWidget(_separator())
+
+        # Pasta destino (info apenas)
+        backup_folder_row = QHBoxLayout()
+        backup_folder_row.setSpacing(max(8, int(10 * s)))
+        backup_folder_row.addWidget(self._lbl("Pasta de destino:", s))
+        _backup_folder_display = QLineEdit()
+        _backup_folder_display.setReadOnly(True)
+        _backup_folder_display.setFixedHeight(max(38, int(44 * s)))
+        _backup_folder_display.setStyleSheet(_field_style(s))
+        _backup_folder_display.setToolTip(
+            "O destino do backup é configurado no servidor (.env / config.py)."
+        )
+        # Mostra o valor via API se disponível; por enquanto exibe o padrão.
+        _backup_folder_display.setText(r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\backup_bd")
+        backup_folder_row.addWidget(_backup_folder_display, 1)
+        backup_vl.addLayout(backup_folder_row)
+
+        # Linha de ação
+        backup_action_row = QHBoxLayout()
+        backup_action_row.setSpacing(max(8, int(10 * s)))
+
+        self._btn_run_backup = QPushButton("Fazer Backup Agora")
+        self._btn_run_backup.setFixedHeight(max(38, int(44 * s)))
+        self._btn_run_backup.setStyleSheet(_primary_action_btn_style(s))
+        self._btn_run_backup.clicked.connect(self._on_backup_run)
+        backup_action_row.addWidget(self._btn_run_backup)
+
+        self._btn_refresh_backup_table = QPushButton("Atualizar Lista")
+        self._btn_refresh_backup_table.setFixedHeight(max(38, int(44 * s)))
+        self._btn_refresh_backup_table.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_refresh_backup_table.clicked.connect(self._on_refresh_backup_table)
+        backup_action_row.addWidget(self._btn_refresh_backup_table)
+        backup_action_row.addStretch()
+
+        backup_vl.addLayout(backup_action_row)
+
+        self._lbl_backup_status = QLabel("")
+        self._lbl_backup_status.setWordWrap(True)
+        self._lbl_backup_status.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+        )
+        backup_vl.addWidget(self._lbl_backup_status)
+
+        # Tabela de backups existentes
+        self._backup_table = QTableWidget(0, 3)
+        apply_smooth_scroll(self._backup_table)
+        self._backup_table.setHorizontalHeaderLabels(["Arquivo", "Tamanho", "Criado em"])
+        self._backup_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self._backup_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._backup_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self._backup_table.verticalHeader().setVisible(False)
+        self._backup_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._backup_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._backup_table.setAlternatingRowColors(True)
+        self._backup_table.setMinimumHeight(max(120, int(140 * s)))
+        self._backup_table.setMaximumHeight(max(200, int(220 * s)))
+        self._backup_table.setStyleSheet(_table_style())
+        backup_vl.addWidget(self._backup_table)
+
+        backup_hint = QLabel(
+            "Backups diários às 02h e semanais toda segunda-feira são gerados automaticamente. "
+            "São mantidos os 15 arquivos mais recentes de cada tipo."
+        )
+        backup_hint.setWordWrap(True)
+        backup_hint.setProperty("muted", "1")
+        backup_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        backup_vl.addWidget(backup_hint)
+
+        layout.addWidget(self._backup_section)
+        self._backup_section.setVisible(session.settings_show_backup)
+        if session.settings_show_backup:
+            self._on_refresh_backup_table()
+
         # ── Atualizações do Sistema (todos) ───────────────────────────────────
         layout.addWidget(_section("Atualizações do Sistema", s))
         layout.addWidget(_separator())
@@ -633,6 +724,35 @@ class SettingsView(QWidget):
         if action == "save_operational":
             self._finish_save(True)
 
+        if action == "trigger_backup":
+            self._btn_run_backup.setEnabled(True)
+            self._btn_run_backup.setText("Fazer Backup Agora")
+            s = self.scale
+            data = payload if isinstance(payload, dict) else {}
+            if data.get("success"):
+                filename = data.get("filename", "")
+                size_kb  = int(data.get("size_bytes", 0)) // 1024
+                self._lbl_backup_status.setText(
+                    f"Backup concluído: {filename}  ({size_kb} KB)"
+                )
+                self._lbl_backup_status.setStyleSheet(
+                    f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
+                )
+                # Refresca a tabela automaticamente após backup bem-sucedido
+                self._on_refresh_backup_table()
+            else:
+                error = data.get("error", "Erro desconhecido")
+                self._lbl_backup_status.setText(f"Falha no backup: {error}")
+                self._lbl_backup_status.setStyleSheet(
+                    f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
+                )
+
+        if action == "list_backups":
+            self._btn_refresh_backup_table.setEnabled(True)
+            self._btn_refresh_backup_table.setText("Atualizar Lista")
+            entries = payload if isinstance(payload, list) else []
+            self._populate_backup_table(entries)
+
     def _on_api_error(self, action: str, message: str):
         if action == "load_operational":
             self.operational_status.setText(
@@ -642,6 +762,19 @@ class SettingsView(QWidget):
 
         if action == "save_operational":
             self._finish_save(False, message)
+
+        if action == "trigger_backup":
+            self._btn_run_backup.setEnabled(True)
+            self._btn_run_backup.setText("Fazer Backup Agora")
+            s = self.scale
+            self._lbl_backup_status.setText(f"Erro ao executar backup: {message}")
+            self._lbl_backup_status.setStyleSheet(
+                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
+            )
+
+        if action == "list_backups":
+            self._btn_refresh_backup_table.setEnabled(True)
+            self._btn_refresh_backup_table.setText("Atualizar Lista")
 
     def _set_save_busy(self, busy: bool):
         self.btn_save.setEnabled(not busy)
@@ -870,6 +1003,52 @@ class SettingsView(QWidget):
         except Exception:
             pass
 
+    # ── Backup do Banco de Dados ─────────────────────────────────────────────
+
+    def _on_backup_run(self) -> None:
+        """Dispara backup manual via API."""
+        s = self.scale
+        self._btn_run_backup.setEnabled(False)
+        self._btn_run_backup.setText("Executando...")
+        self._lbl_backup_status.setText("Aguardando o servidor concluir o backup...")
+        self._lbl_backup_status.setStyleSheet(
+            f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.TEXT_MEDIUM};"
+        )
+        self._start_api_worker("trigger_backup")
+
+    def _on_refresh_backup_table(self) -> None:
+        """Solicita a lista de backups ao servidor."""
+        self._btn_refresh_backup_table.setEnabled(False)
+        self._btn_refresh_backup_table.setText("Carregando...")
+        self._start_api_worker("list_backups")
+
+    def _populate_backup_table(self, entries: list[dict]) -> None:
+        """Preenche a tabela com os backups retornados pela API."""
+        self._backup_table.setRowCount(0)
+        for entry in entries:
+            row = self._backup_table.rowCount()
+            self._backup_table.insertRow(row)
+
+            self._backup_table.setItem(row, 0, QTableWidgetItem(entry.get("filename", "")))
+
+            size_bytes = int(entry.get("size_bytes") or 0)
+            if size_bytes >= 1_048_576:
+                size_str = f"{size_bytes / 1_048_576:.1f} MB"
+            elif size_bytes >= 1024:
+                size_str = f"{size_bytes // 1024} KB"
+            else:
+                size_str = f"{size_bytes} B"
+            self._backup_table.setItem(row, 1, QTableWidgetItem(size_str))
+
+            raw_dt = entry.get("created_at", "")
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(raw_dt)
+                dt_str = dt.strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                dt_str = raw_dt
+            self._backup_table.setItem(row, 2, QTableWidgetItem(dt_str))
+
     def _check_updates(self) -> None:
         from ..updater import UpdateChecker
 
@@ -940,3 +1119,7 @@ class SettingsView(QWidget):
             self._btn_refresh_bg_table.setStyleSheet(_flat_secondary_btn_style(s))
             self._bg_table.setStyleSheet(_table_style())
             self._refresh_bg_table()
+        if session.settings_show_backup:
+            self._btn_run_backup.setStyleSheet(_primary_action_btn_style(s))
+            self._btn_refresh_backup_table.setStyleSheet(_flat_secondary_btn_style(s))
+            self._backup_table.setStyleSheet(_table_style())

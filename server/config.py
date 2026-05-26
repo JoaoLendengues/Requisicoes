@@ -22,6 +22,11 @@ class Settings(BaseSettings):
 
     SHARED_FOLDER_PATH: str = "./arquivos"
 
+    # Backup do banco de dados
+    BACKUP_FOLDER: str = r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\backup_bd"
+    BACKUP_RETENTION: int = 15   # número máximo de arquivos por tipo antes de rotacionar
+    BACKUP_DAILY_HOUR: int = 2   # hora do backup diário automático (formato 24h)
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8-sig"  # suporta arquivos salvos com BOM no Windows

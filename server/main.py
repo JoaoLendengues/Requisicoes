@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from time import perf_counter
 
@@ -7,8 +8,9 @@ from sqlalchemy import text
 
 from .database import Base, engine
 from .models import audit, client, feedback, notification, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
-from .routers import auth, clients, feedbacks, notifications, products, requisitions, system_settings, users
+from .routers import auth, backup, clients, feedbacks, notifications, products, requisitions, system_settings, users
 from .seed import seed_admin, seed_production_machines
+from .services.backup_service import backup_scheduler
 from .services.runtime_monitor import record_exception, record_request
 from .services.text_normalizer import normalize_existing_user_written_data
 
@@ -84,6 +86,7 @@ async def lifespan(app: FastAPI):
         normalize_existing_user_written_data()
     except Exception:
         pass
+    asyncio.create_task(backup_scheduler())
     yield
 
 
@@ -124,6 +127,7 @@ app.include_router(requisitions.router)
 app.include_router(notifications.router)
 app.include_router(system_settings.router)
 app.include_router(feedbacks.router)
+app.include_router(backup.router)
 
 
 @app.get("/health", tags=["Sistema"])

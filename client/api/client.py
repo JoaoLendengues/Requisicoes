@@ -304,3 +304,17 @@ def health_check(server_url: str) -> bool:
         return resp.status_code == 200
     except Exception:
         return False
+
+
+# ── Backup ────────────────────────────────────────────────────────────────────
+
+def trigger_backup() -> dict:
+    """Dispara backup manual no servidor. Retorna o resultado do run_backup."""
+    with _cli() as client:
+        return _check(client.post("/backup/run"))
+
+
+def list_backups() -> list:
+    """Retorna lista de backups existentes no servidor."""
+    with _cli() as client:
+        return _check(client.get("/backup/list"))

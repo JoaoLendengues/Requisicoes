@@ -161,5 +161,10 @@ class UserSession:
         """Fundo da tela de login: somente admin."""
         return self.role == "admin"
 
+    @property
+    def settings_show_backup(self) -> bool:
+        """Backup do banco de dados: somente admin."""
+        return self.role == "admin"
+
 
 session = UserSession()
