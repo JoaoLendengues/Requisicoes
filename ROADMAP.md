@@ -24,6 +24,7 @@ Responsaveis:
 - [ ] [cappinho] Ajustar filtro de datas da tela "HISTORICO/BUSCA" (puxando datas anteriores, nao somente a data selecionada)
 - [ ] [cappinho] Corrigir contador de notificacoes na tela de notificacoes (badge nao reflete contagem correta)
 - [ ] [victor]   Corrigir bug da tela de desenho: linha iniciando em ponto pre-definido
+- [ ] [victor]   Revisar selecao de formas ocas no canvas (rect/elipse selecionaveis so na borda — comportamento implementado, mas pode precisar de ajuste fino)
 
 ### Prioridade Media
 

@@ -19,7 +19,7 @@ from PySide6.QtCore import (
     QByteArray, QBuffer, QIODevice, QMimeData,
 )
 from PySide6.QtGui import (
-    QColor, QFont, QPainter, QPainterPath, QPen, QBrush,
+    QColor, QFont, QPainter, QPainterPath, QPainterPathStroker, QPen, QBrush,
     QPixmap, QKeySequence, QAction, QCursor, QTransform, QGuiApplication,
 )
 from PySide6.QtWidgets import (
@@ -98,11 +98,11 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setData(0, {"type": "manual_dimension_line"})
 
     elif t == "rect":
-        item = QGraphicsRectItem(d["x"], d["y"], d["w"], d["h"])
+        item = HollowRectItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
 
     elif t == "ellipse":
-        item = QGraphicsEllipseItem(d["x"], d["y"], d["w"], d["h"])
+        item = HollowEllipseItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
 
     elif t == "path":
@@ -198,6 +198,32 @@ def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False
     return {"items": count, "pdf": obj.get("pdf", "")}
 
 
+# ---------------------------------------------------------------------------
+# Subclasses para formas ocas (hit-test somente na borda, não no interior)
+# ---------------------------------------------------------------------------
+
+class HollowRectItem(QGraphicsRectItem):
+    """Retângulo selecionável/clicável apenas na borda, não no interior vazio."""
+
+    def shape(self) -> QPainterPath:
+        stroker = QPainterPathStroker()
+        stroker.setWidth(max(self.pen().widthF(), 1.0) + 8.0)
+        outline = QPainterPath()
+        outline.addRect(self.rect())
+        return stroker.createStroke(outline)
+
+
+class HollowEllipseItem(QGraphicsEllipseItem):
+    """Elipse selecionável/clicável apenas na borda, não no interior vazio."""
+
+    def shape(self) -> QPainterPath:
+        stroker = QPainterPathStroker()
+        stroker.setWidth(max(self.pen().widthF(), 1.0) + 8.0)
+        outline = QPainterPath()
+        outline.addEllipse(self.rect())
+        return stroker.createStroke(outline)
+
+
 # Cena personalizada
 class DrawingScene(QGraphicsScene):
     def __init__(self, canvas_widget):
@@ -209,9 +235,10 @@ class DrawingScene(QGraphicsScene):
         self._preview_item: QGraphicsItem | None = None
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
-        self._curve_source_item: QGraphicsItem | None = None
-        self._curve_points_scene: list[QPointF] = []
-        self._curve_segment_index: int = -1
+        # Ferramenta Curva (estilo Paint): 0=idle, 1=linha base, 2=ponto controle
+        self._curve_draw_phase: int = 0
+        self._curve_draw_start: QPointF | None = None
+        self._curve_draw_end:   QPointF | None = None
         self._ruler_commit_on_release: bool = False
         self._manual_dim_active: bool = False
         self._manual_dim_label: str = ""
@@ -503,104 +530,34 @@ class DrawingScene(QGraphicsScene):
         return QPointF(start.x() + dist * math.cos(rad),
                        start.y() + dist * math.sin(rad))
 
-    def _pick_curve_source_item(self, scene_pos: QPointF) -> QGraphicsItem | None:
-        """Escolhe forma selecionada para curvar; fallback para item sob o cursor."""
-        for item in self.selectedItems():
-            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem)):
-                return item
-        for item in self.items(scene_pos):
-            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem)):
-                item.setSelected(True)
-                return item
-        return None
+    def _commit_curve_draw(self, ctrl: QPointF):
+        """Fase 2: aplica o ponto de controle e finaliza a curva."""
+        if not self._curve_draw_start or not self._curve_draw_end or not self._preview_item:
+            self._cancel_curve_draw()
+            return
+        path = QPainterPath(self._curve_draw_start)
+        path.quadTo(ctrl, self._curve_draw_end)
+        self._preview_item.setPath(path)
+        item = self._preview_item
+        item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        item.setSelected(True)
+        self.cw._push_undo(item)
+        self._preview_item    = None
+        self._curve_draw_phase = 0
+        self._curve_draw_start = None
+        self._curve_draw_end   = None
 
-    def _item_curve_points_scene(self, item: QGraphicsItem) -> tuple[list[QPointF], bool]:
-        """Extrai os pontos em coordenadas de cena para curvar um segmento."""
-        if isinstance(item, QGraphicsLineItem):
-            ln = item.line()
-            return [item.mapToScene(ln.p1()), item.mapToScene(ln.p2())], False
-
-        if isinstance(item, QGraphicsRectItem):
-            r = item.rect()
-            pts = [
-                item.mapToScene(r.topLeft()),
-                item.mapToScene(r.topRight()),
-                item.mapToScene(r.bottomRight()),
-                item.mapToScene(r.bottomLeft()),
-                item.mapToScene(r.topLeft()),
-            ]
-            return pts, True
-
-        if isinstance(item, QGraphicsEllipseItem):
-            r = item.rect()
-            pts: list[QPointF] = []
-            samples = 40
-            for i in range(samples):
-                ang = (2.0 * math.pi * i) / samples
-                x = r.center().x() + (r.width() / 2.0) * math.cos(ang)
-                y = r.center().y() + (r.height() / 2.0) * math.sin(ang)
-                pts.append(item.mapToScene(QPointF(x, y)))
-            pts.append(pts[0])
-            return pts, True
-
-        if isinstance(item, QGraphicsPathItem):
-            path = item.path()
-            pts: list[QPointF] = []
-            for i in range(path.elementCount()):
-                el = path.elementAt(i)
-                pts.append(item.mapToScene(QPointF(el.x, el.y)))
-            if len(pts) < 2:
-                return [], False
-            closed = math.hypot(pts[0].x() - pts[-1].x(), pts[0].y() - pts[-1].y()) < 0.01
-            return pts, closed
-
-        return [], False
-
-    def _points_to_path_scene(self, points: list[QPointF]) -> QPainterPath:
-        path = QPainterPath(points[0])
-        for p in points[1:]:
-            path.lineTo(p)
-        return path
-
-    def _distance_point_segment(self, p: QPointF, a: QPointF, b: QPointF) -> float:
-        ax, ay = a.x(), a.y()
-        bx, by = b.x(), b.y()
-        px, py = p.x(), p.y()
-        dx, dy = bx - ax, by - ay
-        denom = dx * dx + dy * dy
-        if denom <= 1e-9:
-            return math.hypot(px - ax, py - ay)
-        t = ((px - ax) * dx + (py - ay) * dy) / denom
-        t = max(0.0, min(1.0, t))
-        qx, qy = ax + t * dx, ay + t * dy
-        return math.hypot(px - qx, py - qy)
-
-    def _closest_curve_segment_index(self, points: list[QPointF], scene_pos: QPointF) -> int:
-        if len(points) < 2:
-            return -1
-        best_i = -1
-        best_d = float("inf")
-        for i in range(len(points) - 1):
-            d = self._distance_point_segment(scene_pos, points[i], points[i + 1])
-            if d < best_d:
-                best_d = d
-                best_i = i
-        return best_i
-
-    def _apply_curve_on_segment(self, points: list[QPointF], segment_index: int, control: QPointF, steps: int = 18) -> list[QPointF]:
-        """Substitui um segmento por uma curva quadrática."""
-        if segment_index < 0 or segment_index >= len(points) - 1:
-            return points
-        p0 = points[segment_index]
-        p1 = points[segment_index + 1]
-        curved: list[QPointF] = []
-        for i in range(steps + 1):
-            t = i / steps
-            u = 1.0 - t
-            x = (u * u * p0.x()) + (2 * u * t * control.x()) + (t * t * p1.x())
-            y = (u * u * p0.y()) + (2 * u * t * control.y()) + (t * t * p1.y())
-            curved.append(QPointF(x, y))
-        return points[:segment_index] + curved + points[segment_index + 2:]
+    def _cancel_curve_draw(self):
+        """Cancela qualquer fase da ferramenta Curva em andamento."""
+        if self._preview_item:
+            self.removeItem(self._preview_item)
+            self._preview_item = None
+        self._curve_draw_phase = 0
+        self._curve_draw_start = None
+        self._curve_draw_end   = None
 
     def _triangle_path(self, start: QPointF, end: QPointF) -> QPainterPath:
         """Triangulo isosceles dentro do retangulo definido por start/end."""
@@ -1035,6 +992,12 @@ class DrawingScene(QGraphicsScene):
             self.cw._insert_image(pos)
             return
 
+        # CURVE fase 2: clique confirma a curva com o ponto de controle
+        if tool == Tool.CURVE and self._curve_draw_phase == 2:
+            self._commit_curve_draw(pos)
+            event.accept()
+            return
+
         self._snap_point = None
         self._snap_points_cache = []
         self._start = QPointF(pos.x(), pos.y())
@@ -1071,37 +1034,14 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.CURVE:
-            source_item = self._pick_curve_source_item(pos)
-            if not source_item:
-                self._start = None
-                return
-
-            self._curve_source_item = source_item
-            self._curve_points_scene, _closed = self._item_curve_points_scene(source_item)
-            if len(self._curve_points_scene) < 2:
-                self._curve_source_item = None
-                self._start = None
-                return
-            self._curve_segment_index = self._closest_curve_segment_index(self._curve_points_scene, pos)
-            if self._curve_segment_index < 0:
-                self._curve_source_item = None
-                self._curve_points_scene = []
-                self._start = None
-                return
-
-            source_pen = source_item.pen()
-            source_item.setVisible(False)
-
-            curved_points = self._apply_curve_on_segment(
-                self._curve_points_scene,
-                self._curve_segment_index,
-                pos,
-            )
-            path = self._points_to_path_scene(curved_points)
-            curve_item = QGraphicsPathItem(path)
-            curve_item.setPen(source_pen)
-            self.addItem(curve_item)
-            self._preview_item = curve_item
+            # Fase 1: início — define ponto inicial da linha base
+            self._curve_draw_phase = 1
+            self._curve_draw_start = QPointF(pos.x(), pos.y())
+            p = QPainterPath(self._curve_draw_start)
+            p.lineTo(self._curve_draw_start)
+            self._preview_item = QGraphicsPathItem(p)
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
 
         elif tool == Tool.TRIANGLE:
             self._preview_item = QGraphicsPathItem(self._triangle_path(self._start, pos))
@@ -1119,10 +1059,16 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.RECT:
-            self._preview_item = self.addRect(QRectF(pos, pos), self._pen())
+            r = HollowRectItem(QRectF(pos, pos))
+            r.setPen(self._pen())
+            self.addItem(r)
+            self._preview_item = r
 
         elif tool == Tool.ELLIPSE:
-            self._preview_item = self.addEllipse(QRectF(pos, pos), self._pen())
+            e = HollowEllipseItem(QRectF(pos, pos))
+            e.setPen(self._pen())
+            self.addItem(e)
+            self._preview_item = e
 
         event.accept()
 
@@ -1208,13 +1154,17 @@ class DrawingScene(QGraphicsScene):
             end = self._constrain(self._start, pos) if shift else pos
             self._preview_item.setPath(self._arrow_path(self._start, end))
 
-        elif tool == Tool.CURVE and self._preview_item and self._curve_points_scene:
-            curved_points = self._apply_curve_on_segment(
-                self._curve_points_scene,
-                self._curve_segment_index,
-                pos,
-            )
-            self._preview_item.setPath(self._points_to_path_scene(curved_points))
+        elif tool == Tool.CURVE and self._preview_item:
+            if self._curve_draw_phase == 1 and self._curve_draw_start:
+                # Atualiza linha reta: o fim segue o mouse
+                p = QPainterPath(self._curve_draw_start)
+                p.lineTo(pos)
+                self._preview_item.setPath(p)
+            elif self._curve_draw_phase == 2 and self._curve_draw_start and self._curve_draw_end:
+                # Atualiza curva quadrática: controle no mouse
+                p = QPainterPath(self._curve_draw_start)
+                p.quadTo(pos, self._curve_draw_end)
+                self._preview_item.setPath(p)
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             self._preview_item.setPath(self._triangle_path(self._start, pos))
@@ -1302,22 +1252,22 @@ class DrawingScene(QGraphicsScene):
                 self._commit_ruler_measure(self._start, end)
             self._ruler_commit_on_release = False
 
-        elif tool == Tool.CURVE and self._preview_item and self._curve_source_item:
-            old_item = self._curve_source_item
-            self.removeItem(old_item)
-            if old_item in self.cw._undo_stack:
-                self.cw._undo_stack.remove(old_item)
-
-            item = self._preview_item
-            item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
-                          QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
-            item.setSelected(True)
-            self.cw._push_undo(item)
-
-            self._preview_item = None
-            self._curve_source_item = None
-            self._curve_points_scene = []
-            self._curve_segment_index = -1
+        elif tool == Tool.CURVE and self._curve_draw_phase == 1:
+            # Fim do drag da linha base → transita para fase 2
+            if (self._curve_draw_start and
+                    math.hypot(pos.x() - self._curve_draw_start.x(),
+                               pos.y() - self._curve_draw_start.y()) < 3):
+                # Linha muito curta: cancela
+                self._cancel_curve_draw()
+            else:
+                self._curve_draw_end = QPointF(pos.x(), pos.y())
+                # Congela a linha reta no preview
+                p = QPainterPath(self._curve_draw_start)
+                p.lineTo(self._curve_draw_end)
+                self._preview_item.setPath(p)
+                self._curve_draw_phase = 2
+            self._start = None
+            return  # não limpa _start nem _snap_points_cache abaixo
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             item = self._preview_item
@@ -1352,6 +1302,11 @@ class DrawingScene(QGraphicsScene):
 
         if self._manual_dim_active and event.key() == Qt.Key.Key_Escape:
             self.cancel_manual_dimension()
+            event.accept()
+            return
+
+        if self._curve_draw_phase > 0 and event.key() == Qt.Key.Key_Escape:
+            self._cancel_curve_draw()
             event.accept()
             return
 
@@ -1756,6 +1711,8 @@ class DrawingCanvas(QWidget):
         self.view.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontAdjustForAntialiasing, True)
         self.view.setCacheMode(QGraphicsView.CacheModeFlag.CacheBackground)
         self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
+        # Rubber-band respeita shape() de cada item (borda de rects/elipses ocas)
+        self.view.setRubberBandSelectionMode(Qt.ItemSelectionMode.IntersectsItemShape)
         self.view.setStyleSheet(
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
@@ -1921,6 +1878,8 @@ class DrawingCanvas(QWidget):
             self.scene.cancel_mirror_axis()
         if hasattr(self, "scene") and self.scene._manual_dim_active:
             self.scene.cancel_manual_dimension()
+        if hasattr(self, "scene") and self.scene._curve_draw_phase > 0:
+            self.scene._cancel_curve_draw()
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
