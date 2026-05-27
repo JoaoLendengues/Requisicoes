@@ -147,54 +147,28 @@ class MainWindow(QMainWindow):
         self._scroll_main.setWidget(self.stack)
         root.addWidget(self._scroll_main, 1)
 
+        # ── Inicialização lazy das views ─────────────────────────────────────
+        # Apenas o formulário (tela inicial) é criado agora.
+        # As demais views são instanciadas na primeira navegação via _ensure_view,
+        # evitando que o startup bloqueie a UI enquanto constrói widgets não usados.
         self.form_view = RequisitionForm(self.scale)
-        self.history_view = HistoryView(self.scale)
-        self.dashboard_view = DashboardView(self.scale)
-        self.technical_panel_view = TechnicalPanelView(self.scale)
-        self.order_center_view = OrderCenterView(self.scale)
-        self.pinheiro_industria_view = ProductionView(
-            self.scale,
-            destinations=("Pinheiro Indústria",),
-            title="PINHEIRO INDÚSTRIA",
-            subtitle="Acompanhamento operacional das requisições enviadas para a Pinheiro Indústria.",
-        )
-        self.ar_view = ProductionView(
-            self.scale,
-            destinations=("A&R",),
-            title="A&R",
-            subtitle="Acompanhamento operacional das requisições enviadas para a A&R.",
-        )
-        self.user_center_view = UserCenterView(self.scale)
-        self.settings_view = SettingsView(self.scale)
-        self.feedback_view = FeedbackView(self.scale)
+        self.history_view: HistoryView | None = None
+        self.dashboard_view: DashboardView | None = None
+        self.technical_panel_view: TechnicalPanelView | None = None
+        self.order_center_view: OrderCenterView | None = None
+        self.pinheiro_industria_view: ProductionView | None = None
+        self.ar_view: ProductionView | None = None
+        self.user_center_view: UserCenterView | None = None
+        self.settings_view: SettingsView | None = None
+        self.feedback_view: FeedbackView | None = None
 
-        self.stack.addWidget(self.form_view)
-        self.stack.addWidget(self.history_view)
-        self.stack.addWidget(self.dashboard_view)
-        self.stack.addWidget(self.technical_panel_view)
-        self.stack.addWidget(self.order_center_view)
-        self.stack.addWidget(self.pinheiro_industria_view)
-        self.stack.addWidget(self.ar_view)
-        self.stack.addWidget(self.user_center_view)
-        self.stack.addWidget(self.settings_view)
-        self.stack.addWidget(self.feedback_view)
+        self.stack.addWidget(self.form_view)       # PAGE_FORM = 0
+        from PySide6.QtWidgets import QWidget as _QW
+        for _ in range(9):                         # páginas 1-9: placeholders leves
+            self.stack.addWidget(_QW())
 
-        self.history_view.open_requisition.connect(
-            lambda req_id: self._open_requisition(req_id, "history")
-        )
-        self.order_center_view.open_requisition.connect(
-            lambda req_id: self._open_requisition(req_id, "order_center")
-        )
-        self.pinheiro_industria_view.open_requisition.connect(
-            lambda req_id: self._open_requisition(req_id, "production")
-        )
-        self.ar_view.open_requisition.connect(
-            lambda req_id: self._open_requisition(req_id, "production")
-        )
+        # Sinal do formulário conectado imediatamente (único que precisa existir já)
         self.form_view.save_requested.connect(self._save_requisition)
-        self.settings_view.scale_changed.connect(self._on_scale_changed)
-        self.settings_view.font_size_changed.connect(lambda: self._on_scale_changed(res.scale))
-        self.settings_view.show_guide_requested.connect(self.show_onboarding)
 
         # ── Visibilidade dos botões da sidebar por perfil ─────────────────────
         nav_visible = {
@@ -331,6 +305,9 @@ class MainWindow(QMainWindow):
         }
         page = mapping.get(key, PAGE_FORM)
 
+        # Garante que a view existe antes de tentar navegar para ela
+        self._ensure_view(page)
+
         # Guards defensivos — botões já estão ocultos para roles sem acesso,
         # mas mantemos a verificação como camada de segurança extra.
         guards = {
@@ -389,13 +366,106 @@ class MainWindow(QMainWindow):
         if not session.is_view_only:
             return  # admin/gerente/vendedor já partem em PAGE_FORM por padrão
         if session.can_access_ar:
+            self._ensure_view(PAGE_AR)
             self.stack.setCurrentIndex(PAGE_AR)
             self.sidebar._highlight("ar")
             self.ar_view.refresh()
         else:
+            self._ensure_view(PAGE_PINHEIRO_INDUSTRIA)
             self.stack.setCurrentIndex(PAGE_PINHEIRO_INDUSTRIA)
             self.sidebar._highlight("pinheiro_industria")
             self.pinheiro_industria_view.refresh()
+
+    # ── Lazy loading de views ─────────────────────────────────────────────────
+
+    def _ensure_view(self, page: int) -> None:
+        """Cria e registra a view de ``page`` se ainda não foi inicializada.
+
+        Substitui o placeholder leve no QStackedWidget pela view real e conecta
+        os sinais correspondentes.  Chamada antes de qualquer navegação.
+        """
+        _attr = {
+            PAGE_HISTORY:            "history_view",
+            PAGE_DASHBOARD:          "dashboard_view",
+            PAGE_TECHNICAL:          "technical_panel_view",
+            PAGE_ORDER_CENTER:       "order_center_view",
+            PAGE_PINHEIRO_INDUSTRIA: "pinheiro_industria_view",
+            PAGE_AR:                 "ar_view",
+            PAGE_USER_CENTER:        "user_center_view",
+            PAGE_SETTINGS:           "settings_view",
+            PAGE_FEEDBACK:           "feedback_view",
+        }
+        attr = _attr.get(page)
+        if attr is None or getattr(self, attr) is not None:
+            return  # PAGE_FORM ou já criada
+
+        view = self._create_view_for_page(page)
+        setattr(self, attr, view)
+
+        # Troca o placeholder pela view real mantendo o índice correto
+        placeholder = self.stack.widget(page)
+        self.stack.removeWidget(placeholder)
+        placeholder.deleteLater()
+        self.stack.insertWidget(page, view)
+
+        self._connect_view_signals(page, view)
+
+    def _create_view_for_page(self, page: int):
+        """Instancia a view correspondente ao índice ``page``."""
+        if page == PAGE_HISTORY:
+            return HistoryView(self.scale)
+        if page == PAGE_DASHBOARD:
+            return DashboardView(self.scale)
+        if page == PAGE_TECHNICAL:
+            return TechnicalPanelView(self.scale)
+        if page == PAGE_ORDER_CENTER:
+            return OrderCenterView(self.scale)
+        if page == PAGE_PINHEIRO_INDUSTRIA:
+            return ProductionView(
+                self.scale,
+                destinations=("Pinheiro Indústria",),
+                title="PINHEIRO INDÚSTRIA",
+                subtitle="Acompanhamento operacional das requisições enviadas para a Pinheiro Indústria.",
+            )
+        if page == PAGE_AR:
+            return ProductionView(
+                self.scale,
+                destinations=("A&R",),
+                title="A&R",
+                subtitle="Acompanhamento operacional das requisições enviadas para a A&R.",
+            )
+        if page == PAGE_USER_CENTER:
+            return UserCenterView(self.scale)
+        if page == PAGE_SETTINGS:
+            return SettingsView(self.scale)
+        if page == PAGE_FEEDBACK:
+            return FeedbackView(self.scale)
+        raise ValueError(f"Página desconhecida: {page}")
+
+    def _connect_view_signals(self, page: int, view) -> None:
+        """Conecta os sinais da view recém-criada."""
+        if page == PAGE_HISTORY:
+            view.open_requisition.connect(
+                lambda req_id: self._open_requisition(req_id, "history")
+            )
+        elif page == PAGE_ORDER_CENTER:
+            view.open_requisition.connect(
+                lambda req_id: self._open_requisition(req_id, "order_center")
+            )
+        elif page == PAGE_PINHEIRO_INDUSTRIA:
+            view.open_requisition.connect(
+                lambda req_id: self._open_requisition(req_id, "production")
+            )
+        elif page == PAGE_AR:
+            view.open_requisition.connect(
+                lambda req_id: self._open_requisition(req_id, "production")
+            )
+        elif page == PAGE_SETTINGS:
+            view.scale_changed.connect(self._on_scale_changed)
+            view.font_size_changed.connect(lambda: self._on_scale_changed(res.scale))
+            view.show_guide_requested.connect(self.show_onboarding)
+
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _confirm_new_requisition(self) -> bool:
         if not self.form_view.has_unsaved_data():
@@ -783,6 +853,7 @@ class MainWindow(QMainWindow):
 
     def _restore_ui_state(self, state: dict) -> None:
         current_page = state.get("current_page", PAGE_FORM)
+        self._ensure_view(current_page)   # garante que a view existe antes de restaurar
         self.stack.setCurrentIndex(current_page)
         self._highlight_current_page()
         self.sidebar.set_notification_count(self._unread_count)
@@ -920,16 +991,14 @@ class MainWindow(QMainWindow):
             f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
         )
         self.sidebar.apply_theme()
-        self.form_view.apply_theme()
-        self.history_view.apply_theme()
-        self.dashboard_view.apply_theme()
-        self.technical_panel_view.apply_theme()
-        self.order_center_view.apply_theme()
-        self.pinheiro_industria_view.apply_theme()
-        self.ar_view.apply_theme()
-        self.user_center_view.apply_theme()
-        self.settings_view.apply_theme()
-        self.feedback_view.apply_theme()
+        for _v in (
+            self.form_view, self.history_view, self.dashboard_view,
+            self.technical_panel_view, self.order_center_view,
+            self.pinheiro_industria_view, self.ar_view,
+            self.user_center_view, self.settings_view, self.feedback_view,
+        ):
+            if _v is not None:
+                _v.apply_theme()
         self._setup_statusbar()
 
     def _get_current_view(self):
@@ -991,7 +1060,7 @@ class MainWindow(QMainWindow):
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
         ):
-            if view is not current:
+            if view is not None and view is not current:
                 view.apply_theme()
         # Atualiza a cor de todos os QGraphicsDropShadowEffect na janela inteira.
         # Necessário porque os efeitos são criados uma única vez no __init__ com
@@ -999,14 +1068,31 @@ class MainWindow(QMainWindow):
         self._refresh_all_shadows()
 
     def _refresh_all_shadows(self) -> None:
-        """Percorre todos os widgets filhos e atualiza a cor das sombras."""
-        for child in self.findChildren(QWidget):
-            effect = child.graphicsEffect()
-            if isinstance(effect, QGraphicsDropShadowEffect):
-                alpha = effect.color().alpha()   # preserva o alpha original
-                color = QColor(theme.TEXT_DARK)
-                color.setAlpha(alpha)
-                effect.setColor(color)
+        """Percorre widgets criados e atualiza a cor das sombras."""
+        def _fix(root):
+            for child in root.findChildren(QWidget):
+                effect = child.graphicsEffect()
+                if isinstance(effect, QGraphicsDropShadowEffect):
+                    alpha = effect.color().alpha()
+                    color = QColor(theme.TEXT_DARK)
+                    color.setAlpha(alpha)
+                    effect.setColor(color)
+
+        # Sidebar e view atual: prioritários (o usuário vê agora)
+        _fix(self.sidebar)
+        current = self._get_current_view()
+        if current is not None:
+            _fix(current)
+
+        # Views já criadas mas ocultas
+        for view in (
+            self.form_view, self.history_view, self.dashboard_view,
+            self.technical_panel_view, self.order_center_view,
+            self.pinheiro_industria_view, self.ar_view,
+            self.user_center_view, self.settings_view, self.feedback_view,
+        ):
+            if view is not None and view is not current and view is not self.sidebar:
+                _fix(view)
 
     def _on_theme_toggle(self, dark: bool):
         """
