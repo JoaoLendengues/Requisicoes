@@ -235,7 +235,6 @@ class DrawingScene(QGraphicsScene):
         self._preview_item: QGraphicsItem | None = None
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
-<<<<<<< HEAD
         self._curve_source_item: QGraphicsItem | None = None
         self._curve_points_scene: list[QPointF] = []
         self._curve_segment_index: int = -1
@@ -243,12 +242,10 @@ class DrawingScene(QGraphicsScene):
         self._curve_session_active: bool = False
         self._curve_dragging: bool = False
         self._curve_bend_count: int = 0
-=======
         # Ferramenta Curva (estilo Paint): 0=idle, 1=linha base, 2=ponto controle
         self._curve_draw_phase: int = 0
         self._curve_draw_start: QPointF | None = None
         self._curve_draw_end:   QPointF | None = None
->>>>>>> c6b2e72802ea1cead28bdaf5d38e94e72d2b11a3
         self._ruler_commit_on_release: bool = False
         self._manual_dim_active: bool = False
         self._manual_dim_label: str = ""
@@ -1084,48 +1081,6 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.CURVE:
-<<<<<<< HEAD
-            if self._curve_session_active and self._curve_source_item and self._preview_item:
-                if self._curve_bend_count >= self.CURVE_MAX_BENDS:
-                    self._finalize_curve_session()
-                    self._start = None
-                    return
-                self._curve_dragging = True
-                self._start = QPointF(pos.x(), pos.y())
-                event.accept()
-                return
-
-            source_item = self._pick_curve_source_item(pos)
-            if not source_item:
-                self._start = None
-                return
-
-            points_scene, _closed = self._item_curve_points_scene(source_item)
-            if len(points_scene) < 2:
-                self._start = None
-                return
-            segment_index = self._closest_curve_segment_index(points_scene, pos)
-            if segment_index < 0:
-                self._start = None
-                return
-
-            self._curve_source_item = source_item
-            self._curve_points_scene = points_scene
-            self._curve_segment_index = segment_index
-            self._curve_committed_points_scene = list(points_scene)
-            self._curve_session_active = True
-            self._curve_dragging = True
-            self._curve_bend_count = 0
-
-            source_pen = source_item.pen()
-            source_item.setVisible(False)
-
-            path = self._points_to_path_scene(self._curve_committed_points_scene)
-            curve_item = QGraphicsPathItem(path)
-            curve_item.setPen(source_pen)
-            self.addItem(curve_item)
-            self._preview_item = curve_item
-=======
             # Fase 1: início — define ponto inicial da linha base
             self._curve_draw_phase = 1
             self._curve_draw_start = QPointF(pos.x(), pos.y())
@@ -1134,7 +1089,6 @@ class DrawingScene(QGraphicsScene):
             self._preview_item = QGraphicsPathItem(p)
             self._preview_item.setPen(self._pen())
             self.addItem(self._preview_item)
->>>>>>> c6b2e72802ea1cead28bdaf5d38e94e72d2b11a3
 
         elif tool == Tool.TRIANGLE:
             self._preview_item = QGraphicsPathItem(self._triangle_path(self._start, pos))
@@ -1247,20 +1201,6 @@ class DrawingScene(QGraphicsScene):
             end = self._constrain(self._start, pos) if shift else pos
             self._preview_item.setPath(self._arrow_path(self._start, end))
 
-<<<<<<< HEAD
-        elif (
-            tool == Tool.CURVE
-            and self._preview_item
-            and self._curve_dragging
-            and self._curve_committed_points_scene
-        ):
-            curved_points = self._apply_curve_on_segment(
-                self._curve_committed_points_scene,
-                self._curve_segment_index,
-                pos,
-            )
-            self._preview_item.setPath(self._points_to_path_scene(curved_points))
-=======
         elif tool == Tool.CURVE and self._preview_item:
             if self._curve_draw_phase == 1 and self._curve_draw_start:
                 # Atualiza linha reta: o fim segue o mouse
@@ -1272,7 +1212,6 @@ class DrawingScene(QGraphicsScene):
                 p = QPainterPath(self._curve_draw_start)
                 p.quadTo(pos, self._curve_draw_end)
                 self._preview_item.setPath(p)
->>>>>>> c6b2e72802ea1cead28bdaf5d38e94e72d2b11a3
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             self._preview_item.setPath(self._triangle_path(self._start, pos))
@@ -1360,20 +1299,6 @@ class DrawingScene(QGraphicsScene):
                 self._commit_ruler_measure(self._start, end)
             self._ruler_commit_on_release = False
 
-<<<<<<< HEAD
-        elif tool == Tool.CURVE and self._preview_item and self._curve_source_item and self._curve_dragging:
-            curved_points = self._apply_curve_on_segment(
-                self._curve_committed_points_scene,
-                self._curve_segment_index,
-                pos,
-            )
-            self._curve_committed_points_scene = curved_points
-            self._preview_item.setPath(self._points_to_path_scene(curved_points))
-            self._curve_dragging = False
-            self._curve_bend_count += 1
-            if self._curve_bend_count >= self.CURVE_MAX_BENDS:
-                self._finalize_curve_session()
-=======
         elif tool == Tool.CURVE and self._curve_draw_phase == 1:
             # Fim do drag da linha base → transita para fase 2
             if (self._curve_draw_start and
@@ -1390,7 +1315,6 @@ class DrawingScene(QGraphicsScene):
                 self._curve_draw_phase = 2
             self._start = None
             return  # não limpa _start nem _snap_points_cache abaixo
->>>>>>> c6b2e72802ea1cead28bdaf5d38e94e72d2b11a3
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             item = self._preview_item
@@ -2005,20 +1929,8 @@ class DrawingCanvas(QWidget):
             self.scene.cancel_mirror_axis()
         if hasattr(self, "scene") and self.scene._manual_dim_active:
             self.scene.cancel_manual_dimension()
-<<<<<<< HEAD
-        if (
-            hasattr(self, "scene")
-            and self.scene._curve_session_active
-            and tool != Tool.CURVE
-        ):
-            if self.scene._curve_bend_count > 0:
-                self.scene._finalize_curve_session()
-            else:
-                self.scene._cancel_curve_session()
-=======
         if hasattr(self, "scene") and self.scene._curve_draw_phase > 0:
             self.scene._cancel_curve_draw()
->>>>>>> c6b2e72802ea1cead28bdaf5d38e94e72d2b11a3
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
