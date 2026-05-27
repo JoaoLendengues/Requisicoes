@@ -73,6 +73,116 @@ def _pixmap_to_base64(pixmap: QPixmap) -> str:
     return data
 
 
+def _serialize_transform(t: QTransform) -> dict | None:
+    if t.isIdentity():
+        return None
+    return {
+        "m11": t.m11(),
+        "m12": t.m12(),
+        "m13": t.m13(),
+        "m21": t.m21(),
+        "m22": t.m22(),
+        "m23": t.m23(),
+        "m31": t.m31(),
+        "m32": t.m32(),
+        "m33": t.m33(),
+    }
+
+
+def _deserialize_transform(data) -> QTransform | None:
+    if not data:
+        return None
+    if isinstance(data, dict):
+        return QTransform(
+            float(data.get("m11", 1.0)),
+            float(data.get("m12", 0.0)),
+            float(data.get("m13", 0.0)),
+            float(data.get("m21", 0.0)),
+            float(data.get("m22", 1.0)),
+            float(data.get("m23", 0.0)),
+            float(data.get("m31", 0.0)),
+            float(data.get("m32", 0.0)),
+            float(data.get("m33", 1.0)),
+        )
+    if isinstance(data, (list, tuple)) and len(data) == 9:
+        return QTransform(
+            float(data[0]), float(data[1]), float(data[2]),
+            float(data[3]), float(data[4]), float(data[5]),
+            float(data[6]), float(data[7]), float(data[8]),
+        )
+    return None
+
+
+def _serialize_path_segments(path: QPainterPath) -> list[dict]:
+    segments: list[dict] = []
+    i = 0
+    count = path.elementCount()
+    while i < count:
+        el = path.elementAt(i)
+        if el.isMoveTo():
+            segments.append({"cmd": "M", "x": el.x, "y": el.y})
+            i += 1
+            continue
+        if el.isLineTo():
+            segments.append({"cmd": "L", "x": el.x, "y": el.y})
+            i += 1
+            continue
+        if el.isCurveTo() and (i + 2) < count:
+            c1 = el
+            c2 = path.elementAt(i + 1)
+            end = path.elementAt(i + 2)
+            segments.append({
+                "cmd": "C",
+                "c1": [c1.x, c1.y],
+                "c2": [c2.x, c2.y],
+                "end": [end.x, end.y],
+            })
+            i += 3
+            continue
+        i += 1
+    return segments
+
+
+def _deserialize_path(path_data: dict) -> QPainterPath:
+    segments = path_data.get("segments", [])
+    if isinstance(segments, list) and segments:
+        path = QPainterPath()
+        has_current = False
+        for seg in segments:
+            if not isinstance(seg, dict):
+                continue
+            cmd = str(seg.get("cmd", "")).upper()
+            if cmd == "M":
+                path.moveTo(QPointF(float(seg.get("x", 0.0)), float(seg.get("y", 0.0))))
+                has_current = True
+            elif cmd == "L" and has_current:
+                path.lineTo(QPointF(float(seg.get("x", 0.0)), float(seg.get("y", 0.0))))
+            elif cmd == "C" and has_current:
+                c1 = seg.get("c1", [0.0, 0.0])
+                c2 = seg.get("c2", [0.0, 0.0])
+                end = seg.get("end", [0.0, 0.0])
+                if (
+                    isinstance(c1, (list, tuple)) and len(c1) == 2
+                    and isinstance(c2, (list, tuple)) and len(c2) == 2
+                    and isinstance(end, (list, tuple)) and len(end) == 2
+                ):
+                    path.cubicTo(
+                        QPointF(float(c1[0]), float(c1[1])),
+                        QPointF(float(c2[0]), float(c2[1])),
+                        QPointF(float(end[0]), float(end[1])),
+                    )
+        return path
+
+    # Compatibilidade retroativa com payload antigo (lista de pontos em polilinha)
+    points = path_data.get("points", [])
+    path = QPainterPath()
+    if points:
+        path.moveTo(QPointF(points[0][0], points[0][1]))
+        for pt in points[1:]:
+            path.lineTo(QPointF(pt[0], pt[1]))
+    return path
+
+
 def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
     t = d.get("type")
     pen_d = d.get("pen", {})
@@ -106,12 +216,7 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setPen(pen)
 
     elif t == "path":
-        path = QPainterPath()
-        points = d.get("points", [])
-        if points:
-            path.moveTo(QPointF(points[0][0], points[0][1]))
-            for pt in points[1:]:
-                path.lineTo(QPointF(pt[0], pt[1]))
+        path = _deserialize_path(d)
         item = QGraphicsPathItem(path)
         item.setPen(pen)
 
@@ -170,6 +275,10 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
 
     if item is not None and ("pos_x" in d or "pos_y" in d):
         item.setPos(QPointF(d.get("pos_x", 0.0), d.get("pos_y", 0.0)))
+    if item is not None and d.get("transform"):
+        t = _deserialize_transform(d.get("transform"))
+        if t is not None:
+            item.setTransform(t, False)
     if item is not None and rot:
         item.setRotation(rot)
 
@@ -2470,6 +2579,7 @@ class DrawingCanvas(QWidget):
         }
 
         rot = item.rotation()
+        transform_data = _serialize_transform(item.transform())
 
         if isinstance(item, QGraphicsLineItem):
             ln = item.line()
@@ -2477,30 +2587,30 @@ class DrawingCanvas(QWidget):
                 return {"type": "ruler_measure_line",
                         "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
                         "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                        "pen": pen_data(item.pen()), "rotation": rot}
+                        "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
             if isinstance(meta, dict) and meta.get("type") == "manual_dimension_line":
                 return {"type": "manual_dimension_line",
                         "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
                         "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                        "pen": pen_data(item.pen()), "rotation": rot}
+                        "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
             return {"type": "line",
                     "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
                     "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                    "pen": pen_data(item.pen()), "rotation": rot}
+                    "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsRectItem):
             r = item.rect()
             return {"type": "rect",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
                     "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                    "pen": pen_data(item.pen()), "rotation": rot}
+                    "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsEllipseItem):
             r = item.rect()
             return {"type": "ellipse",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
                     "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                    "pen": pen_data(item.pen()), "rotation": rot}
+                    "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsPathItem):
             path = item.path()
@@ -2508,9 +2618,9 @@ class DrawingCanvas(QWidget):
             for i in range(path.elementCount()):
                 el = path.elementAt(i)
                 points.append([el.x, el.y])
-            return {"type": "path", "points": points,
+            return {"type": "path", "points": points, "segments": _serialize_path_segments(path),
                     "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                    "pen": pen_data(item.pen()), "rotation": rot}
+                    "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsTextItem):
             if isinstance(meta, dict) and meta.get("type") == "ruler_measure_text":
@@ -2519,20 +2629,20 @@ class DrawingCanvas(QWidget):
                         "text": item.toPlainText(),
                         "color": item.defaultTextColor().name(),
                         "font_size": item.font().pointSize(),
-                        "rotation": rot}
+                        "rotation": rot, "transform": transform_data}
             if isinstance(meta, dict) and meta.get("type") == "manual_dimension_text":
                 return {"type": "manual_dimension_text",
                         "x": item.pos().x(), "y": item.pos().y(),
                         "text": item.toPlainText(),
                         "color": item.defaultTextColor().name(),
                         "font_size": item.font().pointSize(),
-                        "rotation": rot}
+                        "rotation": rot, "transform": transform_data}
             return {"type": "text",
                     "x": item.pos().x(), "y": item.pos().y(),
                     "text": normalize_upper_text(item.toPlainText()),
                     "color": item.defaultTextColor().name(),
                     "font_size": item.font().pointSize(),
-                    "rotation": rot}
+                    "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsPixmapItem):
             meta = item.data(0) or {}
@@ -2542,7 +2652,7 @@ class DrawingCanvas(QWidget):
                     "image_data": meta.get("image_data", ""),
                     "display_w": meta.get("display_w", item.pixmap().width()),
                     "display_h": meta.get("display_h", item.pixmap().height()),
-                    "rotation": rot}
+                    "rotation": rot, "transform": transform_data}
 
         return None
 
