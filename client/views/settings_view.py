@@ -329,59 +329,25 @@ class SettingsView(QWidget):
         outer.addWidget(page_title)
         page_title.hide()
 
-        card = _make_card(
-            s,
-            theme.CARD_BG,
-            border_color=None,
-            radius=max(18, int(20 * s)),
-            hover_background=theme.CARD_BG,
-        )
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
-                                   max(16, int(20 * s)), max(14, int(18 * s)))
-        layout.setSpacing(max(12, int(16 * s)))
+        # helpers locais reutilizados pelos 5 cards
+        _cm = (max(16, int(20 * s)), max(14, int(18 * s)),
+               max(16, int(20 * s)), max(14, int(18 * s)))
+        _cs = max(12, int(16 * s))
 
-        # ── Conexão com o Servidor (admin only) ──────────────────────────────
-        self._conn_section = QWidget()
-        conn_vl = QVBoxLayout(self._conn_section)
-        conn_vl.setContentsMargins(0, 0, 0, 0)
-        conn_vl.setSpacing(max(8, int(10 * s)))
+        def _new_card() -> QFrame:
+            return _make_card(s, theme.CARD_BG, border_color=None,
+                              radius=max(18, int(20 * s)))
 
-        conn_vl.addWidget(_section("Conexão com o Servidor", s))
-        conn_vl.addWidget(_separator())
+        # ════════════════════════════════════════════════════════════════
+        # CARD 1 — Aparência
+        # ════════════════════════════════════════════════════════════════
+        card_ap = _new_card()
+        lay_ap = QVBoxLayout(card_ap)
+        lay_ap.setContentsMargins(*_cm)
+        lay_ap.setSpacing(_cs)
 
-        conn_grid = QGridLayout()
-        conn_grid.setSpacing(max(8, int(10 * s)))
-
-        conn_grid.addWidget(self._lbl("URL do servidor:", s), 0, 0)
-        self.input_url = QLineEdit(res.server_url)
-        self.input_url.setFixedHeight(max(38, int(44 * s)))
-        self.input_url.setStyleSheet(_field_style(s))
-        self.input_url.setPlaceholderText("http://192.168.1.100:5000")
-        self.input_url.setReadOnly(True)
-        self.input_url.setToolTip("A URL do servidor é fixa e não pode ser alterada nesta tela.")
-        conn_grid.addWidget(self.input_url, 0, 1)
-
-        self.btn_test = QPushButton("Testar conexão")
-        self.btn_test.setFixedHeight(max(38, int(44 * s)))
-        self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_test.clicked.connect(self._test_connection)
-        conn_grid.addWidget(self.btn_test, 0, 2)
-
-        self.lbl_conn_status = QLabel("")
-        self.lbl_conn_status.setProperty("muted", "1")
-        self.lbl_conn_status.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
-        )
-        conn_grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
-        conn_vl.addLayout(conn_grid)
-
-        layout.addWidget(self._conn_section)
-        self._conn_section.setVisible(session.settings_show_connection)
-
-        # ── Aparência (todos) ─────────────────────────────────────────────────
-        layout.addWidget(_section("Aparência", s))
-        layout.addWidget(_separator())
+        lay_ap.addWidget(_section("Aparência", s))
+        lay_ap.addWidget(_separator())
 
         scale_row = QHBoxLayout()
         scale_row.setSpacing(max(6, int(8 * s)))
@@ -398,23 +364,19 @@ class SettingsView(QWidget):
             btn.clicked.connect(lambda checked=False, lbl=label: self._on_scale_btn(lbl))
             scale_row.addWidget(btn)
             self._scale_btns[label] = btn
-
         scale_row.addStretch()
-        layout.addLayout(scale_row)
+        lay_ap.addLayout(scale_row)
 
         self.screen_info = QLabel(
             f"Resolução detectada: {res.screen_width}x{res.screen_height}  |  "
             f"DPI: {res.dpi:.0f}  |  Recomendado: {res.recommended_label}"
         )
         self.screen_info.setProperty("muted", "1")
-        self.screen_info.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
-        )
-        layout.addWidget(self.screen_info)
+        self.screen_info.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        lay_ap.addWidget(self.screen_info)
 
-        # ── Tamanho de Fonte (todos) ──────────────────────────────────────────
-        layout.addWidget(_section("Tamanho de Fonte", s))
-        layout.addWidget(_separator())
+        lay_ap.addWidget(_section("Tamanho de Fonte", s))
+        lay_ap.addWidget(_separator())
 
         font_size_row = QHBoxLayout()
         font_size_row.setSpacing(max(6, int(8 * s)))
@@ -431,20 +393,28 @@ class SettingsView(QWidget):
             btn.clicked.connect(lambda checked=False, lbl=label: self._on_font_size_btn(lbl))
             font_size_row.addWidget(btn)
             self._font_size_btns[label] = btn
-
         font_size_row.addStretch()
-        layout.addLayout(font_size_row)
+        lay_ap.addLayout(font_size_row)
 
         font_size_hint = QLabel(
             "Aumenta ou reduz apenas os textos, mantendo o layout da interface."
         )
         font_size_hint.setProperty("muted", "1")
         font_size_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
-        layout.addWidget(font_size_hint)
+        lay_ap.addWidget(font_size_hint)
 
-        # ── Alterar Senha (todos) ─────────────────────────────────────────────
-        layout.addWidget(_section("Alterar Senha", s))
-        layout.addWidget(_separator())
+        outer.addWidget(card_ap)
+
+        # ════════════════════════════════════════════════════════════════
+        # CARD 2 — Conta
+        # ════════════════════════════════════════════════════════════════
+        card_ct = _new_card()
+        lay_ct = QVBoxLayout(card_ct)
+        lay_ct.setContentsMargins(*_cm)
+        lay_ct.setSpacing(_cs)
+
+        lay_ct.addWidget(_section("Alterar Senha", s))
+        lay_ct.addWidget(_separator())
 
         pwd_grid = QGridLayout()
         pwd_grid.setSpacing(max(8, int(10 * s)))
@@ -473,7 +443,7 @@ class SettingsView(QWidget):
         self._input_pwd_confirm.setStyleSheet(_field_style(s))
         pwd_grid.addWidget(self._input_pwd_confirm, 2, 1)
 
-        layout.addLayout(pwd_grid)
+        lay_ct.addLayout(pwd_grid)
 
         pwd_action_row = QHBoxLayout()
         pwd_action_row.setSpacing(max(8, int(10 * s)))
@@ -483,14 +453,58 @@ class SettingsView(QWidget):
         self._btn_change_pwd.clicked.connect(self._on_change_password)
         pwd_action_row.addWidget(self._btn_change_pwd)
         self._lbl_pwd_status = QLabel("")
-        self._lbl_pwd_status.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
-        )
+        self._lbl_pwd_status.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
         pwd_action_row.addWidget(self._lbl_pwd_status)
         pwd_action_row.addStretch()
-        layout.addLayout(pwd_action_row)
+        lay_ct.addLayout(pwd_action_row)
 
-        # ── Alertas de Faturamento (admin + gerente) ──────────────────────────
+        outer.addWidget(card_ct)
+
+        # ════════════════════════════════════════════════════════════════
+        # CARD 3 — Sistema
+        # ════════════════════════════════════════════════════════════════
+        card_sis = _new_card()
+        lay_sis = QVBoxLayout(card_sis)
+        lay_sis.setContentsMargins(*_cm)
+        lay_sis.setSpacing(_cs)
+
+        # ── Conexão com o Servidor (admin only) ──────────────────────────
+        self._conn_section = QWidget()
+        conn_vl = QVBoxLayout(self._conn_section)
+        conn_vl.setContentsMargins(0, 0, 0, 0)
+        conn_vl.setSpacing(max(8, int(10 * s)))
+
+        conn_vl.addWidget(_section("Conexão com o Servidor", s))
+        conn_vl.addWidget(_separator())
+
+        conn_grid = QGridLayout()
+        conn_grid.setSpacing(max(8, int(10 * s)))
+
+        conn_grid.addWidget(self._lbl("URL do servidor:", s), 0, 0)
+        self.input_url = QLineEdit(res.server_url)
+        self.input_url.setFixedHeight(max(38, int(44 * s)))
+        self.input_url.setStyleSheet(_field_style(s))
+        self.input_url.setPlaceholderText("http://192.168.1.100:5000")
+        self.input_url.setReadOnly(True)
+        self.input_url.setToolTip("A URL do servidor é fixa e não pode ser alterada nesta tela.")
+        conn_grid.addWidget(self.input_url, 0, 1)
+
+        self.btn_test = QPushButton("Testar conexão")
+        self.btn_test.setFixedHeight(max(38, int(44 * s)))
+        self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_test.clicked.connect(self._test_connection)
+        conn_grid.addWidget(self.btn_test, 0, 2)
+
+        self.lbl_conn_status = QLabel("")
+        self.lbl_conn_status.setProperty("muted", "1")
+        self.lbl_conn_status.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        conn_grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
+        conn_vl.addLayout(conn_grid)
+
+        lay_sis.addWidget(self._conn_section)
+        self._conn_section.setVisible(session.settings_show_connection)
+
+        # ── Alertas de Faturamento (admin + gerente) ──────────────────────
         self._billing_section = QWidget()
         billing_vl = QVBoxLayout(self._billing_section)
         billing_vl.setContentsMargins(0, 0, 0, 0)
@@ -501,7 +515,6 @@ class SettingsView(QWidget):
 
         billing_row = QHBoxLayout()
         billing_row.setSpacing(max(8, int(10 * s)))
-
         billing_row.addWidget(self._lbl("Dias para notificar gerente:", s))
         self.input_pending_invoice_days = QSpinBox()
         self.input_pending_invoice_days.setRange(1, 3650)
@@ -517,24 +530,65 @@ class SettingsView(QWidget):
 
         self.operational_status = QLabel("Sincronizando prazo de alerta com o servidor...")
         self.operational_status.setProperty("muted", "1")
-        self.operational_status.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
-        )
+        self.operational_status.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
         billing_vl.addWidget(self.operational_status)
 
-        layout.addWidget(self._billing_section)
+        lay_sis.addWidget(self._billing_section)
         self._billing_section.setVisible(session.settings_show_billing)
 
-        # ── Fundo da Tela de Login (admin only) ──────────────────────────────
-        self._login_bg_section = QWidget()
-        bg_vl = QVBoxLayout(self._login_bg_section)
-        bg_vl.setContentsMargins(0, 0, 0, 0)
-        bg_vl.setSpacing(max(8, int(10 * s)))
+        # ── Atualizações do Sistema (todos) ──────────────────────────────
+        lay_sis.addWidget(_section("Atualizações do Sistema", s))
+        lay_sis.addWidget(_separator())
 
-        bg_vl.addWidget(_section("Fundo da Tela de Login", s))
-        bg_vl.addWidget(_separator())
+        update_row = QHBoxLayout()
+        update_row.setSpacing(max(8, int(10 * s)))
 
-        # ── Pasta de backgrounds ─────────────────────────────────────────────
+        from ..version import CURRENT_VERSION as _CURRENT_VERSION
+        self._version_label = QLabel(f"Versão atual: v{_CURRENT_VERSION}")
+        self._version_label.setProperty("muted", "1")
+        self._version_label.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        update_row.addWidget(self._version_label)
+        update_row.addStretch()
+
+        self.btn_check_update = QPushButton("Verificar atualizações")
+        self.btn_check_update.setFixedHeight(max(38, int(44 * s)))
+        self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_check_update.clicked.connect(self._check_updates)
+        update_row.addWidget(self.btn_check_update)
+        lay_sis.addLayout(update_row)
+
+        guide_row = QHBoxLayout()
+        guide_row.setSpacing(max(8, int(10 * s)))
+        guide_hint = QLabel("Precisa relembrar alguma funcionalidade?")
+        guide_hint.setProperty("muted", "1")
+        guide_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        guide_row.addWidget(guide_hint)
+        guide_row.addStretch()
+        self.btn_show_guide = QPushButton("📖  Ver Guia Rápido")
+        self.btn_show_guide.setFixedHeight(max(38, int(44 * s)))
+        self.btn_show_guide.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_show_guide.clicked.connect(self.show_guide_requested)
+        guide_row.addWidget(self.btn_show_guide)
+        lay_sis.addLayout(guide_row)
+
+        self._update_status_label = QLabel("")
+        self._update_status_label.setProperty("muted", "1")
+        self._update_status_label.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        lay_sis.addWidget(self._update_status_label)
+
+        outer.addWidget(card_sis)
+
+        # ════════════════════════════════════════════════════════════════
+        # CARD 4 — Fundo da Tela de Login (admin only)
+        # ════════════════════════════════════════════════════════════════
+        self._card_login_bg = _new_card()
+        lay_bg = QVBoxLayout(self._card_login_bg)
+        lay_bg.setContentsMargins(*_cm)
+        lay_bg.setSpacing(max(8, int(10 * s)))
+
+        lay_bg.addWidget(_section("Fundo da Tela de Login", s))
+        lay_bg.addWidget(_separator())
+
         bg_folder_row = QHBoxLayout()
         bg_folder_row.setSpacing(max(8, int(10 * s)))
         bg_folder_row.addWidget(self._lbl("Pasta de imagens:", s))
@@ -553,14 +607,14 @@ class SettingsView(QWidget):
         self._btn_verify_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
         self._btn_verify_bg_folder.clicked.connect(self._verify_bg_folder)
         bg_folder_row.addWidget(self._btn_verify_bg_folder)
-        bg_vl.addLayout(bg_folder_row)
+        lay_bg.addLayout(bg_folder_row)
 
         self._lbl_bg_folder_status = QLabel("")
         self._lbl_bg_folder_status.setWordWrap(True)
         self._lbl_bg_folder_status.setStyleSheet(
             f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
         )
-        bg_vl.addWidget(self._lbl_bg_folder_status)
+        lay_bg.addWidget(self._lbl_bg_folder_status)
 
         bg_folder_hint = QLabel(
             "Pasta compartilhada (ex.: rede Z:\\) onde ficam as imagens de fundo. "
@@ -569,15 +623,12 @@ class SettingsView(QWidget):
         bg_folder_hint.setWordWrap(True)
         bg_folder_hint.setProperty("muted", "1")
         bg_folder_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
-        bg_vl.addWidget(bg_folder_hint)
+        lay_bg.addWidget(bg_folder_hint)
 
-        # Tabela de imagens
         self._bg_table = QTableWidget(0, 1)
         apply_smooth_scroll(self._bg_table)
         self._bg_table.setHorizontalHeaderLabels(["Arquivo"])
-        self._bg_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
-        )
+        self._bg_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._bg_table.verticalHeader().setVisible(False)
         self._bg_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._bg_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -585,26 +636,22 @@ class SettingsView(QWidget):
         self._bg_table.setMinimumHeight(max(120, int(140 * s)))
         self._bg_table.setMaximumHeight(max(200, int(220 * s)))
         self._bg_table.setStyleSheet(_table_style())
-        bg_vl.addWidget(self._bg_table)
+        lay_bg.addWidget(self._bg_table)
 
-        # Linha de botões
         bg_btn_row = QHBoxLayout()
         bg_btn_row.setSpacing(max(8, int(10 * s)))
-
         self._btn_open_bg_folder = QPushButton("Abrir Pasta")
         self._btn_open_bg_folder.setFixedHeight(max(36, int(42 * s)))
         self._btn_open_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
         self._btn_open_bg_folder.clicked.connect(self._open_bg_folder)
         bg_btn_row.addWidget(self._btn_open_bg_folder)
-
         self._btn_refresh_bg_table = QPushButton("Atualizar")
         self._btn_refresh_bg_table.setFixedHeight(max(36, int(42 * s)))
         self._btn_refresh_bg_table.setStyleSheet(_flat_secondary_btn_style(s))
         self._btn_refresh_bg_table.clicked.connect(self._on_refresh_bg_table)
         bg_btn_row.addWidget(self._btn_refresh_bg_table)
         bg_btn_row.addStretch()
-
-        bg_vl.addLayout(bg_btn_row)
+        lay_bg.addLayout(bg_btn_row)
 
         bg_hint = QLabel(
             "Coloque as imagens diretamente na pasta acima (PNG, JPG, BMP, WEBP). "
@@ -614,23 +661,24 @@ class SettingsView(QWidget):
         bg_hint.setWordWrap(True)
         bg_hint.setProperty("muted", "1")
         bg_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
-        bg_vl.addWidget(bg_hint)
+        lay_bg.addWidget(bg_hint)
 
-        layout.addWidget(self._login_bg_section)
-        self._login_bg_section.setVisible(session.settings_show_login_backgrounds)
+        self._card_login_bg.setVisible(session.settings_show_login_backgrounds)
         if session.settings_show_login_backgrounds:
             self._refresh_bg_table()
+        outer.addWidget(self._card_login_bg)
 
-        # ── Backup do Banco de Dados (admin only) ─────────────────────────────
-        self._backup_section = QWidget()
-        backup_vl = QVBoxLayout(self._backup_section)
-        backup_vl.setContentsMargins(0, 0, 0, 0)
-        backup_vl.setSpacing(max(8, int(10 * s)))
+        # ════════════════════════════════════════════════════════════════
+        # CARD 5 — Backup do Banco de Dados (admin only)
+        # ════════════════════════════════════════════════════════════════
+        self._card_backup = _new_card()
+        lay_bk = QVBoxLayout(self._card_backup)
+        lay_bk.setContentsMargins(*_cm)
+        lay_bk.setSpacing(max(8, int(10 * s)))
 
-        backup_vl.addWidget(_section("Backup do Banco de Dados", s))
-        backup_vl.addWidget(_separator())
+        lay_bk.addWidget(_section("Backup do Banco de Dados", s))
+        lay_bk.addWidget(_separator())
 
-        # Pasta destino (info apenas)
         backup_folder_row = QHBoxLayout()
         backup_folder_row.setSpacing(max(8, int(10 * s)))
         backup_folder_row.addWidget(self._lbl("Pasta de destino:", s))
@@ -643,14 +691,13 @@ class SettingsView(QWidget):
         )
         _backup_folder_display.setText(r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\backup_bd")
         backup_folder_row.addWidget(_backup_folder_display, 1)
-        backup_vl.addLayout(backup_folder_row)
+        lay_bk.addLayout(backup_folder_row)
 
-        # ── Agendamento ───────────────────────────────────────────────────────
         sched_title = QLabel("Agendamento:")
         sched_title.setStyleSheet(
             f"font-size:{max(9,int(10*s))}pt; font-weight:700; padding-top:6px;"
         )
-        backup_vl.addWidget(sched_title)
+        lay_bk.addWidget(sched_title)
 
         sched_grid = QGridLayout()
         sched_grid.setSpacing(max(6, int(8 * s)))
@@ -737,9 +784,8 @@ class SettingsView(QWidget):
         ret_m_row.addStretch()
         sched_grid.addLayout(ret_m_row, 2, 2)
 
-        backup_vl.addLayout(sched_grid)
+        lay_bk.addLayout(sched_grid)
 
-        # Salvar agendamento
         save_sched_row = QHBoxLayout()
         save_sched_row.setSpacing(max(8, int(10 * s)))
         self._btn_save_backup_settings = QPushButton("Salvar Agendamento")
@@ -748,42 +794,33 @@ class SettingsView(QWidget):
         self._btn_save_backup_settings.clicked.connect(self._on_save_backup_settings)
         save_sched_row.addWidget(self._btn_save_backup_settings)
         self._lbl_sched_status = QLabel("")
-        self._lbl_sched_status.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
-        )
+        self._lbl_sched_status.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
         save_sched_row.addWidget(self._lbl_sched_status)
         save_sched_row.addStretch()
-        backup_vl.addLayout(save_sched_row)
+        lay_bk.addLayout(save_sched_row)
 
-        backup_vl.addWidget(_separator())
+        lay_bk.addWidget(_separator())
 
-        # ── Backup manual ─────────────────────────────────────────────────────
         backup_action_row = QHBoxLayout()
         backup_action_row.setSpacing(max(8, int(10 * s)))
-
         self._btn_run_backup = QPushButton("Fazer Backup Agora")
         self._btn_run_backup.setFixedHeight(max(38, int(44 * s)))
         self._btn_run_backup.setStyleSheet(_primary_action_btn_style(s))
         self._btn_run_backup.clicked.connect(self._on_backup_run)
         backup_action_row.addWidget(self._btn_run_backup)
-
         self._btn_refresh_backup_table = QPushButton("Atualizar Lista")
         self._btn_refresh_backup_table.setFixedHeight(max(38, int(44 * s)))
         self._btn_refresh_backup_table.setStyleSheet(_flat_secondary_btn_style(s))
         self._btn_refresh_backup_table.clicked.connect(self._on_refresh_backup_table)
         backup_action_row.addWidget(self._btn_refresh_backup_table)
         backup_action_row.addStretch()
-
-        backup_vl.addLayout(backup_action_row)
+        lay_bk.addLayout(backup_action_row)
 
         self._lbl_backup_status = QLabel("")
         self._lbl_backup_status.setWordWrap(True)
-        self._lbl_backup_status.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
-        )
-        backup_vl.addWidget(self._lbl_backup_status)
+        self._lbl_backup_status.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        lay_bk.addWidget(self._lbl_backup_status)
 
-        # Tabela de backups existentes
         self._backup_table = QTableWidget(0, 3)
         apply_smooth_scroll(self._backup_table)
         self._backup_table.setHorizontalHeaderLabels(["Arquivo", "Tamanho", "Criado em"])
@@ -803,7 +840,7 @@ class SettingsView(QWidget):
         self._backup_table.setMinimumHeight(max(120, int(140 * s)))
         self._backup_table.setMaximumHeight(max(200, int(220 * s)))
         self._backup_table.setStyleSheet(_table_style())
-        backup_vl.addWidget(self._backup_table)
+        lay_bk.addWidget(self._backup_table)
 
         backup_hint = QLabel(
             "Os backups automáticos são executados no horário configurado acima. "
@@ -813,69 +850,25 @@ class SettingsView(QWidget):
         backup_hint.setWordWrap(True)
         backup_hint.setProperty("muted", "1")
         backup_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
-        backup_vl.addWidget(backup_hint)
+        lay_bk.addWidget(backup_hint)
 
-        layout.addWidget(self._backup_section)
-        self._backup_section.setVisible(session.settings_show_backup)
+        self._card_backup.setVisible(session.settings_show_backup)
         if session.settings_show_backup:
             self._start_api_worker("get_backup_settings")
             self._on_refresh_backup_table()
+        outer.addWidget(self._card_backup)
 
-        # ── Atualizações do Sistema (todos) ───────────────────────────────────
-        layout.addWidget(_section("Atualizações do Sistema", s))
-        layout.addWidget(_separator())
-
-        update_row = QHBoxLayout()
-        update_row.setSpacing(max(8, int(10 * s)))
-
-        from ..version import CURRENT_VERSION as _CURRENT_VERSION
-        self._version_label = QLabel(f"Versão atual: v{_CURRENT_VERSION}")
-        self._version_label.setProperty("muted", "1")
-        self._version_label.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
-        )
-        update_row.addWidget(self._version_label)
-        update_row.addStretch()
-
-        self.btn_check_update = QPushButton("Verificar atualizações")
-        self.btn_check_update.setFixedHeight(max(38, int(44 * s)))
-        self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_check_update.clicked.connect(self._check_updates)
-        update_row.addWidget(self.btn_check_update)
-
-        layout.addLayout(update_row)
-
-        # Linha do guia rápido
-        guide_row = QHBoxLayout()
-        guide_row.setSpacing(max(8, int(10 * s)))
-        guide_hint = QLabel("Precisa relembrar alguma funcionalidade?")
-        guide_hint.setProperty("muted", "1")
-        guide_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
-        guide_row.addWidget(guide_hint)
-        guide_row.addStretch()
-        self.btn_show_guide = QPushButton("📖  Ver Guia Rápido")
-        self.btn_show_guide.setFixedHeight(max(38, int(44 * s)))
-        self.btn_show_guide.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_show_guide.clicked.connect(self.show_guide_requested)
-        guide_row.addWidget(self.btn_show_guide)
-        layout.addLayout(guide_row)
-
-        self._update_status_label = QLabel("")
-        self._update_status_label.setProperty("muted", "1")
-        self._update_status_label.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
-        )
-        layout.addWidget(self._update_status_label)
-
-        # ── Botão Salvar ──────────────────────────────────────────────────────
-        layout.addSpacing(4)
+        # ── Botão global de salvar (abaixo de todos os cards) ────────────
+        save_row = QHBoxLayout()
+        save_row.setContentsMargins(max(4, int(6 * s)), 0, 0, 0)
         self.btn_save = QPushButton("SALVAR CONFIGURAÇÕES")
         self.btn_save.setFixedHeight(max(38, int(44 * s)))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_save.clicked.connect(self._save)
-        layout.addWidget(self.btn_save, alignment=Qt.AlignmentFlag.AlignLeft)
+        save_row.addWidget(self.btn_save)
+        save_row.addStretch()
+        outer.addLayout(save_row)
 
-        outer.addWidget(card)
         outer.addStretch()
 
     def _lbl(self, text: str, scale: float, color: str = None,
