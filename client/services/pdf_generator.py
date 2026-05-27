@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import tempfile
 import unicodedata
 from datetime import datetime
 from ..core.datetime_utils import local_now
@@ -1233,101 +1234,95 @@ def _draw_second_page(
 
 # ── Ponto de entrada público ─────────────────────────────────────────────────
 
-def generate_pdf(
-    req: dict,
-    client: dict | None,
-    obs: str,
-    folder: str,
-    canvas_json: str = "{}",
-) -> str:
-    if not HAS_REPORTLAB:
-        raise ImportError("reportlab não instalado. Execute: pip install reportlab>=4.0.0")
+def _safe_makedirs(path: str) -> None:
+    """Cria o diretório ``path`` com tratamento específico de erros de rede Windows.
 
-    os.makedirs(folder, exist_ok=True)
+    Lança :class:`RuntimeError` com mensagem em português para os erros mais comuns
+    ao acessar pastas UNC (``\\\\servidor\\compartilhamento``), evitando que o usuário
+    veja rastreamentos técnicos confusos.
+    """
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError as exc:
+        winerr = getattr(exc, "winerror", None)
 
-    ped_raw      = str(req.get("ped_number") or "0")
-    ped_file     = ped_raw.zfill(6)
-    client_name  = (client or {}).get("name", "") or f"ID{req.get('client_id', '')}"
-    date_str     = local_now().strftime("%Y%m%d")
-    filename     = _clean_filename(f"REQ-{ped_file}-{date_str}-{client_name}") + ".pdf"
-    filepath     = os.path.join(folder, filename)
+        _is_unc = path.startswith("\\\\") or path.startswith("//")
 
-    from ..core.session import session as _session
+        if winerr == 1326:
+            # ERROR_LOGON_FAILURE — credenciais não aceitas pelo servidor
+            raise RuntimeError(
+                "Não foi possível acessar a pasta de rede para salvar o PDF.\n\n"
+                "O Windows recusou o acesso porque as credenciais de rede não foram "
+                "reconhecidas (erro 1326).\n\n"
+                "Soluções:\n"
+                "  • Abra o Explorador de Arquivos, acesse a pasta de rede manualmente "
+                "e faça login quando solicitado.\n"
+                "  • Verifique com o TI se o seu usuário tem permissão de escrita em:\n"
+                f"    {path}"
+            ) from exc
 
-    pw, ph = landscape(A4)
-    mx, my = 10 * mm, 10 * mm
-    cw     = pw - 2 * mx
+        if winerr == 5:
+            # ERROR_ACCESS_DENIED
+            raise RuntimeError(
+                "Acesso negado à pasta de rede.\n\n"
+                "O seu usuário Windows não tem permissão de escrita na pasta de destino "
+                "(erro 5 — acesso negado).\n\n"
+                f"Pasta: {path}\n\n"
+                "Solicite ao TI que conceda permissão de escrita para o seu usuário."
+            ) from exc
 
-    pdf = pdfcanvas.Canvas(filepath, pagesize=landscape(A4))
-    pdf.setTitle(f"Requisicao {ped_file} - Ferragens Pinheiro")
-    pdf.setAuthor("Ferragens Pinheiro")
+        if winerr in (53, 67, 1231, 1232):
+            # ERROR_BAD_NETPATH / ERROR_BAD_NET_NAME / caminho de rede inacessível
+            raise RuntimeError(
+                "O caminho de rede não foi encontrado.\n\n"
+                "Verifique se:\n"
+                "  • O servidor de arquivos está ligado e acessível.\n"
+                "  • O seu computador está conectado à rede da empresa.\n\n"
+                f"Caminho: {path}"
+            ) from exc
 
-    # Fundo branco
-    pdf.setFillColor(C_WHITE)
-    pdf.rect(0, 0, pw, ph, fill=1, stroke=0)
+        if winerr == 1219:
+            # ERROR_SESSION_CREDENTIAL_CONFLICT
+            raise RuntimeError(
+                "Conflito de credenciais de rede (erro 1219).\n\n"
+                "Já existe uma sessão de rede aberta para o mesmo servidor com "
+                "credenciais diferentes.\n\n"
+                "Desconecte e reconecte a pasta de rede no Explorador de Arquivos, "
+                "ou reinicie o serviço de rede, e tente novamente."
+            ) from exc
 
-    vendor_name  = _safe(req.get("vendor_name"), _session.user_name or "--")
-    # Telefone do vendedor: prioridade → session (usuário logado) → dados do req
-    _vendor_raw = (
-        _session.whatsapp
-        or (req.get("vendor") or {}).get("whatsapp")
-        or req.get("vendor_whatsapp")
-        or req.get("vendor_phone")
-        or ""
-    )
-    vendor_phone = _format_phone(_vendor_raw, "--")
-    items_list   = req.get("items") or []
-    if not isinstance(items_list, list):
-        items_list = []
+        if _is_unc:
+            # Erro genérico em caminho UNC — inclui detalhes úteis
+            raise RuntimeError(
+                f"Não foi possível criar ou acessar a pasta de rede.\n\n"
+                f"Pasta: {path}\n"
+                f"Erro: {exc}"
+            ) from exc
 
-    top = ph - my   # cursor vertical (de cima para baixo)
+        # Caminho local — relança sem alteração
+        raise
 
-    # 1. CABEÇALHO ─────────────────────────────────────────────────────────────
-    hdr_h = 76
-    hdr_y = top - hdr_h
-    _draw_header(pdf, mx, hdr_y, cw, hdr_h, req, client, ped_raw, vendor_name)
-    top = hdr_y - GAP
+    # Diretório existe (ou foi criado): verifica permissão de escrita com um arquivo temporário.
+    # Necessário porque makedirs(exist_ok=True) não garante que temos permissão de escrita.
+    try:
+        fd, _tmp = tempfile.mkstemp(dir=path, prefix=".perm_check_", suffix=".tmp")
+        os.close(fd)
+        os.remove(_tmp)
+    except OSError as exc:
+        winerr = getattr(exc, "winerror", None)
+        _is_unc = path.startswith("\\\\") or path.startswith("//")
 
-    # 2. BARRA DE INFORMAÇÕES ──────────────────────────────────────────────────
-    bar_h = 42
-    bar_y = top - bar_h
-    _draw_info_bar_with_icons(pdf, mx, bar_y, cw, bar_h, req, client, items_list,
-                   vendor_phone=vendor_phone)
-    top = bar_y - GAP
-
-    # 3. DADOS DO CLIENTE ──────────────────────────────────────────────────────
-    cli_h = 46
-    cli_y = top - cli_h
-    _draw_client_section(pdf, mx, cli_y, cw, cli_h, req, client)
-    top = cli_y - GAP
-
-    # 4. TABELA + DESENHO (lado a lado) ────────────────────────────────────────
-    body_h  = 182
-    body_y  = top - body_h
-    table_w = cw * 0.465
-    draw_w  = cw - table_w - GAP
-
-    _draw_items_table(pdf, mx, body_y, table_w, body_h, items_list)
-
-    canvas_result = _render_canvas(canvas_json)
-    _draw_drawing_box(pdf, mx + table_w + GAP, body_y, draw_w, body_h,
-                      canvas_result=canvas_result, title="DESENHO")
-    top = body_y - GAP
-
-    # 5. RODAPÉ (ocupa o espaço restante até a margem inferior) ────────────────
-    footer_h = max(top - my, 70)   # usa todo o espaço disponível
-    foot_y   = top - footer_h
-    observation = obs or req.get("obs") or ""
-    _draw_footer(pdf, mx, foot_y, cw, footer_h, observation,
-                 vendor_phone=vendor_phone)
-
-    # 7. SEGUNDA PÁGINA (desenho em tela cheia, apenas se houver canvas) ───────
-    if canvas_result:
-        pdf.showPage()
-        _draw_second_page(pdf, _safe(ped_raw, "0"), canvas_result)
-
-    pdf.save()
-    return filepath
+        if winerr == 5 or winerr == 1326:
+            raise RuntimeError(
+                "A pasta de destino existe, mas não é possível gravar arquivos nela.\n\n"
+                f"Pasta: {path}\n\n"
+                "Verifique com o TI se o seu usuário tem permissão de escrita."
+            ) from exc
+        raise RuntimeError(
+            f"A pasta de destino não está acessível para gravação.\n\n"
+            f"Pasta: {path}\n"
+            f"Erro: {exc}"
+        ) from exc
 
 
 def generate_pdf(
@@ -1341,7 +1336,7 @@ def generate_pdf(
         raise ImportError("reportlab não instalado. Execute: pip install reportlab>=4.0.0")
 
     _register_pdf_fonts()
-    os.makedirs(folder, exist_ok=True)
+    _safe_makedirs(folder)
 
     ped_raw      = str(req.get("ped_number") or "0")
     ped_file     = ped_raw.zfill(6)
