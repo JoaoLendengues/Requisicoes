@@ -23,6 +23,14 @@ Responsaveis:
 
 ## Concluido
 
+- [x] 2026-05-27 [joao]     Fix tour guiado: telas nao apareciam no fundo durante o tour
+                             (views lazy nao eram instanciadas antes de exibir spotlight).
+                             Todas as abas de Configuracoes agora sao cobertas por perfil:
+                             admin (6 abas), gerente (4), vendedor/producao/industria/
+                             entrega (3). "Dashboard" renomeado para "Painel Gerencial".
+                             Arquivos: client/widgets/spotlight_overlay.py,
+                                       client/views/main_window.py
+
 - [x] 2026-05-27 [joao]     Guia Rapido expandido: passos contextuais por tela (formulario,
                              historico) com getters de widget in-screen por perfil.
                              Botao ? discreto no formulario de requisicao e no historico.
