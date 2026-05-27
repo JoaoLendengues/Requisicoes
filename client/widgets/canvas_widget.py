@@ -212,6 +212,10 @@ class DrawingScene(QGraphicsScene):
         self._curve_source_item: QGraphicsItem | None = None
         self._curve_points_scene: list[QPointF] = []
         self._curve_segment_index: int = -1
+        self._curve_committed_points_scene: list[QPointF] = []
+        self._curve_session_active: bool = False
+        self._curve_dragging: bool = False
+        self._curve_bend_count: int = 0
         self._ruler_commit_on_release: bool = False
         self._manual_dim_active: bool = False
         self._manual_dim_label: str = ""
@@ -250,6 +254,7 @@ class DrawingScene(QGraphicsScene):
     # Snap to endpoints
     SNAP_RADIUS    = 16    # raio de detecção em px de tela (constante com zoom)
     PEN_MIN_STEP   = 0.8   # distância mínima para adicionar ponto no traço livre
+    CURVE_MAX_BENDS = 2    # comportamento do Paint clássico: até 2 "dobras"
     RULER_PX_PER_MM = 3.78
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
@@ -601,6 +606,45 @@ class DrawingScene(QGraphicsScene):
             y = (u * u * p0.y()) + (2 * u * t * control.y()) + (t * t * p1.y())
             curved.append(QPointF(x, y))
         return points[:segment_index] + curved + points[segment_index + 2:]
+
+    def _reset_curve_state(self):
+        self._curve_source_item = None
+        self._curve_points_scene = []
+        self._curve_segment_index = -1
+        self._curve_committed_points_scene = []
+        self._curve_session_active = False
+        self._curve_dragging = False
+        self._curve_bend_count = 0
+        self._start = None
+
+    def _cancel_curve_session(self):
+        if self._curve_source_item:
+            self._curve_source_item.setVisible(True)
+        if self._curve_session_active and self._preview_item:
+            self.removeItem(self._preview_item)
+            self._preview_item = None
+        self._reset_curve_state()
+
+    def _finalize_curve_session(self):
+        if not (self._curve_session_active and self._preview_item and self._curve_source_item):
+            self._reset_curve_state()
+            return
+
+        old_item = self._curve_source_item
+        self.removeItem(old_item)
+        if old_item in self.cw._undo_stack:
+            self.cw._undo_stack.remove(old_item)
+
+        item = self._preview_item
+        item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        item.setSelected(True)
+        self.cw._push_undo(item)
+
+        self._preview_item = None
+        self._reset_curve_state()
 
     def _triangle_path(self, start: QPointF, end: QPointF) -> QPainterPath:
         """Triangulo isosceles dentro do retangulo definido por start/end."""
@@ -1071,33 +1115,42 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.CURVE:
+            if self._curve_session_active and self._curve_source_item and self._preview_item:
+                if self._curve_bend_count >= self.CURVE_MAX_BENDS:
+                    self._finalize_curve_session()
+                    self._start = None
+                    return
+                self._curve_dragging = True
+                self._start = QPointF(pos.x(), pos.y())
+                event.accept()
+                return
+
             source_item = self._pick_curve_source_item(pos)
             if not source_item:
                 self._start = None
                 return
 
+            points_scene, _closed = self._item_curve_points_scene(source_item)
+            if len(points_scene) < 2:
+                self._start = None
+                return
+            segment_index = self._closest_curve_segment_index(points_scene, pos)
+            if segment_index < 0:
+                self._start = None
+                return
+
             self._curve_source_item = source_item
-            self._curve_points_scene, _closed = self._item_curve_points_scene(source_item)
-            if len(self._curve_points_scene) < 2:
-                self._curve_source_item = None
-                self._start = None
-                return
-            self._curve_segment_index = self._closest_curve_segment_index(self._curve_points_scene, pos)
-            if self._curve_segment_index < 0:
-                self._curve_source_item = None
-                self._curve_points_scene = []
-                self._start = None
-                return
+            self._curve_points_scene = points_scene
+            self._curve_segment_index = segment_index
+            self._curve_committed_points_scene = list(points_scene)
+            self._curve_session_active = True
+            self._curve_dragging = True
+            self._curve_bend_count = 0
 
             source_pen = source_item.pen()
             source_item.setVisible(False)
 
-            curved_points = self._apply_curve_on_segment(
-                self._curve_points_scene,
-                self._curve_segment_index,
-                pos,
-            )
-            path = self._points_to_path_scene(curved_points)
+            path = self._points_to_path_scene(self._curve_committed_points_scene)
             curve_item = QGraphicsPathItem(path)
             curve_item.setPen(source_pen)
             self.addItem(curve_item)
@@ -1208,9 +1261,14 @@ class DrawingScene(QGraphicsScene):
             end = self._constrain(self._start, pos) if shift else pos
             self._preview_item.setPath(self._arrow_path(self._start, end))
 
-        elif tool == Tool.CURVE and self._preview_item and self._curve_points_scene:
+        elif (
+            tool == Tool.CURVE
+            and self._preview_item
+            and self._curve_dragging
+            and self._curve_committed_points_scene
+        ):
             curved_points = self._apply_curve_on_segment(
-                self._curve_points_scene,
+                self._curve_committed_points_scene,
                 self._curve_segment_index,
                 pos,
             )
@@ -1302,22 +1360,18 @@ class DrawingScene(QGraphicsScene):
                 self._commit_ruler_measure(self._start, end)
             self._ruler_commit_on_release = False
 
-        elif tool == Tool.CURVE and self._preview_item and self._curve_source_item:
-            old_item = self._curve_source_item
-            self.removeItem(old_item)
-            if old_item in self.cw._undo_stack:
-                self.cw._undo_stack.remove(old_item)
-
-            item = self._preview_item
-            item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
-                          QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
-            item.setSelected(True)
-            self.cw._push_undo(item)
-
-            self._preview_item = None
-            self._curve_source_item = None
-            self._curve_points_scene = []
-            self._curve_segment_index = -1
+        elif tool == Tool.CURVE and self._preview_item and self._curve_source_item and self._curve_dragging:
+            curved_points = self._apply_curve_on_segment(
+                self._curve_committed_points_scene,
+                self._curve_segment_index,
+                pos,
+            )
+            self._curve_committed_points_scene = curved_points
+            self._preview_item.setPath(self._points_to_path_scene(curved_points))
+            self._curve_dragging = False
+            self._curve_bend_count += 1
+            if self._curve_bend_count >= self.CURVE_MAX_BENDS:
+                self._finalize_curve_session()
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             item = self._preview_item
@@ -1352,6 +1406,10 @@ class DrawingScene(QGraphicsScene):
 
         if self._manual_dim_active and event.key() == Qt.Key.Key_Escape:
             self.cancel_manual_dimension()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Escape and self._curve_session_active:
+            self._cancel_curve_session()
             event.accept()
             return
 
@@ -1921,6 +1979,15 @@ class DrawingCanvas(QWidget):
             self.scene.cancel_mirror_axis()
         if hasattr(self, "scene") and self.scene._manual_dim_active:
             self.scene.cancel_manual_dimension()
+        if (
+            hasattr(self, "scene")
+            and self.scene._curve_session_active
+            and tool != Tool.CURVE
+        ):
+            if self.scene._curve_bend_count > 0:
+                self.scene._finalize_curve_session()
+            else:
+                self.scene._cancel_curve_session()
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
