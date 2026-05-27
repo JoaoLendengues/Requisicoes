@@ -142,7 +142,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "Requisições App v${{ steps.version.outputs.VERSION }}"
-          generate_release_notes: true
+          body_path: release_notes.md
           files: |
             installer_output/Requisicoes_Setup_v${{ steps.version.outputs.VERSION }}.exe
             dist/Requisicoes_Portable_v${{ steps.version.outputs.VERSION }}.zip
