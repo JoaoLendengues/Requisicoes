@@ -19,18 +19,16 @@ Responsaveis:
 
 ## Em andamento
 
-### Prioridade Alta
-
-- [ ] [joao]     Guia Rapido expandido: slides contextuais por tela (Central de Pedidos,
-                 Formulario de Requisicao, Editor de Desenho, Historico etc.), mantendo
-                 separacao por perfil. Adicionar icone ? discreto nas proprias telas.
-                 Arquivos: client/widgets/onboarding_dialog.py,
-                            client/widgets/spotlight_overlay.py,
-                            views relevantes
-
 ---
 
 ## Concluido
+
+- [x] 2026-05-27 [joao]     Guia Rapido expandido: passos contextuais por tela (formulario,
+                             historico) com getters de widget in-screen por perfil.
+                             Botao ? discreto no formulario de requisicao e no historico.
+                             Arquivos: client/views/requisition_form.py,
+                                       client/views/history_view.py,
+                                       client/views/main_window.py
 
 - [x] 2026-05-27 [victor]   Canvas: cursor da caneta como ponto/dot
 - [x] 2026-05-27 [victor]   Canvas: ferramenta Curva estilo Paint (arrasta base, move controle, clica confirma bezier)
