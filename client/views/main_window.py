@@ -458,10 +458,12 @@ class MainWindow(QMainWindow):
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "production")
             )
+            view.guide_requested.connect(self.show_onboarding)
         elif page == PAGE_AR:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "production")
             )
+            view.guide_requested.connect(self.show_onboarding)
         elif page == PAGE_SETTINGS:
             view.scale_changed.connect(self._on_scale_changed)
             view.font_size_changed.connect(lambda: self._on_scale_changed(res.scale))
@@ -1205,6 +1207,30 @@ class MainWindow(QMainWindow):
             """Getter para atributo do histórico (carregado sob demanda)."""
             return lambda: getattr(mw.history_view, attr, None) if mw.history_view else None
 
+        def ar(attr, key=None):
+            """Getter para widget da view A&R (carregada sob demanda)."""
+            def _get():
+                view = mw.ar_view
+                if view is None:
+                    return None
+                val = getattr(view, attr, None)
+                if key is not None and isinstance(val, dict):
+                    return val.get(key)
+                return val
+            return _get
+
+        def pin(attr, key=None):
+            """Getter para widget da view Pinheiro Indústria (carregada sob demanda)."""
+            def _get():
+                view = mw.pinheiro_industria_view
+                if view is None:
+                    return None
+                val = getattr(view, attr, None)
+                if key is not None and isinstance(val, dict):
+                    return val.get(key)
+                return val
+            return _get
+
         # ── Passo de boas-vindas (sem spotlight) ──────────────────────────────
         welcome = TourStep(
             title="Bem-vindo ao Sistema de Requisições!",
@@ -1426,13 +1452,42 @@ class MainWindow(QMainWindow):
         if role == "producao":
             return [
                 welcome,
+                # ── Tela A&R ──────────────────────────────────────────────────
                 TourStep(
                     "Fila A&R",
                     "Sua tela principal. Acompanhe todos os pedidos "
-                    "enviados para produção na <b>A&R</b>. "
-                    "Use as abas para filtrar por etapa.",
+                    "enviados para produção na <b>A&R</b>.",
                     nav("ar"), "right", "ar",
                 ),
+                TourStep(
+                    "Contadores de Status",
+                    "Totais em tempo real: <b>Aguardando Recebimento</b>, "
+                    "<b>Aguardando na Fila</b> e <b>Em Produção</b>. "
+                    "Atualizados a cada atualização manual.",
+                    ar("summary_waiting_receipt", "card"), "bottom",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados pelo vendedor mas ainda não recebidos "
+                    "na produção. Selecione um e clique <b>Receber</b> "
+                    "para confirmar a chegada do material.",
+                    ar("waiting_receipt_panel", "card"), "right",
+                ),
+                TourStep(
+                    "Aguardando na Fila",
+                    "Pedidos já recebidos esperando uma máquina ficar livre. "
+                    "Selecione e clique <b>Enviar para Máquina</b> "
+                    "para iniciar a produção.",
+                    ar("waiting_queue_panel", "card"), "left",
+                ),
+                TourStep(
+                    "Máquinas em Produção",
+                    "Cada card representa uma máquina ativa. "
+                    "Clique no pedido dentro do card para <b>finalizar</b> "
+                    "ou <b>devolver para a fila</b>.",
+                    ar("machines_widget"), "top",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
                     "Histórico",
                     "Busque qualquer requisição por PED, cliente ou status. "
@@ -1456,12 +1511,41 @@ class MainWindow(QMainWindow):
         if role == "industria":
             return [
                 welcome,
+                # ── Tela Pinheiro Indústria ────────────────────────────────────
                 TourStep(
                     "Pinheiro Indústria",
                     "Sua tela principal. Acompanhe todos os pedidos "
                     "destinados à <b>Pinheiro Indústria</b>.",
                     nav("pinheiro_industria"), "right", "pinheiro_industria",
                 ),
+                TourStep(
+                    "Contadores de Status",
+                    "Totais em tempo real: <b>Aguardando Recebimento</b>, "
+                    "<b>Aguardando na Fila</b> e <b>Em Produção</b>.",
+                    pin("summary_waiting_receipt", "card"), "bottom",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados pelo vendedor mas ainda não recebidos. "
+                    "Selecione um e clique <b>Receber</b> "
+                    "para confirmar a chegada do material.",
+                    pin("waiting_receipt_panel", "card"), "right",
+                ),
+                TourStep(
+                    "Aguardando na Fila",
+                    "Pedidos recebidos aguardando máquina disponível. "
+                    "Selecione e clique <b>Enviar para Máquina</b> "
+                    "para iniciar a produção.",
+                    pin("waiting_queue_panel", "card"), "left",
+                ),
+                TourStep(
+                    "Máquinas em Produção",
+                    "Cada card representa uma máquina ativa. "
+                    "Clique no pedido para <b>finalizar</b> "
+                    "ou <b>devolver para a fila</b>.",
+                    pin("machines_widget"), "top",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
                     "Histórico",
                     "Busque qualquer requisição por PED, cliente ou status. "
@@ -1485,13 +1569,38 @@ class MainWindow(QMainWindow):
         if role == "entrega":
             return [
                 welcome,
+                # ── Tela A&R (modo entrega) ───────────────────────────────────
                 TourStep(
                     "Fila de Entrega",
-                    "Acompanhe os pedidos aguardando recebimento "
-                    "e entrega na <b>A&R</b>. "
-                    "Use as abas para filtrar por etapa.",
+                    "Acompanhe os pedidos aguardando recebimento e entrega "
+                    "na <b>A&R</b>.",
                     nav("ar"), "right", "ar",
                 ),
+                TourStep(
+                    "Contadores de Status",
+                    "Totais em tempo real: pedidos aguardando recebimento, "
+                    "na fila e em produção.",
+                    ar("summary_waiting_receipt", "card"), "bottom",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados para a A&R ainda não confirmados. "
+                    "Selecione e clique <b>Receber</b> para confirmar a chegada.",
+                    ar("waiting_receipt_panel", "card"), "right",
+                ),
+                TourStep(
+                    "Aguardando na Fila",
+                    "Pedidos já recebidos esperando máquina disponível. "
+                    "Selecione e use <b>Enviar para Máquina</b> quando liberar.",
+                    ar("waiting_queue_panel", "card"), "left",
+                ),
+                TourStep(
+                    "Máquinas Ativas",
+                    "Acompanhe em qual máquina cada pedido está sendo produzido "
+                    "e finalize quando concluído.",
+                    ar("machines_widget"), "top",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
                     "Histórico",
                     "Consulte o histórico completo de requisições. "

@@ -248,6 +248,7 @@ class UiCallback(QObject):
 
 class ProductionView(QWidget):
     open_requisition = Signal(int)
+    guide_requested  = Signal()          # emitido pelo botão ? de ajuda
 
     def __init__(
         self,
@@ -343,6 +344,21 @@ class ProductionView(QWidget):
 
         right_col.addWidget(info_card)
         right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        self.btn_guide.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+        )
+        self.btn_guide.clicked.connect(self.guide_requested)
+        right_col.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+
         header.addLayout(right_col)
         layout.addLayout(header)
 
