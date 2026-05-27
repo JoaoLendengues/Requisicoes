@@ -951,6 +951,9 @@ class HistoryView(QWidget):
                         except (TypeError, ValueError):
                             sort_key = 0
                         item = SortableItem(value, sort_key=sort_key)
+                        req_id = req.get("id")
+                        if req_id is not None:
+                            item.setData(Qt.ItemDataRole.UserRole, int(req_id))
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(row, col, item)
                     elif col == 4:
@@ -978,8 +981,18 @@ class HistoryView(QWidget):
 
     def _on_double_click(self, index):
         row = index.row()
+        if row < 0:
+            return
+        ped_item = self.table.item(row, 0)
+        if ped_item is not None:
+            req_id = ped_item.data(Qt.ItemDataRole.UserRole)
+            if req_id is not None:
+                self.open_requisition.emit(int(req_id))
+                return
         if 0 <= row < len(self._reqs):
-            self.open_requisition.emit(self._reqs[row]["id"])
+            req_id = self._reqs[row].get("id")
+            if req_id is not None:
+                self.open_requisition.emit(int(req_id))
 
     def _clear_filters(self):
         self.combo_status.setCurrentIndex(0)
