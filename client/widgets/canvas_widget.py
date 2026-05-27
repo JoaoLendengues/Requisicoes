@@ -16,7 +16,7 @@ from enum import Enum
 
 from PySide6.QtCore import (
     Qt, QPointF, QRectF, Signal, QEvent,
-    QByteArray, QBuffer, QIODevice, QMimeData,
+    QByteArray, QBuffer, QIODevice, QMimeData, QUrl,
 )
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPainterPathStroker, QPen, QBrush,
@@ -60,6 +60,7 @@ _STYLE_TO_STR = {
 }
 _STR_TO_STYLE = {v: k for k, v in _STYLE_TO_STR.items()}
 _CANVAS_CLIPBOARD_MIME = "application/x-requisicoes-canvas-items"
+_IMAGE_FILE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"}
 
 
 def _pixmap_to_base64(pixmap: QPixmap) -> str:
@@ -1598,11 +1599,13 @@ class DrawingView(QGraphicsView):
     Também gerencia o cursor de rotação quando Free Transform está ativo.
     """
 
-    def __init__(self, scene: QGraphicsScene, parent=None):
+    def __init__(self, scene: QGraphicsScene, canvas_widget=None, parent=None):
         super().__init__(scene, parent)
+        self._canvas_widget = canvas_widget
         self._panning    = False
         self._pan_start  = None
         self._space_held = False
+        self.setAcceptDrops(True)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         # AnchorViewCenter: mantém o centro ao redimensionar (AnchorUnderMouse causava
         # scroll incorreto no primeiro show, pois o mouse ainda não está no canvas)
@@ -1610,6 +1613,41 @@ class DrawingView(QGraphicsView):
         vp = self.viewport()
         vp.installEventFilter(self)
         vp.setMouseTracking(True)   # receber MouseMove sem botão pressionado
+        vp.setAcceptDrops(True)
+
+    def _can_accept_image_mime(self, mime: QMimeData | None) -> bool:
+        if mime is None:
+            return False
+        if mime.hasImage():
+            return True
+        if mime.hasUrls():
+            return True
+        if mime.hasText():
+            return True
+        return False
+
+    def dragEnterEvent(self, event):
+        if self._can_accept_image_mime(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if self._can_accept_image_mime(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        if self._canvas_widget is None:
+            super().dropEvent(event)
+            return
+        scene_pos = self.mapToScene(event.position().toPoint())
+        inserted = self._canvas_widget._handle_external_image_mime(event.mimeData(), scene_pos)
+        if inserted:
+            event.acceptProposedAction()
+            return
+        super().dropEvent(event)
 
     # Event filter no viewport
     def eventFilter(self, obj, event):
@@ -1933,7 +1971,7 @@ class DrawingCanvas(QWidget):
         # adicionado (sem rect fixo, Qt recalcula os limites e causa um scroll
         # que faz o ponto inicial aparecer deslocado em relação ao clique)
         self.scene.setSceneRect(-5000, -5000, 10000, 10000)
-        self.view  = DrawingView(self.scene)
+        self.view  = DrawingView(self.scene, canvas_widget=self)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.view.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate)
         self.view.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontSavePainterState, True)
@@ -2433,6 +2471,89 @@ class DrawingCanvas(QWidget):
         self._redo_stack.clear()
         self.changed.emit()
 
+    def _image_paths_from_mime(self, mime: QMimeData) -> list[str]:
+        paths: list[str] = []
+        seen: set[str] = set()
+
+        def _push(path: str):
+            norm = os.path.normpath(str(path or "").strip().strip('"'))
+            if not norm:
+                return
+            ext = os.path.splitext(norm)[1].lower()
+            if ext not in _IMAGE_FILE_EXTENSIONS:
+                return
+            if not os.path.isfile(norm):
+                return
+            key = os.path.normcase(norm)
+            if key in seen:
+                return
+            seen.add(key)
+            paths.append(norm)
+
+        if mime.hasUrls():
+            for url in mime.urls():
+                if url.isLocalFile():
+                    _push(url.toLocalFile())
+
+        if mime.hasText():
+            raw = str(mime.text() or "")
+            for line in raw.replace("\r", "\n").split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                if line.lower().startswith("file://"):
+                    _push(QUrl(line).toLocalFile())
+                else:
+                    _push(line)
+
+        return paths
+
+    def _insert_image_files(self, paths: list[str], scene_pos: QPointF | None = None) -> int:
+        if not paths:
+            return 0
+        inserted = 0
+        self.scene.clearSelection()
+        for idx, path in enumerate(paths):
+            pixmap = QPixmap(path)
+            if pixmap.isNull():
+                continue
+            pos = None
+            if scene_pos is not None:
+                offset = 24.0 * idx
+                pos = QPointF(scene_pos.x() + offset, scene_pos.y() + offset)
+            item = self._insert_image_from_pixmap(pixmap, pos=pos, path=path)
+            if item:
+                item.setSelected(True)
+                inserted += 1
+        return inserted
+
+    def _handle_external_image_mime(self, mime: QMimeData, scene_pos: QPointF | None = None) -> bool:
+        paths = self._image_paths_from_mime(mime)
+        if paths:
+            return self._insert_image_files(paths, scene_pos=scene_pos) > 0
+
+        if mime.hasImage():
+            image = mime.imageData()
+            pixmap = QPixmap()
+            if isinstance(image, QPixmap):
+                pixmap = image
+            else:
+                try:
+                    pixmap = QPixmap.fromImage(image)
+                except Exception:
+                    pixmap = QPixmap()
+            if not pixmap.isNull():
+                self.scene.clearSelection()
+                item = self._insert_image_from_pixmap(
+                    pixmap,
+                    pos=scene_pos,
+                    image_data=_pixmap_to_base64(pixmap),
+                )
+                if item:
+                    item.setSelected(True)
+                    return True
+        return False
+
     def _copy_selection_to_clipboard(self):
         if self._text_editor_active():
             return
@@ -2476,6 +2597,9 @@ class DrawingCanvas(QWidget):
             if isinstance(payload, dict) and isinstance(payload.get("items"), list):
                 self._paste_canvas_items(payload.get("items", []), payload_text)
                 return
+
+        if self._handle_external_image_mime(mime):
+            return
 
         pixmap = clipboard.pixmap()
         if pixmap.isNull():
