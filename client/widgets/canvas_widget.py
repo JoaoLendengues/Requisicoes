@@ -369,6 +369,8 @@ class DrawingScene(QGraphicsScene):
         self._mirror_axis_line_item: QGraphicsLineItem | None = None
         self._mirror_axis_block_release: bool = False
         self._pen_last_point: QPointF | None = None
+        self._pen_shift_anchor: QPointF | None = None
+        self._pen_shift_base_path: QPainterPath | None = None
         self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
 
@@ -1187,6 +1189,8 @@ class DrawingScene(QGraphicsScene):
         self._snap_points_cache = []
         self._start = QPointF(pos.x(), pos.y())
         self._pen_last_point = None
+        self._pen_shift_anchor = None
+        self._pen_shift_base_path = None
         self._ruler_commit_on_release = (
             tool == Tool.RULER
             and bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
@@ -1315,6 +1319,25 @@ class DrawingScene(QGraphicsScene):
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
 
         if tool == Tool.PEN and self._painter_path and self._path_item:
+            if shift and self._pen_last_point is not None:
+                # Shift na caneta: trava em 0°/45°/90° usando âncora estável
+                # para manter uma única reta/diagonal limpa durante o arraste.
+                if self._pen_shift_anchor is None:
+                    self._pen_shift_anchor = QPointF(self._pen_last_point.x(), self._pen_last_point.y())
+                    self._pen_shift_base_path = QPainterPath(self._painter_path)
+                if self._pen_shift_base_path is not None:
+                    constrained = self._constrain(self._pen_shift_anchor, pos)
+                    straight_path = QPainterPath(self._pen_shift_base_path)
+                    straight_path.lineTo(constrained)
+                    self._painter_path = straight_path
+                    self._path_item.setPath(self._painter_path)
+                    self._pen_last_point = QPointF(constrained.x(), constrained.y())
+                    event.accept()
+                    return
+            else:
+                self._pen_shift_anchor = None
+                self._pen_shift_base_path = None
+
             if self._pen_last_point is not None:
                 if math.hypot(pos.x() - self._pen_last_point.x(), pos.y() - self._pen_last_point.y()) < self.PEN_MIN_STEP:
                     event.accept()
@@ -1416,6 +1439,8 @@ class DrawingScene(QGraphicsScene):
             self._path_item = None
             self._painter_path = None
             self._pen_last_point = None
+            self._pen_shift_anchor = None
+            self._pen_shift_base_path = None
 
         elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
             if tool == Tool.LINE:
