@@ -1712,6 +1712,7 @@ class DrawingCanvas(QWidget):
         self._clipboard_signature = ""
         self._paste_serial = 0
         self._last_click_scene_pos: QPointF | None = None
+        self._pen_dot_cursor: QCursor | None = None
         self._setup_ui()
 
     # UI
@@ -2100,6 +2101,33 @@ class DrawingCanvas(QWidget):
         self._set_tool(Tool.SELECT)
         self.scene.begin_manual_dimension(label)
 
+    def _get_pen_dot_cursor(self) -> QCursor:
+        """Cursor em formato de ponto para a ferramenta Caneta."""
+        if self._pen_dot_cursor is not None:
+            return self._pen_dot_cursor
+
+        size = 12
+        center = size // 2
+        pix = QPixmap(size, size)
+        pix.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        # Anel externo branco com borda preta para contraste em fundos claros/escuros.
+        painter.setPen(QPen(QColor("#000000"), 1.0))
+        painter.setBrush(QBrush(QColor(255, 255, 255, 220)))
+        painter.drawEllipse(QPointF(center, center), 3.6, 3.6)
+
+        # Centro sólido (ponto de precisão visual).
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor("#000000")))
+        painter.drawEllipse(QPointF(center, center), 1.3, 1.3)
+        painter.end()
+
+        self._pen_dot_cursor = QCursor(pix, center, center)
+        return self._pen_dot_cursor
+
     # Ferramentas
     def _set_tool(self, tool: Tool):
         if hasattr(self, "scene") and self.scene._mirror_axis_active:
@@ -2114,6 +2142,9 @@ class DrawingCanvas(QWidget):
         if tool == Tool.SELECT:
             self.view.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             self.view.setCursor(Qt.CursorShape.ArrowCursor)
+        elif tool == Tool.PEN:
+            self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
+            self.view.setCursor(self._get_pen_dot_cursor())
         elif tool == Tool.ERASER:
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.view.setCursor(Qt.CursorShape.CrossCursor)
