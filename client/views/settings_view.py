@@ -289,6 +289,21 @@ class SettingsView(QWidget):
         info_layout.addWidget(self.date_label)
         info_layout.addWidget(self.updated_label)
         header.addWidget(info_card, 0, Qt.AlignmentFlag.AlignTop)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        self.btn_guide.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+        )
+        self.btn_guide.clicked.connect(self.show_guide_requested)
+        header.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+
         root_layout.addLayout(header)
         root_layout.addSpacing(max(12, int(16 * s)))
 

@@ -454,6 +454,13 @@ class MainWindow(QMainWindow):
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "order_center")
             )
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_DASHBOARD:
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_TECHNICAL:
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_USER_CENTER:
+            view.guide_requested.connect(self.show_onboarding)
         elif page == PAGE_PINHEIRO_INDUSTRIA:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "production")
@@ -1231,6 +1238,42 @@ class MainWindow(QMainWindow):
                 return val
             return _get
 
+        def order(attr, key=None):
+            """Getter para widget da Central de Pedidos (carregada sob demanda)."""
+            def _get():
+                view = mw.order_center_view
+                if view is None:
+                    return None
+                val = getattr(view, attr, None)
+                if key is not None and isinstance(val, dict):
+                    return val.get(key)
+                return val
+            return _get
+
+        def dash(attr):
+            """Getter para widget do Dashboard (carregado sob demanda)."""
+            return lambda: getattr(mw.dashboard_view, attr, None) if mw.dashboard_view else None
+
+        def users(attr):
+            """Getter para widget da Central de Usuários (carregada sob demanda)."""
+            return lambda: getattr(mw.user_center_view, attr, None) if mw.user_center_view else None
+
+        def cfg(attr, idx=None):
+            """Getter para widget de Configurações (carregado sob demanda)."""
+            def _get():
+                view = mw.settings_view
+                if view is None:
+                    return None
+                val = getattr(view, attr, None)
+                if idx is not None and isinstance(val, list):
+                    return val[idx] if len(val) > idx else None
+                return val
+            return _get
+
+        def tech(attr):
+            """Getter para widget do Painel Técnico (carregado sob demanda)."""
+            return lambda: getattr(mw.technical_panel_view, attr, None) if mw.technical_panel_view else None
+
         # ── Passo de boas-vindas (sem spotlight) ──────────────────────────────
         welcome = TourStep(
             title="Bem-vindo ao Sistema de Requisições!",
@@ -1247,7 +1290,7 @@ class MainWindow(QMainWindow):
         if role == "admin":
             return [
                 welcome,
-                # ── Formulário de requisição ──────────────────────────────────
+                # ── Nova Requisição ───────────────────────────────────────────
                 TourStep(
                     "Nova Requisição",
                     "Crie e edite pedidos de compra. Preencha o PED, "
@@ -1269,30 +1312,121 @@ class MainWindow(QMainWindow):
                 ),
                 TourStep(
                     "Tabela de Itens",
-                    "Adicione os itens da requisição aqui. "
-                    "Use <b>Enter</b> para pular entre campos e confirmar cada item.",
+                    "Adicione os itens da requisição: descrição, quantidade e unidade. "
+                    "Pressione <b>Enter</b> para confirmar cada linha e avançar.",
                     form("item_table"), "top",
                 ),
                 TourStep(
+                    "Prazo de Entrega",
+                    "Defina a data de entrega esperada. "
+                    "Pedidos com prazo vencido aparecem em vermelho no dashboard.",
+                    form("input_prazo"), "bottom",
+                ),
+                TourStep(
+                    "Editor de Desenho",
+                    "Clique no canvas para desenhar croquis e cotas diretamente "
+                    "na requisição. O desenho é exportado no PDF final.",
+                    form("canvas"), "top",
+                ),
+                TourStep(
                     "Salvar / Imprimir",
-                    "Clique em <b>Salvar</b> para registrar a requisição e gerar o PDF. "
-                    "O arquivo vai automaticamente para a pasta de rede do vendedor.",
+                    "Salvar registra a requisição e gera o PDF automaticamente. "
+                    "Imprimir abre o PDF gerado para impressão ou envio.",
                     form("btn_save"), "top",
                 ),
-                # ── Gestão ────────────────────────────────────────────────────
+                # ── Central de Usuários ───────────────────────────────────────
                 TourStep(
                     "Central de Usuários",
                     "Cadastre, edite e desative membros da equipe. "
-                    "Defina o nível de acesso de cada um: "
+                    "Defina o nível de acesso: "
                     "<b>Vendedor, Gerente, Produção, Indústria ou Entrega</b>.",
                     nav("usuarios"), "right", "usuarios",
                 ),
                 TourStep(
+                    "Importação de Usuários",
+                    "Importe usuários em lote a partir de um arquivo <b>.ods</b>. "
+                    "Útil para cadastrar a equipe de uma vez.",
+                    users("import_card"), "bottom",
+                ),
+                TourStep(
+                    "Lista de Usuários",
+                    "Visualize todos os usuários cadastrados. "
+                    "Use o campo de busca para filtrar por nome, código ou setor.",
+                    users("table_card"), "right",
+                ),
+                TourStep(
+                    "Formulário de Cadastro",
+                    "Preencha nome, código, senha e perfil de acesso. "
+                    "Desmarque <b>Usuário ativo</b> para bloquear o acesso sem excluir.",
+                    users("form_card"), "left",
+                ),
+                # ── Dashboard ─────────────────────────────────────────────────
+                TourStep(
                     "Dashboard",
-                    "Visão geral da operação: volume de requisições, "
-                    "prazos de entrega, status de produção e "
-                    "faturamentos pendentes.",
+                    "Visão executiva da operação: pedidos em produção, "
+                    "atrasos, faturamentos e ritmo diário.",
                     nav("dashboard"), "right", "dashboard",
+                ),
+                TourStep(
+                    "Ranking de Vendedores",
+                    "Volume de requisições emitidas por vendedor no período. "
+                    "Identifique quem está mais ativo.",
+                    dash("vendors_card"), "right",
+                ),
+                TourStep(
+                    "Pedidos sem Confirmação",
+                    "Pedidos aguardando retorno da produção há mais de <b>1 hora</b>. "
+                    "Ação imediata necessária.",
+                    dash("alerts_card"), "left",
+                ),
+                TourStep(
+                    "Máquinas da A&R",
+                    "Ranking das máquinas da A&R por volume de operações. "
+                    "Identifique gargalos de produção.",
+                    dash("machines_ar_card"), "right",
+                ),
+                TourStep(
+                    "Máquinas da Indústria",
+                    "Ranking das máquinas da Pinheiro Indústria. "
+                    "Compare o desempenho entre as duas filiais.",
+                    dash("machines_industria_card"), "left",
+                ),
+                TourStep(
+                    "Últimas Requisições",
+                    "Visão rápida das requisições mais recentes do sistema. "
+                    "Duplo clique para abrir qualquer uma.",
+                    dash("recent_card"), "top",
+                ),
+                # ── Central de Pedidos ────────────────────────────────────────
+                TourStep(
+                    "Central de Pedidos",
+                    "Acompanhe todos os pedidos em andamento por status: "
+                    "aguardando recebimento, em produção, faturamento e cancelados.",
+                    nav("pedidos"), "right", "pedidos",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados para produção ainda não confirmados. "
+                    "Duplo clique para abrir e acompanhar.",
+                    order("_section_cards", "aguardando_recebimento"), "right",
+                ),
+                TourStep(
+                    "Em Produção",
+                    "Pedidos que já foram recebidos e estão sendo produzidos. "
+                    "Acompanhe em qual destino cada um está.",
+                    order("_section_cards", "em_producao"), "left",
+                ),
+                TourStep(
+                    "Aguardando Faturamento",
+                    "Pedidos com produção concluída. "
+                    "O vendedor precisa faturar e gerar o PDF final.",
+                    order("_section_cards", "aguardando_faturamento"), "right",
+                ),
+                TourStep(
+                    "Pedidos Faturados",
+                    "Pedidos já faturados. Disponíveis para consulta e "
+                    "reimpressão do PDF quando necessário.",
+                    order("_section_cards", "faturados"), "left",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
@@ -1307,20 +1441,52 @@ class MainWindow(QMainWindow):
                     "Combine com os filtros de status e período para resultados precisos.",
                     hist("input_search"), "bottom",
                 ),
-                # ── Sistema ───────────────────────────────────────────────────
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique em uma linha para abrir a requisição completa.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
                 TourStep(
                     "Configurações",
-                    "Gerencie o <b>backup automático</b> do banco de dados, "
-                    "altere sua senha, ajuste a escala da interface e "
-                    "configure alertas de faturamento.",
+                    "Gerencie backup automático, escala da interface, "
+                    "senha de acesso e alertas de faturamento.",
                     nav("config"), "right", "config",
                 ),
                 TourStep(
+                    "Aba Aparência",
+                    "Ajuste a <b>escala da interface</b> e o <b>tamanho de fonte</b> "
+                    "para se adaptar a qualquer resolução de tela.",
+                    cfg("_tab_btns", 0), "bottom",
+                ),
+                TourStep(
+                    "Aba Conta",
+                    "Altere sua senha de acesso. "
+                    "Recomendado trocar periodicamente por segurança.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Salvar Configurações",
+                    "Após ajustar as preferências, clique em "
+                    "<b>Salvar Configurações</b> para aplicar as mudanças.",
+                    cfg("btn_save"), "top",
+                ),
+                # ── Painel Técnico ────────────────────────────────────────────
+                TourStep(
                     "Painel Técnico",
                     "Monitore a saúde do servidor em tempo real: "
-                    "tempo de resposta, conexões ativas e histórico de erros.",
-                    nav("tecnico"), "right",
+                    "status de conexão, tempo de resposta, "
+                    "uso de disco e erros registrados.",
+                    nav("tecnico"), "right", "tecnico",
                 ),
+                TourStep(
+                    "Atualizar Dados",
+                    "Clique em <b>ATUALIZAR</b> para buscar as métricas "
+                    "mais recentes do servidor.",
+                    tech("refresh_btn"), "bottom",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
                 TourStep(
                     "Notificações",
                     "O sino exibe alertas em tempo real para eventos do sistema. "
@@ -1332,7 +1498,7 @@ class MainWindow(QMainWindow):
         if role == "gerente":
             return [
                 welcome,
-                # ── Formulário ────────────────────────────────────────────────
+                # ── Nova Requisição ───────────────────────────────────────────
                 TourStep(
                     "Nova Requisição",
                     "Crie requisições para qualquer vendedor da equipe. "
@@ -1340,16 +1506,34 @@ class MainWindow(QMainWindow):
                     nav("nova"), "right", "nova",
                 ),
                 TourStep(
+                    "Número do PED",
+                    "Digite o número do pedido gerado no sistema de vendas. "
+                    "Campo <b>obrigatório</b> para salvar.",
+                    form("input_ped"), "bottom",
+                ),
+                TourStep(
                     "Busca de Cliente",
                     "Pesquise pelo nome, CNPJ ou código do cliente. "
-                    "Selecione o resultado para preencher os dados automaticamente.",
+                    "O sistema busca nos <b>+112 mil cadastros</b> enquanto você digita.",
                     form("client_search"), "bottom",
                 ),
                 TourStep(
                     "Tabela de Itens",
                     "Adicione os itens da requisição. "
-                    "Use <b>Enter</b> para pular entre campos e confirmar cada linha.",
+                    "Pressione <b>Enter</b> para confirmar cada linha e avançar.",
                     form("item_table"), "top",
+                ),
+                TourStep(
+                    "Prazo de Entrega",
+                    "Defina a data de entrega. "
+                    "Pedidos vencidos aparecem em destaque no dashboard.",
+                    form("input_prazo"), "bottom",
+                ),
+                TourStep(
+                    "Editor de Desenho",
+                    "Desenhe croquis e cotas diretamente na requisição. "
+                    "O desenho é incluído no PDF final.",
+                    form("canvas"), "top",
                 ),
                 TourStep(
                     "Salvar / Imprimir",
@@ -1357,24 +1541,88 @@ class MainWindow(QMainWindow):
                     "de rede do vendedor responsável.",
                     form("btn_save"), "top",
                 ),
-                # ── Gestão ────────────────────────────────────────────────────
+                # ── Central de Usuários ───────────────────────────────────────
+                TourStep(
+                    "Central de Usuários",
+                    "Gerencie a equipe: ajuste perfis de acesso, "
+                    "redefina senhas e cadastre novos colaboradores.",
+                    nav("usuarios"), "right", "usuarios",
+                ),
+                TourStep(
+                    "Lista de Usuários",
+                    "Todos os cadastros da equipe. Clique em um usuário "
+                    "para carregar seus dados no formulário ao lado.",
+                    users("table_card"), "right",
+                ),
+                TourStep(
+                    "Formulário de Cadastro",
+                    "Edite nome, senha, perfil e status de ativo. "
+                    "Desmarque <b>Usuário ativo</b> para suspender o acesso.",
+                    users("form_card"), "left",
+                ),
+                # ── Dashboard ─────────────────────────────────────────────────
                 TourStep(
                     "Dashboard",
-                    "Indicadores da operação em tempo real: "
-                    "volume de pedidos, prazos, produção e faturamentos.",
+                    "Indicadores executivos da operação: pedidos em produção, "
+                    "atrasos, faturamentos e ritmo diário.",
                     nav("dashboard"), "right", "dashboard",
                 ),
                 TourStep(
+                    "Ranking de Vendedores",
+                    "Volume de requisições emitidas por vendedor. "
+                    "Identifique quem está mais ativo no período.",
+                    dash("vendors_card"), "right",
+                ),
+                TourStep(
+                    "Pedidos sem Confirmação",
+                    "Pedidos aguardando retorno da produção há mais de <b>1 hora</b>. "
+                    "Acompanhe para evitar atrasos.",
+                    dash("alerts_card"), "left",
+                ),
+                TourStep(
+                    "Máquinas em Operação",
+                    "Ranking das máquinas da A&R e da Indústria por volume. "
+                    "Identifique gargalos operacionais.",
+                    dash("machines_ar_card"), "right",
+                ),
+                TourStep(
+                    "Últimas Requisições",
+                    "Visão rápida das requisições mais recentes. "
+                    "Duplo clique para abrir qualquer uma.",
+                    dash("recent_card"), "top",
+                ),
+                # ── Central de Pedidos ────────────────────────────────────────
+                TourStep(
                     "Central de Pedidos",
-                    "Acompanhe e gerencie todos os pedidos em andamento. "
-                    "Filtre por status, vendedor ou período.",
+                    "Todos os pedidos por status operacional. "
+                    "Acompanhe do recebimento ao faturamento.",
                     nav("pedidos"), "right", "pedidos",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados para produção aguardando confirmação.",
+                    order("_section_cards", "aguardando_recebimento"), "right",
+                ),
+                TourStep(
+                    "Em Produção",
+                    "Pedidos já recebidos e em andamento na fábrica.",
+                    order("_section_cards", "em_producao"), "left",
+                ),
+                TourStep(
+                    "Aguardando Faturamento",
+                    "Produção concluída — o vendedor precisa faturar.",
+                    order("_section_cards", "aguardando_faturamento"), "right",
+                ),
+                TourStep(
+                    "Pedidos Faturados",
+                    "Histórico de pedidos já faturados para consulta.",
+                    order("_section_cards", "faturados"), "left",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
                     "Histórico / Busca",
                     "Acesse qualquer requisição já criada. "
-                    "Filtre por status, cliente ou data e clique duas vezes para abrir.",
+                    "Filtre por status, cliente, data ou PED.",
                     nav("historico"), "right", "historico",
                 ),
                 TourStep(
@@ -1383,6 +1631,35 @@ class MainWindow(QMainWindow):
                     "para localizar rapidamente qualquer requisição.",
                     hist("input_search"), "bottom",
                 ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar por qualquer coluna. "
+                    "Duplo clique na linha para abrir a requisição.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface, altere sua senha "
+                    "e configure alertas de faturamento.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Aparência",
+                    "Ajuste a escala e o tamanho de fonte para sua resolução.",
+                    cfg("_tab_btns", 0), "bottom",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso. Recomendado trocar periodicamente.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Salvar",
+                    "Clique em <b>Salvar Configurações</b> para aplicar as mudanças.",
+                    cfg("btn_save"), "top",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
                 TourStep(
                     "Notificações",
                     "Receba alertas em tempo real sobre pedidos, "
@@ -1394,32 +1671,50 @@ class MainWindow(QMainWindow):
         if role == "vendedor":
             return [
                 welcome,
-                # ── Formulário ────────────────────────────────────────────────
+                # ── Nova Requisição ───────────────────────────────────────────
                 TourStep(
                     "Nova Requisição",
-                    "Sua tela principal. Preencha o <b>PED</b>, selecione o cliente, "
+                    "Sua tela principal. Preencha o PED, selecione o cliente, "
                     "adicione os itens e salve. "
                     "O PDF vai automaticamente para a pasta da rede.",
                     nav("nova"), "right", "nova",
                 ),
                 TourStep(
                     "Número do PED",
-                    "Digite aqui o número do pedido gerado no sistema de vendas. "
-                    "Campo <b>obrigatório</b> — sem PED, não é possível salvar.",
+                    "Digite o número do pedido gerado no sistema de vendas. "
+                    "Campo <b>obrigatório</b> — sem PED não é possível salvar.",
                     form("input_ped"), "bottom",
                 ),
                 TourStep(
                     "Busca de Cliente",
                     "Pesquise pelo nome, CNPJ ou código do cliente. "
-                    "O sistema busca nos <b>+112 mil cadastros</b> enquanto você digita.",
+                    "O sistema busca nos <b>+112 mil cadastros</b> em tempo real.",
                     form("client_search"), "bottom",
                 ),
                 TourStep(
                     "Tabela de Itens",
-                    "Adicione cada item da requisição aqui: "
-                    "descrição, quantidade e unidade. "
-                    "Pressione <b>Enter</b> para confirmar e avançar.",
+                    "Adicione cada item: descrição, quantidade e unidade. "
+                    "Pressione <b>Enter</b> para confirmar e avançar para o próximo.",
                     form("item_table"), "top",
+                ),
+                TourStep(
+                    "Prazo de Entrega",
+                    "Informe a data de entrega combinada com o cliente. "
+                    "O setor de produção verá esse prazo.",
+                    form("input_prazo"), "bottom",
+                ),
+                TourStep(
+                    "Observações",
+                    "Use este campo para instruções especiais de produção, "
+                    "detalhes da obra ou qualquer informação adicional.",
+                    form("input_obs"), "top",
+                ),
+                TourStep(
+                    "Editor de Desenho",
+                    "Clique aqui para desenhar croquis e medidas. "
+                    "Ferramentas: caneta, linha, seta, retângulo e cota MM. "
+                    "O desenho vai incluído no PDF.",
+                    form("canvas"), "top",
                 ),
                 TourStep(
                     "Salvar",
@@ -1442,6 +1737,30 @@ class MainWindow(QMainWindow):
                     hist("input_search"), "bottom",
                 ),
                 TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique para reabrir e editar a requisição.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Aparência",
+                    "Escolha a escala e o tamanho de fonte "
+                    "mais confortáveis para a sua tela.",
+                    cfg("_tab_btns", 0), "bottom",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
+                TourStep(
                     "Notificações",
                     "Receba alertas quando sua requisição entrar em produção, "
                     "for finalizada ou faturada.",
@@ -1462,14 +1781,13 @@ class MainWindow(QMainWindow):
                 TourStep(
                     "Contadores de Status",
                     "Totais em tempo real: <b>Aguardando Recebimento</b>, "
-                    "<b>Aguardando na Fila</b> e <b>Em Produção</b>. "
-                    "Atualizados a cada atualização manual.",
+                    "<b>Aguardando na Fila</b> e <b>Em Produção</b>.",
                     ar("summary_waiting_receipt", "card"), "bottom",
                 ),
                 TourStep(
                     "Aguardando Recebimento",
-                    "Pedidos enviados pelo vendedor mas ainda não recebidos "
-                    "na produção. Selecione um e clique <b>Receber</b> "
+                    "Pedidos enviados pelo vendedor mas ainda não recebidos. "
+                    "Selecione um e clique <b>Receber</b> "
                     "para confirmar a chegada do material.",
                     ar("waiting_receipt_panel", "card"), "right",
                 ),
@@ -1482,10 +1800,15 @@ class MainWindow(QMainWindow):
                 ),
                 TourStep(
                     "Máquinas em Produção",
-                    "Cada card representa uma máquina ativa. "
-                    "Clique no pedido dentro do card para <b>finalizar</b> "
-                    "ou <b>devolver para a fila</b>.",
+                    "Cada card representa uma máquina ativa com o pedido em andamento. "
+                    "Clique no pedido para <b>finalizar</b> ou <b>devolver para a fila</b>.",
                     ar("machines_widget"), "top",
+                ),
+                TourStep(
+                    "Atualizar",
+                    "Clique em <b>ATUALIZAR</b> para recarregar todos os pedidos "
+                    "e máquinas com os dados mais recentes.",
+                    ar("refresh_btn"), "bottom",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
@@ -1500,6 +1823,24 @@ class MainWindow(QMainWindow):
                     "para localizar uma requisição específica.",
                     hist("input_search"), "bottom",
                 ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique para abrir a requisição completa.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
                 TourStep(
                     "Notificações",
                     "Receba alertas quando novos pedidos chegarem "
@@ -1545,6 +1886,12 @@ class MainWindow(QMainWindow):
                     "ou <b>devolver para a fila</b>.",
                     pin("machines_widget"), "top",
                 ),
+                TourStep(
+                    "Atualizar",
+                    "Clique em <b>ATUALIZAR</b> para recarregar todos os pedidos "
+                    "e máquinas com os dados mais recentes.",
+                    pin("refresh_btn"), "bottom",
+                ),
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
                     "Histórico",
@@ -1558,6 +1905,24 @@ class MainWindow(QMainWindow):
                     "para localizar uma requisição específica.",
                     hist("input_search"), "bottom",
                 ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique para abrir a requisição completa.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
                 TourStep(
                     "Notificações",
                     "Receba alertas quando novos pedidos chegarem "
@@ -1590,8 +1955,7 @@ class MainWindow(QMainWindow):
                 ),
                 TourStep(
                     "Aguardando na Fila",
-                    "Pedidos já recebidos esperando máquina disponível. "
-                    "Selecione e use <b>Enviar para Máquina</b> quando liberar.",
+                    "Pedidos já recebidos esperando máquina disponível.",
                     ar("waiting_queue_panel", "card"), "left",
                 ),
                 TourStep(
@@ -1599,6 +1963,12 @@ class MainWindow(QMainWindow):
                     "Acompanhe em qual máquina cada pedido está sendo produzido "
                     "e finalize quando concluído.",
                     ar("machines_widget"), "top",
+                ),
+                TourStep(
+                    "Atualizar",
+                    "Clique em <b>ATUALIZAR</b> para recarregar os dados "
+                    "mais recentes da fila.",
+                    ar("refresh_btn"), "bottom",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
@@ -1613,6 +1983,24 @@ class MainWindow(QMainWindow):
                     "para localizar rapidamente uma requisição.",
                     hist("input_search"), "bottom",
                 ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique para abrir a requisição completa.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
                 TourStep(
                     "Notificações",
                     "Receba alertas quando novos pedidos chegarem "

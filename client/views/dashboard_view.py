@@ -186,6 +186,8 @@ class DashWorker(QObject):
 
 
 class DashboardView(QWidget):
+    guide_requested = Signal()
+
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
@@ -256,6 +258,21 @@ class DashboardView(QWidget):
         self.refresh_btn.clicked.connect(self.refresh)
         header_right.addWidget(info_card)
         header_right.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        self.btn_guide.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+        )
+        self.btn_guide.clicked.connect(self.guide_requested)
+        header_right.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+
         header.addLayout(header_right)
 
         root.addLayout(header)
@@ -316,56 +333,47 @@ class DashboardView(QWidget):
 
         secondary_row = QHBoxLayout()
         secondary_row.setSpacing(max(12, int(16 * s)))
-        secondary_row.addWidget(
-            self._build_section_card(
-                "Vendedores com Mais Requisições",
-                "Ranking geral por volume de requisições emitidas.",
-                self._build_top_vendors_table(),
-                theme.PRIMARY,
-            ),
-            1,
+        self.vendors_card = self._build_section_card(
+            "Vendedores com Mais Requisições",
+            "Ranking geral por volume de requisições emitidas.",
+            self._build_top_vendors_table(),
+            theme.PRIMARY,
         )
-        secondary_row.addWidget(
-            self._build_section_card(
-                "Pedidos sem Confirmação",
-                "Pedidos aguardando retorno da produção por mais de 1 hora.",
-                self._build_alerts_table(),
-                theme.WARNING,
-            ),
-            1,
+        self.alerts_card = self._build_section_card(
+            "Pedidos sem Confirmação",
+            "Pedidos aguardando retorno da produção por mais de 1 hora.",
+            self._build_alerts_table(),
+            theme.WARNING,
         )
+        secondary_row.addWidget(self.vendors_card, 1)
+        secondary_row.addWidget(self.alerts_card, 1)
         layout.addLayout(secondary_row)
 
         machine_row = QHBoxLayout()
         machine_row.setSpacing(max(12, int(16 * s)))
-        machine_row.addWidget(
-            self._build_section_card(
-                "MÁQUINAS QUE MAIS OPERAM - A&R",
-                "Ranking das máquinas da A&R por volume de operações finalizadas.",
-                self._build_top_machines_ar_table(),
-                theme.PRIMARY_HOVER,
-            ),
-            1,
+        self.machines_ar_card = self._build_section_card(
+            "MÁQUINAS QUE MAIS OPERAM - A&R",
+            "Ranking das máquinas da A&R por volume de operações finalizadas.",
+            self._build_top_machines_ar_table(),
+            theme.PRIMARY_HOVER,
         )
-        machine_row.addWidget(
-            self._build_section_card(
-                "MÁQUINAS QUE MAIS OPERAM - INDÚSTRIA",
-                "Ranking das máquinas da Indústria por volume de operações finalizadas.",
-                self._build_top_machines_industria_table(),
-                theme.PRIMARY,
-            ),
-            1,
+        self.machines_industria_card = self._build_section_card(
+            "MÁQUINAS QUE MAIS OPERAM - INDÚSTRIA",
+            "Ranking das máquinas da Indústria por volume de operações finalizadas.",
+            self._build_top_machines_industria_table(),
+            theme.PRIMARY,
         )
+        machine_row.addWidget(self.machines_ar_card, 1)
+        machine_row.addWidget(self.machines_industria_card, 1)
         layout.addLayout(machine_row)
 
-        layout.addWidget(
-            self._build_section_card(
-                "Últimas Requisições",
-                "Visão rápida das requisições mais recentes do sistema.",
-                self._build_recent_table(),
-                theme.BORDER_COLOR,
-            )
+        self.recent_card = self._build_section_card(
+            "Últimas Requisições",
+            "Visão rápida das requisições mais recentes do sistema.",
+            self._build_recent_table(),
+            theme.BORDER_COLOR,
         )
+        layout.addWidget(self.recent_card)
         layout.addStretch()
 
     def _build_metric_card(

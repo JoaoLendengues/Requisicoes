@@ -211,6 +211,8 @@ class UiCallback(QObject):
 
 
 class UserCenterView(QWidget):
+    guide_requested = Signal()
+
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
@@ -294,6 +296,21 @@ class UserCenterView(QWidget):
         self.refresh_btn.clicked.connect(self.refresh)
         right_col.addWidget(info_card)
         right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        self.btn_guide.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+        )
+        self.btn_guide.clicked.connect(self.guide_requested)
+        right_col.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+
         header.addLayout(right_col)
         root.addLayout(header)
 
@@ -329,12 +346,15 @@ class UserCenterView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(max(16, int(18 * s)))
 
-        layout.addWidget(self._build_import_card())
+        self.import_card = self._build_import_card()
+        layout.addWidget(self.import_card)
 
         body = QHBoxLayout()
         body.setSpacing(max(12, int(14 * s)))
-        body.addWidget(self._build_table_card(), 3)
-        body.addWidget(self._build_form_card(), 2)
+        self.table_card = self._build_table_card()
+        self.form_card = self._build_form_card()
+        body.addWidget(self.table_card, 3)
+        body.addWidget(self.form_card, 2)
         layout.addLayout(body)
         layout.addStretch()
 
