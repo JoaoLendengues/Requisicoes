@@ -539,24 +539,35 @@ class DrawingScene(QGraphicsScene):
                        start.y() + dist * math.sin(rad))
 
     def _commit_curve_draw(self, ctrl: QPointF):
-        """Fase 2: aplica o ponto de controle e finaliza a curva."""
+        """Aplica uma dobra da curva (até CURVE_MAX_BENDS) e finaliza ao atingir o limite."""
         if not self._curve_draw_start or not self._curve_draw_end or not self._preview_item:
             self._cancel_curve_draw()
             return
         path = QPainterPath(self._curve_draw_start)
         path.quadTo(ctrl, self._curve_draw_end)
         self._preview_item.setPath(path)
-        item = self._preview_item
-        item.setFlags(
-            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
-            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
-        )
-        item.setSelected(True)
-        self.cw._push_undo(item)
-        self._preview_item    = None
-        self._curve_draw_phase = 0
-        self._curve_draw_start = None
-        self._curve_draw_end   = None
+        self._curve_bend_count += 1
+
+        if self._curve_bend_count >= self.CURVE_MAX_BENDS:
+            item = self._preview_item
+            item.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            item.setSelected(True)
+            self.cw._push_undo(item)
+            self._preview_item = None
+            self._curve_draw_phase = 0
+            self._curve_draw_start = None
+            self._curve_draw_end = None
+            self._curve_bend_count = 0
+            self._curve_dragging = False
+            self._start = None
+        else:
+            # Continua na mesma curva aguardando nova dobra.
+            self._curve_draw_phase = 2
+            self._curve_dragging = False
+            self._start = None
 
     def _cancel_curve_draw(self):
         """Cancela qualquer fase da ferramenta Curva em andamento."""
@@ -565,7 +576,10 @@ class DrawingScene(QGraphicsScene):
             self._preview_item = None
         self._curve_draw_phase = 0
         self._curve_draw_start = None
-        self._curve_draw_end   = None
+        self._curve_draw_end = None
+        self._curve_bend_count = 0
+        self._curve_dragging = False
+        self._start = None
 
     def _reset_curve_state(self):
         self._curve_source_item = None
@@ -1039,9 +1053,11 @@ class DrawingScene(QGraphicsScene):
             self.cw._insert_image(pos)
             return
 
-        # CURVE fase 2: clique confirma a curva com o ponto de controle
+        # CURVE fase 2: clique inicia o arraste da dobra
         if tool == Tool.CURVE and self._curve_draw_phase == 2:
-            self._commit_curve_draw(pos)
+            self._curve_draw_phase = 3
+            self._curve_dragging = True
+            self._start = QPointF(pos.x(), pos.y())
             event.accept()
             return
 
@@ -1083,6 +1099,8 @@ class DrawingScene(QGraphicsScene):
         elif tool == Tool.CURVE:
             # Fase 1: início — define ponto inicial da linha base
             self._curve_draw_phase = 1
+            self._curve_bend_count = 0
+            self._curve_dragging = True
             self._curve_draw_start = QPointF(pos.x(), pos.y())
             p = QPainterPath(self._curve_draw_start)
             p.lineTo(self._curve_draw_start)
@@ -1160,7 +1178,9 @@ class DrawingScene(QGraphicsScene):
             self._erase_at(pos)
             return
 
-        if self._start is None:
+        if self._start is None and not (
+            tool == Tool.CURVE and self._curve_draw_phase in (2, 3)
+        ):
             # Limpa indicador se o mouse saiu sem estar desenhando
             if self._snap_point is not None:
                 self._snap_point = None
@@ -1207,8 +1227,8 @@ class DrawingScene(QGraphicsScene):
                 p = QPainterPath(self._curve_draw_start)
                 p.lineTo(pos)
                 self._preview_item.setPath(p)
-            elif self._curve_draw_phase == 2 and self._curve_draw_start and self._curve_draw_end:
-                # Atualiza curva quadrática: controle no mouse
+            elif self._curve_draw_phase == 3 and self._curve_draw_start and self._curve_draw_end:
+                # Arraste da dobra: preview da curva com controle no mouse.
                 p = QPainterPath(self._curve_draw_start)
                 p.quadTo(pos, self._curve_draw_end)
                 self._preview_item.setPath(p)
@@ -1313,8 +1333,13 @@ class DrawingScene(QGraphicsScene):
                 p.lineTo(self._curve_draw_end)
                 self._preview_item.setPath(p)
                 self._curve_draw_phase = 2
+                self._curve_dragging = False
             self._start = None
             return  # não limpa _start nem _snap_points_cache abaixo
+
+        elif tool == Tool.CURVE and self._curve_draw_phase == 3:
+            self._commit_curve_draw(pos)
+            return
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             item = self._preview_item
