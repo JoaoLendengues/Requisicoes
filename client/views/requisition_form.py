@@ -666,6 +666,7 @@ class CanvasViewerDialog(QDialog):
 class RequisitionForm(QWidget):
     saved           = Signal(dict)
     save_requested  = Signal()          # emitido pelo botão Salvar do formulário
+    guide_requested = Signal()          # emitido pelo botão ? de ajuda
     req_id: int | None = None
 
     def __init__(self, scale: float = 1.0, parent=None):
@@ -1119,6 +1120,21 @@ class RequisitionForm(QWidget):
         _resize_ped_field_width()
         ped_col.addWidget(self.input_ped)
         layout.addLayout(ped_col)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        self.btn_guide.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+            f"QPushButton:hover {{ color:{theme.PRIMARY}; border-color:{theme.PRIMARY}; }}"
+        )
+        self.btn_guide.clicked.connect(self.guide_requested)
+        layout.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
 
         return card
 

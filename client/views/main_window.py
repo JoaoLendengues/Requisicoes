@@ -169,6 +169,7 @@ class MainWindow(QMainWindow):
 
         # Sinal do formulário conectado imediatamente (único que precisa existir já)
         self.form_view.save_requested.connect(self._save_requisition)
+        self.form_view.guide_requested.connect(self.show_onboarding)
 
         # ── Visibilidade dos botões da sidebar por perfil ─────────────────────
         nav_visible = {
@@ -448,6 +449,7 @@ class MainWindow(QMainWindow):
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "history")
             )
+            view.guide_requested.connect(self.show_onboarding)
         elif page == PAGE_ORDER_CENTER:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "order_center")
@@ -1199,6 +1201,10 @@ class MainWindow(QMainWindow):
             """Getter para atributo do formulário."""
             return lambda: getattr(mw.form_view, attr, None)
 
+        def hist(attr):
+            """Getter para atributo do histórico (carregado sob demanda)."""
+            return lambda: getattr(mw.history_view, attr, None) if mw.history_view else None
+
         # ── Passo de boas-vindas (sem spotlight) ──────────────────────────────
         welcome = TourStep(
             title="Bem-vindo ao Sistema de Requisições!",
@@ -1215,6 +1221,7 @@ class MainWindow(QMainWindow):
         if role == "admin":
             return [
                 welcome,
+                # ── Formulário de requisição ──────────────────────────────────
                 TourStep(
                     "Nova Requisição",
                     "Crie e edite pedidos de compra. Preencha o PED, "
@@ -1222,6 +1229,31 @@ class MainWindow(QMainWindow):
                     "O <b>PDF é gerado automaticamente</b> ao salvar.",
                     nav("nova"), "right", "nova",
                 ),
+                TourStep(
+                    "Número do PED",
+                    "Digite aqui o número do pedido. "
+                    "É o campo principal e <b>obrigatório</b> para salvar.",
+                    form("input_ped"), "bottom",
+                ),
+                TourStep(
+                    "Busca de Cliente",
+                    "Pesquise pelo nome, CNPJ ou código do cliente. "
+                    "O sistema busca nos <b>+112 mil cadastros</b> enquanto você digita.",
+                    form("client_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Itens",
+                    "Adicione os itens da requisição aqui. "
+                    "Use <b>Enter</b> para pular entre campos e confirmar cada item.",
+                    form("item_table"), "top",
+                ),
+                TourStep(
+                    "Salvar / Imprimir",
+                    "Clique em <b>Salvar</b> para registrar a requisição e gerar o PDF. "
+                    "O arquivo vai automaticamente para a pasta de rede do vendedor.",
+                    form("btn_save"), "top",
+                ),
+                # ── Gestão ────────────────────────────────────────────────────
                 TourStep(
                     "Central de Usuários",
                     "Cadastre, edite e desative membros da equipe. "
@@ -1236,6 +1268,20 @@ class MainWindow(QMainWindow):
                     "faturamentos pendentes.",
                     nav("dashboard"), "right", "dashboard",
                 ),
+                # ── Histórico ─────────────────────────────────────────────────
+                TourStep(
+                    "Histórico / Busca",
+                    "Busque qualquer requisição por status, cliente, data ou PED. "
+                    "Clique duas vezes para abrir e editar.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED, nome do cliente ou obra. "
+                    "Combine com os filtros de status e período para resultados precisos.",
+                    hist("input_search"), "bottom",
+                ),
+                # ── Sistema ───────────────────────────────────────────────────
                 TourStep(
                     "Configurações",
                     "Gerencie o <b>backup automático</b> do banco de dados, "
@@ -1260,12 +1306,32 @@ class MainWindow(QMainWindow):
         if role == "gerente":
             return [
                 welcome,
+                # ── Formulário ────────────────────────────────────────────────
                 TourStep(
                     "Nova Requisição",
                     "Crie requisições para qualquer vendedor da equipe. "
                     "Como gerente, você tem acesso a <b>todos os pedidos</b>.",
                     nav("nova"), "right", "nova",
                 ),
+                TourStep(
+                    "Busca de Cliente",
+                    "Pesquise pelo nome, CNPJ ou código do cliente. "
+                    "Selecione o resultado para preencher os dados automaticamente.",
+                    form("client_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Itens",
+                    "Adicione os itens da requisição. "
+                    "Use <b>Enter</b> para pular entre campos e confirmar cada linha.",
+                    form("item_table"), "top",
+                ),
+                TourStep(
+                    "Salvar / Imprimir",
+                    "Salvar registra a requisição e envia o PDF para a pasta "
+                    "de rede do vendedor responsável.",
+                    form("btn_save"), "top",
+                ),
+                # ── Gestão ────────────────────────────────────────────────────
                 TourStep(
                     "Dashboard",
                     "Indicadores da operação em tempo real: "
@@ -1278,11 +1344,18 @@ class MainWindow(QMainWindow):
                     "Filtre por status, vendedor ou período.",
                     nav("pedidos"), "right", "pedidos",
                 ),
+                # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
-                    "Histórico",
-                    "Busque qualquer requisição por status, cliente ou data. "
-                    "Clique duas vezes para abrir os detalhes completos.",
+                    "Histórico / Busca",
+                    "Acesse qualquer requisição já criada. "
+                    "Filtre por status, cliente ou data e clique duas vezes para abrir.",
                     nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED, nome do cliente ou obra "
+                    "para localizar rapidamente qualquer requisição.",
+                    hist("input_search"), "bottom",
                 ),
                 TourStep(
                     "Notificações",
@@ -1295,6 +1368,7 @@ class MainWindow(QMainWindow):
         if role == "vendedor":
             return [
                 welcome,
+                # ── Formulário ────────────────────────────────────────────────
                 TourStep(
                     "Nova Requisição",
                     "Sua tela principal. Preencha o <b>PED</b>, selecione o cliente, "
@@ -1304,22 +1378,42 @@ class MainWindow(QMainWindow):
                 ),
                 TourStep(
                     "Número do PED",
-                    "Digite aqui o número do pedido. "
-                    "É obrigatório para salvar a requisição.",
-                    form("input_ped"), "bottom", "nova",
+                    "Digite aqui o número do pedido gerado no sistema de vendas. "
+                    "Campo <b>obrigatório</b> — sem PED, não é possível salvar.",
+                    form("input_ped"), "bottom",
                 ),
                 TourStep(
                     "Busca de Cliente",
-                    "Pesquise pelo nome ou código do cliente. "
-                    "O sistema busca em tempo real enquanto você digita.",
+                    "Pesquise pelo nome, CNPJ ou código do cliente. "
+                    "O sistema busca nos <b>+112 mil cadastros</b> enquanto você digita.",
                     form("client_search"), "bottom",
                 ),
                 TourStep(
+                    "Tabela de Itens",
+                    "Adicione cada item da requisição aqui: "
+                    "descrição, quantidade e unidade. "
+                    "Pressione <b>Enter</b> para confirmar e avançar.",
+                    form("item_table"), "top",
+                ),
+                TourStep(
+                    "Salvar",
+                    "Clique em <b>Salvar</b> para registrar a requisição. "
+                    "O PDF é gerado e enviado para a sua pasta de rede.",
+                    form("btn_save"), "top",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
+                TourStep(
                     "Histórico",
                     "Todas as suas requisições ficam aqui. "
-                    "Filtre por status, data ou cliente e clique duas vezes "
-                    "para abrir qualquer pedido.",
+                    "Filtre por status ou data e clique duas vezes "
+                    "para reabrir qualquer pedido.",
                     nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Encontre rapidamente uma requisição pelo número do PED, "
+                    "nome do cliente ou obra.",
+                    hist("input_search"), "bottom",
                 ),
                 TourStep(
                     "Notificações",
@@ -1341,9 +1435,15 @@ class MainWindow(QMainWindow):
                 ),
                 TourStep(
                     "Histórico",
-                    "Busque qualquer requisição. Clique duas vezes "
-                    "para abrir e atualizar o status.",
+                    "Busque qualquer requisição por PED, cliente ou status. "
+                    "Clique duas vezes para abrir os detalhes completos.",
                     nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED ou nome do cliente "
+                    "para localizar uma requisição específica.",
+                    hist("input_search"), "bottom",
                 ),
                 TourStep(
                     "Notificações",
@@ -1364,9 +1464,15 @@ class MainWindow(QMainWindow):
                 ),
                 TourStep(
                     "Histórico",
-                    "Busque qualquer requisição. Clique duas vezes "
-                    "para abrir e atualizar o status.",
+                    "Busque qualquer requisição por PED, cliente ou status. "
+                    "Clique duas vezes para abrir os detalhes completos.",
                     nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED ou nome do cliente "
+                    "para localizar uma requisição específica.",
+                    hist("input_search"), "bottom",
                 ),
                 TourStep(
                     "Notificações",
@@ -1388,9 +1494,15 @@ class MainWindow(QMainWindow):
                 ),
                 TourStep(
                     "Histórico",
-                    "Consulte o histórico completo de requisições "
-                    "e mantenha o status sempre atualizado.",
+                    "Consulte o histórico completo de requisições. "
+                    "Clique duas vezes para abrir e verificar os detalhes.",
                     nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED ou nome do cliente "
+                    "para localizar rapidamente uma requisição.",
+                    hist("input_search"), "bottom",
                 ),
                 TourStep(
                     "Notificações",

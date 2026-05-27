@@ -329,6 +329,7 @@ class MachineOptionsWorker(QObject):
 
 class HistoryView(QWidget):
     open_requisition = Signal(int)
+    guide_requested  = Signal()          # emitido pelo botão ? de ajuda
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -620,6 +621,20 @@ class HistoryView(QWidget):
         buttons_row.addWidget(self.search_btn)
         buttons_row.addWidget(self.clear_btn)
         buttons_col.addLayout(buttons_row)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.guide_btn = QPushButton("?")
+        self.guide_btn.setToolTip("Abrir guia rápido")
+        self.guide_btn.setFixedSize(sz_g, sz_g)
+        self.guide_btn.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+        )
+        self.guide_btn.clicked.connect(self.guide_requested)
+        buttons_col.addWidget(self.guide_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
         controls.addLayout(status_col, 1)
         controls.addLayout(period_col, 2)
