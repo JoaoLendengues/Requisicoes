@@ -23,6 +23,11 @@ Responsaveis:
 
 ## Concluido
 
+- [x] 2026-05-27 [joao]     Tour guiado: scroll automatico para widgets abaixo da dobra.
+                             ensureWidgetVisible + 80 ms de espera no QScrollArea pai
+                             mais proximo. Genericamente aplicado a todas as telas.
+                             Arquivo: client/widgets/spotlight_overlay.py
+
 - [x] 2026-05-27 [joao]     Fix tour guiado: telas nao apareciam no fundo durante o tour
                              (views lazy nao eram instanciadas antes de exibir spotlight).
                              Todas as abas de Configuracoes agora sao cobertas por perfil:
