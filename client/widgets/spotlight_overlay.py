@@ -407,9 +407,46 @@ class SpotlightOverlay(QWidget):
 
         if step.navigate_key:
             self._navigate(step.navigate_key)
-            QTimer.singleShot(320, lambda: self._show_step(index))
+            QTimer.singleShot(320, lambda: self._scroll_then_show(index))
         else:
-            self._show_step(index)
+            self._scroll_then_show(index)
+
+    def _scroll_then_show(self, index: int) -> None:
+        """Rola o scroll area pai para o widget alvo (se necessário) e exibe o passo."""
+        if index != self._current:
+            return
+        step = self._steps[index]
+        try:
+            widget = step.widget_getter()
+        except Exception:
+            widget = None
+
+        if widget is not None and widget.isVisible():
+            if self._scroll_to_widget(widget):
+                # Pequena pausa para o Qt processar o reposicionamento do conteúdo
+                QTimer.singleShot(80, lambda: self._show_step(index))
+                return
+        self._show_step(index)
+
+    def _scroll_to_widget(self, widget: QWidget) -> bool:
+        """
+        Percorre a hierarquia de pais procurando o QScrollArea mais próximo.
+        Se o widget estiver fora do viewport visível, chama ensureWidgetVisible.
+        Retorna True se alguma rolagem foi necessária.
+        """
+        from PySide6.QtWidgets import QScrollArea
+        parent = widget.parentWidget()
+        while parent is not None:
+            if isinstance(parent, QScrollArea):
+                viewport = parent.viewport()
+                top_in_vp = widget.mapTo(viewport, widget.rect().topLeft())
+                bot_in_vp = top_in_vp.y() + widget.height()
+                if top_in_vp.y() < 0 or bot_in_vp > viewport.height():
+                    parent.ensureWidgetVisible(widget, 40, 40)
+                    return True
+                return False
+            parent = parent.parentWidget()
+        return False
 
     def _show_step(self, index: int) -> None:
         if index != self._current:
