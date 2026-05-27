@@ -1360,9 +1360,9 @@ class MainWindow(QMainWindow):
                     "Desmarque <b>Usuário ativo</b> para bloquear o acesso sem excluir.",
                     users("form_card"), "left",
                 ),
-                # ── Dashboard ─────────────────────────────────────────────────
+                # ── Painel Gerencial ──────────────────────────────────────────
                 TourStep(
-                    "Dashboard",
+                    "Painel Gerencial",
                     "Visão executiva da operação: pedidos em produção, "
                     "atrasos, faturamentos e ritmo diário.",
                     nav("dashboard"), "right", "dashboard",
@@ -1467,6 +1467,30 @@ class MainWindow(QMainWindow):
                     cfg("_tab_btns", 1), "bottom",
                 ),
                 TourStep(
+                    "Aba Sistema",
+                    "Configure a <b>URL do servidor</b> e teste a conexão com o backend. "
+                    "Ajuste os dias de alerta para pedidos sem confirmação de faturamento.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
+                TourStep(
+                    "Aba Login",
+                    "Personalize o <b>fundo da tela de login</b> com imagens da empresa. "
+                    "Adicione, remova e visualize as imagens disponíveis.",
+                    cfg("_tab_btns", 3), "bottom",
+                ),
+                TourStep(
+                    "Aba Backup",
+                    "Configure o <b>backup automático</b> do banco de dados: "
+                    "horário de execução e retenção diária, semanal e mensal.",
+                    cfg("_tab_btns", 4), "bottom",
+                ),
+                TourStep(
+                    "Aba Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 5), "bottom",
+                ),
+                TourStep(
                     "Salvar Configurações",
                     "Após ajustar as preferências, clique em "
                     "<b>Salvar Configurações</b> para aplicar as mudanças.",
@@ -1560,9 +1584,9 @@ class MainWindow(QMainWindow):
                     "Desmarque <b>Usuário ativo</b> para suspender o acesso.",
                     users("form_card"), "left",
                 ),
-                # ── Dashboard ─────────────────────────────────────────────────
+                # ── Painel Gerencial ──────────────────────────────────────────
                 TourStep(
-                    "Dashboard",
+                    "Painel Gerencial",
                     "Indicadores executivos da operação: pedidos em produção, "
                     "atrasos, faturamentos e ritmo diário.",
                     nav("dashboard"), "right", "dashboard",
@@ -1653,6 +1677,16 @@ class MainWindow(QMainWindow):
                     "Conta",
                     "Altere sua senha de acesso. Recomendado trocar periodicamente.",
                     cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Sistema",
+                    "Configure alertas de faturamento e visualize as opções de conexão com o servidor.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse o <b>Guia Rápido</b> novamente.",
+                    cfg("_tab_btns", 3), "bottom",
                 ),
                 TourStep(
                     "Salvar",
@@ -1759,6 +1793,12 @@ class MainWindow(QMainWindow):
                     "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
                     cfg("_tab_btns", 1), "bottom",
                 ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
                 # ── Notificações ──────────────────────────────────────────────
                 TourStep(
                     "Notificações",
@@ -1839,6 +1879,12 @@ class MainWindow(QMainWindow):
                     "Conta",
                     "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
                     cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 2), "bottom",
                 ),
                 # ── Notificações ──────────────────────────────────────────────
                 TourStep(
@@ -1922,6 +1968,12 @@ class MainWindow(QMainWindow):
                     "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
                     cfg("_tab_btns", 1), "bottom",
                 ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
                 # ── Notificações ──────────────────────────────────────────────
                 TourStep(
                     "Notificações",
@@ -1999,6 +2051,12 @@ class MainWindow(QMainWindow):
                     "Conta",
                     "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
                     cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 2), "bottom",
                 ),
                 # ── Notificações ──────────────────────────────────────────────
                 TourStep(

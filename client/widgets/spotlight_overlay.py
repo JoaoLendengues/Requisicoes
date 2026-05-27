@@ -407,7 +407,7 @@ class SpotlightOverlay(QWidget):
 
         if step.navigate_key:
             self._navigate(step.navigate_key)
-            QTimer.singleShot(220, lambda: self._show_step(index))
+            QTimer.singleShot(320, lambda: self._show_step(index))
         else:
             self._show_step(index)
 
@@ -542,6 +542,9 @@ class SpotlightOverlay(QWidget):
     def _navigate(self, key: str) -> None:
         page = self._PAGE.get(key)
         if page is not None:
+            # Garante que a view lazy seja instanciada antes de exibi-la
+            if hasattr(self._mw, "_ensure_view"):
+                self._mw._ensure_view(page)
             self._mw.stack.setCurrentIndex(page)
             self._mw.sidebar._highlight(key)
 
