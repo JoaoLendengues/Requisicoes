@@ -62,6 +62,11 @@ Responsaveis:
 
 ### Prioridade Media
 
+- [ ] [joao]     Performance: reducao de freezes causados por chamadas ao servidor durante navegacao
+                 Ideia: exibir indicador de carregamento (spinner ou skeleton) nas views que fazem
+                 refresh() ao serem abertas (historico, pedidos, dashboard, etc.), evitando que o
+                 usuario perceba travamento enquanto a API responde. Avaliar tambem cache de resultado
+                 das ultimas chamadas para que a view ja apareca com dados ao re-navegar.
 - [ ] [cappinho] Melhorar personalizacao da tela de configuracao
 - [ ] [cappinho] Implementar filtro por vendedor na tela "HISTORICO/BUSCA"
 - [ ] [victor]   Adicionar ferramenta Curva no editor de desenho (atalho: tecla C)
