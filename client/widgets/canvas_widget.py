@@ -246,6 +246,8 @@ class DrawingScene(QGraphicsScene):
         self._curve_draw_phase: int = 0
         self._curve_draw_start: QPointF | None = None
         self._curve_draw_end:   QPointF | None = None
+        self._curve_ctrl_1: QPointF | None = None
+        self._curve_ctrl_2: QPointF | None = None
         self._ruler_commit_on_release: bool = False
         self._manual_dim_active: bool = False
         self._manual_dim_label: str = ""
@@ -543,10 +545,22 @@ class DrawingScene(QGraphicsScene):
         if not self._curve_draw_start or not self._curve_draw_end or not self._preview_item:
             self._cancel_curve_draw()
             return
+        if self._curve_bend_count <= 0:
+            self._curve_ctrl_1 = QPointF(ctrl.x(), ctrl.y())
+            path = QPainterPath(self._curve_draw_start)
+            path.quadTo(self._curve_ctrl_1, self._curve_draw_end)
+            self._preview_item.setPath(path)
+            self._curve_bend_count = 1
+            self._curve_draw_phase = 2
+            self._curve_dragging = False
+            self._start = None
+            return
+
+        self._curve_ctrl_2 = QPointF(ctrl.x(), ctrl.y())
         path = QPainterPath(self._curve_draw_start)
-        path.quadTo(ctrl, self._curve_draw_end)
+        path.cubicTo(self._curve_ctrl_1, self._curve_ctrl_2, self._curve_draw_end)
         self._preview_item.setPath(path)
-        self._curve_bend_count += 1
+        self._curve_bend_count = 2
 
         if self._curve_bend_count >= self.CURVE_MAX_BENDS:
             item = self._preview_item
@@ -560,12 +574,9 @@ class DrawingScene(QGraphicsScene):
             self._curve_draw_phase = 0
             self._curve_draw_start = None
             self._curve_draw_end = None
+            self._curve_ctrl_1 = None
+            self._curve_ctrl_2 = None
             self._curve_bend_count = 0
-            self._curve_dragging = False
-            self._start = None
-        else:
-            # Continua na mesma curva aguardando nova dobra.
-            self._curve_draw_phase = 2
             self._curve_dragging = False
             self._start = None
 
@@ -577,6 +588,8 @@ class DrawingScene(QGraphicsScene):
         self._curve_draw_phase = 0
         self._curve_draw_start = None
         self._curve_draw_end = None
+        self._curve_ctrl_1 = None
+        self._curve_ctrl_2 = None
         self._curve_bend_count = 0
         self._curve_dragging = False
         self._start = None
@@ -1102,6 +1115,8 @@ class DrawingScene(QGraphicsScene):
             self._curve_bend_count = 0
             self._curve_dragging = True
             self._curve_draw_start = QPointF(pos.x(), pos.y())
+            self._curve_ctrl_1 = None
+            self._curve_ctrl_2 = None
             p = QPainterPath(self._curve_draw_start)
             p.lineTo(self._curve_draw_start)
             self._preview_item = QGraphicsPathItem(p)
@@ -1230,7 +1245,10 @@ class DrawingScene(QGraphicsScene):
             elif self._curve_draw_phase == 3 and self._curve_draw_start and self._curve_draw_end:
                 # Arraste da dobra: preview da curva com controle no mouse.
                 p = QPainterPath(self._curve_draw_start)
-                p.quadTo(pos, self._curve_draw_end)
+                if self._curve_bend_count <= 0 or self._curve_ctrl_1 is None:
+                    p.quadTo(pos, self._curve_draw_end)
+                else:
+                    p.cubicTo(self._curve_ctrl_1, pos, self._curve_draw_end)
                 self._preview_item.setPath(p)
 
         elif tool == Tool.TRIANGLE and self._preview_item:
