@@ -1927,6 +1927,14 @@ class RequisitionForm(QWidget):
             )
             return
 
+        if not (self.chk_retirada.isChecked() or self.chk_entrega.isChecked()):
+            QMessageBox.warning(
+                self,
+                "Produção",
+                "Marque Retirada ou Entrega para enviar para produção.",
+            )
+            return
+
         if not self._confirm_invoice_before_send():
             return
 
