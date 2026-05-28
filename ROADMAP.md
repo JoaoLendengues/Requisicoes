@@ -1,10 +1,5 @@
 # Roadmap do Projeto
 
-Arquivo para registrar:
-- correcao de bugs
-- proximas implementacoes
-- novas ideias
-
 Organizacao por prioridade:
 - Alta: critico, bloqueia fluxo ou gera retrabalho grande
 - Media: importante, mas com workaround
@@ -17,76 +12,51 @@ Responsaveis:
 
 ---
 
-## Em andamento
+## Alta prioridade
+
+- [ ] [joao]     Campos "Entrega" e "Retirada" como obrigatorios em Nova Requisicao.
+                 Impede salvar se nenhuma das duas opcoes estiver selecionada.
+
+- [ ] [joao]     A&R + Pinheiro Industria: alterar prazo de entrega com justificativa.
+                 Producao digita o motivo da alteracao; requisicao volta para o vendedor
+                 com notificacao e novo prazo visivel no historico.
+
+- [ ] [joao]     Motivos predefinidos para cancelamento de requisicoes.
+                 Caixa de selecao: "Desistencia", "Material danificado / avariado", "Outro".
+                 Opcao "Outro" exige campo de texto livre obrigatorio.
+                 Mostrar motivo nas tabelas de historico e nas telas de A&R / Industria.
+
+- [ ] [cappinho] Remover campo de importacao de usuario na Central de Usuarios.
 
 ---
 
-## Concluido
+## Media prioridade
 
-- [x] 2026-05-27 [joao]     Tour guiado: scroll automatico para widgets abaixo da dobra.
-                             ensureWidgetVisible + 80 ms de espera no QScrollArea pai
-                             mais proximo. Genericamente aplicado a todas as telas.
-                             Arquivo: client/widgets/spotlight_overlay.py
+- [ ] [joao]     Prazo minimo em dias uteis.
+                 Horario comercial: segunda a sexta 8h-18h, sabado 8h-12h.
+                 Novo parametro em Configuracoes > Sistema para definir o minimo.
+                 Notificar vendedor / gerente quando o prazo estiver proximo ou vencido.
 
-- [x] 2026-05-27 [joao]     Fix tour guiado: telas nao apareciam no fundo durante o tour
-                             (views lazy nao eram instanciadas antes de exibir spotlight).
-                             Todas as abas de Configuracoes agora sao cobertas por perfil:
-                             admin (6 abas), gerente (4), vendedor/producao/industria/
-                             entrega (3). "Dashboard" renomeado para "Painel Gerencial".
-                             Arquivos: client/widgets/spotlight_overlay.py,
-                                       client/views/main_window.py
+- [ ] [cappinho] Painel Gerencial: identificar backups realizados (data, tamanho, status).
 
-- [x] 2026-05-27 [joao]     Guia Rapido expandido: passos contextuais por tela (formulario,
-                             historico) com getters de widget in-screen por perfil.
-                             Botao ? discreto no formulario de requisicao e no historico.
-                             Arquivos: client/views/requisition_form.py,
-                                       client/views/history_view.py,
-                                       client/views/main_window.py
+- [ ] [cappinho] Botao "Exportar para Excel" em Historico / Busca.
+                 Exportar os resultados filtrados atualmente visiveis na tabela.
 
-- [x] 2026-05-27 [victor]   Canvas: cursor da caneta como ponto/dot
-- [x] 2026-05-27 [victor]   Canvas: ferramenta Curva estilo Paint (arrasta base, move controle, clica confirma bezier)
-- [x] 2026-05-27 [victor]   Canvas: selecao hollow em rect/elipse (shape() retorna so a borda)
-- [x] 2026-05-27 [victor]   Canvas: espelhamento vertical correto no preview e no PDF
-- [x] 2026-05-27 [victor]   Canvas: linha iniciando em ponto pre-definido (corrigido)
-- [x] 2026-05-27 [victor]   Canvas: raio do ima refinado
-- [x] 2026-05-27 [victor]   Emojis na impressao dos PDFs
-- [x] 2026-05-27 [victor]   PDF: alinhar titulo "Requisicao", data e nome do vendedor mais a esquerda
-- [x] 2026-05-27 [victor]   Ajustar design dos pop-ups de notificacoes (minimalista e moderno)
-- [x] 2026-05-27 [cappinho] Filtro de datas da tela "HISTORICO/BUSCA" corrigido
-- [x] 2026-05-27 [cappinho] Contador de notificacoes no badge corrigido
-- [x] 2026-05-27 [cappinho] Calendario com simbolo de seta para abrir
-- [x] 2026-05-27 [cappinho] Filtro por vendedor na tela "HISTORICO/BUSCA"
-- [x] 2026-05-27 [cappinho] Melhorar personalizacao da tela de configuracao (mini-abas)
-- [x] 2026-05-27 [joao]     Settings: mini-abas horizontais (Aparencia, Conta, Sistema, Login, Backup, Ajuda)
-- [x] 2026-05-27 [joao]     Performance: lazy instantiation das views no MainWindow
-- [x] 2026-05-27 [joao]     Performance: SSE com backoff exponencial na reconexao
-- [x] 2026-05-27 [joao]     Performance: todas as chamadas de rede em QThread
-- [x] 2026-05-27 [joao]     Fix backup endpoint PATCH /settings retornando 404
-- [x] 2026-05-27 [joao]     Fix PDF: WinError 1326/5/53 com mensagem clara de erro de credenciais
-- [x] 2026-05-27 [joao]     Refinar niveis de acesso por role em todas as telas
-- [x] 2026-05-26 [joao]     Guia rapido por nivel de acesso — spotlight tour no primeiro login
-- [x] 2026-05-26 [joao]     Sistema de backup periodico (pg_dump, retencao diario/semanal/mensal)
-- [x] 2026-05-26 [victor]   Posicionamento inteligente de rotulos no canvas (regua e cota MM)
-- [x] 2026-05-26 [victor]   Regua e cota MM renderizadas corretamente no PDF
-- [x] 2026-05-26 [joao]     Alterar diretorio dos login_backgrounds para o servidor
-- [x] 2026-05-25 [victor]   Melhorar velocidade de linhas no editor de desenho
-- [x] 2026-05-25 [joao]     Ajustar botoes do editor de desenho (nomes cortados em diferentes resolucoes)
-- [x] 2026-05-25 [joao]     Mudar logo do sidebar nos widgets A&R e Pinheiro Industria
-- [x] 2026-05-25 [joao]     Fix SSE: conexao de banco segurada por usuario (esgotava pool com 10+ usuarios)
-- [x] 2026-05-25 [joao]     Backend: indices de performance nas tabelas principais
-- [x] 2026-05-25 [joao]     Backend: pool de conexoes aumentado para 100 simultaneas
-- [x] 2026-05-25 [joao]     Corrigir alerta "Sem permissao para acessar destino de producao" para vendedores
-- [x] 2026-05-25 [joao]     Redirecionar PDF por vendedor (pasta por codigo em \\servidor\...\PDF\VENDEDORES)
-- [x] 2026-05-25 [joao]     Gerentes redirecionam PDF para pasta do vendedor da requisicao
-- [x] 2026-05-24 [joao]     Sistema de atualizacoes automaticas (GitHub Actions + Inno Setup)
-- [x] 2026-05-24 [joao]     Corrigir SECRET_KEY padrao exposta (adicionada ao .env)
-- [x] 2026-05-24 [joao]     Criar icone do app e configurar no executavel e instalador
+- [ ] [joao]     A&R: ao enviar requisicao para maquina de corte, sempre encaminhar para
+                 maquina de dobra em seguida.
+                 Substituir botao "Finalizar" por "Encaminhar para Dobra" nas maquinas de
+                 corte. Exibir lista de maquinas de dobra disponiveis para escolha.
+                 Botao "Finalizar" permanece apenas nas maquinas de dobra.
+
+- [ ] [victor]   Relatorio de maquinas (corte e dobra) de A&R e Pinheiro Industria.
+                 Mostrar historico de uso, pedidos processados e tempo medio por maquina.
 
 ---
 
-## Como usar este arquivo
+## Aguardando definicao
 
-- Sempre adicionar item novo na secao correta e com prioridade definida.
-- Marcar com [x] quando concluir.
-- Incluir data de conclusao ao lado do [x] quando fechar um item. Ex: [x] 2026-05-22
-- Se abrir um item novo, indicar o responsavel entre colchetes. Ex: [joao]
+- [ ] [victor]   Canvas: ferramenta Esquadro no editor de desenho.
+                 *** NAO IMPLEMENTAR ate receber autorizacao. Discutir especificacao primeiro. ***
+
+- [ ] [joao]     Faturar pedido automaticamente ao enviar para producao (A&R e Pinheiro Industria).
+                 *** PERGUNTAR ao responsavel se deve faturar antes de implementar. ***
