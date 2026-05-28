@@ -1927,6 +1927,9 @@ class RequisitionForm(QWidget):
             )
             return
 
+        if not self._confirm_invoice_before_send():
+            return
+
         destination = self._pick_production_destination()
         if not destination:
             return
@@ -1944,11 +1947,21 @@ class RequisitionForm(QWidget):
         )
         self._threads.append((thread, worker))
 
+    def _confirm_invoice_before_send(self) -> bool:
+        ped_number = (self.input_ped.text() or "").strip() or "sem PED"
+        return ask_confirmation(
+            self,
+            "Faturar pedido",
+            f"Deseja faturar o pedido {ped_number}?",
+            yes_text="Faturar",
+            no_text="Cancelar",
+        )
+
     def _pick_production_destination(self) -> str | None:
         msg = QMessageBox(self)
         msg.setWindowTitle("Enviar para produção")
         msg.setIcon(QMessageBox.Icon.Question)
-        msg.setText("Selecione para qual produção a requisição deve ser enviada.")
+        msg.setText("Para qual produção deseja enviar a requisição?")
 
         btn_ar = msg.addButton("A&&R", QMessageBox.ButtonRole.AcceptRole)
         btn_pinheiro = msg.addButton("Pinheiro Indústria", QMessageBox.ButtonRole.AcceptRole)

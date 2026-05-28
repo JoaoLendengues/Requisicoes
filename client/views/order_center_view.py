@@ -398,7 +398,6 @@ class OrderCenterView(QWidget):
                 "Pedidos aguardando faturamento",
                 "aguardando_faturamento",
                 pdf_action=True,
-                invoice_action=True,
             ),
             1,
             0,
