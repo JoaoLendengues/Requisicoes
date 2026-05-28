@@ -1045,13 +1045,31 @@ class ProductionView(QWidget):
         ):
             return
 
+        machine_name = str(machine.get("name") or "")
         self._run_action(
-            api.update_status,
+            self._finalize_and_invoice_requisition,
             int(req["id"]),
-            "em_andamento",
-            _build_production_note(PROD_FINISHED, self.destination, machine=str(machine.get("name") or "")),
-            success_message="Requisição finalizada em produção.",
+            machine_name,
+            success_message="Requisição finalizada e faturada.",
         )
+
+    def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str):
+        note = _build_production_note(PROD_FINISHED, self.destination, machine=machine_name)
+        api.update_status(req_id, "em_andamento", note)
+
+        # Compatibilidade: servidores antigos ainda deixam em aguardando faturamento
+        # após finalizar produção; neste caso, já faturamos na sequência.
+        try:
+            api.update_status(req_id, "faturado")
+        except api.APIError as exc:
+            detail = str(exc.detail or "")
+            tolerated_errors = (
+                "Somente pedidos aguardando faturamento podem ser marcados como faturados",
+                "Pedidos faturados não podem retornar para outro status operacional",
+            )
+            if any(message in detail for message in tolerated_errors):
+                return
+            raise
 
     def _return_selected_machine_to_queue(self, machine_id: int):
         req, machine = self._selected_machine_row(machine_id)
