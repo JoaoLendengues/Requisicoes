@@ -27,7 +27,7 @@ from ..api import client as api
 from ..core import theme
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..widgets.sortable_item import SortableItem
-from ..core.dialogs import apply_message_box_theme, ask_confirmation
+from ..core.dialogs import apply_message_box_theme
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -44,7 +44,6 @@ _ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons
 _METRIC_ICON_FILES = {
     "pedidos_aguardando_recebimento": "aguardando_recebimento.png",
     "pedidos_em_producao": "pedidos_em_producao.png",
-    "pedidos_aguardando_faturamento": "aguardando_recebimento.png",
     "pedidos_faturados": "pedidos_concluidos.png",
     "pedidos_cancelados": "pedidos_cancelados.png",
     "pedidos_atrasados": "pedidos_atrasados.png",
@@ -118,19 +117,6 @@ def _primary_action_btn_style(scale: float) -> str:
         f"}}"
         f"QPushButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
         f"QPushButton:pressed {{ background:#152D49; }}"
-        f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
-    )
-
-
-def _success_action_btn_style(scale: float) -> str:
-    fs = max(9, int(10 * scale))
-    return (
-        f"QPushButton {{"
-        f"  background:{theme.SUCCESS}; color:#FFFFFF; border:none; border-radius:14px;"
-        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
-        f"}}"
-        f"QPushButton:hover {{ background:#1F9E55; }}"
-        f"QPushButton:pressed {{ background:#188546; }}"
         f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
     )
 
@@ -209,7 +195,6 @@ class OrderCenterView(QWidget):
         self._rows: dict[str, list[dict]] = {
             "aguardando_recebimento": [],
             "em_producao": [],
-            "aguardando_faturamento": [],
             "faturados": [],
             "cancelados": [],
             "atrasados": [],
@@ -353,31 +338,11 @@ class OrderCenterView(QWidget):
         card_defs = [
             ("pedidos_aguardando_recebimento", theme.WARNING, "Aguardando Recebimento", "Pedidos pendentes de confirmação da produção."),
             ("pedidos_em_producao", theme.PRIMARY, "Pedidos em Produção", "Ordens que já entraram na esteira produtiva."),
-            ("pedidos_finalizados", theme.SUCCESS, "Pedidos Finalizados", "Pedidos concluídos e prontos para consulta."),
+            ("pedidos_faturados", theme.STATUS_COLORS.get("faturado", theme.SUCCESS), "Pedidos Faturados", "Pedidos faturados e disponíveis para consulta."),
             ("pedidos_cancelados", theme.DANGER, "Pedidos Cancelados", "Cancelamentos registrados na operação."),
             ("pedidos_atrasados", theme.DANGER, "Pedidos Atrasados", "Pedidos com prazo vencido e ainda abertos."),
             ("tempo_medio_producao_segundos", theme.BORDER_COLOR, "Tempo Médio de Produção", "Indicador médio de conclusão da produção."),
         ]
-        card_defs = [
-            (
-                "pedidos_aguardando_faturamento",
-                theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
-                "Aguardando Faturamento",
-                "Pedidos finalizados na producao e pendentes de faturamento.",
-            )
-            if item[0] == "pedidos_finalizados"
-            else item
-            for item in card_defs
-        ]
-        card_defs.insert(
-            3,
-            (
-                "pedidos_faturados",
-                theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
-                "Pedidos Faturados",
-                "Pedidos ja faturados e disponiveis para consulta.",
-            ),
-        )
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
             metrics.addWidget(
                 self._build_metric_card(color, title_text, helper_text, key),
@@ -393,18 +358,9 @@ class OrderCenterView(QWidget):
         layout.addLayout(grid_top)
         grid_top.addWidget(self._build_section("Pedidos aguardando recebimento", "aguardando_recebimento"), 0, 0)
         grid_top.addWidget(self._build_section("Pedidos em produção", "em_producao"), 0, 1)
-        grid_top.addWidget(
-            self._build_section(
-                "Pedidos aguardando faturamento",
-                "aguardando_faturamento",
-                pdf_action=True,
-            ),
-            1,
-            0,
-        )
-        grid_top.addWidget(self._build_section("Pedidos faturados", "faturados", pdf_action=True), 1, 1)
-        grid_top.addWidget(self._build_section("Pedidos cancelados", "cancelados"), 2, 0)
-        grid_top.addWidget(self._build_section("Pedidos atrasados", "atrasados"), 2, 1)
+        grid_top.addWidget(self._build_section("Pedidos faturados", "faturados", pdf_action=True), 1, 0)
+        grid_top.addWidget(self._build_section("Pedidos cancelados", "cancelados"), 1, 1)
+        grid_top.addWidget(self._build_section("Pedidos atrasados", "atrasados"), 2, 0, 1, 2)
         layout.addStretch()
 
     def _build_metric_card(
@@ -502,7 +458,6 @@ class OrderCenterView(QWidget):
         title_text: str,
         key: str,
         pdf_action: bool = False,
-        invoice_action: bool = False,
     ) -> QFrame:
         s = self.scale
         section_meta = {
@@ -513,10 +468,6 @@ class OrderCenterView(QWidget):
             "em_producao": (
                 "Ordens em andamento com registro de recebimento na fábrica.",
                 theme.PRIMARY,
-            ),
-            "aguardando_faturamento": (
-                "Pedidos concluídos com PDF individual e tempo médio de produção.",
-                theme.SUCCESS,
             ),
             "faturados": (
                 "Pedidos faturados com consulta rápida do PDF e histórico da operação.",
@@ -531,14 +482,6 @@ class OrderCenterView(QWidget):
                 theme.BORDER_COLOR,
             ),
         }
-        section_meta["aguardando_faturamento"] = (
-            "Pedidos finalizados na produção e aguardando faturamento do vendedor.",
-            theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
-        )
-        section_meta["faturados"] = (
-            "Pedidos faturados com consulta rápida do PDF e histórico da operação.",
-            theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
-        )
         subtitle_text, accent_color = section_meta[key]
 
         card = _make_card(
@@ -585,13 +528,6 @@ class OrderCenterView(QWidget):
         btn_open.clicked.connect(lambda: self._open_selected(key))
         title_row.addWidget(btn_open)
 
-        if invoice_action:
-            btn_invoice = QPushButton("FATURAR")
-            btn_invoice.setFixedHeight(max(34, int(38 * s)))
-            btn_invoice.setStyleSheet(_success_action_btn_style(s))
-            btn_invoice.clicked.connect(self._mark_selected_invoiced)
-            title_row.addWidget(btn_invoice)
-
         if pdf_action:
             btn_pdf = QPushButton("VER PDF")
             btn_pdf.setFixedHeight(max(34, int(38 * s)))
@@ -615,7 +551,7 @@ class OrderCenterView(QWidget):
                 f"font-size:{max(7, int(8 * s))}pt; font-weight:600;"
             )
             layout.addWidget(self.avg_finished_label)
-            if key != "aguardando_faturamento":
+            if key != "faturados":
                 self.avg_finished_label.hide()
                 if previous_avg_label is not None:
                     self.avg_finished_label = previous_avg_label
@@ -630,7 +566,6 @@ class OrderCenterView(QWidget):
         headers_by_section = {
             "aguardando_recebimento": ["PED", "CLIENTE", "VENDEDOR", "ENTREGA", "AGUARDANDO"],
             "em_producao": ["PED", "CLIENTE", "VENDEDOR", "RECEBIDO EM", "DESTINO"],
-            "aguardando_faturamento": ["PED", "CLIENTE", "FINALIZADO EM", "TEMPO", "DESTINO"],
             "faturados": ["PED", "CLIENTE", "FATURADO EM", "FINALIZADO EM", "DESTINO"],
             "cancelados": ["PED", "CLIENTE", "VENDEDOR", "CANCELADO EM"],
             "atrasados": ["PED", "CLIENTE", "ENTREGA", "ATRASO", "STATUS"],
@@ -639,7 +574,6 @@ class OrderCenterView(QWidget):
         stretch_columns = {
             "aguardando_recebimento": {1, 2},
             "em_producao": {1, 2},
-            "aguardando_faturamento": {1},
             "faturados": {1},
             "cancelados": {1, 2},
             "atrasados": {1},
@@ -812,18 +746,6 @@ class OrderCenterView(QWidget):
                 ]
                 sort_keys = [ped_sort, None, None,
                              str(row_data.get("received_at") or ""), None]
-            elif key == "aguardando_faturamento":
-                values = [
-                    str(ped_raw or "-"),
-                    str(row_data.get("client_name") or "-"),
-                    _format_datetime(row_data.get("finished_at")),
-                    _format_duration(row_data.get("production_time_seconds")),
-                    str(row_data.get("destination") or "-"),
-                ]
-                sort_keys = [ped_sort, None,
-                             str(row_data.get("finished_at") or ""),
-                             row_data.get("production_time_seconds") or 0,
-                             None]
             elif key == "faturados":
                 values = [
                     str(ped_raw or "-"),
@@ -932,36 +854,6 @@ class OrderCenterView(QWidget):
         )
         self._threads.append((thread, worker))
 
-    def _mark_selected_invoiced(self):
-        row = self._selected_row("aguardando_faturamento")
-        if not row:
-            QMessageBox.information(
-                self,
-                "Central de pedidos",
-                "Selecione um pedido aguardando faturamento.",
-            )
-            return
-
-        ped_number = str(row.get("ped_number") or "").strip() or "sem PED"
-        if not ask_confirmation(
-            self,
-            "Faturar pedido",
-            f"Confirma o faturamento do pedido {ped_number}?",
-            yes_text="Faturar",
-            no_text="Cancelar",
-        ):
-            return
-
-        req_id = int(row["id"])
-        thread, worker = _run_in_thread(
-            api.update_status,
-            req_id,
-            "faturado",
-            on_result=lambda _req, ped=ped_number: self._after_mark_invoiced(ped),
-            on_error=lambda msg: QMessageBox.critical(self, "Central de pedidos", msg),
-        )
-        self._threads.append((thread, worker))
-
     def _reopen_canceled_selected(self):
         row = self._selected_row("cancelados")
         if not row:
@@ -1050,14 +942,6 @@ class OrderCenterView(QWidget):
 
     def _after_reopen_canceled(self, success_message: str):
         QMessageBox.information(self, "Central de pedidos", success_message)
-        self.refresh()
-
-    def _after_mark_invoiced(self, ped_number: str):
-        QMessageBox.information(
-            self,
-            "Central de pedidos",
-            f"Pedido {ped_number} marcado como faturado.",
-        )
         self.refresh()
 
     def _apply_table_style(self, table: QTableWidget) -> None:
