@@ -58,5 +58,5 @@ Responsaveis:
 - [ ] [victor]   Canvas: ferramenta Esquadro no editor de desenho.
                  *** NAO IMPLEMENTAR ate receber autorizacao. Discutir especificacao primeiro. ***
 
-- [ ] [joao]     Faturar pedido automaticamente ao enviar para producao (A&R e Pinheiro Industria).
-                 *** PERGUNTAR ao responsavel se deve faturar antes de implementar. ***
+- [x] [joao]     Faturar pedido automaticamente ao enviar para producao (A&R e Pinheiro Industria).
+                 *** RESOLVIDO ***
