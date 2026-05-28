@@ -1171,10 +1171,26 @@ def _is_backup_candidate(path: Path) -> bool:
 
 
 def _find_latest_backup_at() -> datetime | None:
-    roots: list[Path] = [_resolve_storage_root(), Path.cwd()]
+    # A pasta configurada em BACKUP_FOLDER é o destino real do pg_dump
+    # (backup_service.run_backup). Precisa ser o primeiro local verificado;
+    # caso contrário backups já realizados nunca são detectados.
+    roots: list[Path] = []
+    if settings.BACKUP_FOLDER:
+        roots.append(Path(settings.BACKUP_FOLDER))
+    roots.extend([_resolve_storage_root(), Path.cwd()])
+
     latest_timestamp = 0.0
 
+    seen: set[str] = set()
     for root in roots:
+        try:
+            key = str(root.resolve())
+        except Exception:
+            key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+
         if not root.exists() or not root.is_dir():
             continue
 
