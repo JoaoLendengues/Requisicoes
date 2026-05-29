@@ -1457,10 +1457,22 @@ class MainWindow(QMainWindow):
                     cfg("_tab_btns", 4), "bottom",
                 ),
                 TourStep(
+                    "Aba Usuários",
+                    "Cadastre, edite e desative os usuários do sistema e "
+                    "defina o nível de acesso de cada um.",
+                    cfg("_tab_btns", 5), "bottom",
+                ),
+                TourStep(
+                    "Aba Clientes",
+                    "Cadastre clientes individualmente ou <b>importe em lote</b> "
+                    "por planilha Excel, e mantenha a base de clientes atualizada.",
+                    cfg("_tab_btns", 6), "bottom",
+                ),
+                TourStep(
                     "Aba Ajuda",
                     "Verifique atualizações disponíveis e acesse "
                     "o <b>Guia Rápido</b> novamente a qualquer momento.",
-                    cfg("_tab_btns", 5), "bottom",
+                    cfg("_tab_btns", 7), "bottom",
                 ),
                 TourStep(
                     "Salvar Configurações",

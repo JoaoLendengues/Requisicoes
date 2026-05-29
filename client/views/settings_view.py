@@ -990,6 +990,19 @@ class SettingsView(QWidget):
             self._user_center = None
 
         # ════════════════════════════════════════════════════════════════
+        # ABA: Clientes (admin only) — Cadastro de clientes embarcado
+        # ════════════════════════════════════════════════════════════════
+        self._client_center_tab_index = -1
+        if session.is_admin:
+            from .client_center_view import ClientCenterView
+            self._client_center = ClientCenterView(s, embedded=True)
+            self._client_center.guide_requested.connect(self.show_guide_requested)
+            self._client_center_tab_index = len(self._tab_btns)
+            _add_tab("Clientes", self._client_center)
+        else:
+            self._client_center = None
+
+        # ════════════════════════════════════════════════════════════════
         # ABA: Ajuda
         # ════════════════════════════════════════════════════════════════
         card_help = _new_card()
@@ -1278,12 +1291,15 @@ class SettingsView(QWidget):
             btn.setChecked(i == idx)
         self._page_scroll.verticalScrollBar().setValue(0)
 
-        # A aba de Usuários tem seus próprios botões de salvar; o botão global
-        # "SALVAR CONFIGURAÇÕES" não se aplica a ela.
+        # As abas de Usuários e Clientes têm seus próprios botões de salvar; o
+        # botão global "SALVAR CONFIGURAÇÕES" não se aplica a elas.
         on_users_tab = (idx == self._user_center_tab_index)
-        self.btn_save.setVisible(not on_users_tab)
+        on_clients_tab = (idx == self._client_center_tab_index)
+        self.btn_save.setVisible(not (on_users_tab or on_clients_tab))
         if on_users_tab and self._user_center is not None:
             self._user_center.refresh()
+        if on_clients_tab and self._client_center is not None:
+            self._client_center.refresh()
 
         # Ao abrir a aba Sistema, atualiza as métricas do Painel Técnico.
         if idx == self._system_tab_index and self._technical_panel is not None:
@@ -1660,5 +1676,7 @@ class SettingsView(QWidget):
             self._backup_table.setStyleSheet(_table_style())
         if getattr(self, "_user_center", None) is not None:
             self._user_center.apply_theme()
+        if getattr(self, "_client_center", None) is not None:
+            self._client_center.apply_theme()
         if getattr(self, "_technical_panel", None) is not None:
             self._technical_panel.apply_theme()
