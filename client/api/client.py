@@ -242,22 +242,22 @@ def update_production_machine(machine_id: int, data: dict) -> dict:
 
 def list_operators() -> list:
     with _cli() as client:
-        return _check(client.get("/production-machines/operators/"))
+        return _check(client.get("/operators/"))
 
 
 def create_operator(data: dict) -> dict:
     with _cli() as client:
-        return _check(client.post("/production-machines/operators/", json=data))
+        return _check(client.post("/operators/", json=data))
 
 
 def update_operator(operator_id: int, data: dict) -> dict:
     with _cli() as client:
-        return _check(client.patch(f"/production-machines/operators/{operator_id}", json=data))
+        return _check(client.patch(f"/operators/{operator_id}", json=data))
 
 
 def delete_operator(operator_id: int):
     with _cli() as client:
-        _check(client.delete(f"/production-machines/operators/{operator_id}"))
+        _check(client.delete(f"/operators/{operator_id}"))
 
 
 def get_production_summary(destination: str) -> dict:

@@ -23,28 +23,12 @@ class MachineOperationalStatus(str, enum.Enum):
     MANUTENCAO = "manutencao"
 
 
-# Tabela de vínculo N:N entre máquinas e operadores.
 production_machine_operators = Table(
     "production_machine_operators",
     Base.metadata,
     Column("machine_id", ForeignKey("production_machines.id", ondelete="CASCADE"), primary_key=True),
-    Column("operator_id", ForeignKey("operators.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
 )
-
-
-class Operator(Base):
-    """Cadastro central de operadores (nomes livres, sem vínculo com users)."""
-
-    __tablename__ = "operators"
-
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(255), unique=True)
-
-    machines: Mapped[list[ProductionMachine]] = relationship(
-        "ProductionMachine",
-        secondary=production_machine_operators,
-        back_populates="operators",
-    )
 
 
 class ProductionMachine(Base):
@@ -80,9 +64,8 @@ class ProductionMachine(Base):
     )
 
     updated_by = relationship("User", foreign_keys=[updated_by_id])
-    operators: Mapped[list[Operator]] = relationship(
-        "Operator",
+    operators = relationship(
+        "User",
         secondary=production_machine_operators,
-        back_populates="machines",
-        order_by="Operator.name",
+        order_by="User.name",
     )

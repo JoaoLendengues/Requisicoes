@@ -7,13 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from .database import Base, engine
-from .models import audit, client, feedback, notification, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
+from .models import audit, client, feedback, notification, operator, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
 from .routers import (
     auth,
     backup,
     clients,
     feedbacks,
     notifications,
+    operators,
     production_machines,
     products,
     requisitions,
@@ -133,6 +134,7 @@ async def monitor_runtime(request: Request, call_next):
 
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(operators.router)
 app.include_router(clients.router)
 app.include_router(products.router)
 app.include_router(production_machines.router)
