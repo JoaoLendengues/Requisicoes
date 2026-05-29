@@ -175,7 +175,6 @@ class MainWindow(QMainWindow):
         nav_visible = {
             "nova":               True,  # todos veem; A&R e Indústria em leitura
             "dashboard":          session.can_access_dashboard,
-            "tecnico":            session.can_access_technical_panel,
             "pedidos":            session.can_access_order_center,
             "pinheiro_industria": session.can_access_industria,
             "ar":                 session.can_access_ar,
@@ -1263,10 +1262,6 @@ class MainWindow(QMainWindow):
                 return val
             return _get
 
-        def tech(attr):
-            """Getter para widget do Painel Técnico (carregado sob demanda)."""
-            return lambda: getattr(mw.technical_panel_view, attr, None) if mw.technical_panel_view else None
-
         # ── Passo de boas-vindas (sem spotlight) ──────────────────────────────
         welcome = TourStep(
             title="Bem-vindo ao Sistema de Requisições!",
@@ -1443,8 +1438,10 @@ class MainWindow(QMainWindow):
                 ),
                 TourStep(
                     "Aba Sistema",
-                    "Configure a <b>URL do servidor</b> e teste a conexão com o backend. "
-                    "Ajuste os dias de alerta para pedidos sem confirmação de faturamento.",
+                    "Configure a <b>URL do servidor</b> e teste a conexão com o backend, "
+                    "ajuste os alertas de faturamento e o prazo mínimo de entrega. "
+                    "Aqui também fica o <b>Painel Técnico</b>, com a saúde do servidor "
+                    "em tempo real: conexão, tempo de resposta, uso de disco e erros.",
                     cfg("_tab_btns", 2), "bottom",
                 ),
                 TourStep(
@@ -1470,20 +1467,6 @@ class MainWindow(QMainWindow):
                     "Após ajustar as preferências, clique em "
                     "<b>Salvar Configurações</b> para aplicar as mudanças.",
                     cfg("btn_save"), "top",
-                ),
-                # ── Painel Técnico ────────────────────────────────────────────
-                TourStep(
-                    "Painel Técnico",
-                    "Monitore a saúde do servidor em tempo real: "
-                    "status de conexão, tempo de resposta, "
-                    "uso de disco e erros registrados.",
-                    nav("tecnico"), "right", "tecnico",
-                ),
-                TourStep(
-                    "Atualizar Dados",
-                    "Clique em <b>ATUALIZAR</b> para buscar as métricas "
-                    "mais recentes do servidor.",
-                    tech("refresh_btn"), "bottom",
                 ),
                 # ── Notificações ──────────────────────────────────────────────
                 TourStep(

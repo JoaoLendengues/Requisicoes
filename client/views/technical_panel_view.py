@@ -69,9 +69,14 @@ class TechnicalWorker(QObject):
 class TechnicalPanelView(QWidget):
     guide_requested = Signal()
 
-    def __init__(self, scale: float = 1.0, parent=None):
+    def __init__(self, scale: float = 1.0, parent=None, embedded: bool = False):
         super().__init__(parent)
         self.scale = scale
+        # ``embedded`` = exibido dentro de outra tela (ex.: aba Sistema das
+        # Configurações). Nesse modo dispensamos a moldura própria (scroll e
+        # fundo de tela cheia) para integrar ao container hospedeiro.
+        self._embedded = embedded
+        self._page_scroll = None
         self._threads: list[tuple[QThread, QObject]] = []
         self._metric_labels: dict[str, QLabel] = {}
         self._metric_details: dict[str, QLabel] = {}
@@ -81,13 +86,18 @@ class TechnicalPanelView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
+        embedded = self._embedded
         self.setObjectName("technicalPanelView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"QWidget#technicalPanelView {{ background:{theme.CONTENT_BG}; }}")
+        _view_bg = "transparent" if embedded else theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#technicalPanelView {{ background:{_view_bg}; }}")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
-                                max(18, int(24 * s)), max(18, int(24 * s)))
+        if embedded:
+            root.setContentsMargins(0, 0, 0, 0)
+        else:
+            root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                    max(18, int(24 * s)), max(18, int(24 * s)))
         root.setSpacing(max(14, int(18 * s)))
 
         header = QHBoxLayout()
@@ -151,7 +161,9 @@ class TechnicalPanelView(QWidget):
         header_right.addWidget(info_card)
         header_right.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
 
-        # Botão ? — abre o guia rápido desta tela
+        # Botão ? — abre o guia rápido desta tela.
+        # No modo embarcado (aba Sistema das Configurações) o guia já é provido
+        # pela própria tela de Configurações, então não duplicamos o botão.
         sz_g = max(24, int(28 * s))
         self.btn_guide = QPushButton("?")
         self.btn_guide.setToolTip("Abrir guia rápido")
@@ -163,7 +175,10 @@ class TechnicalPanelView(QWidget):
             f"border-radius:{sz_g // 2}px; padding:0;"
         )
         self.btn_guide.clicked.connect(self.guide_requested)
-        header_right.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+        if not embedded:
+            header_right.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+        else:
+            self.btn_guide.hide()
 
         header.addLayout(header_right)
         root.addLayout(header)
@@ -178,18 +193,25 @@ class TechnicalPanelView(QWidget):
         )
         root.addWidget(self.error_label)
 
-        self._page_scroll = SmoothScrollArea()
-        self._page_scroll.setWidgetResizable(True)
-        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{theme.CONTENT_BG}; }}")
-        self._page_scroll.viewport().setStyleSheet(f"background:{theme.CONTENT_BG}; border:none;")
-        root.addWidget(self._page_scroll, 1)
-
         self._page_content = QWidget()
         self._page_content.setObjectName("technicalPanelContent")
         self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._page_content.setStyleSheet(f"QWidget#technicalPanelContent {{ background:{theme.CONTENT_BG}; }}")
-        self._page_scroll.setWidget(self._page_content)
+        _content_bg = "transparent" if embedded else theme.CONTENT_BG
+        self._page_content.setStyleSheet(
+            f"QWidget#technicalPanelContent {{ background:{_content_bg}; }}"
+        )
+
+        if embedded:
+            # Sem scroll próprio: o container hospedeiro (aba Sistema) já rola.
+            root.addWidget(self._page_content)
+        else:
+            self._page_scroll = SmoothScrollArea()
+            self._page_scroll.setWidgetResizable(True)
+            self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+            self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{theme.CONTENT_BG}; }}")
+            self._page_scroll.viewport().setStyleSheet(f"background:{theme.CONTENT_BG}; border:none;")
+            root.addWidget(self._page_scroll, 1)
+            self._page_scroll.setWidget(self._page_content)
 
         layout = QVBoxLayout(self._page_content)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -437,10 +459,11 @@ class TechnicalPanelView(QWidget):
 
     def apply_theme(self) -> None:
         s = self.scale
-        bg = theme.CONTENT_BG
+        bg = "transparent" if self._embedded else theme.CONTENT_BG
         self.setStyleSheet(f"QWidget#technicalPanelView {{ background:{bg}; }}")
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
-        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        if self._page_scroll is not None:
+            self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+            self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
         self._page_content.setStyleSheet(f"QWidget#technicalPanelContent {{ background:{bg}; }}")
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.error_label.setStyleSheet(
