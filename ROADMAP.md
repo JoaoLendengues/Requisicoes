@@ -46,11 +46,12 @@ Responsaveis:
 - [ ] [cappinho] Botao "Exportar para Excel" em Historico / Busca.
                  Exportar os resultados filtrados atualmente visiveis na tabela.
 
-- [ ] [joao]     A&R: ao enviar requisicao para maquina de corte, sempre encaminhar para
+- [x] [joao]     A&R: ao enviar requisicao para maquina de corte, sempre encaminhar para
                  maquina de dobra em seguida.
                  Substituir botao "Finalizar" por "Encaminhar para Dobra" nas maquinas de
                  corte. Exibir lista de maquinas de dobra disponiveis para escolha.
                  Botao "Finalizar" permanece apenas nas maquinas de dobra.
+                 *** RESOLVIDO ***
 
 - [ ] [victor]   Relatorio de maquinas (corte e dobra) de A&R e Pinheiro Industria.
                  Mostrar historico de uso, pedidos processados e tempo medio por maquina.
