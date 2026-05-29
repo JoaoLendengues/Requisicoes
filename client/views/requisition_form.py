@@ -1971,7 +1971,11 @@ class RequisitionForm(QWidget):
             )
             return
 
-        if not self._confirm_invoice_before_send():
+        invoice_action = self._confirm_invoice_before_send()
+        if invoice_action == "cancel":
+            return
+        if invoice_action == "save":
+            self.save_requested.emit()
             return
 
         destination = self._pick_production_destination()
@@ -1991,15 +1995,29 @@ class RequisitionForm(QWidget):
         )
         self._threads.append((thread, worker))
 
-    def _confirm_invoice_before_send(self) -> bool:
+    def _confirm_invoice_before_send(self) -> str:
         ped_number = (self.input_ped.text() or "").strip() or "sem PED"
-        return ask_confirmation(
-            self,
-            "Faturar pedido",
-            f"Deseja faturar o pedido {ped_number}?",
-            yes_text="Faturar",
-            no_text="Cancelar",
-        )
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Pedido faturado")
+        box.setText(f"Pedido faturado ({ped_number})?")
+        box.setTextFormat(Qt.TextFormat.PlainText)
+
+        btn_yes = box.addButton("Sim", QMessageBox.ButtonRole.YesRole)
+        btn_save = box.addButton("Apenas salvar", QMessageBox.ButtonRole.ActionRole)
+        btn_cancel = box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+
+        box.setDefaultButton(btn_yes)
+        box.setEscapeButton(btn_cancel)
+        apply_message_box_theme(box)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == btn_yes:
+            return "yes"
+        if clicked == btn_save:
+            return "save"
+        return "cancel"
 
     def _pick_production_destination(self) -> str | None:
         msg = QMessageBox(self)
