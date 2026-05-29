@@ -89,9 +89,35 @@ def _migrate():
             pass
 
 
+def _migrate_production_machine_operators():
+    """
+    Migra production_machine_operators de user_id para operator_id.
+    Detecta automaticamente a estrutura atual e corrige se necessário.
+    Funciona tanto em SQLite quanto em PostgreSQL.
+    """
+    try:
+        from sqlalchemy import inspect as sa_inspect
+        from .models.production_machine import production_machine_operators as _pmo
+
+        inspector = sa_inspect(engine)
+        if "production_machine_operators" not in inspector.get_table_names():
+            return  # create_all criará com a estrutura correta
+
+        cols = {c["name"] for c in inspector.get_columns("production_machine_operators")}
+        if "user_id" in cols and "operator_id" not in cols:
+            # Tabela antiga — dropa e recria com operator_id
+            with engine.begin() as conn:
+                conn.execute(text("DROP TABLE production_machine_operators"))
+            with engine.begin() as conn:
+                _pmo.create(conn)
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    _migrate_production_machine_operators()
     _migrate()
     seed_admin()
     seed_production_machines()
