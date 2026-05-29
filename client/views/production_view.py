@@ -48,7 +48,6 @@ PROD_STARTED = "INICIADA"
 PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
-PROD_DELIVERY_CHANGED = "PRAZO_ALTERADO"
 AR_DOBRA_SOURCE_MACHINE_NUMBERS = {1, 2, 3, 16}
 
 MACHINE_STATUS_OPTIONS = (
@@ -1229,7 +1228,7 @@ class ProductionView(QWidget):
 
     def _update_delivery_date_and_waiting_receipt(self, req_id: int, new_date: str, reason: str) -> dict:
         api.update_delivery_date(req_id, new_date, reason)
-        note = _build_production_note(PROD_DELIVERY_CHANGED, self.destination)
+        note = _build_production_note(PROD_SEND, self.destination, reason=reason)
         return api.update_status(req_id, "aguardando_recebimento", note)
 
     def _ask_delivery_date(self, req: dict) -> tuple[str, str] | None:
