@@ -59,6 +59,17 @@ Responsaveis:
                  Botao "Finalizar" permanece apenas nas maquinas de dobra.
                  *** RESOLVIDO ***
 
+- [x] [joao]     Painel Tecnico movido para Configuracoes > aba "Sistema" (deixou de ser
+                 tela na sidebar). Cards reorganizados em secoes (Disponibilidade /
+                 Desempenho & Recursos / Usuarios), no padrao visual da aba.
+                 *** RESOLVIDO ***
+
+- [x] [joao]     Cadastro de clientes: nova aba "Clientes" em Configuracoes (admin).
+                 Lista por busca no servidor, cadastro individual (code/name/cnpj
+                 obrigatorios) e importacao em lote por planilha Excel (create-only,
+                 rejeita e lista conflitos). Usa rotas existentes; sem reiniciar servidor.
+                 *** RESOLVIDO ***
+
 - [ ] [victor]   Relatorio de maquinas (corte e dobra) de A&R e Pinheiro Industria.
                  Mostrar historico de uso, pedidos processados e tempo medio por maquina.
 
