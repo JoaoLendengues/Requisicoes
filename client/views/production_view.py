@@ -47,6 +47,7 @@ PROD_STARTED = "INICIADA"
 PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
+AR_DOBRA_SOURCE_MACHINES = {"01", "02", "03", "16"}
 
 MACHINE_STATUS_OPTIONS = (
     ("funcionando", "Funcionando"),
@@ -85,6 +86,10 @@ def _normalize_destination(destination: str) -> str:
 
 def _destination_card_meta(destination: str) -> dict | None:
     return _destination_card_meta_dict().get(_normalize_destination(destination))
+
+
+def _is_ar_dobra_source_machine(destination: str, machine_name: str) -> bool:
+    return _normalize_destination(destination) == "A&R" and str(machine_name or "").strip() in AR_DOBRA_SOURCE_MACHINES
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -787,7 +792,9 @@ class ProductionView(QWidget):
         actions = QHBoxLayout()
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
-        btn_finish = QPushButton("Finalizar")
+        machine_name = str(machine.get("name") or "").strip()
+        is_dobra_source = _is_ar_dobra_source_machine(self.destination, machine_name)
+        btn_finish = QPushButton("Enviar para dobra" if is_dobra_source else "Finalizar")
         btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
         for btn in (btn_open, btn_finish, btn_prazo, btn_cancel):
@@ -797,7 +804,10 @@ class ProductionView(QWidget):
         btn_prazo.setStyleSheet(_flat_secondary_btn_style(s))
         btn_cancel.setStyleSheet(_danger_action_btn_style(s))
         btn_open.clicked.connect(lambda: self._open_selected_machine(int(machine["id"])))
-        btn_finish.clicked.connect(lambda: self._finish_selected_machine(int(machine["id"])))
+        if is_dobra_source:
+            btn_finish.clicked.connect(lambda: self._send_selected_machine_to_dobra(int(machine["id"])))
+        else:
+            btn_finish.clicked.connect(lambda: self._finish_selected_machine(int(machine["id"])))
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(int(machine["id"])))
         btn_cancel.clicked.connect(lambda: self._return_selected_machine_to_queue(int(machine["id"])))
         actions.addWidget(btn_open)
@@ -956,14 +966,28 @@ class ProductionView(QWidget):
             success_message="Requisição movida para aguardando na fila.",
         )
 
-    def _pick_machine(self) -> str | None:
-        machine_names = [str(machine.get("name") or "") for machine in self._machines_data if machine.get("name")]
+    def _pick_machine(
+        self,
+        *,
+        exclude_machine: str | None = None,
+        window_title: str = "Selecionar Máquina",
+        prompt_text: str = "Escolha a máquina de destino:",
+    ) -> str | None:
+        excluded = str(exclude_machine or "").strip()
+        machine_names = [
+            str(machine.get("name") or "").strip()
+            for machine in self._machines_data
+            if machine.get("name") and str(machine.get("name") or "").strip() != excluded
+        ]
         if not machine_names:
-            self._show_error("Não há máquinas cadastradas para este destino.")
+            if excluded:
+                self._show_error("Não há outra máquina disponível para este envio.")
+            else:
+                self._show_error("Não há máquinas cadastradas para este destino.")
             return None
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Selecionar Máquina")
+        dlg.setWindowTitle(window_title)
         dlg.setModal(True)
         dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         dlg.setStyleSheet(
@@ -976,7 +1000,7 @@ class ProductionView(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(max(8, int(10 * self.scale)))
 
-        lbl = QLabel("Escolha a máquina de destino:")
+        lbl = QLabel(prompt_text)
         layout.addWidget(lbl)
 
         combo = QComboBox()
@@ -1060,6 +1084,41 @@ class ProductionView(QWidget):
             int(req["id"]),
             machine_name,
             success_message="Requisição finalizada e faturada.",
+        )
+
+    def _send_selected_machine_to_dobra(self, machine_id: int):
+        req, machine = self._selected_machine_row(machine_id)
+        if not req or not machine:
+            self._show_info("Selecione uma requisição em produção dentro do card da máquina.")
+            return
+
+        source_machine = str(machine.get("name") or "").strip()
+        target_machine = self._pick_machine(
+            exclude_machine=source_machine,
+            window_title="Enviar para dobra",
+            prompt_text=f"Escolha a máquina de dobra de destino (origem: {source_machine}):",
+        )
+        if not target_machine:
+            return
+
+        self._run_action(
+            self._transfer_machine_requisition,
+            int(req["id"]),
+            source_machine,
+            target_machine,
+            success_message=f"Requisição enviada para dobra na máquina {target_machine}.",
+        )
+
+    def _transfer_machine_requisition(self, req_id: int, source_machine: str, target_machine: str):
+        api.update_status(
+            req_id,
+            "aguardando_na_fila",
+            _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=source_machine),
+        )
+        api.update_status(
+            req_id,
+            "em_producao",
+            _build_production_note(PROD_STARTED, self.destination, machine=target_machine),
         )
 
     def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str):
