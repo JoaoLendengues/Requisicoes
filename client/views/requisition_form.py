@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
     QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
+    QAbstractSpinBox,
 )
 from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression, QRectF, QSize
 from PySide6.QtGui import QAction, QKeySequence, QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
@@ -1158,7 +1159,10 @@ class RequisitionForm(QWidget):
         # Prazo de entrega
         self.input_prazo = QDateEdit(self._default_delivery_qdate())
         self.input_prazo.setDisplayFormat("dd/MM/yyyy")
-        self.input_prazo.setCalendarPopup(True)
+        self.input_prazo.setCalendarPopup(False)
+        self.input_prazo.setReadOnly(True)
+        self.input_prazo.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.input_prazo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.input_prazo.setFixedHeight(max(28,int(32*s)))
         self.input_prazo.setStyleSheet(theme.input_style(s))
         add_field("📦", "PRAZO DE ENTREGA", self.input_prazo)

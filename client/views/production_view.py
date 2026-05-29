@@ -48,6 +48,7 @@ PROD_STARTED = "INICIADA"
 PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
+PROD_DELIVERY_CHANGED = "PRAZO_ALTERADO"
 AR_DOBRA_SOURCE_MACHINE_NUMBERS = {1, 2, 3, 16}
 
 MACHINE_STATUS_OPTIONS = (
@@ -1216,12 +1217,20 @@ class ProductionView(QWidget):
             return
         new_date, reason = result
         self._run_action(
-            api.update_delivery_date,
+            self._update_delivery_date_and_waiting_receipt,
             int(req["id"]),
             new_date,
             reason,
-            success_message="Prazo de entrega alterado. O vendedor foi notificado.",
+            success_message=(
+                "Prazo de entrega alterado. "
+                "Status atualizado para aguardando recebimento e vendedor notificado."
+            ),
         )
+
+    def _update_delivery_date_and_waiting_receipt(self, req_id: int, new_date: str, reason: str) -> dict:
+        api.update_delivery_date(req_id, new_date, reason)
+        note = _build_production_note(PROD_DELIVERY_CHANGED, self.destination)
+        return api.update_status(req_id, "aguardando_recebimento", note)
 
     def _ask_delivery_date(self, req: dict) -> tuple[str, str] | None:
         dlg = QDialog(self)
