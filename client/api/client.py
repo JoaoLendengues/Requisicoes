@@ -253,6 +253,16 @@ def update_status(req_id: int, status: str, note: str = "") -> dict:
         ))
 
 
+def update_delivery_date(req_id: int, delivery_date: str, reason: str) -> dict:
+    """Produção altera o prazo de entrega com justificativa.
+    delivery_date no formato ISO (YYYY-MM-DD)."""
+    with _cli() as client:
+        return _check(client.patch(
+            f"/requisitions/{req_id}/delivery-date",
+            json={"delivery_date": delivery_date, "reason": reason},
+        ))
+
+
 def update_production_machine_status(machine_id: int, status: str) -> dict:
     with _cli() as client:
         return _check(

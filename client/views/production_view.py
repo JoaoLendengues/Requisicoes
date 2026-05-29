@@ -2,11 +2,12 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import QDate, QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDateEdit,
     QDialog,
     QFrame,
     QGraphicsDropShadowEffect,
@@ -534,12 +535,14 @@ class ProductionView(QWidget):
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
         btn_primary = QPushButton(primary_text)
+        btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
-        for btn in (btn_open, btn_primary, btn_cancel):
+        for btn in (btn_open, btn_primary, btn_prazo, btn_cancel):
             btn.setFixedHeight(max(34, int(38 * s)))
 
         btn_open.setStyleSheet(_flat_secondary_btn_style(s))
         btn_primary.setStyleSheet(_primary_action_btn_style(s))
+        btn_prazo.setStyleSheet(_flat_secondary_btn_style(s))
         btn_cancel.setStyleSheet(_danger_action_btn_style(s))
 
         btn_open.clicked.connect(lambda: self._open_selected_stage(stage))
@@ -547,10 +550,12 @@ class ProductionView(QWidget):
             btn_primary.clicked.connect(self._receive_selected)
         else:
             btn_primary.clicked.connect(self._send_queue_selected_to_machine)
+        btn_prazo.clicked.connect(lambda: self._change_delivery_selected_stage(stage))
         btn_cancel.clicked.connect(lambda: self._cancel_selected_stage(stage))
 
         actions.addWidget(btn_open)
         actions.addWidget(btn_primary)
+        actions.addWidget(btn_prazo)
         actions.addWidget(btn_cancel)
         layout.addLayout(actions)
 
@@ -783,17 +788,21 @@ class ProductionView(QWidget):
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
         btn_finish = QPushButton("Finalizar")
+        btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
-        for btn in (btn_open, btn_finish, btn_cancel):
+        for btn in (btn_open, btn_finish, btn_prazo, btn_cancel):
             btn.setFixedHeight(max(34, int(38 * s)))
         btn_open.setStyleSheet(_flat_secondary_btn_style(s))
         btn_finish.setStyleSheet(_primary_action_btn_style(s))
+        btn_prazo.setStyleSheet(_flat_secondary_btn_style(s))
         btn_cancel.setStyleSheet(_danger_action_btn_style(s))
         btn_open.clicked.connect(lambda: self._open_selected_machine(int(machine["id"])))
         btn_finish.clicked.connect(lambda: self._finish_selected_machine(int(machine["id"])))
+        btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(int(machine["id"])))
         btn_cancel.clicked.connect(lambda: self._return_selected_machine_to_queue(int(machine["id"])))
         actions.addWidget(btn_open)
         actions.addWidget(btn_finish)
+        actions.addWidget(btn_prazo)
         actions.addWidget(btn_cancel)
         layout.addLayout(actions)
 
@@ -1107,6 +1116,110 @@ class ProductionView(QWidget):
             status_value,
             success_message=f"Status da máquina atualizado para {status_label}.",
         )
+
+    def _change_delivery_selected_stage(self, stage: str):
+        req = self._selected_stage_row(stage)
+        if not req:
+            self._show_info("Selecione uma requisição primeiro.")
+            return
+        self._change_delivery_date(req)
+
+    def _change_delivery_selected_machine(self, machine_id: int):
+        req, _machine = self._selected_machine_row(machine_id)
+        if not req:
+            self._show_info("Selecione uma requisição no card da máquina.")
+            return
+        self._change_delivery_date(req)
+
+    def _change_delivery_date(self, req: dict):
+        result = self._ask_delivery_date(req)
+        if result is None:
+            return
+        new_date, reason = result
+        self._run_action(
+            api.update_delivery_date,
+            int(req["id"]),
+            new_date,
+            reason,
+            success_message="Prazo de entrega alterado. O vendedor foi notificado.",
+        )
+
+    def _ask_delivery_date(self, req: dict) -> tuple[str, str] | None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Alterar Prazo de Entrega")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(max(8, int(10 * self.scale)))
+
+        ped = str(req.get("ped_number") or "")
+        header = QLabel(f"Requisição PED #{ped}")
+        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        layout.addWidget(header)
+
+        lbl_date = QLabel("Novo prazo de entrega:")
+        layout.addWidget(lbl_date)
+
+        date_edit = QDateEdit()
+        date_edit.setDisplayFormat("dd/MM/yyyy")
+        date_edit.setCalendarPopup(True)
+        date_edit.setFixedHeight(max(34, int(38 * self.scale)))
+        date_edit.setStyleSheet(theme.input_style(self.scale))
+        current = QDate.fromString(str(req.get("delivery_date") or "")[:10], "yyyy-MM-dd")
+        date_edit.setDate(current if current.isValid() else QDate.currentDate())
+        layout.addWidget(date_edit)
+
+        lbl_reason = QLabel("Motivo da alteração:")
+        layout.addWidget(lbl_reason)
+
+        input_reason = QTextEdit()
+        input_reason.setPlaceholderText("Descreva o motivo da alteração do prazo...")
+        input_reason.setMinimumHeight(max(96, int(120 * self.scale)))
+        input_reason.setStyleSheet(theme.input_style(self.scale))
+        layout.addWidget(input_reason)
+
+        error_lbl = QLabel("")
+        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setVisible(False)
+        layout.addWidget(error_lbl)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok = QPushButton("Confirmar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_ok)
+        layout.addLayout(buttons)
+
+        def _confirm():
+            normalized = " ".join(input_reason.toPlainText().split())
+            if len(normalized) < 5:
+                error_lbl.setText("Informe um motivo com pelo menos 5 caracteres.")
+                error_lbl.setVisible(True)
+                return
+            dlg.setProperty("_new_date", date_edit.date().toString("yyyy-MM-dd"))
+            dlg.setProperty("_reason", normalized)
+            dlg.accept()
+
+        btn_ok.clicked.connect(_confirm)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        new_date = str(dlg.property("_new_date") or "")
+        reason = str(dlg.property("_reason") or "")
+        if not new_date:
+            return None
+        return new_date, reason
 
     def _ask_cancel_reason(self) -> str | None:
         dlg = QDialog(self)

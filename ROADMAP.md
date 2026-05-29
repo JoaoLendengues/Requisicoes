@@ -18,9 +18,10 @@ Responsaveis:
                  Impede salvar se nenhuma das duas opcoes estiver selecionada.
                  *** RESOLVIDO ***
 
-- [ ] [joao]     A&R + Pinheiro Industria: alterar prazo de entrega com justificativa.
+- [x] [joao]     A&R + Pinheiro Industria: alterar prazo de entrega com justificativa.
                  Producao digita o motivo da alteracao; requisicao volta para o vendedor
                  com notificacao e novo prazo visivel no historico.
+                 *** RESOLVIDO ***
 
 - [ ] [joao]     Motivos predefinidos para cancelamento de requisicoes.
                  Caixa de selecao: "Desistencia", "Material danificado / avariado", "Outro".
@@ -33,10 +34,11 @@ Responsaveis:
 
 ## Media prioridade
 
-- [ ] [joao]     Prazo minimo em dias uteis.
+- [x] [joao]     Prazo minimo em dias uteis.
                  Horario comercial: segunda a sexta 8h-18h, sabado 8h-12h.
                  Novo parametro em Configuracoes > Sistema para definir o minimo.
                  Notificar vendedor / gerente quando o prazo estiver proximo ou vencido.
+                 *** RESOLVIDO *** (sabado nao conta; admin/gerente podem gravar abaixo do minimo)
 
 - [ ] [cappinho] Painel Gerencial: identificar backups realizados (data, tamanho, status).
 

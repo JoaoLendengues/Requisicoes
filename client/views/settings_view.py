@@ -596,6 +596,34 @@ class SettingsView(QWidget):
                 f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             billing_vl.addWidget(self.operational_status)
+
+            # Prazo mínimo de entrega (dias úteis)
+            billing_vl.addSpacing(max(6, int(8 * s)))
+            billing_vl.addWidget(_section("Prazo Mínimo de Entrega", s))
+            billing_vl.addWidget(_separator())
+            min_deliv_row = QHBoxLayout()
+            min_deliv_row.setSpacing(max(8, int(10 * s)))
+            min_deliv_row.addWidget(self._lbl("Mínimo de dias úteis:", s))
+            self.input_min_delivery_days = QSpinBox()
+            self.input_min_delivery_days.setRange(0, 365)
+            self.input_min_delivery_days.setValue(
+                int(res._read_file().get("min_delivery_business_days", 0) or 0)
+            )
+            self.input_min_delivery_days.setFixedHeight(max(38, int(44 * s)))
+            self.input_min_delivery_days.setFixedWidth(max(110, int(130 * s)))
+            self.input_min_delivery_days.setStyleSheet(_spinbox_style(s))
+            min_deliv_row.addWidget(self.input_min_delivery_days)
+            min_deliv_row.addStretch()
+            billing_vl.addLayout(min_deliv_row)
+            min_deliv_hint = QLabel(
+                "0 = sem restrição. Define quantos dias úteis (seg-sex) à frente o "
+                "vendedor deve agendar a entrega. Admin e gerente podem salvar abaixo do mínimo."
+            )
+            min_deliv_hint.setWordWrap(True)
+            min_deliv_hint.setProperty("muted", "1")
+            min_deliv_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            billing_vl.addWidget(min_deliv_hint)
+
             lay_sis.addWidget(self._billing_section)
             self._billing_section.setVisible(session.settings_show_billing)
 
@@ -608,6 +636,7 @@ class SettingsView(QWidget):
             self.btn_test             = QPushButton()
             self.lbl_conn_status      = QLabel()
             self.input_pending_invoice_days = QSpinBox()
+            self.input_min_delivery_days = QSpinBox()
             self.operational_status   = QLabel()
 
         # ════════════════════════════════════════════════════════════════
@@ -1014,10 +1043,13 @@ class SettingsView(QWidget):
             data = payload if isinstance(payload, dict) else {}
             days = int(data.get("pending_invoice_alert_days") or 1)
             self.input_pending_invoice_days.setValue(days)
+            min_deliv = int(data.get("min_delivery_business_days") or 0)
+            self.input_min_delivery_days.setValue(min_deliv)
             self.operational_status.setText(
                 f"Prazo sincronizado com o servidor: {days} dia(s)."
             )
-            res.save(pending_invoice_alert_days=days)
+            res.save(pending_invoice_alert_days=days,
+                     min_delivery_business_days=min_deliv)
             return
 
         if action == "save_operational":
@@ -1254,7 +1286,10 @@ class SettingsView(QWidget):
         if session.settings_show_billing:
             # Admin / Gerente: salva aparência + prazo de faturamento no servidor
             pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
-            res.save(**save_kwargs, pending_invoice_alert_days=pending_invoice_alert_days)
+            min_delivery_business_days = int(self.input_min_delivery_days.value())
+            res.save(**save_kwargs,
+                     pending_invoice_alert_days=pending_invoice_alert_days,
+                     min_delivery_business_days=min_delivery_business_days)
             if session.settings_show_login_backgrounds:
                 self._refresh_bg_table()
             self._pending_save_context = {
@@ -1262,10 +1297,13 @@ class SettingsView(QWidget):
                 "font_size_changed": font_size_changed,
             }
             self._set_save_busy(True)
-            self.operational_status.setText("Salvando prazo de alerta no servidor...")
+            self.operational_status.setText("Salvando configurações no servidor...")
             self._start_api_worker(
                 "save_operational",
-                {"pending_invoice_alert_days": pending_invoice_alert_days},
+                {
+                    "pending_invoice_alert_days": pending_invoice_alert_days,
+                    "min_delivery_business_days": min_delivery_business_days,
+                },
             )
         else:
             # Demais roles: salva apenas aparência localmente

@@ -1162,6 +1162,7 @@ class RequisitionForm(QWidget):
         self.input_prazo.setFixedHeight(max(28,int(32*s)))
         self.input_prazo.setStyleSheet(theme.input_style(s))
         add_field("📦", "PRAZO DE ENTREGA", self.input_prazo)
+        self._apply_min_delivery_constraint()
 
         # Retirada — mutuamente exclusivo com Entrega
         chk_style = f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
@@ -1191,6 +1192,41 @@ class RequisitionForm(QWidget):
         layout.addStretch()
 
         return card
+
+    # ── Prazo mínimo de entrega (dias úteis) ──────────────────────────────────
+    @staticmethod
+    def _earliest_delivery_qdate(min_days: int) -> QDate:
+        """Retorna a data mais cedo permitida, somando `min_days` dias úteis
+        (segunda a sexta) a partir de hoje. Sábado e domingo não contam."""
+        current = QDate.currentDate()
+        if min_days <= 0:
+            return current
+        added = 0
+        while added < min_days:
+            current = current.addDays(1)
+            if current.dayOfWeek() <= 5:  # 1=seg ... 5=sex
+                added += 1
+        return current
+
+    def _apply_min_delivery_constraint(self) -> None:
+        """Aplica a data mínima de entrega ao seletor de prazo.
+        Admin/gerente podem gravar abaixo do mínimo, então não recebem trava."""
+        if getattr(session, "is_manager_or_admin", False):
+            return
+        try:
+            min_days = int(res._read_file().get("min_delivery_business_days", 0) or 0)
+        except Exception:
+            min_days = 0
+        if min_days <= 0:
+            return
+        earliest = self._earliest_delivery_qdate(min_days)
+        self.input_prazo.setMinimumDate(earliest)
+        if self.input_prazo.date() < earliest:
+            self.input_prazo.setDate(earliest)
+        self.input_prazo.setToolTip(
+            f"Prazo mínimo de entrega: {min_days} dia(s) útil(eis) "
+            f"(a partir de {earliest.toString('dd/MM/yyyy')})"
+        )
 
     # ── Seção Cliente ─────────────────────────────────────────────────────────
     def _build_client_section(self) -> QFrame:
@@ -2168,6 +2204,10 @@ class RequisitionForm(QWidget):
         self._set_phone_text(data.get("phone") or "")
         self.input_address.setText(data.get("delivery_address") or "")
 
+        # Requisição existente: libera a data mínima para exibir o prazo salvo,
+        # mesmo que seja anterior ao mínimo vigente.
+        self.input_prazo.setMinimumDate(QDate(2000, 1, 1))
+        self.input_prazo.setToolTip("")
         delivery = data.get("delivery_date")
         if delivery:
             qd = QDate.fromString(str(delivery)[:10], "yyyy-MM-dd")
@@ -2213,6 +2253,7 @@ class RequisitionForm(QWidget):
         self.input_address.clear()
         self.input_obs.clear()
         self.input_prazo.setDate(QDate.currentDate())
+        self._apply_min_delivery_constraint()
         self.chk_retirada.setChecked(False)
         self.chk_entrega.setChecked(False)
         self.client_search.clear()
