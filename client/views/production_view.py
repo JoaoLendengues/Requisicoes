@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QObject, QThread, Qt, Signal
@@ -47,7 +48,7 @@ PROD_STARTED = "INICIADA"
 PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
-AR_DOBRA_SOURCE_MACHINES = {"01", "02", "03", "16"}
+AR_DOBRA_SOURCE_MACHINE_NUMBERS = {1, 2, 3, 16}
 
 MACHINE_STATUS_OPTIONS = (
     ("funcionando", "Funcionando"),
@@ -88,8 +89,17 @@ def _destination_card_meta(destination: str) -> dict | None:
     return _destination_card_meta_dict().get(_normalize_destination(destination))
 
 
+
+def _is_dobra_source_machine_name(machine_name: str) -> bool:
+    normalized_name = str(machine_name or "").strip()
+    if not normalized_name:
+        return False
+    digits = re.findall(r"\d+", normalized_name)
+    return any(int(token) in AR_DOBRA_SOURCE_MACHINE_NUMBERS for token in digits)
+
+
 def _is_ar_dobra_source_machine(destination: str, machine_name: str) -> bool:
-    return _normalize_destination(destination) == "A&R" and str(machine_name or "").strip() in AR_DOBRA_SOURCE_MACHINES
+    return _normalize_destination(destination) == "A&R" and _is_dobra_source_machine_name(machine_name)
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -1396,5 +1406,6 @@ class ProductionView(QWidget):
         for card in self._machine_cards.values():
             self._apply_table_style(card["table"])
             card["combo"].setStyleSheet(_machine_combo_style(s))
+
 
 
