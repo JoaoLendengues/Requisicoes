@@ -14,8 +14,9 @@ Responsaveis:
 
 ## Alta prioridade
 
-- [ ] [joao]     Campos "Entrega" e "Retirada" como obrigatorios em Nova Requisicao.
+- [x] [joao]     Campos "Entrega" e "Retirada" como obrigatorios em Nova Requisicao.
                  Impede salvar se nenhuma das duas opcoes estiver selecionada.
+                 *** RESOLVIDO ***
 
 - [ ] [joao]     A&R + Pinheiro Industria: alterar prazo de entrega com justificativa.
                  Producao digita o motivo da alteracao; requisicao volta para o vendedor
