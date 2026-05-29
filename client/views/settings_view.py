@@ -1011,19 +1011,6 @@ class SettingsView(QWidget):
             self._machine_center = None
 
         # ════════════════════════════════════════════════════════════════
-        # ABA: Operadores (admin only)
-        # ════════════════════════════════════════════════════════════════
-        self._operator_center_tab_index = -1
-        if session.is_admin:
-            from .operator_center_view import OperatorCenterView
-            self._operator_center = OperatorCenterView(s, embedded=True)
-            self._operator_center.guide_requested.connect(self.show_guide_requested)
-            self._operator_center_tab_index = len(self._tab_btns)
-            _add_tab("Operadores", self._operator_center)
-        else:
-            self._operator_center = None
-
-        # ════════════════════════════════════════════════════════════════
         # ABA: Ajuda
         # ════════════════════════════════════════════════════════════════
         card_help = _new_card()
@@ -1317,18 +1304,13 @@ class SettingsView(QWidget):
         on_users_tab = (idx == self._user_center_tab_index)
         on_clients_tab = (idx == self._client_center_tab_index)
         on_machines_tab = (idx == self._machine_center_tab_index)
-        on_operators_tab = (idx == getattr(self, "_operator_center_tab_index", -1))
-        self.btn_save.setVisible(not (on_users_tab or on_clients_tab or on_machines_tab or on_operators_tab))
+        self.btn_save.setVisible(not (on_users_tab or on_clients_tab or on_machines_tab))
         if on_users_tab and self._user_center is not None:
             self._user_center.refresh()
         if on_clients_tab and self._client_center is not None:
             self._client_center.refresh()
         if on_machines_tab and self._machine_center is not None:
             self._machine_center.refresh()
-
-        on_operators_tab = (idx == self._operator_center_tab_index)
-        if on_operators_tab and self._operator_center is not None:
-            self._operator_center.refresh()
 
         # Ao abrir a aba Sistema, atualiza as métricas do Painel Técnico.
         if idx == self._system_tab_index and self._technical_panel is not None:
@@ -1709,7 +1691,5 @@ class SettingsView(QWidget):
             self._client_center.apply_theme()
         if getattr(self, "_machine_center", None) is not None:
             self._machine_center.apply_theme()
-        if getattr(self, "_operator_center", None) is not None:
-            self._operator_center.apply_theme()
         if getattr(self, "_technical_panel", None) is not None:
             self._technical_panel.apply_theme()

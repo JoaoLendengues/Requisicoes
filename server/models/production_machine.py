@@ -27,7 +27,7 @@ production_machine_operators = Table(
     "production_machine_operators",
     Base.metadata,
     Column("machine_id", ForeignKey("production_machines.id", ondelete="CASCADE"), primary_key=True),
-    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("operator_id", ForeignKey("operators.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -65,7 +65,7 @@ class ProductionMachine(Base):
 
     updated_by = relationship("User", foreign_keys=[updated_by_id])
     operators = relationship(
-        "User",
+        "Operator",
         secondary=production_machine_operators,
-        order_by="User.name",
+        order_by="Operator.name",
     )
