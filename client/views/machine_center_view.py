@@ -4,7 +4,7 @@ from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
+    QCompleter,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -44,11 +44,6 @@ DESTINATION_OPTIONS = (
     ("A&R", "A&R"),
     ("PINHEIRO INDÚSTRIA", "Pinheiro Indústria"),
 )
-ROLE_LABELS = {
-    "producao": "A&R",
-    "industria": "INDÚSTRIA",
-    "entrega": "INDÚSTRIA",
-}
 STATUS_LABELS = {
     "funcionando": "FUNCIONANDO",
     "manutencao": "MANUTENÇÃO",
@@ -64,12 +59,12 @@ class MachineCenterView(QWidget):
         self.embedded = embedded
         self._threads: list[tuple[QThread, QObject]] = []
         self._machines_all: list[dict] = []
-        self._users_all: list[dict] = []
+        self._operators_all: list[str] = []        # nomes de todos os operadores cadastrados
+        self._machine_operator_names: list[str] = []  # nomes alocados à máquina em edição
         self._selected_machine_id: int | None = None
         self._pending_machine_id: int | None = None
         self._pending_refreshes = 0
         self._refresh_failed = False
-        self._operator_checks: list[tuple[int, QCheckBox]] = []
         self._setup_ui()
 
     def _setup_ui(self):
@@ -240,35 +235,37 @@ class MachineCenterView(QWidget):
 
         layout.addLayout(form)
 
-        operators_header = QHBoxLayout()
-        operators_header.setSpacing(max(8, int(10 * s)))
+        # ── Seção de operadores ───────────────────────────────────────────
         operators_title = QLabel("OPERADORES DA MÁQUINA")
         operators_title.setStyleSheet(
             f"font-size:{max(8, int(9 * s))}pt; font-weight:800;"
         )
-        operators_header.addWidget(operators_title)
-        operators_header.addStretch()
-
-        self.btn_select_all = QPushButton("SELECIONAR TODOS")
-        self.btn_select_all.setFixedHeight(max(32, int(36 * s)))
-        self.btn_select_all.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_select_all.clicked.connect(self._select_all_operators)
-        operators_header.addWidget(self.btn_select_all)
-
-        self.btn_clear_ops = QPushButton("LIMPAR")
-        self.btn_clear_ops.setFixedHeight(max(32, int(36 * s)))
-        self.btn_clear_ops.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_clear_ops.clicked.connect(self._clear_operator_selection)
-        operators_header.addWidget(self.btn_clear_ops)
-        layout.addLayout(operators_header)
+        layout.addWidget(operators_title)
 
         ops_hint = QLabel(
-            "A lista é filtrada conforme a produção selecionada e importa os usuários já cadastrados."
+            "Digite o nome e clique em Adicionar. Novos nomes são criados automaticamente no cadastro de operadores."
         )
         ops_hint.setWordWrap(True)
         ops_hint.setProperty("muted", "1")
         ops_hint.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
         layout.addWidget(ops_hint)
+
+        ops_input_row = QHBoxLayout()
+        ops_input_row.setSpacing(max(6, int(8 * s)))
+        self.input_operator = QLineEdit()
+        self.input_operator.setFixedHeight(max(38, int(44 * s)))
+        self.input_operator.setStyleSheet(_field_style(s))
+        self.input_operator.setPlaceholderText("Nome do operador...")
+        self.input_operator.returnPressed.connect(self._add_operator_from_input)
+        bind_uppercase_line_edit(self.input_operator)
+        ops_input_row.addWidget(self.input_operator, 1)
+
+        self.btn_add_operator = QPushButton("ADICIONAR")
+        self.btn_add_operator.setFixedHeight(max(38, int(44 * s)))
+        self.btn_add_operator.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_add_operator.clicked.connect(self._add_operator_from_input)
+        ops_input_row.addWidget(self.btn_add_operator)
+        layout.addLayout(ops_input_row)
 
         self.operators_scroll = SmoothScrollArea()
         self.operators_scroll.setWidgetResizable(True)
@@ -276,8 +273,8 @@ class MachineCenterView(QWidget):
         self.operators_scroll.setStyleSheet(
             f"QScrollArea {{ border:1px solid {theme.BORDER_COLOR}; background:{theme.CARD_BG}; border-radius:14px; }}"
         )
-        self.operators_scroll.setMinimumHeight(max(220, int(260 * s)))
-        self.operators_scroll.setMaximumHeight(max(320, int(360 * s)))
+        self.operators_scroll.setMinimumHeight(max(140, int(160 * s)))
+        self.operators_scroll.setMaximumHeight(max(240, int(280 * s)))
 
         self.operators_content = QWidget()
         self.operators_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -286,12 +283,12 @@ class MachineCenterView(QWidget):
 
         self.operators_layout = QVBoxLayout(self.operators_content)
         self.operators_layout.setContentsMargins(
-            max(12, int(14 * s)),
             max(10, int(12 * s)),
-            max(12, int(14 * s)),
+            max(8, int(10 * s)),
             max(10, int(12 * s)),
+            max(8, int(10 * s)),
         )
-        self.operators_layout.setSpacing(max(8, int(10 * s)))
+        self.operators_layout.setSpacing(max(4, int(6 * s)))
         layout.addWidget(self.operators_scroll)
 
         self.save_status = QLabel("")
@@ -338,13 +335,13 @@ class MachineCenterView(QWidget):
 
     def refresh(self):
         self.error_label.hide()
-        self.save_status.setText("Importando máquinas e operadores já cadastrados...")
+        self.save_status.setText("Carregando máquinas e operadores...")
         self._pending_refreshes = 2
         self._refresh_failed = False
         self._set_loading(True)
         self._run_action(
-            api.list_users,
-            on_result=self._populate_users,
+            api.list_operators,
+            on_result=self._populate_operators_global,
             on_error=self._on_refresh_error,
             show_dialog_errors=False,
             on_finished=self._finish_refresh_step,
@@ -402,8 +399,7 @@ class MachineCenterView(QWidget):
     def _set_loading(self, loading: bool):
         self.btn_refresh_list.setEnabled(not loading)
         self.btn_save.setEnabled(not loading)
-        self.btn_select_all.setEnabled(not loading)
-        self.btn_clear_ops.setEnabled(not loading)
+        self.btn_add_operator.setEnabled(not loading)
         if loading:
             self.result_hint.setText("Sincronizando...")
 
@@ -429,9 +425,17 @@ class MachineCenterView(QWidget):
         self._refresh_failed = True
         self._show_error(message)
 
-    def _populate_users(self, payload: object):
-        self._users_all = [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
-        self._rebuild_operator_checks()
+    def _populate_operators_global(self, payload: object):
+        """Atualiza a lista global de operadores e o autocomplete do input."""
+        self._operators_all = [
+            str(op.get("name") or "").strip()
+            for op in (payload if isinstance(payload, list) else [])
+            if isinstance(op, dict) and op.get("name")
+        ]
+        completer = QCompleter(self._operators_all, self.input_operator)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.input_operator.setCompleter(completer)
 
     def _populate_machines(self, payload: object):
         self._machines_all = [item for item in payload if isinstance(item, dict)] if isinstance(payload, list) else []
@@ -493,11 +497,13 @@ class MachineCenterView(QWidget):
 
     def _prepare_new_machine(self):
         self._selected_machine_id = None
+        self._machine_operator_names = []
         self.form_status.setText("Nova máquina")
         self.save_status.setText("Preencha os dados para cadastrar uma nova máquina.")
         self.input_name.clear()
+        self.input_operator.clear()
         self.combo_destination.setCurrentIndex(0)
-        self._rebuild_operator_checks(set())
+        self._rebuild_operator_list()
         self.table.clearSelection()
 
     def _load_selected_machine(self, index):
@@ -513,8 +519,9 @@ class MachineCenterView(QWidget):
     def _load_machine_into_form(self, machine: dict):
         self._selected_machine_id = int(machine.get("id") or 0)
         self.form_status.setText("Cadastro carregado")
-        self.save_status.setText("Máquina importada da produção pronta para edição.")
+        self.save_status.setText("Máquina carregada para edição.")
         self.input_name.setText(str(machine.get("name") or ""))
+        self.input_operator.clear()
 
         destination = str(machine.get("destination") or "A&R")
         idx = max(0, self.combo_destination.findData(destination))
@@ -522,33 +529,31 @@ class MachineCenterView(QWidget):
         self.combo_destination.setCurrentIndex(idx)
         self.combo_destination.blockSignals(False)
 
-        assigned_ids = {
-            int(operator.get("id") or 0)
-            for operator in (machine.get("operators") or [])
-            if isinstance(operator, dict) and int(operator.get("id") or 0) > 0
-        }
-        self._rebuild_operator_checks(assigned_ids)
+        self._machine_operator_names = [
+            str(op.get("name") or "").strip()
+            for op in (machine.get("operators") or [])
+            if isinstance(op, dict) and op.get("name")
+        ]
+        self._rebuild_operator_list()
 
     def _on_destination_changed(self):
-        self._rebuild_operator_checks()
+        pass  # destino não filtra mais operadores — são nomes livres
 
-    def _available_operators(self) -> list[dict]:
-        destination = self._current_destination()
-        allowed_roles = {"producao"} if destination == "A&R" else {"industria", "entrega"}
-        operators = [
-            user
-            for user in self._users_all
-            if user.get("is_active") and str(user.get("role") or "") in allowed_roles
-        ]
-        operators.sort(key=lambda item: (str(item.get("name") or ""), str(item.get("code") or "")))
-        return operators
+    def _add_operator_from_input(self):
+        name = self.input_operator.text().strip().upper()
+        if not name:
+            return
+        if name in self._machine_operator_names:
+            self.input_operator.clear()
+            return
+        self._machine_operator_names.append(name)
+        self._rebuild_operator_list()
+        self.input_operator.clear()
 
-    def _checked_operator_ids(self) -> set[int]:
-        selected: set[int] = set()
-        for user_id, checkbox in self._operator_checks:
-            if checkbox.isChecked():
-                selected.add(int(user_id))
-        return selected
+    def _remove_operator(self, name: str):
+        if name in self._machine_operator_names:
+            self._machine_operator_names.remove(name)
+            self._rebuild_operator_list()
 
     def _clear_operator_widgets(self):
         while self.operators_layout.count():
@@ -557,44 +562,39 @@ class MachineCenterView(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-    def _rebuild_operator_checks(self, selected_ids: set[int] | None = None):
-        if selected_ids is None:
-            selected_ids = self._checked_operator_ids()
-
+    def _rebuild_operator_list(self):
+        """Reconstrói a lista de operadores alocados à máquina em edição."""
         self._clear_operator_widgets()
-        self._operator_checks = []
-
-        operators = self._available_operators()
-        if not operators:
-            empty = QLabel("Nenhum operador ativo encontrado para esta produção.")
+        s = self.scale
+        if not self._machine_operator_names:
+            empty = QLabel("Nenhum operador alocado.")
             empty.setWordWrap(True)
             empty.setProperty("muted", "1")
-            empty.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+            empty.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
             self.operators_layout.addWidget(empty)
             self.operators_layout.addStretch()
             return
 
-        for user in operators:
-            user_id = int(user.get("id") or 0)
-            label = f"{user.get('code') or '-'} - {user.get('name') or '-'}"
-            role_label = ROLE_LABELS.get(str(user.get("role") or ""), "")
-            if role_label:
-                label += f"  ({role_label})"
-            checkbox = QCheckBox(label)
-            checkbox.setChecked(user_id in selected_ids)
-            checkbox.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt; color:{theme.TEXT_DARK};")
-            self.operators_layout.addWidget(checkbox)
-            self._operator_checks.append((user_id, checkbox))
+        for name in self._machine_operator_names:
+            row = QHBoxLayout()
+            row.setSpacing(max(6, int(8 * s)))
+            lbl = QLabel(name)
+            lbl.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK};")
+            row.addWidget(lbl, 1)
+            btn_rm = QPushButton("×")
+            btn_rm.setFixedSize(max(22, int(26 * s)), max(22, int(26 * s)))
+            btn_rm.setStyleSheet(
+                f"QPushButton {{ background:transparent; color:{theme.DANGER};"
+                f"border:none; font-size:{max(12, int(14 * s))}pt; font-weight:700; }}"
+                f"QPushButton:hover {{ color:#B91C1C; }}"
+            )
+            btn_rm.clicked.connect(lambda _, n=name: self._remove_operator(n))
+            row.addWidget(btn_rm)
+            container = QWidget()
+            container.setLayout(row)
+            self.operators_layout.addWidget(container)
 
         self.operators_layout.addStretch()
-
-    def _select_all_operators(self):
-        for _user_id, checkbox in self._operator_checks:
-            checkbox.setChecked(True)
-
-    def _clear_operator_selection(self):
-        for _user_id, checkbox in self._operator_checks:
-            checkbox.setChecked(False)
 
     def _save_machine(self):
         name = self.input_name.text().strip()
@@ -605,7 +605,7 @@ class MachineCenterView(QWidget):
         payload = {
             "name": name,
             "destination": self._current_destination(),
-            "operator_ids": sorted(self._checked_operator_ids()),
+            "operator_names": list(self._machine_operator_names),
         }
         self.save_status.setText("Salvando cadastro da máquina...")
 
@@ -678,8 +678,8 @@ class MachineCenterView(QWidget):
         self.btn_refresh_list.setStyleSheet(_flat_secondary_btn_style(s))
         self._apply_table_style()
         self.input_name.setStyleSheet(_field_style(s))
+        self.input_operator.setStyleSheet(_field_style(s))
         self.combo_destination.setStyleSheet(_field_style(s))
-        self.btn_select_all.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_clear_ops.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_add_operator.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
-        self._rebuild_operator_checks()
+        self._rebuild_operator_list()

@@ -8,9 +8,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..dependencies import require_admin
-from ..models.production_machine import MachineOperationalStatus, ProductionMachine
-from ..models.user import Role, User
+from ..models.production_machine import MachineOperationalStatus, Operator, ProductionMachine
+from ..models.user import User
 from ..schemas.production_machine_registry import (
+    OperatorCreate,
+    OperatorResponse,
+    OperatorUpdate,
     ProductionMachineRegistryCreate,
     ProductionMachineRegistryResponse,
     ProductionMachineRegistryUpdate,
@@ -35,12 +38,6 @@ def _canonical_destination(value: object) -> str:
         status_code=400,
         detail="Destino de produção inválido. Use A&R ou Pinheiro Indústria.",
     )
-
-
-def _allowed_roles(destination: str) -> tuple[Role, ...]:
-    if destination == _DESTINATION_AR:
-        return (Role.PRODUCAO,)
-    return (Role.INDUSTRIA, Role.ENTREGA)
 
 
 def _load_machine_or_404(db: Session, machine_id: int) -> ProductionMachine:
@@ -90,40 +87,26 @@ def _next_sort_order(
     return int(current or 0) + 1
 
 
-def _resolve_operators(db: Session, destination: str, operator_ids: list[int]) -> list[User]:
-    if not operator_ids:
+def _upsert_operators(db: Session, names: list[str]) -> list[Operator]:
+    """Para cada nome, devolve o Operator existente ou cria um novo."""
+    if not names:
         return []
-
-    allowed_roles = _allowed_roles(destination)
-    users = (
-        db.query(User)
-        .filter(User.id.in_(operator_ids), User.is_active.is_(True))
-        .order_by(User.name.asc(), User.code.asc())
-        .all()
-    )
-    by_id = {int(user.id): user for user in users}
-
-    missing = [str(user_id) for user_id in operator_ids if user_id not in by_id]
-    if missing:
-        raise HTTPException(
-            status_code=400,
-            detail="Operador(es) não encontrado(s) ou inativos: " + ", ".join(missing),
-        )
-
-    invalid = [user.code for user in users if user.role not in allowed_roles]
-    if invalid:
-        raise HTTPException(
-            status_code=400,
-            detail="Os operadores selecionados não pertencem à produção escolhida: "
-            + ", ".join(invalid),
-        )
-
-    return [by_id[user_id] for user_id in operator_ids]
+    result: list[Operator] = []
+    for name in names:
+        op = db.query(Operator).filter(Operator.name == name).first()
+        if op is None:
+            op = Operator(name=name)
+            db.add(op)
+            db.flush()
+        result.append(op)
+    return result
 
 
 def _serialize_machine(machine: ProductionMachine) -> ProductionMachineRegistryResponse:
     return ProductionMachineRegistryResponse.model_validate(machine)
 
+
+# ── Máquinas ──────────────────────────────────────────────────────────────────
 
 @router.get("/", response_model=list[ProductionMachineRegistryResponse])
 def list_production_machines_registry(
@@ -137,13 +120,13 @@ def list_production_machines_registry(
         .all()
     )
     machines.sort(
-        key=lambda machine: (
-            0 if machine.destination == _DESTINATION_AR else 1,
-            int(machine.sort_order or 0),
-            int(machine.id or 0),
+        key=lambda m: (
+            0 if m.destination == _DESTINATION_AR else 1,
+            int(m.sort_order or 0),
+            int(m.id or 0),
         )
     )
-    return [_serialize_machine(machine) for machine in machines]
+    return [_serialize_machine(m) for m in machines]
 
 
 @router.post("/", response_model=ProductionMachineRegistryResponse, status_code=status.HTTP_201_CREATED)
@@ -158,7 +141,7 @@ def create_production_machine_registry(
         raise HTTPException(status_code=400, detail="Informe o nome da máquina")
 
     _ensure_unique_machine_name(db, destination=destination, name=name)
-    operators = _resolve_operators(db, destination, data.operator_ids)
+    operators = _upsert_operators(db, data.operator_names)
 
     machine = ProductionMachine(
         destination=destination,
@@ -180,7 +163,7 @@ def create_production_machine_registry(
         changes={
             "destination": destination,
             "name": name,
-            "operators": [f"{operator.code} - {operator.name}" for operator in operators],
+            "operators": [op.name for op in operators],
         },
     )
     db.commit()
@@ -201,17 +184,12 @@ def update_production_machine_registry(
     if not name:
         raise HTTPException(status_code=400, detail="Informe o nome da máquina")
 
-    _ensure_unique_machine_name(
-        db,
-        destination=destination,
-        name=name,
-        ignore_machine_id=machine.id,
-    )
-    operators = _resolve_operators(db, destination, data.operator_ids)
+    _ensure_unique_machine_name(db, destination=destination, name=name, ignore_machine_id=machine.id)
+    operators = _upsert_operators(db, data.operator_names)
 
     old_destination = machine.destination
     old_name = machine.name
-    old_operator_labels = [f"{operator.code} - {operator.name}" for operator in machine.operators]
+    old_operator_names = [op.name for op in machine.operators]
 
     if destination != machine.destination:
         machine.destination = destination
@@ -227,10 +205,9 @@ def update_production_machine_registry(
         changes["destination"] = {"old": old_destination, "new": machine.destination}
     if old_name != machine.name:
         changes["name"] = {"old": old_name, "new": machine.name}
-
-    new_operator_labels = [f"{operator.code} - {operator.name}" for operator in operators]
-    if old_operator_labels != new_operator_labels:
-        changes["operators"] = {"old": old_operator_labels, "new": new_operator_labels}
+    new_operator_names = [op.name for op in operators]
+    if old_operator_names != new_operator_names:
+        changes["operators"] = {"old": old_operator_names, "new": new_operator_names}
 
     if changes:
         log_action(
@@ -244,3 +221,63 @@ def update_production_machine_registry(
 
     db.commit()
     return _serialize_machine(_load_machine_or_404(db, machine.id))
+
+
+# ── Operadores ────────────────────────────────────────────────────────────────
+
+@router.get("/operators/", response_model=list[OperatorResponse])
+def list_operators(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """Lista todos os operadores cadastrados, em ordem alfabética."""
+    return db.query(Operator).order_by(Operator.name.asc()).all()
+
+
+@router.post("/operators/", response_model=OperatorResponse, status_code=status.HTTP_201_CREATED)
+def create_operator(
+    data: OperatorCreate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    if db.query(Operator).filter(Operator.name == data.name).first():
+        raise HTTPException(status_code=400, detail="Já existe um operador com este nome.")
+    op = Operator(name=data.name)
+    db.add(op)
+    db.commit()
+    db.refresh(op)
+    return op
+
+
+@router.patch("/operators/{operator_id}", response_model=OperatorResponse)
+def update_operator(
+    operator_id: int,
+    data: OperatorUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    op = db.query(Operator).filter(Operator.id == operator_id).first()
+    if not op:
+        raise HTTPException(status_code=404, detail="Operador não encontrado.")
+    conflict = db.query(Operator).filter(
+        Operator.name == data.name, Operator.id != operator_id
+    ).first()
+    if conflict:
+        raise HTTPException(status_code=400, detail="Já existe um operador com este nome.")
+    op.name = data.name
+    db.commit()
+    db.refresh(op)
+    return op
+
+
+@router.delete("/operators/{operator_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_operator(
+    operator_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    op = db.query(Operator).filter(Operator.id == operator_id).first()
+    if not op:
+        raise HTTPException(status_code=404, detail="Operador não encontrado.")
+    db.delete(op)
+    db.commit()

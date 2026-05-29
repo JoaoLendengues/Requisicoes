@@ -5,17 +5,18 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 from ..models.production_machine import MachineOperationalStatus
-from ..models.user import Role
 from ..services.text_normalizer import normalize_upper_required
 
 
-class ProductionMachineOperatorResponse(BaseModel):
+class OperatorResponse(BaseModel):
     id: int
-    code: str
     name: str
-    role: Role
 
     model_config = {"from_attributes": True}
+
+
+# Mantido para compatibilidade com código existente que importa esse nome.
+ProductionMachineOperatorResponse = OperatorResponse
 
 
 class ProductionMachineRegistryResponse(BaseModel):
@@ -25,7 +26,7 @@ class ProductionMachineRegistryResponse(BaseModel):
     sort_order: int
     status: MachineOperationalStatus
     updated_at: datetime
-    operators: list[ProductionMachineOperatorResponse] = Field(default_factory=list)
+    operators: list[OperatorResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -33,34 +34,46 @@ class ProductionMachineRegistryResponse(BaseModel):
 class ProductionMachineRegistryCreate(BaseModel):
     name: str
     destination: str
-    operator_ids: list[int] = Field(default_factory=list)
+    # Nomes livres dos operadores — o servidor faz upsert em `operators`
+    # e vincula à máquina via production_machine_operators.
+    operator_names: list[str] = Field(default_factory=list)
 
     @field_validator("name", mode="before")
     @classmethod
     def normalize_name(cls, value: object) -> str:
         return normalize_upper_required(value)
 
-    @field_validator("operator_ids", mode="before")
+    @field_validator("operator_names", mode="before")
     @classmethod
-    def normalize_operator_ids(cls, value: object) -> list[int]:
+    def normalize_operator_names(cls, value: object) -> list[str]:
         if value is None:
             return []
         if not isinstance(value, (list, tuple, set)):
-            raise ValueError("operator_ids deve ser uma lista")
-
-        normalized: list[int] = []
-        seen: set[int] = set()
+            raise ValueError("operator_names deve ser uma lista")
+        seen: set[str] = set()
+        result: list[str] = []
         for item in value:
-            try:
-                user_id = int(item)
-            except (TypeError, ValueError):
-                continue
-            if user_id <= 0 or user_id in seen:
-                continue
-            seen.add(user_id)
-            normalized.append(user_id)
-        return normalized
+            normalized = normalize_upper_required(item) if item else ""
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                result.append(normalized)
+        return result
 
 
 class ProductionMachineRegistryUpdate(ProductionMachineRegistryCreate):
+    pass
+
+
+# ── Schemas para o cadastro independente de operadores ────────────────────────
+
+class OperatorCreate(BaseModel):
+    name: str
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: object) -> str:
+        return normalize_upper_required(value)
+
+
+class OperatorUpdate(OperatorCreate):
     pass
