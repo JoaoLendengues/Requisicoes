@@ -1156,7 +1156,7 @@ class RequisitionForm(QWidget):
             layout.addLayout(col)
 
         # Prazo de entrega
-        self.input_prazo = QDateEdit(QDate.currentDate())
+        self.input_prazo = QDateEdit(self._default_delivery_qdate())
         self.input_prazo.setDisplayFormat("dd/MM/yyyy")
         self.input_prazo.setCalendarPopup(True)
         self.input_prazo.setFixedHeight(max(28,int(32*s)))
@@ -1207,6 +1207,11 @@ class RequisitionForm(QWidget):
             if current.dayOfWeek() <= 5:  # 1=seg ... 5=sex
                 added += 1
         return current
+
+    @classmethod
+    def _default_delivery_qdate(cls) -> QDate:
+        """Data padrão do prazo de entrega: sempre 5 dias úteis à frente."""
+        return cls._earliest_delivery_qdate(5)
 
     def _apply_min_delivery_constraint(self) -> None:
         """Aplica a data mínima de entrega ao seletor de prazo.
@@ -2183,7 +2188,7 @@ class RequisitionForm(QWidget):
             return True
         if self.client_search.get_client_id() is not None:
             return True
-        if self.input_prazo.date() != QDate.currentDate():
+        if self.input_prazo.date() != self._default_delivery_qdate():
             return True
         if self.chk_retirada.isChecked() or self.chk_entrega.isChecked():
             return True
@@ -2270,7 +2275,7 @@ class RequisitionForm(QWidget):
         self.input_fone.clear()
         self.input_address.clear()
         self.input_obs.clear()
-        self.input_prazo.setDate(QDate.currentDate())
+        self.input_prazo.setDate(self._default_delivery_qdate())
         self._apply_min_delivery_constraint()
         self.chk_retirada.setChecked(False)
         self.chk_entrega.setChecked(False)
