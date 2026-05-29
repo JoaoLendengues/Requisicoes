@@ -44,7 +44,10 @@ Responsaveis:
                  Notificar vendedor / gerente quando o prazo estiver proximo ou vencido.
                  *** RESOLVIDO *** (sabado nao conta; admin/gerente podem gravar abaixo do minimo)
 
-- [ ] [cappinho] Painel Gerencial: identificar backups realizados (data, tamanho, status).
+- [x] [cappinho] Painel Gerencial: identificar backups realizados (data, tamanho, status).
+                 Informacao ja disponivel no Painel Tecnico. Decidido nao replicar no
+                 Painel Gerencial.
+                 *** RESOLVIDO ***
 
 - [ ] [cappinho] Botao "Exportar para Excel" em Historico / Busca.
                  Exportar os resultados filtrados atualmente visiveis na tabela.
