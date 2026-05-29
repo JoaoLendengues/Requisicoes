@@ -69,9 +69,14 @@ class TechnicalWorker(QObject):
 class TechnicalPanelView(QWidget):
     guide_requested = Signal()
 
-    def __init__(self, scale: float = 1.0, parent=None):
+    def __init__(self, scale: float = 1.0, parent=None, embedded: bool = False):
         super().__init__(parent)
         self.scale = scale
+        # ``embedded`` = exibido dentro de outra tela (ex.: aba Sistema das
+        # Configurações). Nesse modo dispensamos a moldura própria (scroll e
+        # fundo de tela cheia) para integrar ao container hospedeiro.
+        self._embedded = embedded
+        self._page_scroll = None
         self._threads: list[tuple[QThread, QObject]] = []
         self._metric_labels: dict[str, QLabel] = {}
         self._metric_details: dict[str, QLabel] = {}
@@ -81,13 +86,18 @@ class TechnicalPanelView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
+        embedded = self._embedded
         self.setObjectName("technicalPanelView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"QWidget#technicalPanelView {{ background:{theme.CONTENT_BG}; }}")
+        _view_bg = "transparent" if embedded else theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#technicalPanelView {{ background:{_view_bg}; }}")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
-                                max(18, int(24 * s)), max(18, int(24 * s)))
+        if embedded:
+            root.setContentsMargins(0, 0, 0, 0)
+        else:
+            root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                    max(18, int(24 * s)), max(18, int(24 * s)))
         root.setSpacing(max(14, int(18 * s)))
 
         header = QHBoxLayout()
@@ -151,7 +161,9 @@ class TechnicalPanelView(QWidget):
         header_right.addWidget(info_card)
         header_right.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
 
-        # Botão ? — abre o guia rápido desta tela
+        # Botão ? — abre o guia rápido desta tela.
+        # No modo embarcado (aba Sistema das Configurações) o guia já é provido
+        # pela própria tela de Configurações, então não duplicamos o botão.
         sz_g = max(24, int(28 * s))
         self.btn_guide = QPushButton("?")
         self.btn_guide.setToolTip("Abrir guia rápido")
@@ -163,7 +175,10 @@ class TechnicalPanelView(QWidget):
             f"border-radius:{sz_g // 2}px; padding:0;"
         )
         self.btn_guide.clicked.connect(self.guide_requested)
-        header_right.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+        if not embedded:
+            header_right.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+        else:
+            self.btn_guide.hide()
 
         header.addLayout(header_right)
         root.addLayout(header)
@@ -178,76 +193,75 @@ class TechnicalPanelView(QWidget):
         )
         root.addWidget(self.error_label)
 
-        self._page_scroll = SmoothScrollArea()
-        self._page_scroll.setWidgetResizable(True)
-        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{theme.CONTENT_BG}; }}")
-        self._page_scroll.viewport().setStyleSheet(f"background:{theme.CONTENT_BG}; border:none;")
-        root.addWidget(self._page_scroll, 1)
-
         self._page_content = QWidget()
         self._page_content.setObjectName("technicalPanelContent")
         self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._page_content.setStyleSheet(f"QWidget#technicalPanelContent {{ background:{theme.CONTENT_BG}; }}")
-        self._page_scroll.setWidget(self._page_content)
+        _content_bg = "transparent" if embedded else theme.CONTENT_BG
+        self._page_content.setStyleSheet(
+            f"QWidget#technicalPanelContent {{ background:{_content_bg}; }}"
+        )
+
+        if embedded:
+            # Sem scroll próprio: o container hospedeiro (aba Sistema) já rola.
+            root.addWidget(self._page_content)
+        else:
+            self._page_scroll = SmoothScrollArea()
+            self._page_scroll.setWidgetResizable(True)
+            self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+            self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{theme.CONTENT_BG}; }}")
+            self._page_scroll.viewport().setStyleSheet(f"background:{theme.CONTENT_BG}; border:none;")
+            root.addWidget(self._page_scroll, 1)
+            self._page_scroll.setWidget(self._page_content)
 
         layout = QVBoxLayout(self._page_content)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(max(16, int(18 * s)))
+        layout.setSpacing(max(12, int(16 * s)))
 
-        metrics = QGridLayout()
-        metrics.setHorizontalSpacing(max(12, int(16 * s)))
-        metrics.setVerticalSpacing(max(12, int(16 * s)))
-        for column in range(4):
-            metrics.setColumnStretch(column, 1)
-        layout.addLayout(metrics)
+        # Definição de cada métrica: cor de destaque, título e texto de apoio.
+        defs = {
+            "system_online":         (theme.SUCCESS,       "Sistema Online/Offline",    "Status atual de disponibilidade da aplicação."),
+            "database_connected":    (theme.SUCCESS,       "Banco de dados conectado?", "Verificação instantânea de acesso ao banco."),
+            "last_backup_at":        (theme.WARNING,       "Último backup",             "Horário mais recente de backup localizado no ambiente."),
+            "requisitions_today":    (theme.PRIMARY_HOVER, "Requisições hoje",          "Requisições registradas no dia atual."),
+            "error_count_today":     (theme.DANGER,        "Quantidade de erros hoje",  "Total de respostas com erro registradas hoje."),
+            "average_response_ms":   (theme.BORDER_COLOR,  "Tempo médio de resposta",   "Média das respostas HTTP processadas hoje."),
+            "available_space_bytes": (theme.PRIMARY,       "Espaço disponível",         "Espaço livre no armazenamento principal da aplicação."),
+        }
 
-        card_defs = [
-            ("system_online", theme.SUCCESS, "Sistema Online/Offline", "Status atual de disponibilidade da aplicação."),
-            ("requisitions_today", theme.PRIMARY_HOVER, "Requisições hoje", "Requisições registradas no dia atual."),
-            ("average_response_ms", theme.BORDER_COLOR, "Tempo médio de resposta", "Média das respostas HTTP processadas hoje."),
-            ("last_backup_at", theme.WARNING, "Último backup", "Horário mais recente de backup localizado no ambiente."),
-            ("database_connected", theme.SUCCESS, "Banco de dados conectado?", "Verificação instantânea de acesso ao banco."),
-            ("available_space_bytes", theme.PRIMARY, "Espaço disponível", "Espaço livre no armazenamento principal da aplicação."),
-            ("error_count_today", theme.DANGER, "Quantidade de erros hoje", "Total de respostas com erro registradas hoje."),
-        ]
+        def _card(key: str) -> QFrame:
+            color, title_text, helper_text = defs[key]
+            return self._build_metric_card(color, title_text, helper_text, key)
 
-        for index, (key, color, title_text, helper_text) in enumerate(card_defs):
-            metrics.addWidget(
-                self._build_metric_card(color, title_text, helper_text, key),
-                index // 4,
-                index % 4,
-            )
+        def _grid(keys: list[str], columns: int) -> QGridLayout:
+            g = QGridLayout()
+            g.setHorizontalSpacing(max(12, int(16 * s)))
+            g.setVerticalSpacing(max(12, int(16 * s)))
+            for column in range(columns):
+                g.setColumnStretch(column, 1)
+            for i, key in enumerate(keys):
+                g.addWidget(_card(key), i // columns, i % columns)
+            return g
 
-        info_note = _make_shadow_card(
-            s,
-            theme.CARD_BG,
-            border_color=theme.BORDER_COLOR,
-            radius=max(18, int(20 * s)),
-            hover_background=theme.CARD_BG,
-        )
-        info_note_layout = QVBoxLayout(info_note)
-        info_note_layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
-                                            max(16, int(20 * s)), max(14, int(18 * s)))
-        info_note_layout.setSpacing(max(6, int(8 * s)))
+        # Seções rotuladas (mesmo padrão visual das seções da aba Configurações).
+        self._section_widgets = []
 
-        note_title = QLabel("Leitura tecnica")
-        note_title.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
-        )
-        note_body = QLabel(
-            "Este painel mostra indicadores operacionais em tempo real. Último backup pode aparecer como "
-            "'Não identificado' quando o ambiente ainda não expõe uma rotina de backup catalogada."
-        )
-        note_body.setWordWrap(True)
-        note_body.setProperty("muted", "1")
-        note_body.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt;"
-        )
-        info_note_layout.addWidget(note_title)
-        info_note_layout.addWidget(note_body)
-        layout.addWidget(info_note)
-        layout.addStretch()
+        # ── Disponibilidade ──────────────────────────────────────────────────
+        layout.addWidget(self._add_section_label("Disponibilidade"))
+        layout.addWidget(self._add_section_separator())
+        layout.addLayout(_grid(["system_online", "database_connected", "last_backup_at"], 3))
+
+        # ── Desempenho & Recursos ────────────────────────────────────────────
+        layout.addSpacing(max(4, int(6 * s)))
+        layout.addWidget(self._add_section_label("Desempenho & Recursos"))
+        layout.addWidget(self._add_section_separator())
+        layout.addLayout(_grid(
+            ["requisitions_today", "error_count_today",
+             "average_response_ms", "available_space_bytes"], 4))
+
+        # ── Usuários ─────────────────────────────────────────────────────────
+        layout.addSpacing(max(4, int(6 * s)))
+        layout.addWidget(self._add_section_label("Usuários"))
+        layout.addWidget(self._add_section_separator())
         layout.addWidget(
             self._build_metric_card(
                 theme.PRIMARY,
@@ -257,6 +271,25 @@ class TechnicalPanelView(QWidget):
                 prominent=True,
             )
         )
+        layout.addStretch()
+
+    def _add_section_label(self, text: str) -> QLabel:
+        s = self.scale
+        lbl = QLabel(text.upper())
+        lbl.setProperty("role", "tech_section")
+        lbl.setStyleSheet(
+            f"font-size:{max(9, int(10 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_MEDIUM}; letter-spacing:1px; background:transparent;"
+        )
+        self._section_widgets.append(("label", lbl))
+        return lbl
+
+    def _add_section_separator(self) -> QFrame:
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background:{theme.BORDER_COLOR}; border:none;")
+        self._section_widgets.append(("sep", sep))
+        return sep
 
     def _build_metric_card(
         self,
@@ -437,12 +470,21 @@ class TechnicalPanelView(QWidget):
 
     def apply_theme(self) -> None:
         s = self.scale
-        bg = theme.CONTENT_BG
+        bg = "transparent" if self._embedded else theme.CONTENT_BG
         self.setStyleSheet(f"QWidget#technicalPanelView {{ background:{bg}; }}")
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
-        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        if self._page_scroll is not None:
+            self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+            self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
         self._page_content.setStyleSheet(f"QWidget#technicalPanelContent {{ background:{bg}; }}")
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        for kind, widget in getattr(self, "_section_widgets", []):
+            if kind == "label":
+                widget.setStyleSheet(
+                    f"font-size:{max(9, int(10 * s))}pt; font-weight:800;"
+                    f"color:{theme.TEXT_MEDIUM}; letter-spacing:1px; background:transparent;"
+                )
+            else:
+                widget.setStyleSheet(f"background:{theme.BORDER_COLOR}; border:none;")
         self.error_label.setStyleSheet(
             f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
             f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"

@@ -71,9 +71,9 @@ _SLIDES: dict[str, list[dict]] = {
             "icon": "🖥️",
             "title": "Painel Técnico",
             "body": (
-                "O <b>Painel Técnico</b> exibe indicadores de saúde do servidor: "
-                "tempo de resposta, conexões ativas e histórico de erros. "
-                "Use para monitorar a performance em tempo real."
+                "Em <b>Configurações → Sistema</b> você encontra o <b>Painel Técnico</b>, "
+                "com indicadores de saúde do servidor: tempo de resposta, conexões "
+                "ativas e histórico de erros. Use para monitorar a performance em tempo real."
             ),
         },
     ],

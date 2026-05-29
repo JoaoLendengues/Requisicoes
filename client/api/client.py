@@ -140,6 +140,21 @@ def bulk_import_clients(items: list) -> dict:
         return _check(client.post("/clients/import/bulk", json=items, timeout=120))
 
 
+def create_client(data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.post("/clients/", json=data))
+
+
+def update_client(client_id: int, data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/clients/{client_id}", json=data))
+
+
+def deactivate_client(client_id: int):
+    with _cli() as client:
+        _check(client.delete(f"/clients/{client_id}"))
+
+
 def list_products(search: str = "", code: str = "", limit: int = 30) -> list:
     with _cli() as client:
         params: dict = {"limit": limit}

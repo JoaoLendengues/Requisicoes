@@ -309,6 +309,7 @@ class SettingsView(QWidget):
 
         # ── Barra de abas ──────────────────────────────────────────────────
         self._tab_btns: list[QPushButton] = []
+        self._system_tab_index = -1
         tab_bar = QWidget()
         tab_bar.setObjectName("settingsTabBar")
         tab_bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -627,8 +628,36 @@ class SettingsView(QWidget):
             lay_sis.addWidget(self._billing_section)
             self._billing_section.setVisible(session.settings_show_billing)
 
-            _add_tab("Sistema", _wrap(card_sis))
+            # ── Painel Técnico embarcado (admin) ─────────────────────────────
+            # Migrado da antiga tela "Painel Técnico" da sidebar para cá.
+            self._technical_panel = None
+            if session.can_access_technical_panel:
+                from .technical_panel_view import TechnicalPanelView
+                self._technical_panel = TechnicalPanelView(s, embedded=True)
+                self._technical_panel.guide_requested.connect(self.show_guide_requested)
+
+            if self._technical_panel is not None:
+                # O card de configurações de sistema + o painel técnico convivem
+                # na mesma aba. O painel fica fora do card (sobre o page_bg) para
+                # preservar o contraste original entre seus cards e o fundo.
+                sis_page = QWidget()
+                sis_page.setObjectName("settingsTabPage")
+                sis_page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+                sis_page.setStyleSheet(
+                    f"QWidget#settingsTabPage {{ background:{page_bg}; }}"
+                )
+                sis_lt = QVBoxLayout(sis_page)
+                sis_lt.setContentsMargins(0, max(12, int(14 * s)), 0, 0)
+                sis_lt.setSpacing(max(14, int(18 * s)))
+                sis_lt.addWidget(card_sis)
+                sis_lt.addWidget(self._technical_panel)
+                sis_lt.addStretch()
+                self._system_tab_index = len(self._tab_btns)
+                _add_tab("Sistema", sis_page)
+            else:
+                _add_tab("Sistema", _wrap(card_sis))
         else:
+            self._technical_panel = None
             # Placeholders para roles sem acesso ao painel de sistema
             self._conn_section        = QWidget()
             self._billing_section     = QWidget()
@@ -961,6 +990,19 @@ class SettingsView(QWidget):
             self._user_center = None
 
         # ════════════════════════════════════════════════════════════════
+        # ABA: Clientes (admin only) — Cadastro de clientes embarcado
+        # ════════════════════════════════════════════════════════════════
+        self._client_center_tab_index = -1
+        if session.is_admin:
+            from .client_center_view import ClientCenterView
+            self._client_center = ClientCenterView(s, embedded=True)
+            self._client_center.guide_requested.connect(self.show_guide_requested)
+            self._client_center_tab_index = len(self._tab_btns)
+            _add_tab("Clientes", self._client_center)
+        else:
+            self._client_center = None
+
+        # ════════════════════════════════════════════════════════════════
         # ABA: Ajuda
         # ════════════════════════════════════════════════════════════════
         card_help = _new_card()
@@ -1249,12 +1291,19 @@ class SettingsView(QWidget):
             btn.setChecked(i == idx)
         self._page_scroll.verticalScrollBar().setValue(0)
 
-        # A aba de Usuários tem seus próprios botões de salvar; o botão global
-        # "SALVAR CONFIGURAÇÕES" não se aplica a ela.
+        # As abas de Usuários e Clientes têm seus próprios botões de salvar; o
+        # botão global "SALVAR CONFIGURAÇÕES" não se aplica a elas.
         on_users_tab = (idx == self._user_center_tab_index)
-        self.btn_save.setVisible(not on_users_tab)
+        on_clients_tab = (idx == self._client_center_tab_index)
+        self.btn_save.setVisible(not (on_users_tab or on_clients_tab))
         if on_users_tab and self._user_center is not None:
             self._user_center.refresh()
+        if on_clients_tab and self._client_center is not None:
+            self._client_center.refresh()
+
+        # Ao abrir a aba Sistema, atualiza as métricas do Painel Técnico.
+        if idx == self._system_tab_index and self._technical_panel is not None:
+            self._technical_panel.refresh()
 
     def _on_scale_btn(self, label: str):
         for lbl, btn in self._scale_btns.items():
@@ -1627,3 +1676,7 @@ class SettingsView(QWidget):
             self._backup_table.setStyleSheet(_table_style())
         if getattr(self, "_user_center", None) is not None:
             self._user_center.apply_theme()
+        if getattr(self, "_client_center", None) is not None:
+            self._client_center.apply_theme()
+        if getattr(self, "_technical_panel", None) is not None:
+            self._technical_panel.apply_theme()
