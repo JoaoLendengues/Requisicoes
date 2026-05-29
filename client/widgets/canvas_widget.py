@@ -214,6 +214,12 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setPen(pen)
         item.setData(0, {"type": "angle_dimension_line"})
 
+    elif t == "angle_dimension_marker":
+        path = _deserialize_path(d)
+        item = QGraphicsPathItem(path)
+        item.setPen(pen)
+        item.setData(0, {"type": "angle_dimension_marker"})
+
     elif t == "rect":
         item = HollowRectItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
@@ -380,6 +386,13 @@ class DrawingScene(QGraphicsScene):
         self._manual_dim_text_item: QGraphicsTextItem | None = None
         self._manual_dim_block_release: bool = False
         self._angle_text_preview_item: QGraphicsTextItem | None = None
+        self._angle_marker_preview_item: QGraphicsPathItem | None = None
+        self._angle_mode_active: bool = False
+        self._angle_mode_start: QPointF | None = None
+        self._angle_mode_label: str = "90°"
+        self._angle_mode_degrees: float = 90.0
+        self._angle_mode_style: str = "auto"
+        self._angle_mode_block_release: bool = False
         self._mirror_axis_active: bool = False
         self._mirror_axis_start: QPointF | None = None
         self._mirror_axis_line_item: QGraphicsLineItem | None = None
@@ -521,6 +534,7 @@ class DrawingScene(QGraphicsScene):
                 "manual_dimension_text",
                 "angle_dimension_overlay",
                 "angle_dimension_line",
+                "angle_dimension_marker",
                 "angle_dimension_text",
                 "mirror_axis_overlay",
             }:
@@ -869,7 +883,7 @@ class DrawingScene(QGraphicsScene):
             "ruler_overlay", "manual_dimension_overlay",
             "ruler_measure_line", "ruler_measure_text",
             "manual_dimension_line", "manual_dimension_text",
-            "angle_dimension_overlay", "angle_dimension_line", "angle_dimension_text",
+            "angle_dimension_overlay", "angle_dimension_line", "angle_dimension_marker", "angle_dimension_text",
             "mirror_axis_overlay",
         }
         for item in self.items(rect):
@@ -1038,12 +1052,94 @@ class DrawingScene(QGraphicsScene):
         if self._angle_text_preview_item is not None:
             self.removeItem(self._angle_text_preview_item)
             self._angle_text_preview_item = None
+        if self._angle_marker_preview_item is not None:
+            self.removeItem(self._angle_marker_preview_item)
+            self._angle_marker_preview_item = None
+
+    @staticmethod
+    def _normalize_angle_degrees(value: float) -> float:
+        normalized = float(value) % 360.0
+        if normalized < 0.0:
+            normalized += 360.0
+        return normalized
+
+    def _resolve_angle_style(self, degrees: float, style: str | None = None) -> str:
+        normalized = self._normalize_angle_degrees(degrees)
+        selected = str(style or "auto").strip().lower()
+        if selected in {"square", "line", "arc"}:
+            return selected
+        if abs(normalized - 90.0) < 1e-3:
+            return "square"
+        if abs(normalized - 180.0) < 1e-3:
+            return "line"
+        return "arc"
+
+    def _build_angle_marker_path(
+        self,
+        start: QPointF,
+        end: QPointF,
+        degrees: float,
+        style: str,
+    ) -> QPainterPath:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        dist = math.hypot(dx, dy)
+        if dist < 1e-6:
+            return QPainterPath()
+
+        ux, uy = dx / dist, dy / dist
+        marker_len = max(12.0, min(40.0, dist * 0.22))
+        perp_x, perp_y = -uy, ux
+        base = QPointF(start.x() + (ux * marker_len * 0.2), start.y() + (uy * marker_len * 0.2))
+        path = QPainterPath()
+
+        if style == "square":
+            p1 = QPointF(base.x() + ux * marker_len, base.y() + uy * marker_len)
+            p2 = QPointF(p1.x() + perp_x * marker_len, p1.y() + perp_y * marker_len)
+            p3 = QPointF(base.x() + perp_x * marker_len, base.y() + perp_y * marker_len)
+            path.moveTo(base)
+            path.lineTo(p1)
+            path.lineTo(p2)
+            path.lineTo(p3)
+            return path
+
+        if style == "line":
+            half = marker_len * 0.7
+            c1 = QPointF(base.x() - ux * half, base.y() - uy * half)
+            c2 = QPointF(base.x() + ux * half, base.y() + uy * half)
+            path.moveTo(c1)
+            path.lineTo(c2)
+            return path
+
+        # Arc (meia-lua e demais ângulos)
+        normalized = self._normalize_angle_degrees(degrees)
+        if normalized > 180.0:
+            normalized = 360.0 - normalized
+        if normalized < 5.0:
+            normalized = 5.0
+        radius = max(14.0, min(46.0, dist * 0.3))
+        rect = QRectF(start.x() - radius, start.y() - radius, radius * 2.0, radius * 2.0)
+        start_deg = math.degrees(math.atan2(-uy, ux))
+        path.arcMoveTo(rect, start_deg)
+        path.arcTo(rect, start_deg, normalized)
+        return path
 
     def _update_angle_preview(self, start: QPointF, end: QPointF):
         if not isinstance(self._preview_item, QGraphicsLineItem):
             return
         self._preview_item.setLine(start.x(), start.y(), end.x(), end.y())
-        label = self._format_angle_label(start, end)
+        label = self._angle_mode_label or self._format_angle_label(start, end)
+        resolved_style = self._resolve_angle_style(self._angle_mode_degrees, self._angle_mode_style)
+        marker_path = self._build_angle_marker_path(start, end, self._angle_mode_degrees, resolved_style)
+        if self._angle_marker_preview_item is None:
+            self._angle_marker_preview_item = QGraphicsPathItem(marker_path)
+            self._angle_marker_preview_item.setPen(self._pen())
+            self._angle_marker_preview_item.setZValue(10000)
+            self._angle_marker_preview_item.setData(0, {"type": "angle_dimension_overlay"})
+            self.addItem(self._angle_marker_preview_item)
+        else:
+            self._angle_marker_preview_item.setPath(marker_path)
+            self._angle_marker_preview_item.setPen(self._pen())
         if self._angle_text_preview_item is None:
             self._angle_text_preview_item = QGraphicsTextItem(label)
             self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
@@ -1059,7 +1155,9 @@ class DrawingScene(QGraphicsScene):
     def _commit_angle_measure(self, start: QPointF, end: QPointF):
         if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
             return
-        label = self._format_angle_label(start, end)
+        label = self._angle_mode_label or self._format_angle_label(start, end)
+        resolved_style = self._resolve_angle_style(self._angle_mode_degrees, self._angle_mode_style)
+        marker_path = self._build_angle_marker_path(start, end, self._angle_mode_degrees, resolved_style)
 
         line_item = QGraphicsLineItem(start.x(), start.y(), end.x(), end.y())
         line_item.setPen(self._pen())
@@ -1070,6 +1168,16 @@ class DrawingScene(QGraphicsScene):
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
         )
         self.addItem(line_item)
+
+        marker_item = QGraphicsPathItem(marker_path)
+        marker_item.setPen(self._pen())
+        marker_item.setZValue(9000)
+        marker_item.setData(0, {"type": "angle_dimension_marker"})
+        marker_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(marker_item)
 
         text_item = QGraphicsTextItem(label)
         text_item.setDefaultTextColor(QColor(self.cw.color))
@@ -1084,6 +1192,7 @@ class DrawingScene(QGraphicsScene):
         self.addItem(text_item)
 
         self.cw._push_undo(line_item)
+        self.cw._push_undo(marker_item)
         self.cw._push_undo(text_item)
         self.cw.changed.emit()
 
@@ -1093,6 +1202,24 @@ class DrawingScene(QGraphicsScene):
             self._preview_item = None
         self._clear_angle_preview()
         self._start = None
+
+    def begin_angle_mode(self, degrees: float, label: str, style: str):
+        self.cancel_angle_mode()
+        self.cancel_manual_dimension()
+        self.cancel_mirror_axis()
+        if self._ft_active:
+            self._exit_ft()
+        self._angle_mode_active = True
+        self._angle_mode_start = None
+        self._angle_mode_label = str(label or "").strip() or f"{float(degrees):.1f}°"
+        self._angle_mode_degrees = float(degrees)
+        self._angle_mode_style = style
+
+    def cancel_angle_mode(self):
+        self._angle_mode_active = False
+        self._angle_mode_start = None
+        self._angle_mode_block_release = False
+        self._cancel_angle_draw()
 
     def begin_manual_dimension(self, label: str):
         self.cancel_manual_dimension()
@@ -1215,6 +1342,30 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
+        if self._angle_mode_active:
+            self._angle_mode_block_release = True
+            if self._angle_mode_start is None:
+                self._angle_mode_start = QPointF(pos.x(), pos.y())
+                self._start = QPointF(pos.x(), pos.y())
+                self._preview_item = self.addLine(
+                    self._start.x(),
+                    self._start.y(),
+                    self._start.x() + 0.01,
+                    self._start.y(),
+                    self._pen(),
+                )
+                self._update_angle_preview(self._angle_mode_start, self._angle_mode_start)
+            else:
+                end = (
+                    self._constrain(self._angle_mode_start, pos)
+                    if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                    else QPointF(pos.x(), pos.y())
+                )
+                self._commit_angle_measure(self._angle_mode_start, end)
+                self._update_angle_preview(self._angle_mode_start, end)
+            event.accept()
+            return
+
         # Free Transform ativo: verificar zona de rotação nos cantos
         if self._ft_active and event.button() == Qt.MouseButton.LeftButton:
             view = self._view()
@@ -1302,15 +1453,6 @@ class DrawingScene(QGraphicsScene):
                 self._start.x() + 0.01, self._start.y(), self._pen()
             )
 
-        elif tool == Tool.ANGLE:
-            self._start = QPointF(pos.x(), pos.y())
-            self._preview_item = self.addLine(
-                self._start.x(), self._start.y(),
-                self._start.x() + 0.01, self._start.y(),
-                self._pen(),
-            )
-            self._update_angle_preview(self._start, self._start)
-
         elif tool == Tool.RULER:
             self._update_ruler(self._start, self._start)
 
@@ -1387,6 +1529,16 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
+        if self._angle_mode_active and self._angle_mode_start is not None:
+            end = (
+                self._constrain(self._angle_mode_start, pos)
+                if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                else QPointF(pos.x(), pos.y())
+            )
+            self._update_angle_preview(self._angle_mode_start, end)
+            event.accept()
+            return
+
         # Free Transform: rotação fluida
         if self._ft_is_rotating and self._ft_rotate_pivot is not None:
             angle = math.atan2(
@@ -1458,10 +1610,6 @@ class DrawingScene(QGraphicsScene):
             if old_snap != self._snap_point:
                 self.update()
 
-        elif tool == Tool.ANGLE and self._preview_item:
-            end = self._constrain(self._start, pos) if shift else pos
-            self._update_angle_preview(self._start, end)
-
         elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
             self._update_ruler(self._start, end)
@@ -1517,6 +1665,14 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
+        if self._angle_mode_block_release and event.button() == Qt.MouseButton.LeftButton:
+            self._angle_mode_block_release = False
+            event.accept()
+            return
+        if self._angle_mode_active and event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            return
+
         # Free Transform: fim da rotação (mantém ft ativo para mais ajustes)
         if self._ft_is_rotating:
             self._ft_is_rotating = False
@@ -1565,13 +1721,6 @@ class DrawingScene(QGraphicsScene):
                           QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
             self.cw._push_undo(item)
             self._preview_item = None
-
-        elif tool == Tool.ANGLE and self._preview_item:
-            end = self._constrain(self._start, pos) if shift else pos
-            self._commit_angle_measure(self._start, end)
-            self.removeItem(self._preview_item)
-            self._preview_item = None
-            self._clear_angle_preview()
 
         elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
@@ -1647,8 +1796,9 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
-        if event.key() == Qt.Key.Key_Escape and self.cw.tool == Tool.ANGLE and self._preview_item is not None:
-            self._cancel_angle_draw()
+        if event.key() == Qt.Key.Key_Escape and self._angle_mode_active:
+            self.cancel_angle_mode()
+            self.cw._set_tool(Tool.SELECT)
             event.accept()
             return
 
@@ -2066,7 +2216,7 @@ class DrawingCanvas(QWidget):
 
         # Dica de teclado
         hint = QLabel(
-            "✨ Shift = traço reto  |  U = ângulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  U = ângulo (contínuo, Esc para sair)  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
@@ -2254,6 +2404,57 @@ class DrawingCanvas(QWidget):
         self._set_tool(Tool.SELECT)
         self.scene.begin_manual_dimension(label)
 
+    def _ask_angle_mode_config(self) -> tuple[float, str, str] | None:
+        preset, ok = QInputDialog.getItem(
+            self,
+            "Ângulo",
+            "Selecione o valor do ângulo:",
+            ["90°", "180°", "Personalizado..."],
+            0,
+            False,
+        )
+        if not ok:
+            return None
+
+        if preset == "90°":
+            degrees = 90.0
+        elif preset == "180°":
+            degrees = 180.0
+        else:
+            value, ok = QInputDialog.getDouble(
+                self,
+                "Ângulo personalizado",
+                "Informe o valor em graus:",
+                45.0,
+                0.1,
+                359.9,
+                1,
+            )
+            if not ok:
+                return None
+            degrees = float(value)
+
+        style_label, ok = QInputDialog.getItem(
+            self,
+            "Forma do ângulo",
+            "Escolha o marcador visual:",
+            ["Automático", "Meia lua", "Quadrado", "Linha"],
+            0,
+            False,
+        )
+        if not ok:
+            return None
+
+        style_map = {
+            "Automático": "auto",
+            "Meia lua": "arc",
+            "Quadrado": "square",
+            "Linha": "line",
+        }
+        style = style_map.get(style_label, "auto")
+        label = f"{degrees:.1f}°"
+        return degrees, label, style
+
     def _get_pen_dot_cursor(self) -> QCursor:
         """Cursor em formato de ponto para a ferramenta Caneta."""
         if self._pen_dot_cursor is not None:
@@ -2289,8 +2490,15 @@ class DrawingCanvas(QWidget):
             self.scene.cancel_manual_dimension()
         if hasattr(self, "scene") and self.scene._curve_draw_phase > 0:
             self.scene._cancel_curve_draw()
-        if hasattr(self, "scene") and self.scene._preview_item is not None and self.tool == Tool.ANGLE:
-            self.scene._cancel_angle_draw()
+        if hasattr(self, "scene") and self.tool == Tool.ANGLE and tool != Tool.ANGLE:
+            self.scene.cancel_angle_mode()
+        if tool == Tool.ANGLE:
+            config = self._ask_angle_mode_config()
+            if config is None:
+                tool = Tool.SELECT
+            else:
+                degrees, label, style = config
+                self.scene.begin_angle_mode(degrees, label, style)
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
@@ -2596,7 +2804,7 @@ class DrawingCanvas(QWidget):
 
     # Limpar
     def _clear(self):
-        self.scene._cancel_angle_draw()
+        self.scene.cancel_angle_mode()
         self.scene.cancel_mirror_axis()
         self.scene.cancel_manual_dimension()
         self.scene.clear()
@@ -2607,6 +2815,7 @@ class DrawingCanvas(QWidget):
         self.scene._manual_dim_line_item = None
         self.scene._manual_dim_text_item = None
         self.scene._angle_text_preview_item = None
+        self.scene._angle_marker_preview_item = None
         self.scene._mirror_axis_line_item = None
         self._undo_stack.clear()
         self._redo_stack.clear()
@@ -2944,6 +3153,17 @@ class DrawingCanvas(QWidget):
                     "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsPathItem):
+            if isinstance(meta, dict) and meta.get("type") == "angle_dimension_marker":
+                path = item.path()
+                return {
+                    "type": "angle_dimension_marker",
+                    "segments": _serialize_path_segments(path),
+                    "pos_x": item.pos().x(),
+                    "pos_y": item.pos().y(),
+                    "pen": pen_data(item.pen()),
+                    "rotation": rot,
+                    "transform": transform_data,
+                }
             path = item.path()
             points = []
             for i in range(path.elementCount()):
