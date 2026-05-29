@@ -49,8 +49,11 @@ Responsaveis:
                  Painel Gerencial.
                  *** RESOLVIDO ***
 
-- [ ] [cappinho] Botao "Exportar para Excel" em Historico / Busca.
-                 Exportar os resultados filtrados atualmente visiveis na tabela.
+- [x] [joao]     Botao "Exportar para Excel" em Historico / Busca.
+                 Exporta os resultados filtrados atuais para .xlsx (openpyxl).
+                 Aproveitado para reagrupar os filtros em duas linhas (mais
+                 legivel e com folga para novos filtros).
+                 *** RESOLVIDO ***
 
 - [x] [joao]     A&R: ao enviar requisicao para maquina de corte, sempre encaminhar para
                  maquina de dobra em seguida.
