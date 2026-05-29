@@ -211,6 +211,25 @@ def _sum_item_weights(items: Optional[list]) -> float:
     return sum((item.weight or 0.0) for item in (items or []))
 
 
+def _normalize_operator_name(value: object) -> str:
+    return normalize_upper_required(value).replace("|", " ").replace(";", " ").strip()
+
+
+def _parse_operator_names(raw: object) -> list[str]:
+    if raw is None:
+        return []
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for part in str(raw).split(";"):
+        normalized = _normalize_operator_name(part)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        names.append(normalized)
+    return names
+
+
 def _parse_production_note(note: Optional[str]) -> dict | None:
     if not note:
         return None
@@ -224,6 +243,7 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
         "target": _canonical_destination(parts[2]),
         "machine": "",
         "reason": "",
+        "operators": [],
     }
 
     for raw_segment in parts[3:]:
@@ -240,6 +260,9 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
                 continue
             if normalized_key == "reason":
                 data["reason"] = normalized_value
+                continue
+            if normalized_key == "operators":
+                data["operators"] = _parse_operator_names(normalized_value)
                 continue
 
         if not data["machine"] and data["action"] in (
@@ -478,6 +501,7 @@ def _production_events(req: Requisition) -> list[dict]:
                 "target": parsed["target"],
                 "machine": _normalize_machine_name(parsed.get("machine", "")),
                 "reason": parsed["reason"],
+                "operators": list(parsed.get("operators") or []),
                 "changed_at": entry.changed_at,
             }
         )
@@ -703,6 +727,7 @@ def _production_item(
     waiting_since: datetime | None = None,
     production_started_at: datetime | None = None,
     machine_name: str | None = None,
+    operator_names: list[str] | None = None,
 ) -> ProductionItemResponse:
     status_value = getattr(req.status, "value", req.status)
     return ProductionItemResponse(
@@ -711,6 +736,7 @@ def _production_item(
         client_name=req.client_name,
         vendor_name=req.vendor_name,
         obra=req.obra,
+        weight=req.weight,
         status=str(status_value),
         emission_date=req.emission_date,
         created_at=req.created_at,
@@ -719,6 +745,7 @@ def _production_item(
         machine_name=_normalize_machine_name(machine_name) or None,
         waiting_since=waiting_since,
         production_started_at=production_started_at,
+        operator_names=list(operator_names or []),
     )
 
 
@@ -777,6 +804,7 @@ def _build_production_summary(
                     req,
                     machine_name=current_machine,
                     production_started_at=started_event["changed_at"] if started_event else None,
+                    operator_names=list(started_event.get("operators") or []) if started_event else [],
                 )
             )
 
@@ -809,6 +837,11 @@ def _build_production_summary(
                 name=machine_name,
                 sort_order=machine.sort_order,
                 status=machine.status,
+                operators=[
+                    _normalize_operator_name(operator.name)
+                    for operator in (getattr(machine, "operators", None) or [])
+                    if _normalize_operator_name(operator.name)
+                ],
                 quantity_in_production=len(rows),
                 finalized_count=len(finished_cycles),
                 average_seconds=average_seconds,
@@ -1482,6 +1515,7 @@ def get_production_summary(
     visible = _filter_requisitions_for_user(reqs, current_user)
     machines = (
         db.query(ProductionMachine)
+        .options(selectinload(ProductionMachine.operators))
         .filter(ProductionMachine.destination == normalized_destination)
         .order_by(ProductionMachine.sort_order.asc(), ProductionMachine.id.asc())
         .all()
