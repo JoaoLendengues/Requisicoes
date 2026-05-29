@@ -5,12 +5,14 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QDateTimeEdit,
+    QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -471,9 +473,6 @@ class HistoryView(QWidget):
         filter_layout.addWidget(filter_shortcuts)
         filter_layout.addWidget(filter_subtitle)
 
-        controls = QHBoxLayout()
-        controls.setSpacing(max(12, int(16 * s)))
-
         status_col = QVBoxLayout()
         status_col.setSpacing(max(6, int(8 * s)))
         status_label = QLabel("STATUS")
@@ -636,14 +635,26 @@ class HistoryView(QWidget):
         self.guide_btn.clicked.connect(self.guide_requested)
         buttons_col.addWidget(self.guide_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
-        controls.addLayout(status_col, 1)
-        controls.addLayout(period_col, 2)
-        controls.addLayout(invoiced_col, 1)
-        controls.addLayout(production_col, 1)
-        controls.addLayout(machine_col, 1)
-        controls.addLayout(search_col, 2)
-        controls.addLayout(buttons_col)
-        filter_layout.addLayout(controls)
+        # Filtros em duas linhas, agrupadas por intenção, para dar respiro e
+        # acomodar novos filtros no futuro sem espremer tudo numa linha só.
+        # Linha 1 — o que/quando buscar: BUSCA · PERÍODO · STATUS
+        row1 = QHBoxLayout()
+        row1.setSpacing(max(12, int(16 * s)))
+        row1.addLayout(search_col, 2)
+        row1.addLayout(period_col, 2)
+        row1.addLayout(status_col, 1)
+
+        # Linha 2 — refinamentos + ações: FATURADO · PRODUÇÃO · MÁQUINA · [BUSCAR/LIMPAR]
+        row2 = QHBoxLayout()
+        row2.setSpacing(max(12, int(16 * s)))
+        row2.addLayout(invoiced_col, 1)
+        row2.addLayout(production_col, 1)
+        row2.addLayout(machine_col, 1)
+        row2.addStretch(1)
+        row2.addLayout(buttons_col)
+
+        filter_layout.addLayout(row1)
+        filter_layout.addLayout(row2)
         root.addWidget(filter_card)
 
         results_card = _make_card(
@@ -667,6 +678,10 @@ class HistoryView(QWidget):
         )
         results_layout.addWidget(results_accent)
 
+        results_header = QHBoxLayout()
+        results_header.setSpacing(max(8, int(10 * s)))
+        results_title_col = QVBoxLayout()
+        results_title_col.setSpacing(max(2, int(3 * s)))
         results_title = QLabel("Resultados")
         results_title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
@@ -677,8 +692,17 @@ class HistoryView(QWidget):
         results_subtitle.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
-        results_layout.addWidget(results_title)
-        results_layout.addWidget(results_subtitle)
+        results_title_col.addWidget(results_title)
+        results_title_col.addWidget(results_subtitle)
+        results_header.addLayout(results_title_col, 1)
+
+        self.export_btn = QPushButton("EXPORTAR EXCEL")
+        self.export_btn.setFixedHeight(max(36, int(42 * s)))
+        self.export_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.export_btn.setToolTip("Exportar os resultados atuais para uma planilha Excel")
+        self.export_btn.clicked.connect(self._export_excel)
+        results_header.addWidget(self.export_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        results_layout.addLayout(results_header)
 
         self.table = QTableWidget(0, len(COLS))
         self.table.setHorizontalHeaderLabels(COLS)
@@ -881,6 +905,7 @@ class HistoryView(QWidget):
         self.refresh_btn.setEnabled(not loading)
         self.search_btn.setEnabled(not loading)
         self.clear_btn.setEnabled(not loading)
+        self.export_btn.setEnabled(not loading)
         self.combo_status.setEnabled(not loading)
         self.input_date_from.setEnabled(not loading)
         self.input_date_to.setEnabled(not loading)
@@ -900,6 +925,78 @@ class HistoryView(QWidget):
         self.updated_label.setText("Falha ao atualizar")
         self.error_label.setText(f"Não foi possível carregar o histórico.\n\n{message}")
         self.error_label.show()
+
+    def _row_values(self, req: dict) -> list[str]:
+        """Valores de exibição de uma linha (usado na tabela e na exportação)."""
+        status = str(req.get("production_status") or req.get("status") or "")
+        return [
+            str(req.get("ped_number") or "-"),
+            str(req.get("client_name") or req.get("client_id") or "-"),
+            str(req.get("obra") or "-"),
+            str(req.get("vendor_name") or req.get("vendor_id") or "-"),
+            _format_date(req.get("emission_date")),
+            STATUS_LABELS.get(status, status or "-"),
+            "SIM" if bool(req.get("invoiced")) or status == "faturado" else "NÃO",
+            str(
+                req.get("production_destination_display")
+                or req.get("production_destination")
+                or "-"
+            ),
+            str(
+                req.get("production_machine_display")
+                or req.get("production_machine")
+                or "-"
+            ),
+            str(req.get("cancel_reason") or "-"),
+        ]
+
+    def _export_excel(self):
+        """Exporta os resultados atualmente carregados para uma planilha .xlsx."""
+        if not self._reqs:
+            QMessageBox.information(
+                self, "Exportar para Excel",
+                "Não há resultados para exportar. Faça uma busca primeiro.",
+            )
+            return
+        default_name = f"historico_requisicoes_{local_now().strftime('%Y%m%d_%H%M')}.xlsx"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar para Excel", default_name, "Planilha Excel (*.xlsx)"
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+        try:
+            import openpyxl
+            from openpyxl.styles import Alignment, Font, PatternFill
+            from openpyxl.utils import get_column_letter
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Histórico"
+            ws.append(COLS)
+            header_fill = PatternFill("solid", fgColor="1E3A5F")
+            for cell in ws[1]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            for req in self._reqs:
+                ws.append(self._row_values(req))
+            widths = [10, 34, 26, 22, 12, 24, 10, 18, 24, 26]
+            for i, width in enumerate(widths, start=1):
+                ws.column_dimensions[get_column_letter(i)].width = width
+            ws.freeze_panes = "A2"
+            wb.save(path)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
+                self, "Exportar para Excel",
+                f"Não foi possível salvar a planilha.\n\n{exc}",
+            )
+            return
+        QMessageBox.information(
+            self, "Exportar para Excel",
+            f"{len(self._reqs)} requisição(ões) exportada(s) com sucesso.",
+        )
 
     def _populate(self, reqs: object):
         if not isinstance(reqs, list):
@@ -921,26 +1018,7 @@ class HistoryView(QWidget):
                 status      = str(req.get("production_status") or req.get("status") or "")
                 ped_raw     = req.get("ped_number")
                 date_raw    = str(req.get("emission_date") or "")
-                values = [
-                    str(ped_raw or "-"),
-                    str(req.get("client_name") or req.get("client_id") or "-"),
-                    str(req.get("obra") or "-"),
-                    str(req.get("vendor_name") or req.get("vendor_id") or "-"),
-                    _format_date(req.get("emission_date")),
-                    status or "-",
-                    "SIM" if bool(req.get("invoiced")) or status == "faturado" else "NÃO",
-                    str(
-                        req.get("production_destination_display")
-                        or req.get("production_destination")
-                        or "-"
-                    ),
-                    str(
-                        req.get("production_machine_display")
-                        or req.get("production_machine")
-                        or "-"
-                    ),
-                    str(req.get("cancel_reason") or "-"),
-                ]
+                values = self._row_values(req)
                 for col, value in enumerate(values):
                     if col == 5:
                         badge = QLabel(STATUS_LABELS.get(status, status or "-"))
@@ -1072,4 +1150,5 @@ class HistoryView(QWidget):
         self.input_search.setStyleSheet(_field_style(s))
         self.search_btn.setStyleSheet(_primary_action_btn_style(s))
         self.clear_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.export_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self._apply_table_style()
