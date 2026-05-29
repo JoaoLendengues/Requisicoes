@@ -39,6 +39,7 @@ class Tool(Enum):
     PEN      = "pen"
     ERASER   = "eraser"
     LINE     = "line"
+    ANGLE    = "angle"
     RULER    = "ruler"
     ARROW    = "arrow"
     CURVE    = "curve"
@@ -208,6 +209,11 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setPen(pen)
         item.setData(0, {"type": "manual_dimension_line"})
 
+    elif t == "angle_dimension_line":
+        item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
+        item.setPen(pen)
+        item.setData(0, {"type": "angle_dimension_line"})
+
     elif t == "rect":
         item = HollowRectItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
@@ -243,6 +249,14 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
         item.setFont(font)
         item.setData(0, {"type": "manual_dimension_text"})
+
+    elif t == "angle_dimension_text":
+        item = QGraphicsTextItem(d.get("text", ""))
+        item.setPos(QPointF(d["x"], d["y"]))
+        item.setDefaultTextColor(QColor(d.get("color", "#000000")))
+        font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
+        item.setFont(font)
+        item.setData(0, {"type": "angle_dimension_text"})
 
     elif t == "image":
         path = d.get("path", "")
@@ -365,6 +379,7 @@ class DrawingScene(QGraphicsScene):
         self._manual_dim_line_item: QGraphicsLineItem | None = None
         self._manual_dim_text_item: QGraphicsTextItem | None = None
         self._manual_dim_block_release: bool = False
+        self._angle_text_preview_item: QGraphicsTextItem | None = None
         self._mirror_axis_active: bool = False
         self._mirror_axis_start: QPointF | None = None
         self._mirror_axis_line_item: QGraphicsLineItem | None = None
@@ -504,6 +519,9 @@ class DrawingScene(QGraphicsScene):
                 "manual_dimension_overlay",
                 "manual_dimension_line",
                 "manual_dimension_text",
+                "angle_dimension_overlay",
+                "angle_dimension_line",
+                "angle_dimension_text",
                 "mirror_axis_overlay",
             }:
                 continue
@@ -851,6 +869,7 @@ class DrawingScene(QGraphicsScene):
             "ruler_overlay", "manual_dimension_overlay",
             "ruler_measure_line", "ruler_measure_text",
             "manual_dimension_line", "manual_dimension_text",
+            "angle_dimension_overlay", "angle_dimension_line", "angle_dimension_text",
             "mirror_axis_overlay",
         }
         for item in self.items(rect):
@@ -888,6 +907,15 @@ class DrawingScene(QGraphicsScene):
         if abs_dist >= 10.0:
             return f"{(dist_mm / 10.0):.2f} cm"
         return f"{dist_mm:.1f} mm"
+
+    @staticmethod
+    def _format_angle_label(start: QPointF, end: QPointF) -> str:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        if math.hypot(dx, dy) < 1e-6:
+            return "0.0°"
+        angle_deg = math.degrees(math.atan2(dy, dx))
+        return f"{angle_deg:.1f}°"
 
     def _commit_ruler_measure(self, start: QPointF, end: QPointF):
         if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
@@ -1005,6 +1033,66 @@ class DrawingScene(QGraphicsScene):
         if self._manual_dim_text_item is not None:
             self.removeItem(self._manual_dim_text_item)
             self._manual_dim_text_item = None
+
+    def _clear_angle_preview(self):
+        if self._angle_text_preview_item is not None:
+            self.removeItem(self._angle_text_preview_item)
+            self._angle_text_preview_item = None
+
+    def _update_angle_preview(self, start: QPointF, end: QPointF):
+        if not isinstance(self._preview_item, QGraphicsLineItem):
+            return
+        self._preview_item.setLine(start.x(), start.y(), end.x(), end.y())
+        label = self._format_angle_label(start, end)
+        if self._angle_text_preview_item is None:
+            self._angle_text_preview_item = QGraphicsTextItem(label)
+            self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
+            self._angle_text_preview_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+            self._angle_text_preview_item.setZValue(10001)
+            self._angle_text_preview_item.setData(0, {"type": "angle_dimension_overlay"})
+            self.addItem(self._angle_text_preview_item)
+        else:
+            self._angle_text_preview_item.setPlainText(label)
+            self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
+        self._angle_text_preview_item.setPos(self._smart_label_pos(start, end, label))
+
+    def _commit_angle_measure(self, start: QPointF, end: QPointF):
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+        label = self._format_angle_label(start, end)
+
+        line_item = QGraphicsLineItem(start.x(), start.y(), end.x(), end.y())
+        line_item.setPen(self._pen())
+        line_item.setZValue(9000)
+        line_item.setData(0, {"type": "angle_dimension_line"})
+        line_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(line_item)
+
+        text_item = QGraphicsTextItem(label)
+        text_item.setDefaultTextColor(QColor(self.cw.color))
+        text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+        text_item.setZValue(9001)
+        text_item.setData(0, {"type": "angle_dimension_text"})
+        text_item.setPos(self._smart_label_pos(start, end, label))
+        text_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(text_item)
+
+        self.cw._push_undo(line_item)
+        self.cw._push_undo(text_item)
+        self.cw.changed.emit()
+
+    def _cancel_angle_draw(self):
+        if self._preview_item is not None:
+            self.removeItem(self._preview_item)
+            self._preview_item = None
+        self._clear_angle_preview()
+        self._start = None
 
     def begin_manual_dimension(self, label: str):
         self.cancel_manual_dimension()
@@ -1214,6 +1302,15 @@ class DrawingScene(QGraphicsScene):
                 self._start.x() + 0.01, self._start.y(), self._pen()
             )
 
+        elif tool == Tool.ANGLE:
+            self._start = QPointF(pos.x(), pos.y())
+            self._preview_item = self.addLine(
+                self._start.x(), self._start.y(),
+                self._start.x() + 0.01, self._start.y(),
+                self._pen(),
+            )
+            self._update_angle_preview(self._start, self._start)
+
         elif tool == Tool.RULER:
             self._update_ruler(self._start, self._start)
 
@@ -1361,6 +1458,10 @@ class DrawingScene(QGraphicsScene):
             if old_snap != self._snap_point:
                 self.update()
 
+        elif tool == Tool.ANGLE and self._preview_item:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._update_angle_preview(self._start, end)
+
         elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
             self._update_ruler(self._start, end)
@@ -1465,6 +1566,13 @@ class DrawingScene(QGraphicsScene):
             self.cw._push_undo(item)
             self._preview_item = None
 
+        elif tool == Tool.ANGLE and self._preview_item:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._commit_angle_measure(self._start, end)
+            self.removeItem(self._preview_item)
+            self._preview_item = None
+            self._clear_angle_preview()
+
         elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
             self._update_ruler(self._start, end)
@@ -1536,6 +1644,11 @@ class DrawingScene(QGraphicsScene):
 
         if self._curve_draw_phase > 0 and event.key() == Qt.Key.Key_Escape:
             self._cancel_curve_draw()
+            event.accept()
+            return
+
+        if event.key() == Qt.Key.Key_Escape and self.cw.tool == Tool.ANGLE and self._preview_item is not None:
+            self._cancel_angle_draw()
             event.accept()
             return
 
@@ -1785,6 +1898,7 @@ class DrawingCanvas(QWidget):
             (Tool.PEN,      "✏️ Caneta",   "P"),
             (Tool.ERASER,   "🧹 Borracha", "X"),
             (Tool.LINE,     "📏 Linha",    "L"),
+            (Tool.ANGLE,    "∠ Ângulo",    "U"),
             (Tool.ARROW,    "➡ Seta",      "A"),
             (Tool.CURVE,    "〰 Curva",    "C"),
             (Tool.TRIANGLE, "△ Triang.",  "G"),
@@ -1952,7 +2066,7 @@ class DrawingCanvas(QWidget):
 
         # Dica de teclado
         hint = QLabel(
-            "✨ Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  U = ângulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
@@ -2029,6 +2143,7 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_P: Tool.PEN,
             Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
+            Qt.Key.Key_U: Tool.ANGLE,
             Qt.Key.Key_A: Tool.ARROW,
             Qt.Key.Key_C: Tool.CURVE,
             Qt.Key.Key_G: Tool.TRIANGLE,
@@ -2174,6 +2289,8 @@ class DrawingCanvas(QWidget):
             self.scene.cancel_manual_dimension()
         if hasattr(self, "scene") and self.scene._curve_draw_phase > 0:
             self.scene._cancel_curve_draw()
+        if hasattr(self, "scene") and self.scene._preview_item is not None and self.tool == Tool.ANGLE:
+            self.scene._cancel_angle_draw()
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
@@ -2352,6 +2469,27 @@ class DrawingCanvas(QWidget):
     def _on_pen_width_changed(self, v: int):
         self.pen_width = v
         if hasattr(self, "scene"):
+            for item in self.scene.selectedItems():
+                if not isinstance(
+                    item,
+                    (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem),
+                ):
+                    continue
+                meta = item.data(0) or {}
+                if isinstance(meta, dict) and meta.get("type") in {
+                    "ruler_overlay",
+                    "ruler_measure_line",
+                    "manual_dimension_overlay",
+                    "manual_dimension_line",
+                    "angle_dimension_overlay",
+                    "mirror_axis_overlay",
+                }:
+                    continue
+                pen = item.pen()
+                pen.setWidth(v)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                item.setPen(pen)
             self.scene._sync_ruler_visuals()
         self.changed.emit()
 
@@ -2372,6 +2510,7 @@ class DrawingCanvas(QWidget):
                 "ruler_measure_line",
                 "manual_dimension_overlay",
                 "manual_dimension_line",
+                "angle_dimension_overlay",
             }:
                 continue
             pen = item.pen()
@@ -2457,6 +2596,7 @@ class DrawingCanvas(QWidget):
 
     # Limpar
     def _clear(self):
+        self.scene._cancel_angle_draw()
         self.scene.cancel_mirror_axis()
         self.scene.cancel_manual_dimension()
         self.scene.clear()
@@ -2466,6 +2606,7 @@ class DrawingCanvas(QWidget):
         self.scene._ruler_text_item = None
         self.scene._manual_dim_line_item = None
         self.scene._manual_dim_text_item = None
+        self.scene._angle_text_preview_item = None
         self.scene._mirror_axis_line_item = None
         self._undo_stack.clear()
         self._redo_stack.clear()
@@ -2749,7 +2890,12 @@ class DrawingCanvas(QWidget):
 
     def _item_to_dict(self, item: QGraphicsItem) -> dict | None:
         meta = item.data(0) or {}
-        if isinstance(meta, dict) and meta.get("type") in {"ruler_overlay", "manual_dimension_overlay", "mirror_axis_overlay"}:
+        if isinstance(meta, dict) and meta.get("type") in {
+            "ruler_overlay",
+            "manual_dimension_overlay",
+            "angle_dimension_overlay",
+            "mirror_axis_overlay",
+        }:
             return None
 
         pen_data = lambda p: {
@@ -2770,6 +2916,11 @@ class DrawingCanvas(QWidget):
                         "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
             if isinstance(meta, dict) and meta.get("type") == "manual_dimension_line":
                 return {"type": "manual_dimension_line",
+                        "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
+                        "pos_x": item.pos().x(), "pos_y": item.pos().y(),
+                        "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
+            if isinstance(meta, dict) and meta.get("type") == "angle_dimension_line":
+                return {"type": "angle_dimension_line",
                         "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
                         "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                         "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
@@ -2812,6 +2963,13 @@ class DrawingCanvas(QWidget):
                         "rotation": rot, "transform": transform_data}
             if isinstance(meta, dict) and meta.get("type") == "manual_dimension_text":
                 return {"type": "manual_dimension_text",
+                        "x": item.pos().x(), "y": item.pos().y(),
+                        "text": item.toPlainText(),
+                        "color": item.defaultTextColor().name(),
+                        "font_size": item.font().pointSize(),
+                        "rotation": rot, "transform": transform_data}
+            if isinstance(meta, dict) and meta.get("type") == "angle_dimension_text":
+                return {"type": "angle_dimension_text",
                         "x": item.pos().x(), "y": item.pos().y(),
                         "text": item.toPlainText(),
                         "color": item.defaultTextColor().name(),
