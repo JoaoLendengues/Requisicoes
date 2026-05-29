@@ -29,7 +29,10 @@ Responsaveis:
                  Mostrar motivo nas tabelas de historico e nas telas de A&R / Industria.
                  *** RESOLVIDO ***
 
-- [ ] [cappinho] Remover campo de importacao de usuario na Central de Usuarios.
+- [x] [cappinho] Remover campo de importacao de usuario na Central de Usuarios.
+                 Central de Usuarios virou aba "Usuarios" dentro de Configuracoes,
+                 com acesso exclusivo para administradores. Campo de importacao removido.
+                 *** RESOLVIDO ***
 
 ---
 

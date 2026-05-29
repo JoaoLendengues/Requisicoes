@@ -949,6 +949,18 @@ class SettingsView(QWidget):
             self._backup_table            = QTableWidget(0, 3)
 
         # ════════════════════════════════════════════════════════════════
+        # ABA: Usuários (admin only) — Central de Usuários embarcada
+        # ════════════════════════════════════════════════════════════════
+        self._user_center_tab_index = -1
+        if session.is_admin:
+            from .user_center_view import UserCenterView
+            self._user_center = UserCenterView(s, embedded=True)
+            self._user_center_tab_index = len(self._tab_btns)
+            _add_tab("Usuários", self._user_center)
+        else:
+            self._user_center = None
+
+        # ════════════════════════════════════════════════════════════════
         # ABA: Ajuda
         # ════════════════════════════════════════════════════════════════
         card_help = _new_card()
@@ -1236,6 +1248,13 @@ class SettingsView(QWidget):
         for i, btn in enumerate(self._tab_btns):
             btn.setChecked(i == idx)
         self._page_scroll.verticalScrollBar().setValue(0)
+
+        # A aba de Usuários tem seus próprios botões de salvar; o botão global
+        # "SALVAR CONFIGURAÇÕES" não se aplica a ela.
+        on_users_tab = (idx == self._user_center_tab_index)
+        self.btn_save.setVisible(not on_users_tab)
+        if on_users_tab and self._user_center is not None:
+            self._user_center.refresh()
 
     def _on_scale_btn(self, label: str):
         for lbl, btn in self._scale_btns.items():
@@ -1606,3 +1625,5 @@ class SettingsView(QWidget):
             self._btn_run_backup.setStyleSheet(_primary_action_btn_style(s))
             self._btn_refresh_backup_table.setStyleSheet(_flat_secondary_btn_style(s))
             self._backup_table.setStyleSheet(_table_style())
+        if getattr(self, "_user_center", None) is not None:
+            self._user_center.apply_theme()

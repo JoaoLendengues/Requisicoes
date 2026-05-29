@@ -52,8 +52,9 @@ _SLIDES: dict[str, list[dict]] = {
             "icon": "👥",
             "title": "Central de Usuários",
             "body": (
-                "Em <b>Usuários</b>, cadastre, edite ou desative membros da equipe. "
-                "Defina o nível de acesso de cada um: Vendedor, Gerente, Produção, "
+                "Em <b>Configurações → Usuários</b> (acesso exclusivo de administradores), "
+                "cadastre, edite ou desative membros da equipe. "
+                "Defina o nível de acesso de cada um: Vendedor, Gerente, A&R, "
                 "Indústria ou Entrega."
             ),
         },

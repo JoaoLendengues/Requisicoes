@@ -180,7 +180,6 @@ class MainWindow(QMainWindow):
             "pinheiro_industria": session.can_access_industria,
             "ar":                 session.can_access_ar,
             "historico":          True,
-            "usuarios":           session.can_manage_users,
             "config":             True,
             "feedback":           True,
         }
@@ -809,7 +808,6 @@ class MainWindow(QMainWindow):
 
     def _capture_user_center_state(self) -> dict:
         return {
-            "import_path": self.user_center_view.input_import_path.text(),
             "search": self.user_center_view.search_input.text(),
             "selected_user_id": self.user_center_view._selected_user_id,
             "form_status": self.user_center_view.form_status.text(),
@@ -825,7 +823,6 @@ class MainWindow(QMainWindow):
         }
 
     def _restore_user_center_state(self, state: dict) -> None:
-        self.user_center_view.input_import_path.setText(state.get("import_path") or "")
         self.user_center_view.search_input.setText(state.get("search") or "")
         self.user_center_view._selected_user_id = state.get("selected_user_id")
         self.user_center_view.form_status.setText(state.get("form_status") or "Novo usuário")
@@ -1254,10 +1251,6 @@ class MainWindow(QMainWindow):
             """Getter para widget do Dashboard (carregado sob demanda)."""
             return lambda: getattr(mw.dashboard_view, attr, None) if mw.dashboard_view else None
 
-        def users(attr):
-            """Getter para widget da Central de Usuários (carregada sob demanda)."""
-            return lambda: getattr(mw.user_center_view, attr, None) if mw.user_center_view else None
-
         def cfg(attr, idx=None):
             """Getter para widget de Configurações (carregado sob demanda)."""
             def _get():
@@ -1337,28 +1330,10 @@ class MainWindow(QMainWindow):
                 # ── Central de Usuários ───────────────────────────────────────
                 TourStep(
                     "Central de Usuários",
-                    "Cadastre, edite e desative membros da equipe. "
-                    "Defina o nível de acesso: "
-                    "<b>Vendedor, Gerente, Produção, Indústria ou Entrega</b>.",
-                    nav("usuarios"), "right", "usuarios",
-                ),
-                TourStep(
-                    "Importação de Usuários",
-                    "Importe usuários em lote a partir de um arquivo <b>.ods</b>. "
-                    "Útil para cadastrar a equipe de uma vez.",
-                    users("import_card"), "bottom",
-                ),
-                TourStep(
-                    "Lista de Usuários",
-                    "Visualize todos os usuários cadastrados. "
-                    "Use o campo de busca para filtrar por nome, código ou setor.",
-                    users("table_card"), "right",
-                ),
-                TourStep(
-                    "Formulário de Cadastro",
-                    "Preencha nome, código, senha e perfil de acesso. "
-                    "Desmarque <b>Usuário ativo</b> para bloquear o acesso sem excluir.",
-                    users("form_card"), "left",
+                    "Em <b>Configurações → Usuários</b> você cadastra, edita e "
+                    "desativa membros da equipe e define o nível de acesso: "
+                    "<b>Vendedor, Gerente, A&R, Indústria ou Entrega</b>.",
+                    nav("config"), "right", "config",
                 ),
                 # ── Painel Gerencial ──────────────────────────────────────────
                 TourStep(
@@ -1564,25 +1539,6 @@ class MainWindow(QMainWindow):
                     "Salvar registra a requisição e envia o PDF para a pasta "
                     "de rede do vendedor responsável.",
                     form("btn_save"), "top",
-                ),
-                # ── Central de Usuários ───────────────────────────────────────
-                TourStep(
-                    "Central de Usuários",
-                    "Gerencie a equipe: ajuste perfis de acesso, "
-                    "redefina senhas e cadastre novos colaboradores.",
-                    nav("usuarios"), "right", "usuarios",
-                ),
-                TourStep(
-                    "Lista de Usuários",
-                    "Todos os cadastros da equipe. Clique em um usuário "
-                    "para carregar seus dados no formulário ao lado.",
-                    users("table_card"), "right",
-                ),
-                TourStep(
-                    "Formulário de Cadastro",
-                    "Edite nome, senha, perfil e status de ativo. "
-                    "Desmarque <b>Usuário ativo</b> para suspender o acesso.",
-                    users("form_card"), "left",
                 ),
                 # ── Painel Gerencial ──────────────────────────────────────────
                 TourStep(

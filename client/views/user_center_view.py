@@ -1,6 +1,4 @@
-"""Central de usuários com importação, cadastro individual e manutenção de acessos."""
-
-import os
+"""Central de usuários: cadastro individual e manutenção de acessos."""
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
@@ -8,7 +6,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
-    QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -17,12 +14,10 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QProgressBar,
     QPushButton,
     QScrollArea,
     QTableWidget,
     QTableWidgetItem,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -180,31 +175,6 @@ class ActionWorker(QObject):
             self.finished.emit()
 
 
-class ImportWorker(QObject):
-    progress = Signal(int, int, str)
-    result = Signal(object)
-    error = Signal(str)
-    finished = Signal()
-
-    def __init__(self, path: str):
-        super().__init__()
-        self.path = path
-
-    def run(self):
-        try:
-            from ..services.user_importer import import_users
-
-            result = import_users(
-                self.path,
-                on_progress=lambda current, total, msg: self.progress.emit(current, total, msg),
-            )
-            self.result.emit(result)
-        except Exception as exc:
-            self.error.emit(str(exc))
-        finally:
-            self.finished.emit()
-
-
 class UiCallback(QObject):
     result = Signal(object)
     error = Signal(str)
@@ -213,9 +183,10 @@ class UiCallback(QObject):
 class UserCenterView(QWidget):
     guide_requested = Signal()
 
-    def __init__(self, scale: float = 1.0, parent=None):
+    def __init__(self, scale: float = 1.0, parent=None, embedded: bool = False):
         super().__init__(parent)
         self.scale = scale
+        self.embedded = embedded
         self._threads: list[tuple[QThread, QObject]] = []
         self._users_all: list[dict] = []
         self._users_visible: list[dict] = []
@@ -232,9 +203,25 @@ class UserCenterView(QWidget):
             f"QWidget#userCenterView {{ background:{page_bg}; }}"
         )
         root = QVBoxLayout(self)
-        root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
-                                max(18, int(24 * s)), max(18, int(24 * s)))
+        if self.embedded:
+            root.setContentsMargins(0, 0, 0, 0)
+        else:
+            root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                    max(18, int(24 * s)), max(18, int(24 * s)))
         root.setSpacing(max(14, int(18 * s)))
+
+        if self.embedded:
+            # No modo embarcado (aba de Configurações) o cabeçalho próprio é
+            # suprimido — Configurações já fornece título e data. Mantemos os
+            # widgets referenciados pela lógica como controles ocultos.
+            self.date_label = QLabel(_format_header_date())
+            self.updated_label = QLabel("")
+            self.refresh_btn = QPushButton()
+            self.refresh_btn.hide()
+            self.btn_guide = QPushButton()
+            self.btn_guide.hide()
+            self._build_body(root, page_bg)
+            return
 
         header = QHBoxLayout()
         header.setSpacing(max(12, int(16 * s)))
@@ -314,6 +301,10 @@ class UserCenterView(QWidget):
         header.addLayout(right_col)
         root.addLayout(header)
 
+        self._build_body(root, page_bg)
+
+    def _build_body(self, root: QVBoxLayout, page_bg: str) -> None:
+        s = self.scale
         self.error_label = QLabel("")
         self.error_label.hide()
         self.error_label.setWordWrap(True)
@@ -346,9 +337,6 @@ class UserCenterView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(max(16, int(18 * s)))
 
-        self.import_card = self._build_import_card()
-        layout.addWidget(self.import_card)
-
         body = QHBoxLayout()
         body.setSpacing(max(12, int(14 * s)))
         self.table_card = self._build_table_card()
@@ -357,82 +345,6 @@ class UserCenterView(QWidget):
         body.addWidget(self.form_card, 2)
         layout.addLayout(body)
         layout.addStretch()
-
-    def _build_import_card(self) -> QFrame:
-        s = self.scale
-        card = _make_card(
-            s,
-            theme.CARD_BG,
-            border_color=None,
-            radius=max(18, int(20 * s)),
-            hover_background=theme.CARD_BG,
-        )
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
-                                  max(16, int(20 * s)), max(14, int(18 * s)))
-        layout.setSpacing(max(10, int(12 * s)))
-
-        accent = QFrame()
-        accent.setFixedHeight(max(4, int(5 * s)))
-        accent.setStyleSheet(
-            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-            f"stop:0 {_rgba(theme.PRIMARY_HOVER, 235)}, stop:0.5 {_rgba(theme.PRIMARY_HOVER, 155)}, stop:1 {_rgba(theme.PRIMARY_HOVER, 235)});"
-            f"border:none; border-radius:{max(2, int(3 * s))}px;"
-        )
-        title = QLabel("IMPORTAÇÃO DE USUÁRIOS")
-        title.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
-        )
-        helper = QLabel(
-            "Arquivo esperado: usuarios.ods na pasta base, com colunas Código, Nome, Contato e Setor."
-        )
-        helper.setWordWrap(True)
-        helper.setProperty("muted", "1")
-        helper.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt;"
-        )
-        layout.addWidget(accent)
-        layout.addWidget(title)
-        layout.addWidget(helper)
-
-        row = QHBoxLayout()
-        self.input_import_path = QLineEdit(os.path.join(os.getcwd(), "usuarios.ods"))
-        self.input_import_path.setFixedHeight(max(38, int(44 * s)))
-        self.input_import_path.setStyleSheet(_field_style(s))
-        row.addWidget(self.input_import_path, 1)
-
-        browse = QPushButton("...")
-        browse.setFixedSize(max(38, int(44 * s)), max(38, int(44 * s)))
-        browse.setStyleSheet(_flat_secondary_btn_style(s))
-        browse.clicked.connect(self._browse_import_file)
-        row.addWidget(browse)
-
-        self.import_btn = QPushButton("IMPORTAR USUÁRIOS")
-        self.import_btn.setFixedHeight(max(38, int(44 * s)))
-        self.import_btn.setStyleSheet(_primary_action_btn_style(s))
-        self.import_btn.clicked.connect(self._start_import)
-        row.addWidget(self.import_btn)
-        layout.addLayout(row)
-
-        self.import_progress = QProgressBar()
-        self.import_progress.setVisible(False)
-        self.import_progress.setStyleSheet(
-            f"QProgressBar {{ border:none; border-radius:4px;"
-            f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8, int(9 * s))}pt; }}"
-            f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
-        )
-        layout.addWidget(self.import_progress)
-
-        self.import_log = QTextEdit()
-        self.import_log.setReadOnly(True)
-        self.import_log.setMaximumHeight(max(100, int(120 * s)))
-        self.import_log.hide()
-        self.import_log.setStyleSheet(
-            f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
-            f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
-        )
-        layout.addWidget(self.import_log)
-        return card
 
     def _build_table_card(self) -> QFrame:
         s = self.scale
@@ -762,75 +674,6 @@ class UserCenterView(QWidget):
             if matched or not self._users_visible:
                 self._pending_code = None
 
-    def _browse_import_file(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Selecionar planilha de usuários",
-            "",
-            "Planilhas (*.ods *.xlsx *.xlsm *.xls)",
-            options=QFileDialog.Option.DontUseNativeDialog,
-        )
-        if path:
-            self.input_import_path.setText(path)
-
-    def _start_import(self):
-        path = self.input_import_path.text().strip()
-        if not path:
-            QMessageBox.warning(self, "Central de usuários", "Informe o caminho da planilha.")
-            return
-
-        current = next((pair for pair in self._threads if isinstance(pair[1], ImportWorker)), None)
-        if current and current[0].isRunning():
-            QMessageBox.information(self, "Central de usuários", "A importação atual ainda está em andamento.")
-            return
-
-        self.import_btn.setEnabled(False)
-        self.import_btn.setText("IMPORTANDO...")
-        self.import_progress.show()
-        self.import_progress.setMaximum(3)
-        self.import_progress.setValue(0)
-        self.import_log.hide()
-
-        worker = ImportWorker(path)
-        thread = QThread()
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
-        worker.progress.connect(self._on_import_progress)
-        worker.result.connect(self._on_import_done)
-        worker.error.connect(self._on_import_error)
-        worker.finished.connect(thread.quit)
-        worker.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
-        thread.finished.connect(self._reset_import_button)
-        thread.start()
-        self._threads.append((thread, worker))
-
-    def _on_import_progress(self, current: int, total: int, message: str):
-        self.import_progress.setVisible(True)
-        self.import_progress.setMaximum(total if total > 0 else 3)
-        self.import_progress.setValue(current)
-        self.import_progress.setFormat(message)
-
-    def _on_import_done(self, result):
-        self.import_progress.setVisible(True)
-        self.import_progress.setValue(self.import_progress.maximum())
-        self.import_log.show()
-        try:
-            self.import_log.setPlainText(result.summary())
-        except Exception:
-            self.import_log.setPlainText("Importação concluída.")
-        self.refresh()
-
-    def _on_import_error(self, message: str):
-        self.import_progress.hide()
-        self.import_log.show()
-        self.import_log.setPlainText(f"Erro:\n{message}")
-
-    def _reset_import_button(self):
-        self.import_btn.setEnabled(True)
-        self.import_btn.setText("IMPORTAR USUÁRIOS")
-
     def _prepare_new_user(self):
         self._selected_user_id = None
         self.form_status.setText("Novo usuário")
@@ -995,22 +838,12 @@ class UserCenterView(QWidget):
         self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
         self._page_content.setStyleSheet(f"QWidget#userCenterContent {{ background:{bg}; }}")
-        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        if not self.embedded:
+            self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.error_label.setStyleSheet(
             f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
             f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
-        )
-        self.import_btn.setStyleSheet(_primary_action_btn_style(s))
-        self.input_import_path.setStyleSheet(_field_style(s))
-        self.import_progress.setStyleSheet(
-            f"QProgressBar {{ border:none; border-radius:4px;"
-            f"background:{theme.TABLE_ALT_ROW}; text-align:center; font-size:{max(8, int(9 * s))}pt; }}"
-            f"QProgressBar::chunk {{ background:{theme.PRIMARY}; border-radius:3px; }}"
-        )
-        self.import_log.setStyleSheet(
-            f"background:{theme.TABLE_ALT_ROW}; border:none; border-radius:12px;"
-            f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK}; padding:6px;"
         )
         self.search_input.setStyleSheet(_field_style(s))
         self._apply_table_style()

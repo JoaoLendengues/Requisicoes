@@ -48,7 +48,6 @@ NAV_ITEMS = [
     ("ar",        "A&&R",               "ar"),
     ("historico", "HISTÓRICO / BUSCA",  "historico"),
     ("feedback",  "FEEDBACKS",          "feedback"),
-    ("usuarios",  "CENTRAL DE USUÁRIOS","usuarios"),
 ]
 
 BOTTOM_NAV_ITEMS = [
@@ -68,7 +67,6 @@ NAV_GROUPS = [
         ("historico", "HISTÓRICO / BUSCA", "historico"),
     ],
     [
-        ("usuarios", "CENTRAL DE USUÁRIOS", "usuarios"),
         ("tecnico", "PAINEL TÉCNICO", "tecnico"),
     ],
 ]
