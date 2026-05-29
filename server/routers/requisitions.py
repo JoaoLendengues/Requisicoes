@@ -410,12 +410,13 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         return
 
     if action == _PROD_CANCELED:
-        if len(reason.strip()) < 10:
+        if len(reason.strip()) < 5:
             raise HTTPException(
                 status_code=400,
-                detail="Informe um motivo de cancelamento com pelo menos 10 caracteres",
+                detail="Informe um motivo de cancelamento válido",
             )
         req.status = RequisitionStatus.CANCELADA
+        req.cancel_reason = reason.strip()
         req.finalized_at = None
         req.production_machine = None
         return
@@ -481,6 +482,23 @@ def _production_events(req: Requisition) -> list[dict]:
             }
         )
     return events
+
+
+def _cancel_reason_for(req: Requisition) -> str | None:
+    """Retorna o motivo de cancelamento da requisição.
+    Usa a coluna `cancel_reason` (preenchida nos cancelamentos novos) e,
+    como fallback para registros antigos, extrai o motivo do último evento
+    de produção CANCELADA registrado no histórico de status."""
+    direct = (getattr(req, "cancel_reason", None) or "").strip()
+    if direct:
+        return direct
+    for event in reversed(_production_events(req)):
+        if event.get("action") == _PROD_CANCELED:
+            reason = (event.get("reason") or "").strip()
+            if reason:
+                return reason
+            break
+    return None
 
 
 def _current_production_destination(req: Requisition) -> str:
@@ -922,6 +940,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     delivery_date=req.delivery_date,
                     destination=destination,
                     canceled_at=canceled_at,
+                    cancel_reason=_cancel_reason_for(req),
                 )
             )
 
@@ -1391,6 +1410,7 @@ def list_requisitions(
         )
         setattr(req, "production_status", _history_production_status(req))
         setattr(req, "invoiced", req.status == RequisitionStatus.FATURADO)
+        setattr(req, "cancel_reason", _cancel_reason_for(req))
     return paginated
 
 
@@ -1574,6 +1594,7 @@ def get_requisition(
     req = _get_or_404(db, req_id)
     if not _can_view_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissão para visualizar esta requisição")
+    setattr(req, "cancel_reason", _cancel_reason_for(req))
     return req
 
 

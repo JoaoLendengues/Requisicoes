@@ -27,6 +27,7 @@ def _migrate():
         "ALTER TABLE requisitions ADD COLUMN obs TEXT",
         "ALTER TABLE requisitions ADD COLUMN production_destination TEXT",
         "ALTER TABLE requisitions ADD COLUMN production_machine TEXT",
+        "ALTER TABLE requisitions ADD COLUMN cancel_reason TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",
         "UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL",

@@ -178,6 +178,7 @@ class RequisitionResponse(BaseModel):
     production_machine: Optional[str] = None
     production_machine_display: Optional[str] = None
     production_status: Optional[str] = None
+    cancel_reason: Optional[str] = None
     invoiced: bool = False
     finalized_at: Optional[datetime]
     created_at: datetime

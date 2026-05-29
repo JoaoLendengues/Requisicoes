@@ -567,7 +567,7 @@ class OrderCenterView(QWidget):
             "aguardando_recebimento": ["PED", "CLIENTE", "VENDEDOR", "ENTREGA", "AGUARDANDO"],
             "em_producao": ["PED", "CLIENTE", "VENDEDOR", "RECEBIDO EM", "DESTINO"],
             "faturados": ["PED", "CLIENTE", "FATURADO EM", "FINALIZADO EM", "DESTINO"],
-            "cancelados": ["PED", "CLIENTE", "VENDEDOR", "CANCELADO EM"],
+            "cancelados": ["PED", "CLIENTE", "VENDEDOR", "CANCELADO EM", "MOTIVO"],
             "atrasados": ["PED", "CLIENTE", "ENTREGA", "ATRASO", "STATUS"],
         }
 
@@ -575,7 +575,7 @@ class OrderCenterView(QWidget):
             "aguardando_recebimento": {1, 2},
             "em_producao": {1, 2},
             "faturados": {1},
-            "cancelados": {1, 2},
+            "cancelados": {1, 4},
             "atrasados": {1},
         }
 
@@ -764,9 +764,10 @@ class OrderCenterView(QWidget):
                     str(row_data.get("client_name") or "-"),
                     str(row_data.get("vendor_name") or "-"),
                     _format_datetime(row_data.get("canceled_at")),
+                    str(row_data.get("cancel_reason") or "-"),
                 ]
                 sort_keys = [ped_sort, None, None,
-                             str(row_data.get("canceled_at") or "")]
+                             str(row_data.get("canceled_at") or ""), None]
             else:  # atrasados
                 values = [
                     str(ped_raw or "-"),

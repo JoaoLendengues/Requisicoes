@@ -32,7 +32,7 @@ from ..core.datetime_utils import (
 )
 
 
-COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS", "PRODUÇÃO", "MÁQUINA"]
+COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS", "FATURADO", "PRODUÇÃO", "MÁQUINA", "MOTIVO"]
 
 PRODUCTION_OPTIONS = (
     ("Todas as produções", ""),
@@ -705,6 +705,7 @@ class HistoryView(QWidget):
         header_widget.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
@@ -714,6 +715,7 @@ class HistoryView(QWidget):
         self.table.setColumnWidth(6, max(110, int(130 * s)))
         self.table.setColumnWidth(7, max(150, int(170 * s)))
         self.table.setColumnWidth(8, max(220, int(260 * s)))
+        self.table.setColumnWidth(9, max(160, int(200 * s)))
         self.table.setSortingEnabled(True)
         self.table.setStyleSheet(
             f"QTableWidget {{"
@@ -937,6 +939,7 @@ class HistoryView(QWidget):
                         or req.get("production_machine")
                         or "-"
                     ),
+                    str(req.get("cancel_reason") or "-"),
                 ]
                 for col, value in enumerate(values):
                     if col == 5:

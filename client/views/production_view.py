@@ -55,6 +55,16 @@ MACHINE_STATUS_OPTIONS = (
     ("manutencao", "Manutenção"),
 )
 
+# Motivos predefinidos para cancelamento de requisições.
+# O rótulo é exibido no combo; o valor é o motivo gravado (em maiúsculas, padrão do sistema).
+# "OUTRO" abre campo de texto livre obrigatório.
+CANCEL_REASON_OPTIONS = (
+    ("DESISTÊNCIA", "Desistência"),
+    ("MATERIAL DANIFICADO / AVARIADO", "Material danificado / avariado"),
+    ("OUTRO", "Outro"),
+)
+CANCEL_REASON_OTHER = "OUTRO"
+
 _ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
 
 
@@ -1305,8 +1315,17 @@ class ProductionView(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(max(8, int(10 * self.scale)))
 
-        lbl = QLabel("Informe o motivo do cancelamento:")
+        lbl = QLabel("Selecione o motivo do cancelamento:")
         layout.addWidget(lbl)
+
+        combo_reason = QComboBox()
+        for value, text in CANCEL_REASON_OPTIONS:
+            combo_reason.addItem(text, value)
+        combo_reason.setStyleSheet(_machine_combo_style(self.scale))
+        layout.addWidget(combo_reason)
+
+        lbl_other = QLabel("Descreva o motivo:")
+        layout.addWidget(lbl_other)
 
         input_reason = QTextEdit()
         input_reason.setPlaceholderText("Descreva o motivo...")
@@ -1318,6 +1337,14 @@ class ProductionView(QWidget):
         error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
+
+        def _on_reason_changed():
+            is_other = str(combo_reason.currentData() or "") == CANCEL_REASON_OTHER
+            lbl_other.setVisible(is_other)
+            input_reason.setVisible(is_other)
+
+        combo_reason.currentIndexChanged.connect(lambda _=None: _on_reason_changed())
+        _on_reason_changed()
 
         buttons = QHBoxLayout()
         buttons.addStretch()
@@ -1331,12 +1358,17 @@ class ProductionView(QWidget):
         layout.addLayout(buttons)
 
         def _confirm_reason():
-            normalized = " ".join(input_reason.toPlainText().split())
-            if len(normalized) < 10:
-                error_lbl.setText("O motivo do cancelamento precisa ter pelo menos 10 letras.")
-                error_lbl.setVisible(True)
-                return
-            dlg.setProperty("_cancel_reason", normalized)
+            selected = str(combo_reason.currentData() or "")
+            if selected == CANCEL_REASON_OTHER:
+                normalized = " ".join(input_reason.toPlainText().split())
+                if len(normalized) < 5:
+                    error_lbl.setText("Descreva o motivo com pelo menos 5 caracteres.")
+                    error_lbl.setVisible(True)
+                    return
+                final_reason = normalized.upper()
+            else:
+                final_reason = selected
+            dlg.setProperty("_cancel_reason", final_reason)
             dlg.accept()
 
         btn_ok.clicked.connect(_confirm_reason)
