@@ -23,10 +23,11 @@ Responsaveis:
                  com notificacao e novo prazo visivel no historico.
                  *** RESOLVIDO ***
 
-- [ ] [joao]     Motivos predefinidos para cancelamento de requisicoes.
+- [x] [joao]     Motivos predefinidos para cancelamento de requisicoes.
                  Caixa de selecao: "Desistencia", "Material danificado / avariado", "Outro".
                  Opcao "Outro" exige campo de texto livre obrigatorio.
                  Mostrar motivo nas tabelas de historico e nas telas de A&R / Industria.
+                 *** RESOLVIDO ***
 
 - [ ] [cappinho] Remover campo de importacao de usuario na Central de Usuarios.
 
