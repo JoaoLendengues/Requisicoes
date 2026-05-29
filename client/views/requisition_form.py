@@ -1999,8 +1999,8 @@ class RequisitionForm(QWidget):
         ped_number = (self.input_ped.text() or "").strip() or "sem PED"
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
-        box.setWindowTitle("Pedido faturado")
-        box.setText(f"Pedido faturado ({ped_number})?")
+        box.setWindowTitle("Este pedido foi faturado")
+        box.setText(f"Este pedido foi faturado ({ped_number})?")
         box.setTextFormat(Qt.TextFormat.PlainText)
 
         btn_yes = box.addButton("Sim", QMessageBox.ButtonRole.YesRole)
