@@ -8,7 +8,18 @@ from sqlalchemy import text
 
 from .database import Base, engine
 from .models import audit, client, feedback, notification, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
-from .routers import auth, backup, clients, feedbacks, notifications, products, requisitions, system_settings, users
+from .routers import (
+    auth,
+    backup,
+    clients,
+    feedbacks,
+    notifications,
+    production_machines,
+    products,
+    requisitions,
+    system_settings,
+    users,
+)
 from .seed import seed_admin, seed_production_machines
 from .services.backup_service import backup_scheduler
 from .services.runtime_monitor import record_exception, record_request
@@ -124,6 +135,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(clients.router)
 app.include_router(products.router)
+app.include_router(production_machines.router)
 app.include_router(requisitions.router)
 app.include_router(notifications.router)
 app.include_router(system_settings.router)

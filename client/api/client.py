@@ -225,6 +225,21 @@ def update_operational_settings(data: dict) -> dict:
         return _check(client.patch("/system-settings/operational", json=data))
 
 
+def list_production_machine_registry() -> list:
+    with _cli() as client:
+        return _check(client.get("/production-machines/"))
+
+
+def create_production_machine(data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.post("/production-machines/", json=data))
+
+
+def update_production_machine(machine_id: int, data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/production-machines/{machine_id}", json=data))
+
+
 def get_production_summary(destination: str) -> dict:
     with _cli() as client:
         return _check(

@@ -1001,6 +1001,14 @@ class SettingsView(QWidget):
             _add_tab("Clientes", self._client_center)
         else:
             self._client_center = None
+        self._machine_center_tab_index = -1
+        if session.is_admin:
+            from .machine_center_view import MachineCenterView
+            self._machine_center = MachineCenterView(s, embedded=True)
+            self._machine_center_tab_index = len(self._tab_btns)
+            _add_tab("Cadastro de MÃ¡quinas", self._machine_center)
+        else:
+            self._machine_center = None
 
         # ════════════════════════════════════════════════════════════════
         # ABA: Ajuda
@@ -1295,11 +1303,14 @@ class SettingsView(QWidget):
         # botão global "SALVAR CONFIGURAÇÕES" não se aplica a elas.
         on_users_tab = (idx == self._user_center_tab_index)
         on_clients_tab = (idx == self._client_center_tab_index)
-        self.btn_save.setVisible(not (on_users_tab or on_clients_tab))
+        on_machines_tab = (idx == self._machine_center_tab_index)
+        self.btn_save.setVisible(not (on_users_tab or on_clients_tab or on_machines_tab))
         if on_users_tab and self._user_center is not None:
             self._user_center.refresh()
         if on_clients_tab and self._client_center is not None:
             self._client_center.refresh()
+        if on_machines_tab and self._machine_center is not None:
+            self._machine_center.refresh()
 
         # Ao abrir a aba Sistema, atualiza as métricas do Painel Técnico.
         if idx == self._system_tab_index and self._technical_panel is not None:
@@ -1678,5 +1689,7 @@ class SettingsView(QWidget):
             self._user_center.apply_theme()
         if getattr(self, "_client_center", None) is not None:
             self._client_center.apply_theme()
+        if getattr(self, "_machine_center", None) is not None:
+            self._machine_center.apply_theme()
         if getattr(self, "_technical_panel", None) is not None:
             self._technical_panel.apply_theme()
