@@ -113,6 +113,23 @@ class StatusUpdate(BaseModel):
     note: Optional[str] = None
 
 
+class DeliveryDateUpdate(BaseModel):
+    delivery_date: date
+    reason: str
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: object) -> str:
+        return normalize_upper_required(value)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        if len(value.strip()) < 5:
+            raise ValueError("Informe um motivo com pelo menos 5 caracteres")
+        return value
+
+
 class CanvasUpdate(BaseModel):
     json_data: str
 

@@ -165,6 +165,13 @@ def notify_vendor(
             "Produção Cancelada ⚠️",
             f"PED #{req.ped_number} — produção cancelada. Motivo: {reason}",
         ),
+        "prazo_alterado": (
+            "Prazo de Entrega Alterado 📅",
+            (
+                f"PED #{req.ped_number} teve o prazo de entrega alterado pela produção."
+                + (f" Motivo: {reason}" if reason else "")
+            ),
+        ),
         "cancelada": (
             "Requisição Cancelada ❌",
             f"PED #{req.ped_number} foi cancelada.",
@@ -288,6 +295,95 @@ def ensure_pending_invoice_notifications(db: Session) -> list[Notification]:
                 )
             )
             existing_pairs.add(pair)
+
+    return notifications
+
+
+_DEADLINE_OPEN_STATUSES = (
+    RequisitionStatus.EM_ANDAMENTO,
+    RequisitionStatus.PRAZO_ALTERADO,
+    RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+    RequisitionStatus.AGUARDANDO_NA_FILA,
+    RequisitionStatus.EM_PRODUCAO,
+    RequisitionStatus.AGUARDANDO_FATURAMENTO,
+)
+
+
+def ensure_delivery_deadline_notifications(db: Session) -> list[Notification]:
+    """Notifica vendedor + gerentes/admins quando o prazo de entrega está
+    próximo (hoje ou amanhã) ou já vencido. Idempotente por (tipo, usuário, req)."""
+    from datetime import date as _date
+
+    today = _date.today()
+    soon_limit = today + timedelta(days=1)  # hoje ou amanhã = "próximo"
+
+    requisitions = (
+        db.query(Requisition)
+        .options(selectinload(Requisition.client))
+        .filter(
+            Requisition.status.in_(_DEADLINE_OPEN_STATUSES),
+            Requisition.delivery_date.isnot(None),
+            Requisition.delivery_date <= soon_limit,
+        )
+        .all()
+    )
+    if not requisitions:
+        return []
+
+    managers = (
+        db.query(User)
+        .filter(
+            User.role.in_([Role.ADMIN, Role.GERENTE]),
+            User.is_active == True,
+        )
+        .all()
+    )
+
+    requisition_ids = [req.id for req in requisitions]
+    existing_pairs = {
+        (str(type_), int(user_id), int(req_id))
+        for type_, user_id, req_id in (
+            db.query(Notification.type, Notification.user_id, Notification.requisition_id)
+            .filter(
+                Notification.type.in_(["prazo_proximo", "prazo_vencido"]),
+                Notification.requisition_id.in_(requisition_ids),
+            )
+            .all()
+        )
+        if user_id is not None and req_id is not None
+    }
+
+    notifications: list[Notification] = []
+    for req in requisitions:
+        overdue = req.delivery_date < today
+        type_ = "prazo_vencido" if overdue else "prazo_proximo"
+        if overdue:
+            title = "Prazo de Entrega Vencido ⏰"
+            message = (
+                f"PED #{req.ped_number} - {req.client_name or 'CLIENTE'} "
+                f"está com o prazo de entrega vencido ({req.delivery_date.strftime('%d/%m/%Y')})."
+            )
+        else:
+            title = "Prazo de Entrega Próximo 📅"
+            message = (
+                f"PED #{req.ped_number} - {req.client_name or 'CLIENTE'} "
+                f"tem entrega prevista para {req.delivery_date.strftime('%d/%m/%Y')}."
+            )
+
+        recipients: dict[int, None] = {}
+        if req.vendor_id:
+            recipients[req.vendor_id] = None
+        for manager in managers:
+            recipients[manager.id] = None
+
+        for user_id in recipients:
+            key = (type_, int(user_id), int(req.id))
+            if key in existing_pairs:
+                continue
+            notifications.append(
+                _create(db, user_id, type_, title, message, req.id)
+            )
+            existing_pairs.add(key)
 
     return notifications
 

@@ -41,7 +41,7 @@ from ..schemas.production import (
 )
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse,
-    StatusUpdate, CanvasUpdate,
+    StatusUpdate, CanvasUpdate, DeliveryDateUpdate,
 )
 from ..dependencies import (
     get_current_user,
@@ -54,6 +54,7 @@ from ..services.audit_service import diff_fields, log_action
 from ..services.notification_service import (
     _notify_admins_gerentes,
     dispatch               as push_all,
+    ensure_delivery_deadline_notifications,
     ensure_pending_invoice_notifications,
     notify_machine_status_change as build_machine_status_event,
     notify_production_team as build_production_sent,
@@ -61,6 +62,7 @@ from ..services.notification_service import (
 )
 from ..services.runtime_monitor import snapshot as runtime_snapshot
 from ..services.sse_manager import connected_user_ids
+from ..services.system_settings import get_min_delivery_business_days
 from ..services.text_normalizer import normalize_canvas_json_text, normalize_upper_required
 
 router = APIRouter(prefix="/requisitions", tags=["Requisições"])
@@ -265,6 +267,43 @@ def _ensure_editable(req: Requisition):
         raise HTTPException(
             status_code=400,
             detail="Requisição em produção recebida ou finalizada não pode ser editada",
+        )
+
+
+def _add_business_days(start: date, n: int) -> date:
+    """Soma n dias úteis (segunda a sexta) a partir de `start`.
+    Sábado e domingo não contam. Feriados não são considerados."""
+    if n <= 0:
+        return start
+    current = start
+    added = 0
+    while added < n:
+        current += timedelta(days=1)
+        if current.weekday() < 5:  # 0=segunda ... 4=sexta
+            added += 1
+    return current
+
+
+def _ensure_delivery_within_min(delivery_date: date | None, current_user: User) -> None:
+    """Bloqueia datas de entrega abaixo do prazo mínimo em dias úteis.
+    Admin e gerente podem salvar abaixo do mínimo."""
+    if delivery_date is None:
+        return
+    role = _role_key(current_user.role)
+    if role in (Role.ADMIN.value, Role.GERENTE.value):
+        return
+    min_days = get_min_delivery_business_days()
+    if min_days <= 0:
+        return
+    earliest = _add_business_days(date.today(), min_days)
+    if delivery_date < earliest:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Prazo de entrega abaixo do mínimo: são necessários pelo menos "
+                f"{min_days} dia(s) útil(eis). Data mais próxima permitida: "
+                f"{earliest.strftime('%d/%m/%Y')}."
+            ),
         )
 
 
@@ -1358,6 +1397,7 @@ def list_requisitions(
 def _check_invoice_alerts(db: Session) -> None:
     """Verifica alertas de faturamento pendentes e envia notificações SSE."""
     notifications = ensure_pending_invoice_notifications(db)
+    notifications += ensure_delivery_deadline_notifications(db)
     if notifications:
         db.commit()
         push_all(notifications)
@@ -1494,6 +1534,7 @@ def create_requisition(
 ):
     items_data = data.items
     _ensure_unique_ped_number(db, data.ped_number)
+    _ensure_delivery_within_min(data.delivery_date, current_user)
     req = Requisition(
         **data.model_dump(exclude={"items", "weight"}),
         vendor_id=current_user.id,
@@ -1551,6 +1592,8 @@ def update_requisition(
     _ensure_unique_ped_number(db, ped_number, exclude_req_id=req.id)
 
     scalar_update = data.model_dump(exclude_unset=True, exclude={"items", "weight"})
+    if "delivery_date" in scalar_update:
+        _ensure_delivery_within_min(scalar_update["delivery_date"], current_user)
     tracked = ["ped_number", "delivery_date", "os_number", "obra", "obs",
                "retirada", "entrega", "delivery_address", "phone"]
     changes = diff_fields(req, scalar_update, tracked)
@@ -1673,6 +1716,72 @@ def attach_nf(
     _ensure_editable(req)
     req.nf_attachment = nf_path
     db.commit()
+    return _get_or_404(db, req_id)
+
+
+@router.patch("/{req_id}/delivery-date", response_model=RequisitionResponse)
+def update_delivery_date(
+    req_id: int,
+    data: DeliveryDateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Produção (A&R / Indústria) altera o prazo de entrega com justificativa.
+    A requisição volta para o vendedor com status 'prazo_alterado' e notificação."""
+    role = _role_key(current_user.role)
+    if role not in (Role.ADMIN.value, Role.PRODUCAO.value, Role.INDUSTRIA.value):
+        raise HTTPException(
+            status_code=403,
+            detail="Apenas a produção pode alterar o prazo de entrega",
+        )
+
+    req = _get_or_404(db, req_id)
+    if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FATURADO):
+        raise HTTPException(
+            status_code=400,
+            detail="Não é possível alterar o prazo de uma requisição cancelada ou faturada",
+        )
+
+    destination = _destination_for_role(role)
+    if destination and _current_production_destination(req) != destination:
+        raise HTTPException(
+            status_code=403,
+            detail="Sem permissão para alterar o prazo desta requisição",
+        )
+
+    old_date = req.delivery_date
+    old_status = req.status
+    old_str = old_date.strftime("%d/%m/%Y") if old_date else "—"
+    new_str = data.delivery_date.strftime("%d/%m/%Y")
+
+    req.delivery_date = data.delivery_date
+    req.status = RequisitionStatus.PRAZO_ALTERADO
+    req.finalized_at = None
+    req.production_machine = None
+
+    note = f"Prazo alterado de {old_str} para {new_str}. Motivo: {data.reason}"
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        old_status=old_status,
+        new_status=RequisitionStatus.PRAZO_ALTERADO,
+        changed_by_id=current_user.id,
+        note=note,
+    ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "delivery_date": {"old": old_str, "new": new_str},
+            "motivo": data.reason,
+        },
+    )
+
+    notifications = build_vendor_event(db, req, "prazo_alterado", data.reason)
+    db.commit()
+    push_all(notifications)
     return _get_or_404(db, req_id)
 
 
