@@ -17,7 +17,10 @@ from ..core.datetime_utils import (
     format_header_date as _format_header_date,
     local_now,
 )
-from ..core.resolution import res, SCALE_STEPS, FONT_SIZE_STEPS
+from ..core.resolution import (
+    res, SCALE_STEPS, FONT_SIZE_STEPS,
+    NOTIFICATION_SIZE_STEPS, NOTIFICATION_SIZE_FACTOR,
+)
 from ..core.session import session
 from ..api import client as api
 
@@ -1060,7 +1063,48 @@ class SettingsView(QWidget):
         guide_row.addWidget(self.btn_show_guide)
         lay_help.addLayout(guide_row)
 
-        _add_tab("Ajuda", _wrap(card_help))
+        # ── Acessibilidade: tamanho dos pop-ups de notificação ────────────
+        lay_help.addWidget(_section("Tamanho das Notificações", s))
+        lay_help.addWidget(_separator())
+
+        notif_size_row = QHBoxLayout()
+        notif_size_row.setSpacing(max(6, int(8 * s)))
+        notif_size_row.addWidget(self._lbl("Tamanho dos pop-ups:", s))
+        self._notification_size_btns: dict[str, QPushButton] = {}
+        active_notif_label = res.notification_size_label
+        for label, _factor in NOTIFICATION_SIZE_STEPS:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setChecked(label == active_notif_label)
+            btn.setFixedHeight(max(32, int(36 * s)))
+            btn.setStyleSheet(self._scale_btn_style(s))
+            btn.clicked.connect(
+                lambda checked=False, lbl=label: self._on_notification_size_btn(lbl)
+            )
+            notif_size_row.addWidget(btn)
+            self._notification_size_btns[label] = btn
+        notif_size_row.addStretch()
+        lay_help.addLayout(notif_size_row)
+
+        notif_test_row = QHBoxLayout()
+        notif_test_row.setSpacing(max(8, int(10 * s)))
+        notif_size_hint = QLabel(
+            "Pré-visualize cada tamanho com “Testar” e clique em "
+            "SALVAR CONFIGURAÇÕES para aplicar. Vale para os pop-ups e para o "
+            "painel do sininho."
+        )
+        notif_size_hint.setWordWrap(True)
+        notif_size_hint.setProperty("muted", "1")
+        notif_size_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        notif_test_row.addWidget(notif_size_hint, 1)
+        self._btn_test_notification = QPushButton("🔔  Testar")
+        self._btn_test_notification.setFixedHeight(max(38, int(44 * s)))
+        self._btn_test_notification.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_test_notification.clicked.connect(self._preview_notification)
+        notif_test_row.addWidget(self._btn_test_notification, 0, Qt.AlignmentFlag.AlignTop)
+        lay_help.addLayout(notif_test_row)
+
+        _add_tab("Ajuda e Acessibilidade", _wrap(card_help))
 
         # Fecha a barra de abas com um stretch à direita
         tab_bar_layout.addStretch()
@@ -1324,6 +1368,45 @@ class SettingsView(QWidget):
         for lbl, btn in self._font_size_btns.items():
             btn.setChecked(lbl == label)
 
+    def _on_notification_size_btn(self, label: str):
+        for lbl, btn in self._notification_size_btns.items():
+            btn.setChecked(lbl == label)
+
+    def _selected_notification_size(self) -> str:
+        return next(
+            (lbl for lbl, btn in self._notification_size_btns.items() if btn.isChecked()),
+            "Normal",
+        )
+
+    def _preview_notification(self):
+        """Mostra um pop-up de exemplo no tamanho selecionado (antes de salvar)."""
+        from ..widgets.notification_toast import NotificationToast, MARGIN
+
+        factor = NOTIFICATION_SIZE_FACTOR.get(self._selected_notification_size(), 1.0)
+
+        # Encerra um preview anterior, se ainda visível
+        prev = getattr(self, "_preview_toast", None)
+        if prev is not None:
+            try:
+                prev._slide_out()
+            except Exception:
+                pass
+
+        data = {
+            "type": "nova_requisicao",
+            "title": "Exemplo de Notificação",
+            "message": "Assim ficará o tamanho dos seus pop-ups de notificação.",
+            "requisition_id": None,
+        }
+        toast = NotificationToast(data, parent=None, factor=factor)
+        self._preview_toast = toast
+
+        win = self.window()
+        br = win.mapToGlobal(win.rect().bottomRight())
+        x = br.x() - toast.toast_width - MARGIN
+        y = br.y() - MARGIN
+        toast.show_at(x, y)
+
     def _test_connection(self):
         url = self.input_url.text().strip()
         self.btn_test.setEnabled(False)
@@ -1355,8 +1438,14 @@ class SettingsView(QWidget):
         scale_changed     = (selected_scale != res._user_scale)
         font_size_changed = (selected_font_size != res.font_size_label)
 
+        selected_notification_size = self._selected_notification_size()
+
         # Coleta kwargs comuns (aparência + pasta de bg se visível)
-        save_kwargs: dict = dict(font_scale=selected_scale, font_size=selected_font_size)
+        save_kwargs: dict = dict(
+            font_scale=selected_scale,
+            font_size=selected_font_size,
+            notification_size=selected_notification_size,
+        )
         if session.settings_show_login_backgrounds:
             bg_folder_val = self.input_bg_folder.text().strip()
             if bg_folder_val:
@@ -1663,6 +1752,9 @@ class SettingsView(QWidget):
             btn.setStyleSheet(btn_style)
         for btn in self._font_size_btns.values():
             btn.setStyleSheet(btn_style)
+        for btn in self._notification_size_btns.values():
+            btn.setStyleSheet(btn_style)
+        self._btn_test_notification.setStyleSheet(_flat_secondary_btn_style(s))
         if session.settings_show_login_backgrounds:
             self.input_bg_folder.setStyleSheet(_field_style(s))
             self._btn_browse_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))

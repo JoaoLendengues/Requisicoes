@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..core import theme
+from ..core.resolution import res
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ class NotificationToast(QFrame):
     dismissed      = Signal()
     action_clicked = Signal(object)
 
-    def __init__(self, data: dict, parent=None):
+    def __init__(self, data: dict, parent=None, factor: float | None = None):
         super().__init__(
             parent,
             Qt.WindowType.Tool
@@ -97,6 +98,10 @@ class NotificationToast(QFrame):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.setWindowOpacity(0.0)
+
+        # Fator de tamanho (acessibilidade). None = valor salvo pelo usuario.
+        self._factor    = factor if factor is not None else res.notification_factor
+        self.toast_width = max(1, round(TOAST_WIDTH * self._factor))
 
         self._req_id    = data.get("requisition_id")
         self._group:    QParallelAnimationGroup | None = None
@@ -111,12 +116,19 @@ class NotificationToast(QFrame):
         self._dismiss_timer.setSingleShot(True)
         self._dismiss_timer.timeout.connect(self._slide_out)
 
+    # Helpers de escala
+    def _sc(self, value: float) -> int:
+        return max(1, round(value * self._factor))
+
+    def _pt(self, value: float) -> int:
+        return max(7, round(value * self._factor))
+
     # ── Construção ────────────────────────────────────────────────────────────
 
     def _build(self, data: dict, accent: str):
-        self.setFixedWidth(TOAST_WIDTH)
+        self.setFixedWidth(self.toast_width)
         self.setObjectName("toastCard")
-        self._corner_radius = 12
+        self._corner_radius = self._sc(12)
         self.setStyleSheet(
             f"QFrame#toastCard {{"
             f"  background: {theme.TOAST_BG};"
@@ -128,39 +140,40 @@ class NotificationToast(QFrame):
         )
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 13, 14, 10)
-        root.setSpacing(4)
+        root.setContentsMargins(self._sc(16), self._sc(13), self._sc(14), self._sc(10))
+        root.setSpacing(self._sc(4))
 
         # ── Cabeçalho: ícone + título + timestamp + fechar ──
         header = QHBoxLayout()
-        header.setSpacing(8)
+        header.setSpacing(self._sc(8))
         header.setContentsMargins(0, 0, 0, 0)
 
         icon_lbl = QLabel(_ICONS.get(data.get("type", ""), "🔔"))
-        icon_lbl.setStyleSheet("font-size: 17px;")
-        icon_lbl.setFixedWidth(26)
+        icon_lbl.setStyleSheet(f"font-size: {self._sc(17)}px;")
+        icon_lbl.setFixedWidth(self._sc(26))
         header.addWidget(icon_lbl)
 
         title_lbl = QLabel(data.get("title", "Notificação"))
         title_lbl.setStyleSheet(
-            f"color: {theme.TOAST_TITLE}; font-size: 10pt; font-weight: 700;"
+            f"color: {theme.TOAST_TITLE}; font-size: {self._pt(10)}pt; font-weight: 700;"
         )
         title_lbl.setWordWrap(True)
         header.addWidget(title_lbl, 1)
 
         ts_lbl = QLabel("agora")
         ts_lbl.setStyleSheet(
-            f"color: {theme.TOAST_MUTED}; font-size: 8pt; font-weight: 400;"
+            f"color: {theme.TOAST_MUTED}; font-size: {self._pt(8)}pt; font-weight: 400;"
         )
         header.addWidget(ts_lbl)
 
+        close_sz = self._sc(20)
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(20, 20)
+        close_btn.setFixedSize(close_sz, close_sz)
         close_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         close_btn.setStyleSheet(
             f"QPushButton {{"
             f"  background: transparent; color: {theme.TOAST_CLOSE_FG};"
-            f"  border: none; font-size: 10px; border-radius: 10px;"
+            f"  border: none; font-size: {self._sc(10)}px; border-radius: {close_sz // 2}px;"
             f"}}"
             f"QPushButton:hover {{"
             f"  background: {theme.TOAST_CLOSE_HV}; color: {theme.TOAST_TITLE};"
@@ -175,8 +188,8 @@ class NotificationToast(QFrame):
         if msg:
             msg_lbl = QLabel(msg)
             msg_lbl.setStyleSheet(
-                f"color: {theme.TOAST_BODY}; font-size: 9pt; font-weight: 400;"
-                f"padding-left: 34px;"
+                f"color: {theme.TOAST_BODY}; font-size: {self._pt(9)}pt; font-weight: 400;"
+                f"padding-left: {self._sc(34)}px;"
             )
             msg_lbl.setWordWrap(True)
             root.addWidget(msg_lbl)
@@ -188,9 +201,9 @@ class NotificationToast(QFrame):
 
     def _add_shadow(self):
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(28)
+        shadow.setBlurRadius(self._sc(28))
         shadow.setColor(QColor(0, 44, 109, 26 if not theme.is_dark else 120))
-        shadow.setOffset(0, 6)
+        shadow.setOffset(0, self._sc(6))
         self.setGraphicsEffect(shadow)
 
     def _apply_rounded_mask(self):
@@ -336,11 +349,11 @@ class ToastManager:
 
     # ── Internos ──────────────────────────────────────────────────────────────
 
-    def _target_pos(self) -> tuple[int, int]:
+    def _target_pos(self, toast_width: int) -> tuple[int, int]:
         """Retorna (x, y_bottom) do canto inferior direito da janela pai."""
         parent = self._parent
         br = parent.mapToGlobal(parent.rect().bottomRight())
-        x = br.x() - TOAST_WIDTH - MARGIN
+        x = br.x() - toast_width - MARGIN
         y = br.y() - MARGIN
         return x, y
 
@@ -353,7 +366,7 @@ class ToastManager:
         if on_action:
             toast.action_clicked.connect(on_action)
         self._current = toast
-        x, y = self._target_pos()
+        x, y = self._target_pos(toast.toast_width)
         toast.show_at(x, y)
 
     def _on_dismissed(self):

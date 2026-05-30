@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..core import theme
+from ..core.resolution import res
 from .smooth_scroll import apply_smooth_scroll
 
 # ── Constantes ────────────────────────────────────────────────────────────────
@@ -151,7 +152,17 @@ class NotificationDrawer(QWidget):
         super().__init__(parent)
         self._notifications = notifications
         self._closing       = False
+        # Fator de acessibilidade (tamanho dos pop-ups/painel)
+        self._factor = res.notification_factor
+        self._width  = max(1, round(DRAWER_WIDTH * self._factor))
         self._setup()
+
+    # Helpers de escala
+    def _sc(self, value: float) -> int:
+        return max(1, round(value * self._factor))
+
+    def _pt(self, value: float) -> int:
+        return max(7, round(value * self._factor))
 
     # ── Build ─────────────────────────────────────────────────────────────────
 
@@ -165,7 +176,7 @@ class NotificationDrawer(QWidget):
         self._overlay.hide()
 
         # Drawer container
-        self.setFixedWidth(DRAWER_WIDTH)
+        self.setFixedWidth(self._width)
         self.setObjectName("notifDrawer")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
@@ -203,7 +214,7 @@ class NotificationDrawer(QWidget):
         self._anim_close.finished.connect(self._on_closed)
 
         self.move(parent.width(), 0)
-        self.resize(DRAWER_WIDTH, parent.height())
+        self.resize(self._width, parent.height())
         self.hide()
 
     def _build_header(self, root: QVBoxLayout):
@@ -364,7 +375,7 @@ class NotificationDrawer(QWidget):
         sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub_lbl.setWordWrap(True)
         sub_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        sub_lbl.setMaximumWidth(DRAWER_WIDTH - 84)
+        sub_lbl.setMaximumWidth(self._width - self._sc(84))
         sub_lbl.setMinimumHeight(44)
         sub_lbl.setStyleSheet(
             f"color: {theme.DRAWER_MUTED}; font-size: 9pt;"
@@ -444,22 +455,24 @@ class NotificationDrawer(QWidget):
         )
 
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(14, 12, 12, 11)
-        lay.setSpacing(6)
+        lay.setContentsMargins(self._sc(14), self._sc(12), self._sc(12), self._sc(11))
+        lay.setSpacing(self._sc(6))
 
         # ── Linha superior: ícone + título + dot + timestamp ──
         top = QHBoxLayout()
-        top.setSpacing(8)
+        top.setSpacing(self._sc(8))
         top.setContentsMargins(0, 0, 0, 0)
 
         icon_lbl = QLabel(_ICONS.get(ntype, "🔔"))
-        icon_lbl.setStyleSheet("font-size: 16px; background: transparent; border: none;")
-        icon_lbl.setFixedWidth(24)
+        icon_lbl.setStyleSheet(
+            f"font-size: {self._sc(16)}px; background: transparent; border: none;"
+        )
+        icon_lbl.setFixedWidth(self._sc(24))
         top.addWidget(icon_lbl)
 
         title_lbl = QLabel(n.get("title", ""))
         title_lbl.setStyleSheet(
-            f"font-weight: 700; font-size: 10pt; color: {theme.DRAWER_TITLE};"
+            f"font-weight: 700; font-size: {self._pt(10)}pt; color: {theme.DRAWER_TITLE};"
             f"background: transparent; border: none;"
             f"font-family: 'Inter', 'Segoe UI';"
         )
@@ -469,7 +482,7 @@ class NotificationDrawer(QWidget):
         # Dot colorido de não lida
         dot = QLabel("●")
         dot.setStyleSheet(
-            f"color: {accent}; font-size: 9px; background: transparent; border: none;"
+            f"color: {accent}; font-size: {self._sc(9)}px; background: transparent; border: none;"
         )
         top.addWidget(dot)
 
@@ -477,7 +490,7 @@ class NotificationDrawer(QWidget):
         if ts:
             ts_lbl = QLabel(ts)
             ts_lbl.setStyleSheet(
-                f"color: {theme.DRAWER_MUTED}; font-size: 8pt; background: transparent; border: none;"
+                f"color: {theme.DRAWER_MUTED}; font-size: {self._pt(8)}pt; background: transparent; border: none;"
                 f"font-family: 'Inter', 'Segoe UI';"
             )
             top.addWidget(ts_lbl)
@@ -489,10 +502,10 @@ class NotificationDrawer(QWidget):
         if msg:
             msg_lbl = QLabel(msg)
             msg_lbl.setStyleSheet(
-                f"color: {theme.DRAWER_BODY}; font-size: 9pt;"
+                f"color: {theme.DRAWER_BODY}; font-size: {self._pt(9)}pt;"
                 f"background: transparent; border: none;"
                 f"font-family: 'Inter', 'Segoe UI';"
-                f"padding-left: 32px;"
+                f"padding-left: {self._sc(32)}px;"
             )
             msg_lbl.setWordWrap(True)
             lay.addWidget(msg_lbl)
@@ -503,9 +516,11 @@ class NotificationDrawer(QWidget):
 
         if nid or req_id:
             btns = QHBoxLayout()
-            btns.setSpacing(6)
-            btns.setContentsMargins(32, 2, 0, 0)
+            btns.setSpacing(self._sc(6))
+            btns.setContentsMargins(self._sc(32), self._sc(2), 0, 0)
             btns.addStretch()
+
+            _btn_pad = f"padding: {self._sc(3)}px {self._sc(10)}px; font-size: {self._pt(7)}pt;"
 
             if nid:
                 btn_read = QPushButton("✓  Marcar lida")
@@ -513,8 +528,8 @@ class NotificationDrawer(QWidget):
                 btn_read.setStyleSheet(
                     f"QPushButton {{"
                     f"  background: transparent; color: {theme.TEXT_LABEL};"
-                    f"  border: 1px solid {theme.DRAWER_BORDER}; border-radius: 5px;"
-                    f"  padding: 3px 10px; font-size: 7pt;"
+                    f"  border: 1px solid {theme.DRAWER_BORDER}; border-radius: {self._sc(5)}px;"
+                    f"  {_btn_pad}"
                     f"  font-family: 'Inter', 'Segoe UI';"
                     f"}}"
                     f"QPushButton:hover {{"
@@ -531,8 +546,8 @@ class NotificationDrawer(QWidget):
                 btn_open.setStyleSheet(
                     f"QPushButton {{"
                     f"  background: {theme.PRIMARY}; color: #fff;"
-                    f"  border: none; border-radius: 5px;"
-                    f"  padding: 3px 10px; font-size: 7pt; font-weight: 700;"
+                    f"  border: none; border-radius: {self._sc(5)}px;"
+                    f"  {_btn_pad} font-weight: 700;"
                     f"  font-family: 'Inter', 'Segoe UI';"
                     f"}}"
                     f"QPushButton:hover {{ background: {theme.PRIMARY_HOVER}; }}"
@@ -553,13 +568,13 @@ class NotificationDrawer(QWidget):
         self._overlay.setGeometry(0, 0, pw, ph)
         self._overlay.fade_in()
 
-        self.resize(DRAWER_WIDTH, ph)
+        self.resize(self._width, ph)
         self.move(pw, 0)
         self.show()
         self.raise_()
 
         self._anim_open.setStartValue(QPoint(pw, 0))
-        self._anim_open.setEndValue(QPoint(pw - DRAWER_WIDTH, 0))
+        self._anim_open.setEndValue(QPoint(pw - self._width, 0))
         self._anim_open.start()
 
     def close_drawer(self):
