@@ -226,6 +226,11 @@ def get_order_center() -> dict:
         return _check(client.get("/requisitions/order-center/summary"))
 
 
+def get_delivery_center() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/deliveries/summary"))
+
+
 def get_operational_settings() -> dict:
     with _cli() as client:
         return _check(client.get("/system-settings/operational"))
@@ -322,6 +327,19 @@ def update_delivery_date(req_id: int, delivery_date: str, reason: str) -> dict:
             f"/requisitions/{req_id}/delivery-date",
             json={"delivery_date": delivery_date, "reason": reason},
         ))
+
+
+def update_delivery_schedule(req_id: int, delivery_date: str, reason: str) -> dict:
+    with _cli() as client:
+        return _check(client.patch(
+            f"/requisitions/{req_id}/delivery-schedule",
+            json={"delivery_date": delivery_date, "reason": reason},
+        ))
+
+
+def mark_delivery_delivered(req_id: int) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/requisitions/{req_id}/mark-delivered"))
 
 
 def update_production_machine_status(machine_id: int, status: str) -> dict:

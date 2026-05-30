@@ -26,6 +26,11 @@ from ..schemas.dashboard import (
     TechnicalPanelResponse,
     TechnicalPanelStatsResponse,
 )
+from ..schemas.delivery_center import (
+    DeliveryCenterItemResponse,
+    DeliveryCenterResponse,
+    DeliveryCenterStatsResponse,
+)
 from ..schemas.order_center import (
     OrderCenterItemResponse,
     OrderCenterResponse,
@@ -144,6 +149,17 @@ def _did_finish_on_time(finished_at: object, delivery_date: date | None) -> bool
         return None
 
     return finished_local.date() <= delivery_date
+
+
+def _delivery_deadline_changed_at(req: Requisition) -> datetime | None:
+    changed_at = getattr(req, "delivery_deadline_changed_at", None)
+    if isinstance(changed_at, datetime):
+        return changed_at
+
+    if req.status == RequisitionStatus.PRAZO_ALTERADO:
+        return _latest_status_changed_at(req, RequisitionStatus.PRAZO_ALTERADO)
+
+    return None
 
 
 def _normalize_machine_dashboard_period(value: str) -> str:
@@ -1247,6 +1263,66 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
     )
 
 
+def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
+    now = datetime.utcnow()
+    today = (_to_local_datetime(now) or datetime.now(_LOCAL_TIMEZONE)).date()
+
+    rows: list[DeliveryCenterItemResponse] = []
+    deliveries_today = 0
+    delayed_deliveries = 0
+    changed_delivery_deadlines = 0
+
+    for req in reqs:
+        if not req.entrega or req.status == RequisitionStatus.CANCELADA:
+            continue
+
+        deadline_changed_at = _delivery_deadline_changed_at(req)
+        delivered_at = getattr(req, "delivered_at", None)
+        delivery_date = req.delivery_date
+
+        if delivered_at is None and delivery_date is not None:
+            if delivery_date == today:
+                deliveries_today += 1
+            elif delivery_date < today:
+                delayed_deliveries += 1
+
+        if delivered_at is None and deadline_changed_at is not None:
+            changed_delivery_deadlines += 1
+
+        rows.append(
+            DeliveryCenterItemResponse(
+                id=req.id,
+                ped_number=req.ped_number,
+                client_name=req.client_name,
+                vendor_name=req.vendor_name,
+                weight=float(req.weight or 0.0),
+                destination=_current_production_destination(req) or None,
+                delivery_date=delivery_date,
+                status=str(getattr(req.status, "value", req.status) or ""),
+                delivered_at=delivered_at if isinstance(delivered_at, datetime) else None,
+                deadline_changed_at=deadline_changed_at,
+            )
+        )
+
+    rows.sort(
+        key=lambda item: (
+            item.delivery_date is None,
+            item.delivery_date or date.max,
+            str(item.ped_number or ""),
+        )
+    )
+
+    return DeliveryCenterResponse(
+        generated_at=now,
+        stats=DeliveryCenterStatsResponse(
+            deliveries_today=deliveries_today,
+            delayed_deliveries=delayed_deliveries,
+            changed_delivery_deadlines=changed_delivery_deadlines,
+        ),
+        rows=rows[:200],
+    )
+
+
 def _build_machine_usage_rows(
     reqs: list[Requisition],
     machines: list[ProductionMachine],
@@ -1812,6 +1888,22 @@ def get_order_center(
     return _build_order_center(_filter_requisitions_for_user(reqs, current_user))
 
 
+@router.get("/deliveries/summary", response_model=DeliveryCenterResponse)
+def get_delivery_center(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_order_center_access),
+):
+    _check_invoice_alerts(db)
+
+    reqs = (
+        db.query(Requisition)
+        .options(*_LOAD_OPTS)
+        .order_by(Requisition.created_at.desc())
+        .all()
+    )
+    return _build_delivery_center(_filter_requisitions_for_user(reqs, current_user))
+
+
 @router.get("/production/summary", response_model=ProductionDestinationSummaryResponse)
 def get_production_summary(
     destination: str = Query(...),
@@ -2128,6 +2220,8 @@ def update_delivery_date(
     req.status = RequisitionStatus.PRAZO_ALTERADO
     req.finalized_at = None
     req.production_machine = None
+    req.delivery_deadline_changed_at = datetime.utcnow()
+    req.delivery_deadline_change_reason = data.reason
 
     note = f"Prazo alterado de {old_str} para {new_str}. Motivo: {data.reason}"
     db.add(StatusHistory(
@@ -2152,6 +2246,124 @@ def update_delivery_date(
     notifications = build_vendor_event(db, req, "prazo_alterado", data.reason)
     db.commit()
     push_all(notifications)
+    return _get_or_404(db, req_id)
+
+
+@router.patch("/{req_id}/delivery-schedule", response_model=RequisitionResponse)
+def update_delivery_schedule(
+    req_id: int,
+    data: DeliveryDateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_creator),
+):
+    req = _get_or_404(db, req_id)
+    if not req.entrega:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta requisição não está marcada como entrega",
+        )
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
+    if req.status == RequisitionStatus.CANCELADA:
+        raise HTTPException(
+            status_code=400,
+            detail="Não é possível alterar o prazo de uma requisição cancelada",
+        )
+    if req.delivered_at is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta entrega já foi concluída",
+        )
+
+    old_date = req.delivery_date
+    old_str = old_date.strftime("%d/%m/%Y") if old_date else "—"
+    new_str = data.delivery_date.strftime("%d/%m/%Y")
+    current_status = getattr(req.status, "value", req.status)
+
+    req.delivery_date = data.delivery_date
+    req.delivery_deadline_changed_at = datetime.utcnow()
+    req.delivery_deadline_change_reason = data.reason
+
+    note = f"Prazo de entrega alterado de {old_str} para {new_str}. Motivo: {data.reason}"
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        old_status=current_status,
+        new_status=current_status,
+        changed_by_id=current_user.id,
+        note=note,
+    ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "delivery_date": {"old": old_str, "new": new_str},
+            "delivery_deadline_change_reason": data.reason,
+        },
+    )
+
+    notifications = build_vendor_event(db, req, "prazo_alterado", data.reason)
+    db.commit()
+    push_all(notifications)
+    return _get_or_404(db, req_id)
+
+
+@router.patch("/{req_id}/mark-delivered", response_model=RequisitionResponse)
+def mark_delivery_delivered(
+    req_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_creator),
+):
+    req = _get_or_404(db, req_id)
+    if not req.entrega:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta requisição não está marcada como entrega",
+        )
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
+    if req.status == RequisitionStatus.CANCELADA:
+        raise HTTPException(
+            status_code=400,
+            detail="Não é possível concluir a entrega de uma requisição cancelada",
+        )
+    if req.status != RequisitionStatus.FATURADO:
+        raise HTTPException(
+            status_code=400,
+            detail="Somente pedidos faturados podem ser marcados como entregues",
+        )
+    if req.delivered_at is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta entrega já foi concluída",
+        )
+
+    delivered_at = datetime.utcnow()
+    current_status = getattr(req.status, "value", req.status)
+    req.delivered_at = delivered_at
+
+    note = f"Entrega concluída em {delivered_at.strftime('%d/%m/%Y %H:%M')}"
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        old_status=current_status,
+        new_status=current_status,
+        changed_by_id=current_user.id,
+        note=note,
+    ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "delivered_at": delivered_at.isoformat(),
+        },
+    )
+
+    db.commit()
     return _get_or_404(db, req_id)
 
 

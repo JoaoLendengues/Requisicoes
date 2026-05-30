@@ -21,6 +21,7 @@ from .history_view import HistoryView
 from .dashboard_view import DashboardView
 from .technical_panel_view import TechnicalPanelView
 from .order_center_view import OrderCenterView
+from .delivery_center_view import DeliveryCenterView
 from .production_view import ProductionView
 from .settings_view import SettingsView
 from .user_center_view import UserCenterView
@@ -57,6 +58,7 @@ PAGE_AR = 6
 PAGE_USER_CENTER = 7
 PAGE_SETTINGS = 8
 PAGE_FEEDBACK = 9
+PAGE_DELIVERY_CENTER = 10
 
 
 class MainWindow(QMainWindow):
@@ -156,6 +158,7 @@ class MainWindow(QMainWindow):
         self.dashboard_view: DashboardView | None = None
         self.technical_panel_view: TechnicalPanelView | None = None
         self.order_center_view: OrderCenterView | None = None
+        self.delivery_center_view: DeliveryCenterView | None = None
         self.pinheiro_industria_view: ProductionView | None = None
         self.ar_view: ProductionView | None = None
         self.user_center_view: UserCenterView | None = None
@@ -164,7 +167,7 @@ class MainWindow(QMainWindow):
 
         self.stack.addWidget(self.form_view)       # PAGE_FORM = 0
         from PySide6.QtWidgets import QWidget as _QW
-        for _ in range(9):                         # páginas 1-9: placeholders leves
+        for _ in range(10):                        # páginas 1-10: placeholders leves
             self.stack.addWidget(_QW())
 
         # Sinal do formulário conectado imediatamente (único que precisa existir já)
@@ -176,6 +179,7 @@ class MainWindow(QMainWindow):
             "nova":               True,  # todos veem; A&R e Indústria em leitura
             "dashboard":          session.can_access_dashboard,
             "pedidos":            session.can_access_order_center,
+            "entregas":           session.can_access_order_center,
             "pinheiro_industria": session.can_access_industria,
             "ar":                 session.can_access_ar,
             "historico":          True,
@@ -296,6 +300,7 @@ class MainWindow(QMainWindow):
             "dashboard":          PAGE_DASHBOARD,
             "tecnico":            PAGE_TECHNICAL,
             "pedidos":            PAGE_ORDER_CENTER,
+            "entregas":           PAGE_DELIVERY_CENTER,
             "pinheiro_industria": PAGE_PINHEIRO_INDUSTRIA,
             "ar":                 PAGE_AR,
             "usuarios":           PAGE_USER_CENTER,
@@ -313,6 +318,7 @@ class MainWindow(QMainWindow):
             PAGE_DASHBOARD:          session.can_access_dashboard,
             PAGE_TECHNICAL:          session.can_access_technical_panel,
             PAGE_ORDER_CENTER:       session.can_access_order_center,
+            PAGE_DELIVERY_CENTER:    session.can_access_order_center,
             PAGE_PINHEIRO_INDUSTRIA: session.can_access_industria,
             PAGE_AR:                 session.can_access_ar,
             PAGE_USER_CENTER:        session.can_manage_users,
@@ -347,6 +353,8 @@ class MainWindow(QMainWindow):
             self.technical_panel_view.refresh()
         elif page == PAGE_ORDER_CENTER:
             self.order_center_view.refresh()
+        elif page == PAGE_DELIVERY_CENTER:
+            self.delivery_center_view.refresh()
         elif page == PAGE_PINHEIRO_INDUSTRIA:
             self.pinheiro_industria_view.refresh()
         elif page == PAGE_AR:
@@ -388,6 +396,7 @@ class MainWindow(QMainWindow):
             PAGE_DASHBOARD:          "dashboard_view",
             PAGE_TECHNICAL:          "technical_panel_view",
             PAGE_ORDER_CENTER:       "order_center_view",
+            PAGE_DELIVERY_CENTER:    "delivery_center_view",
             PAGE_PINHEIRO_INDUSTRIA: "pinheiro_industria_view",
             PAGE_AR:                 "ar_view",
             PAGE_USER_CENTER:        "user_center_view",
@@ -419,6 +428,8 @@ class MainWindow(QMainWindow):
             return TechnicalPanelView(self.scale)
         if page == PAGE_ORDER_CENTER:
             return OrderCenterView(self.scale)
+        if page == PAGE_DELIVERY_CENTER:
+            return DeliveryCenterView(self.scale)
         if page == PAGE_PINHEIRO_INDUSTRIA:
             return ProductionView(
                 self.scale,
@@ -451,6 +462,11 @@ class MainWindow(QMainWindow):
         elif page == PAGE_ORDER_CENTER:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "order_center")
+            )
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_DELIVERY_CENTER:
+            view.open_requisition.connect(
+                lambda req_id: self._open_requisition(req_id, "delivery_center")
             )
             view.guide_requested.connect(self.show_onboarding)
         elif page == PAGE_DASHBOARD:
@@ -497,6 +513,7 @@ class MainWindow(QMainWindow):
             PAGE_DASHBOARD: "dashboard",
             PAGE_TECHNICAL: "tecnico",
             PAGE_ORDER_CENTER: "pedidos",
+            PAGE_DELIVERY_CENTER: "entregas",
             PAGE_PINHEIRO_INDUSTRIA: "pinheiro_industria",
             PAGE_AR: "ar",
             PAGE_USER_CENTER: "usuarios",
@@ -923,6 +940,8 @@ class MainWindow(QMainWindow):
             self.technical_panel_view.refresh()
         elif current_page == PAGE_ORDER_CENTER:
             self.order_center_view.refresh()
+        elif current_page == PAGE_DELIVERY_CENTER:
+            self.delivery_center_view.refresh()
         elif current_page == PAGE_PINHEIRO_INDUSTRIA:
             self.pinheiro_industria_view.refresh()
         elif current_page == PAGE_AR:
@@ -1041,7 +1060,7 @@ class MainWindow(QMainWindow):
         self.sidebar.apply_theme()
         for _v in (
             self.form_view, self.history_view, self.dashboard_view,
-            self.technical_panel_view, self.order_center_view,
+            self.technical_panel_view, self.order_center_view, self.delivery_center_view,
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
         ):
@@ -1056,6 +1075,7 @@ class MainWindow(QMainWindow):
             self.technical_panel_view, self.order_center_view,
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
+            self.delivery_center_view,
         ]
         idx = self.stack.currentIndex()
         return views[idx] if 0 <= idx < len(views) else None
@@ -1104,7 +1124,7 @@ class MainWindow(QMainWindow):
         current = self._get_current_view()
         for view in (
             self.form_view, self.history_view, self.dashboard_view,
-            self.technical_panel_view, self.order_center_view,
+            self.technical_panel_view, self.order_center_view, self.delivery_center_view,
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
         ):
@@ -1135,7 +1155,7 @@ class MainWindow(QMainWindow):
         # Views já criadas mas ocultas
         for view in (
             self.form_view, self.history_view, self.dashboard_view,
-            self.technical_panel_view, self.order_center_view,
+            self.technical_panel_view, self.order_center_view, self.delivery_center_view,
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
         ):

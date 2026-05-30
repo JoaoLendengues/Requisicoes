@@ -28,6 +28,7 @@ SIDEBAR_ICON_ALIASES = {
     "nova":         ["nova requisicao", "nova requisição", "requisicao", "requisição", "nova"],
     "dashboard":    ["painel gerencial", "dashboard", "painel"],
     "pedidos":      ["central de pedidos", "pedidos", "pedido"],
+    "entregas":     ["entregas", "entrega", "agenda de entregas"],
     "producao":     ["producao", "produção"],
     "historico":    ["historico", "histórico", "busca", "historico busca", "histórico busca"],
     "usuarios":     ["usuarios", "usuários", "usuario", "usuário", "central de usuarios", "central de usuários"],
@@ -42,6 +43,7 @@ NAV_ITEMS = [
     ("nova",      "NOVA REQUISIÇÃO",    "nova"),
     ("dashboard", "PAINEL GERENCIAL",   "dashboard"),
     ("pedidos",   "CENTRAL DE PEDIDOS", "pedidos"),
+    ("entregas",  "ENTREGAS",           "pedidos"),
     ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "pinheiro_industria"),
     ("ar",        "A&&R",               "ar"),
     ("historico", "HISTÓRICO / BUSCA",  "historico"),
@@ -57,6 +59,7 @@ NAV_GROUPS = [
     [
         ("nova", "NOVA REQUISIÇÃO", "nova"),
         ("pedidos", "CENTRAL DE PEDIDOS", "pedidos"),
+        ("entregas", "ENTREGAS", "pedidos"),
         ("ar", "A&&R", "ar"),
         ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "pinheiro_industria"),
     ],

@@ -187,6 +187,7 @@ class RequisitionResponse(BaseModel):
     production_finished_at: Optional[datetime] = None
     cancel_reason: Optional[str] = None
     invoiced: bool = False
+    delivered_at: Optional[datetime] = None
     finalized_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime

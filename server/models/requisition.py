@@ -41,6 +41,9 @@ class Requisition(Base):
     signature_png_b64: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     weight: Mapped[float] = mapped_column(Float, default=0.0)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    delivery_deadline_changed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    delivery_deadline_change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     status: Mapped[RequisitionStatus] = mapped_column(
         SAEnum(RequisitionStatus, values_callable=lambda x: [e.value for e in x], native_enum=False),
