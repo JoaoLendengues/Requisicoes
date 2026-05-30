@@ -212,8 +212,6 @@ def _format_weight_kg(value: object) -> str:
     except (TypeError, ValueError):
         return "-"
     return f"{weight:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
 def _build_production_note(
     action: str,
     destination: str,
@@ -886,7 +884,7 @@ class ProductionView(QWidget):
         actions.addWidget(btn_cancel)
         layout.addLayout(actions)
 
-        table = self._build_table(["PED", "CLIENTE", "INICIADO EM", "PESO(kg)"], stretch_columns={1})
+        table = self._build_table(["PED", "CLIENTE", "OPERADOR", "INICIADO EM", "PESO(kg)"], stretch_columns={1, 2})
         table.setMinimumHeight(max(180, int(210 * s)))
         rows = [row for row in (machine.get("rows") or []) if isinstance(row, dict)]
         self._fill_machine_table(table, rows)
@@ -936,6 +934,7 @@ class ProductionView(QWidget):
             values = [
                 str(req.get("ped_number") or ""),
                 str(req.get("client_name") or "-"),
+                ", ".join(operator_names) if operator_names else "-",
                 _format_elapsed(req.get("production_started_at")),
                 _format_weight_kg(req.get("weight")),
             ]
@@ -1370,6 +1369,219 @@ class ProductionView(QWidget):
             success_message=f"Requisição enviada para {machine_name}.",
         )
 
+    def _pick_machine_for_production(self, req: dict) -> dict | None:
+        machines = [
+            dict(machine)
+            for machine in self._machines_data
+            if str(machine.get("name") or "").strip()
+        ]
+        if not machines:
+            self._show_error("Nao ha maquinas cadastradas para este destino.")
+            return None
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Selecionar Maquina")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(max(8, int(10 * self.scale)))
+
+        ped = str(req.get("ped_number") or "-")
+        header = QLabel(f"Requisicao PED #{ped}")
+        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        layout.addWidget(header)
+
+        helper = QLabel("Clique na maquina que sera usada nesta producao.")
+        helper.setWordWrap(True)
+        helper.setProperty("muted", "1")
+        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        layout.addWidget(helper)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ border:1px solid {theme.BORDER_COLOR}; background:{theme.CARD_BG}; border-radius:12px; }}"
+        )
+        scroll.setMinimumHeight(max(220, int(250 * self.scale)))
+        content = QWidget()
+        scroll.setWidget(content)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(12, 10, 12, 10)
+        content_layout.setSpacing(max(8, int(10 * self.scale)))
+
+        def _select_machine(selected_machine: dict):
+            dlg.setProperty("_machine_id", int(selected_machine["id"]))
+            dlg.accept()
+
+        btn_style = (
+            f"QPushButton {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
+            f"  padding:12px 14px; font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+            f"}}"
+            f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 80)}; }}"
+            f"QPushButton:pressed {{ background:{theme.SELECTION_BG}; }}"
+            f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
+        )
+        for machine in machines:
+            machine_name = str(machine.get("name") or "").strip()
+            operator_names = [
+                str(name or "").strip()
+                for name in (machine.get("operators") or [])
+                if str(name or "").strip()
+            ]
+            status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
+            operator_summary = ", ".join(operator_names) if operator_names else "Sem operadores cadastrados"
+            btn = QPushButton(
+                f"{machine_name}\n"
+                f"Status: {status_label}\n"
+                f"Operadores: {operator_summary}"
+            )
+            btn.setMinimumHeight(max(78, int(92 * self.scale)))
+            btn.setStyleSheet(btn_style)
+            btn.setEnabled(bool(operator_names))
+            btn.clicked.connect(
+                lambda checked=False, current_machine=dict(machine): _select_machine(current_machine)
+            )
+            if operator_names:
+                btn.setToolTip(f"Selecionar {machine_name}")
+            else:
+                btn.setToolTip("Cadastre operadores para liberar esta maquina.")
+            content_layout.addWidget(btn)
+        content_layout.addStretch()
+        layout.addWidget(scroll)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dlg.reject)
+        buttons.addWidget(btn_cancel)
+        layout.addLayout(buttons)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        machine_id = dlg.property("_machine_id")
+        for machine in machines:
+            if int(machine["id"]) == int(machine_id):
+                return machine
+        self._show_error("Nao foi possivel localizar a maquina selecionada.")
+        return None
+
+    def _pick_machine_operators(self, machine: dict) -> list[str] | None:
+        operator_names = [
+            str(name or "").strip()
+            for name in (machine.get("operators") or [])
+            if str(name or "").strip()
+        ]
+        if not operator_names:
+            self._show_error(
+                "Esta maquina nao possui operadores cadastrados.\n\n"
+                "Cadastre os operadores em Configuracoes > Cadastro de Maquinas."
+            )
+            return None
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Selecionar operadores")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(max(8, int(10 * self.scale)))
+
+        machine_name = str(machine.get("name") or "").strip() or "-"
+        header = QLabel(f"Maquina: {machine_name}")
+        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        layout.addWidget(header)
+
+        helper = QLabel("Marque quais operadores cadastrados nesta maquina irao trabalhar nesta requisicao.")
+        helper.setWordWrap(True)
+        helper.setProperty("muted", "1")
+        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        layout.addWidget(helper)
+
+        selection_row = QHBoxLayout()
+        selection_row.addStretch()
+        btn_all = QPushButton("Todos")
+        btn_none = QPushButton("Limpar")
+        btn_all.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_none.setStyleSheet(theme.secondary_btn_style(self.scale))
+        selection_row.addWidget(btn_all)
+        selection_row.addWidget(btn_none)
+        layout.addLayout(selection_row)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ border:1px solid {theme.BORDER_COLOR}; background:{theme.CARD_BG}; border-radius:12px; }}"
+        )
+        scroll.setMinimumHeight(max(160, int(190 * self.scale)))
+        content = QWidget()
+        scroll.setWidget(content)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(12, 10, 12, 10)
+        content_layout.setSpacing(max(6, int(8 * self.scale)))
+
+        checkboxes: list[QCheckBox] = []
+        for name in operator_names:
+            checkbox = QCheckBox(name)
+            checkbox.setChecked(True)
+            checkbox.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+            content_layout.addWidget(checkbox)
+            checkboxes.append(checkbox)
+        content_layout.addStretch()
+        layout.addWidget(scroll)
+
+        error_lbl = QLabel("")
+        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setVisible(False)
+        layout.addWidget(error_lbl)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok = QPushButton("Confirmar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_ok)
+        layout.addLayout(buttons)
+
+        btn_all.clicked.connect(lambda: [checkbox.setChecked(True) for checkbox in checkboxes])
+        btn_none.clicked.connect(lambda: [checkbox.setChecked(False) for checkbox in checkboxes])
+
+        def _confirm():
+            selected = [checkbox.text().strip() for checkbox in checkboxes if checkbox.isChecked()]
+            if not selected:
+                error_lbl.setText("Selecione pelo menos um operador.")
+                error_lbl.setVisible(True)
+                return
+            dlg.setProperty("_operators", selected)
+            dlg.accept()
+
+        btn_ok.clicked.connect(_confirm)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return [str(name).strip() for name in (dlg.property("_operators") or []) if str(name).strip()]
+
     def _send_queue_selected_to_machine(self):
         req = self._selected_stage_row(WAITING_QUEUE_STAGE)
         if not req:
@@ -1434,15 +1646,32 @@ class ProductionView(QWidget):
         if not target_machine:
             return
 
+        target_machine_data = next(
+            (
+                dict(machine_item)
+                for machine_item in self._machines_data
+                if str(machine_item.get("name") or "").strip() == target_machine
+            ),
+            None,
+        )
+        if not target_machine_data:
+            self._show_error("Nao foi possivel localizar a maquina de dobra selecionada.")
+            return
+
+        selected_operators = self._pick_machine_operators(target_machine_data)
+        if not selected_operators:
+            return
+
         self._run_action(
             self._transfer_machine_requisition,
             int(req["id"]),
             source_machine,
             target_machine,
+            selected_operators,
             success_message=f"Requisição enviada para dobra na máquina {target_machine}.",
         )
 
-    def _transfer_machine_requisition(self, req_id: int, source_machine: str, target_machine: str):
+    def _transfer_machine_requisition(self, req_id: int, source_machine: str, target_machine: str, selected_operators: list[str]):
         api.update_status(
             req_id,
             "aguardando_na_fila",
@@ -1451,7 +1680,12 @@ class ProductionView(QWidget):
         api.update_status(
             req_id,
             "em_producao",
-            _build_production_note(PROD_STARTED, self.destination, machine=target_machine),
+            _build_production_note(
+                PROD_STARTED,
+                self.destination,
+                machine=target_machine,
+                operators=selected_operators,
+            ),
         )
 
     def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str):

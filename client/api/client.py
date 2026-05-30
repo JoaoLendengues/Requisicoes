@@ -200,9 +200,17 @@ def list_requisitions(
         return _check(client.get("/requisitions/", params=params))
 
 
-def get_management_dashboard() -> dict:
+def get_management_dashboard(ar_period: str = "30d", industria_period: str = "30d") -> dict:
     with _cli() as client:
-        return _check(client.get("/requisitions/dashboard/summary"))
+        return _check(
+            client.get(
+                "/requisitions/dashboard/summary",
+                params={
+                    "ar_period": ar_period,
+                    "industria_period": industria_period,
+                },
+            )
+        )
 
 
 def get_technical_panel_summary() -> dict:

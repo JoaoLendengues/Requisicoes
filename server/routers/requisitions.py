@@ -87,6 +87,9 @@ _PROD_FINISHED = "FINALIZADA"
 _PROD_CANCELED = "CANCELADA"
 _DESTINATION_AR = "A&R"
 _DESTINATION_PINHEIRO = "Pinheiro Indústria"
+_MACHINE_DASHBOARD_PERIODS = {"30d", "7d", "today", "last_month"}
+_SHIFT_START_HOUR = 8
+_SHIFT_END_HOUR = 18
 
 
 def _normalize_text(value: object) -> str:
@@ -116,6 +119,99 @@ def _parse_local_emission_datetime(value: object) -> datetime | None:
         parsed = parsed.replace(tzinfo=timezone.utc)
 
     return parsed.astimezone(_LOCAL_TIMEZONE)
+
+
+def _to_local_datetime(value: object) -> datetime | None:
+    if value is None or value == "":
+        return None
+
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        return _parse_local_emission_datetime(value)
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(_LOCAL_TIMEZONE)
+
+
+def _normalize_machine_dashboard_period(value: str) -> str:
+    key = str(value or "").strip().casefold() or "30d"
+    if key not in _MACHINE_DASHBOARD_PERIODS:
+        raise HTTPException(
+            status_code=400,
+            detail="Período de máquinas inválido. Use 30d, 7d, today ou last_month.",
+        )
+    return key
+
+
+def _month_start(value: datetime) -> datetime:
+    return value.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _machine_dashboard_period_bounds(period_key: str, now: datetime | None = None) -> tuple[datetime, datetime]:
+    local_now = _to_local_datetime(now or datetime.now(_LOCAL_TIMEZONE)) or datetime.now(_LOCAL_TIMEZONE)
+    today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period_key == "today":
+        return today_start, local_now
+    if period_key == "7d":
+        return today_start - timedelta(days=6), local_now
+    if period_key == "last_month":
+        current_month_start = _month_start(local_now)
+        previous_month_last_day = current_month_start - timedelta(days=1)
+        previous_month_start = previous_month_last_day.replace(
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        return previous_month_start, current_month_start
+    return today_start - timedelta(days=29), local_now
+
+
+def _iter_shift_overlap_segments(start_at: datetime, end_at: datetime) -> list[tuple[datetime, datetime]]:
+    start_local = _to_local_datetime(start_at)
+    end_local = _to_local_datetime(end_at)
+    if start_local is None or end_local is None or end_local <= start_local:
+        return []
+
+    segments: list[tuple[datetime, datetime]] = []
+    day = start_local.date()
+    last_day = end_local.date()
+    while day <= last_day:
+        shift_start = datetime.combine(day, time(_SHIFT_START_HOUR, 0), _LOCAL_TIMEZONE)
+        shift_end = datetime.combine(day, time(_SHIFT_END_HOUR, 0), _LOCAL_TIMEZONE)
+        overlap_start = max(start_local, shift_start)
+        overlap_end = min(end_local, shift_end)
+        if overlap_end > overlap_start:
+            segments.append((overlap_start, overlap_end))
+        day += timedelta(days=1)
+    return segments
+
+
+def _merge_intervals(intervals: list[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
+    if not intervals:
+        return []
+
+    ordered = sorted(intervals, key=lambda pair: pair[0])
+    merged: list[tuple[datetime, datetime]] = [ordered[0]]
+    for start_at, end_at in ordered[1:]:
+        last_start, last_end = merged[-1]
+        if start_at <= last_end:
+            merged[-1] = (last_start, max(last_end, end_at))
+            continue
+        merged.append((start_at, end_at))
+    return merged
+
+
+def _intervals_total_seconds(intervals: list[tuple[datetime, datetime]]) -> int:
+    total = 0
+    for start_at, end_at in intervals:
+        if end_at > start_at:
+            total += int((end_at - start_at).total_seconds())
+    return total
 
 
 def _matches_emission_period(req: Requisition, start: date | None, end: date | None) -> bool:
@@ -709,6 +805,57 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
     return cycles
 
 
+def _current_active_cycle(req: Requisition, now: datetime | None = None) -> dict | None:
+    started_at: datetime | None = None
+    started_target: str | None = None
+    started_machine: str | None = None
+
+    for event in _production_events(req):
+        changed_at = event["changed_at"]
+        if changed_at is None:
+            continue
+
+        action = event["action"]
+        machine = str(event.get("machine") or "").strip() or None
+        target = event.get("target") or None
+
+        if action in (_PROD_RECEIVED, _PROD_STARTED):
+            started_at = changed_at
+            started_target = target
+            started_machine = machine
+            continue
+
+        if action in (
+            _PROD_FINISHED,
+            _PROD_SEND,
+            _PROD_QUEUED,
+            _PROD_RETURNED_QUEUE,
+            _PROD_CANCELED,
+        ):
+            started_at = None
+            started_target = None
+            started_machine = None
+
+    if started_at is None or req.status != RequisitionStatus.EM_PRODUCAO:
+        return None
+
+    finished_at = now or datetime.utcnow()
+    if started_at.tzinfo is None and finished_at.tzinfo is not None:
+        finished_at = finished_at.astimezone(timezone.utc).replace(tzinfo=None)
+    elif started_at.tzinfo is not None and finished_at.tzinfo is None:
+        finished_at = finished_at.replace(tzinfo=timezone.utc)
+    return {
+        "received_at": started_at,
+        "finished_at": finished_at,
+        "target": started_target,
+        "machine": started_machine,
+        "production_time_seconds": max(
+            0,
+            int((finished_at - started_at).total_seconds()),
+        ),
+    }
+
+
 def _latest_finished_cycle(req: Requisition) -> dict | None:
     cycles = _all_finished_cycles(req)
     return cycles[-1] if cycles else None
@@ -743,9 +890,9 @@ def _production_item(
         delivery_date=req.delivery_date,
         destination=_current_production_destination(req) or None,
         machine_name=_normalize_machine_name(machine_name) or None,
+        operator_names=[str(name).strip() for name in (operator_names or []) if str(name).strip()],
         waiting_since=waiting_since,
         production_started_at=production_started_at,
-        operator_names=list(operator_names or []),
     )
 
 
@@ -803,8 +950,8 @@ def _build_production_summary(
                 _production_item(
                     req,
                     machine_name=current_machine,
+                    operator_names=(started_event or {}).get("operators") or [],
                     production_started_at=started_event["changed_at"] if started_event else None,
-                    operator_names=list(started_event.get("operators") or []) if started_event else [],
                 )
             )
 
@@ -1027,8 +1174,14 @@ def _build_machine_usage_rows(
     reqs: list[Requisition],
     machines: list[ProductionMachine],
     destination: str,
+    period_key: str,
+    now: datetime | None = None,
 ) -> list[DashboardMachineUsageItem]:
     normalized_destination = _canonical_destination(destination)
+    period_start, period_end = _machine_dashboard_period_bounds(period_key, now)
+    total_shift_seconds = _intervals_total_seconds(
+        _iter_shift_overlap_segments(period_start, period_end)
+    )
     destination_machines = [
         machine
         for machine in machines
@@ -1040,16 +1193,20 @@ def _build_machine_usage_rows(
             "finished_count": 0,
             "in_production_count": 0,
             "durations": [],
+            "weight_kg": 0.0,
+            "work_intervals": [],
         }
         for machine in destination_machines
     }
 
     for req in reqs:
-        if _current_production_destination(req) != normalized_destination:
-            continue
-
+        current_destination = _current_production_destination(req)
         current_machine = _current_production_machine(req)
-        if req.status == RequisitionStatus.EM_PRODUCAO and current_machine in usage:
+        if (
+            current_destination == normalized_destination
+            and req.status == RequisitionStatus.EM_PRODUCAO
+            and current_machine in usage
+        ):
             usage[current_machine]["in_production_count"] += 1
 
         for cycle in _all_finished_cycles(req):
@@ -1058,10 +1215,45 @@ def _build_machine_usage_rows(
             machine_name = _normalize_machine_name(cycle.get("machine"))
             if machine_name not in usage:
                 continue
+            finished_at = _to_local_datetime(cycle.get("finished_at"))
+            if finished_at is None or finished_at < period_start or finished_at >= period_end:
+                continue
             usage[machine_name]["finished_count"] += 1
             production_seconds = cycle.get("production_time_seconds")
             if isinstance(production_seconds, int):
                 usage[machine_name]["durations"].append(max(0, production_seconds))
+            usage[machine_name]["weight_kg"] += float(req.weight or 0.0)
+
+        active_cycle = _current_active_cycle(req, now=period_end)
+        if (
+            active_cycle
+            and current_destination == normalized_destination
+            and _canonical_destination(active_cycle.get("target")) == normalized_destination
+        ):
+            machine_name = _normalize_machine_name(active_cycle.get("machine"))
+            if machine_name in usage:
+                start_at = active_cycle.get("received_at")
+                end_at = active_cycle.get("finished_at")
+                if isinstance(start_at, datetime) and isinstance(end_at, datetime):
+                    clipped_start = max(_to_local_datetime(start_at) or period_start, period_start)
+                    clipped_end = min(_to_local_datetime(end_at) or period_end, period_end)
+                    if clipped_end > clipped_start:
+                        usage[machine_name]["work_intervals"].append((clipped_start, clipped_end))
+
+        for cycle in _all_finished_cycles(req):
+            if _canonical_destination(cycle.get("target")) != normalized_destination:
+                continue
+            machine_name = _normalize_machine_name(cycle.get("machine"))
+            if machine_name not in usage:
+                continue
+            start_at = cycle.get("received_at")
+            end_at = cycle.get("finished_at")
+            if not isinstance(start_at, datetime) or not isinstance(end_at, datetime):
+                continue
+            clipped_start = max(_to_local_datetime(start_at) or period_start, period_start)
+            clipped_end = min(_to_local_datetime(end_at) or period_end, period_end)
+            if clipped_end > clipped_start:
+                usage[machine_name]["work_intervals"].append((clipped_start, clipped_end))
 
     rows: list[DashboardMachineUsageItem] = []
     for machine in destination_machines:
@@ -1071,6 +1263,15 @@ def _build_machine_usage_rows(
         average_seconds = None
         if durations:
             average_seconds = int(sum(durations) / len(durations))
+        merged_intervals = _merge_intervals(stats["work_intervals"])
+        work_time_seconds = min(
+            _intervals_total_seconds(merged_intervals),
+            total_shift_seconds,
+        )
+        stopped_time_seconds = max(0, total_shift_seconds - work_time_seconds)
+        efficiency_percent = 0.0
+        if total_shift_seconds > 0:
+            efficiency_percent = round((work_time_seconds / total_shift_seconds) * 100, 1)
 
         rows.append(
             DashboardMachineUsageItem(
@@ -1078,6 +1279,10 @@ def _build_machine_usage_rows(
                 total_operations=int(stats["finished_count"]),
                 in_production_count=int(stats["in_production_count"]),
                 average_seconds=average_seconds,
+                work_time_seconds=work_time_seconds,
+                stopped_time_seconds=stopped_time_seconds,
+                efficiency_percent=efficiency_percent,
+                total_weight_kg=round(float(stats["weight_kg"]), 2),
                 machine_status=getattr(machine.status, "value", machine.status) or "",
             )
         )
@@ -1085,7 +1290,7 @@ def _build_machine_usage_rows(
     rows.sort(
         key=lambda item: (
             -int(item.total_operations or 0),
-            -int(item.in_production_count or 0),
+            -int(item.work_time_seconds or 0),
             _normalize_text(item.machine_name),
         )
     )
@@ -1095,8 +1300,12 @@ def _build_machine_usage_rows(
 def _build_management_dashboard(
     reqs: list[Requisition],
     machines: list[ProductionMachine],
+    *,
+    ar_period: str = "30d",
+    industria_period: str = "30d",
 ) -> ManagementDashboardResponse:
     now = datetime.utcnow()
+    generated_at = _to_local_datetime(now) or datetime.now(_LOCAL_TIMEZONE)
     today = now.date()
     one_hour_ago = now - timedelta(hours=1)
 
@@ -1201,15 +1410,19 @@ def _build_management_dashboard(
         reqs,
         machines,
         _DESTINATION_PINHEIRO,
+        industria_period,
+        now,
     )
     top_machines_ar = _build_machine_usage_rows(
         reqs,
         machines,
         _DESTINATION_AR,
+        ar_period,
+        now,
     )
 
     return ManagementDashboardResponse(
-        generated_at=now,
+        generated_at=generated_at,
         stats=DashboardStatsResponse(
             pedidos_em_producao=pedidos_em_producao,
             pedidos_em_atraso=pedidos_em_atraso,
@@ -1458,10 +1671,14 @@ def _check_invoice_alerts(db: Session) -> None:
 
 @router.get("/dashboard/summary", response_model=ManagementDashboardResponse)
 def get_management_dashboard(
+    ar_period: str = Query("30d"),
+    industria_period: str = Query("30d"),
     db: Session = Depends(get_db),
     _: User = Depends(require_manager_or_admin),
 ):
     _check_invoice_alerts(db)
+    normalized_ar_period = _normalize_machine_dashboard_period(ar_period)
+    normalized_industria_period = _normalize_machine_dashboard_period(industria_period)
 
     reqs = (
         db.query(Requisition)
@@ -1478,7 +1695,12 @@ def get_management_dashboard(
         )
         .all()
     )
-    return _build_management_dashboard(reqs, machines)
+    return _build_management_dashboard(
+        reqs,
+        machines,
+        ar_period=normalized_ar_period,
+        industria_period=normalized_industria_period,
+    )
 
 
 @router.get("/order-center/summary", response_model=OrderCenterResponse)

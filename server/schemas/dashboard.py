@@ -45,8 +45,12 @@ class DashboardRecentRequisitionItem(BaseModel):
 class DashboardMachineUsageItem(BaseModel):
     machine_name: str
     total_operations: int
-    in_production_count: int
+    in_production_count: int = 0
     average_seconds: Optional[int] = None
+    work_time_seconds: int = 0
+    stopped_time_seconds: int = 0
+    efficiency_percent: float = 0.0
+    total_weight_kg: float = 0.0
     machine_status: str
 
 
