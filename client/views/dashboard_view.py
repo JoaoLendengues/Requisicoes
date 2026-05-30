@@ -1,5 +1,6 @@
 """Painel gerencial com indicadores operacionais e alertas."""
 
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
@@ -203,6 +204,36 @@ def _machine_status_color(value: object) -> str:
     if status == "manutencao":
         return theme.WARNING
     return theme.BORDER_COLOR
+
+
+class _SortableTableWidgetItem(QTableWidgetItem):
+    def __init__(self, text: str, sort_value: object | None = None):
+        super().__init__(text)
+        self._sort_value = text.casefold() if sort_value is None else sort_value
+
+    def __lt__(self, other):
+        if isinstance(other, _SortableTableWidgetItem):
+            return self._sort_key(self._sort_value) < self._sort_key(other._sort_value)
+        return super().__lt__(other)
+
+    @staticmethod
+    def _sort_key(value: object) -> tuple[int, object]:
+        if value is None:
+            return (2, "")
+        if isinstance(value, datetime):
+            return (
+                0,
+                value.year,
+                value.month,
+                value.day,
+                value.hour,
+                value.minute,
+                value.second,
+                value.microsecond,
+            )
+        if isinstance(value, (int, float)):
+            return (0, float(value))
+        return (1, str(value).casefold())
 
 
 class DashWorker(QObject):
@@ -646,7 +677,9 @@ class DashboardView(QWidget):
             header.setSectionResizeMode(index, mode)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setMinimumHeight(max(34, int(40 * s)))
+        header.setSortIndicatorShown(True)
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
+        table.setSortingEnabled(True)
 
         table.setStyleSheet(
             f"QTableWidget {{"
@@ -659,6 +692,7 @@ class DashboardView(QWidget):
             f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
+            f"QHeaderView::section:hover {{ background:{theme.PRIMARY_HOVER}; }}"
             f"QTableWidget::item {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
             f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
@@ -825,12 +859,14 @@ class DashboardView(QWidget):
 
     def _fill_top_vendors_table(self, rows: object):
         table = self.top_vendors_table
+        table.setSortingEnabled(False)
         table.clearSpans()
         table.setRowCount(0)
         items = rows if isinstance(rows, list) else []
 
         if not items:
             self._set_empty_message(table, "Nenhum vendedor encontrado.")
+            table.setSortingEnabled(True)
             return
 
         for index, row in enumerate(items, start=1):
@@ -843,19 +879,27 @@ class DashboardView(QWidget):
                 str(row.get("vendor_name") or "-"),
                 str(row.get("requisition_count") or 0),
             ]
+            sort_values = [
+                index,
+                str(row.get("vendor_name") or "-"),
+                int(row.get("requisition_count") or 0),
+            ]
             for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                item = _SortableTableWidgetItem(value, sort_values[col])
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
+        table.setSortingEnabled(True)
 
     def _fill_alerts_table(self, rows: object):
         table = self.alerts_table
+        table.setSortingEnabled(False)
         table.clearSpans()
         table.setRowCount(0)
         items = rows if isinstance(rows, list) else []
 
         if not items:
             self._set_empty_message(table, "Nenhum pedido aguardando confirmação há mais de 1 hora.")
+            table.setSortingEnabled(True)
             return
 
         for row in items:
@@ -869,10 +913,17 @@ class DashboardView(QWidget):
                 str(row.get("destination") or "-"),
                 _format_waiting_minutes(row.get("waiting_minutes")),
             ]
+            sort_values = [
+                str(row.get("ped_number") or "-"),
+                str(row.get("client_name") or "-"),
+                str(row.get("destination") or "-"),
+                int(row.get("waiting_minutes") or 0),
+            ]
             for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                item = _SortableTableWidgetItem(value, sort_values[col])
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
+        table.setSortingEnabled(True)
 
     def _fill_top_machines_table(
         self,
@@ -880,12 +931,14 @@ class DashboardView(QWidget):
         rows: object,
         empty_message: str,
     ):
+        table.setSortingEnabled(False)
         table.clearSpans()
         table.setRowCount(0)
         items = rows if isinstance(rows, list) else []
 
         if not items:
             self._set_empty_message(table, empty_message)
+            table.setSortingEnabled(True)
             return
 
         for index, row in enumerate(items, start=1):
@@ -905,10 +958,24 @@ class DashboardView(QWidget):
                 _format_weight_kg(row.get("total_weight_kg")),
                 str(row.get("machine_status") or "-"),
             ]
+            sort_values = [
+                index,
+                str(row.get("machine_name") or "-"),
+                int(row.get("total_operations") or 0),
+                int(row.get("average_seconds") or 0),
+                int(row.get("work_time_seconds") or 0),
+                int(row.get("stopped_time_seconds") or 0),
+                float(row.get("efficiency_percent") or 0.0),
+                float(row.get("total_weight_kg") or 0.0),
+                str(row.get("machine_status") or "-"),
+            ]
 
             for col, value in enumerate(values):
                 if col == 8:
                     machine_status = str(row.get("machine_status") or "")
+                    item = _SortableTableWidgetItem(value, sort_values[col])
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    table.setItem(line, col, item)
                     color = _machine_status_color(machine_status)
                     label = QLabel(_machine_status_label(machine_status))
                     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -918,18 +985,21 @@ class DashboardView(QWidget):
                     )
                     table.setCellWidget(line, col, label)
                 else:
-                    item = QTableWidgetItem(value)
+                    item = _SortableTableWidgetItem(value, sort_values[col])
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(line, col, item)
+        table.setSortingEnabled(True)
 
     def _fill_recent_table(self, rows: object):
         table = self.recent_table
+        table.setSortingEnabled(False)
         table.clearSpans()
         table.setRowCount(0)
         items = rows if isinstance(rows, list) else []
 
         if not items:
             self._set_empty_message(table, "Nenhuma requisição recente encontrada.")
+            table.setSortingEnabled(True)
             return
 
         for row in items:
@@ -946,10 +1016,22 @@ class DashboardView(QWidget):
                 str(row.get("status") or "-"),
                 str(row.get("destination") or "-"),
             ]
+            emission_dt = _parse_datetime(row.get("emission_date"))
+            sort_values = [
+                str(row.get("ped_number") or "-"),
+                str(row.get("client_name") or "-"),
+                str(row.get("vendor_name") or "-"),
+                emission_dt or datetime.min,
+                str(row.get("status") or "-"),
+                str(row.get("destination") or "-"),
+            ]
 
             for col, value in enumerate(values):
                 if col == 4:
                     status = str(row.get("status") or "")
+                    item = _SortableTableWidgetItem(value, sort_values[col])
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    table.setItem(line, col, item)
                     color_map = {
                         "em_andamento": theme.PRIMARY_HOVER,
                         "aguardando_recebimento": theme.WARNING,
@@ -968,9 +1050,10 @@ class DashboardView(QWidget):
                     )
                     table.setCellWidget(line, col, label)
                 else:
-                    item = QTableWidgetItem(value)
+                    item = _SortableTableWidgetItem(value, sort_values[col])
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(line, col, item)
+        table.setSortingEnabled(True)
 
     def _set_empty_message(self, table: QTableWidget, message: str):
         table.setRowCount(1)
