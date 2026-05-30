@@ -1646,15 +1646,32 @@ class ProductionView(QWidget):
         if not target_machine:
             return
 
+        target_machine_data = next(
+            (
+                dict(machine_item)
+                for machine_item in self._machines_data
+                if str(machine_item.get("name") or "").strip() == target_machine
+            ),
+            None,
+        )
+        if not target_machine_data:
+            self._show_error("Nao foi possivel localizar a maquina de dobra selecionada.")
+            return
+
+        selected_operators = self._pick_machine_operators(target_machine_data)
+        if not selected_operators:
+            return
+
         self._run_action(
             self._transfer_machine_requisition,
             int(req["id"]),
             source_machine,
             target_machine,
+            selected_operators,
             success_message=f"Requisição enviada para dobra na máquina {target_machine}.",
         )
 
-    def _transfer_machine_requisition(self, req_id: int, source_machine: str, target_machine: str):
+    def _transfer_machine_requisition(self, req_id: int, source_machine: str, target_machine: str, selected_operators: list[str]):
         api.update_status(
             req_id,
             "aguardando_na_fila",
@@ -1663,7 +1680,12 @@ class ProductionView(QWidget):
         api.update_status(
             req_id,
             "em_producao",
-            _build_production_note(PROD_STARTED, self.destination, machine=target_machine),
+            _build_production_note(
+                PROD_STARTED,
+                self.destination,
+                machine=target_machine,
+                operators=selected_operators,
+            ),
         )
 
     def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str):
