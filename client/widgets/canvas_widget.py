@@ -65,9 +65,24 @@ _CANVAS_CLIPBOARD_MIME = "application/x-requisicoes-canvas-items"
 _IMAGE_FILE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"}
 
 
+# Limita a maior dimensão de imagens inseridas/coladas no canvas antes de
+# serializar para base64. Evita que prints/fotos inflem o JSON do desenho
+# (que é persistido no banco). 1600px fica acima da resolução que o PDF
+# consome (o desenho inteiro é rasterizado a ≤2400px), então não há perda
+# perceptível no documento final.
+_MAX_EMBEDDED_IMAGE_SIDE = 1600
+
+
 def _pixmap_to_base64(pixmap: QPixmap) -> str:
     if pixmap.isNull():
         return ""
+    if max(pixmap.width(), pixmap.height()) > _MAX_EMBEDDED_IMAGE_SIDE:
+        pixmap = pixmap.scaled(
+            _MAX_EMBEDDED_IMAGE_SIDE,
+            _MAX_EMBEDDED_IMAGE_SIDE,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
     buffer = QBuffer()
     buffer.open(QIODevice.OpenModeFlag.WriteOnly)
     pixmap.save(buffer, "PNG")
