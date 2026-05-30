@@ -3,6 +3,7 @@ Formulário principal de requisição — fiel ao mockup fornecido.
 """
 import os
 import io
+import base64
 import shutil
 import tempfile
 import unicodedata
@@ -16,8 +17,14 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
     QAbstractSpinBox,
 )
-from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression, QRectF, QSize
-from PySide6.QtGui import QAction, QKeySequence, QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
+from PySide6.QtCore import (
+    Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression,
+    QRectF, QSize, QPointF, QByteArray, QBuffer, QIODevice,
+)
+from PySide6.QtGui import (
+    QAction, QKeySequence, QPixmap, QColor, QFont, QRegularExpressionValidator,
+    QPainter, QImage, QPen,
+)
 
 try:
     import qrcode
@@ -663,6 +670,266 @@ class CanvasViewerDialog(QDialog):
         btn_fit.clicked.connect(self.canvas_view.fit_scene)
 
 
+class SignaturePad(QWidget):
+    changed = Signal()
+
+    def __init__(self, scale: float = 1.0, parent=None):
+        super().__init__(parent)
+        self._scale = scale
+        self._pen = QPen(QColor(theme.PRIMARY), max(2, int(2.4 * scale)))
+        self._pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        self._pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        self._image = QImage()
+        self._last_point = QPointF()
+        self._drawing = False
+        self._has_strokes = False
+
+        self.setAttribute(Qt.WidgetAttribute.WA_StaticContents, True)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumSize(max(260, int(320 * scale)), max(120, int(160 * scale)))
+
+    def _ensure_canvas(self) -> None:
+        width = max(1, self.width())
+        height = max(1, self.height())
+        if (
+            not self._image.isNull()
+            and self._image.width() == width
+            and self._image.height() == height
+        ):
+            return
+
+        previous = self._image
+        image = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(Qt.GlobalColor.transparent)
+
+        if not previous.isNull():
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.drawImage(0, 0, previous)
+            painter.end()
+
+        self._image = image
+
+    def clear(self, emit_signal: bool = True) -> None:
+        self._ensure_canvas()
+        self._image.fill(Qt.GlobalColor.transparent)
+        self._has_strokes = False
+        self.update()
+        if emit_signal:
+            self.changed.emit()
+
+    def set_signature_png_bytes(self, signature_png_bytes: bytes | None) -> None:
+        if not signature_png_bytes:
+            self.clear()
+            return
+
+        loaded = QImage.fromData(signature_png_bytes, "PNG")
+        if loaded.isNull():
+            self.clear()
+            return
+
+        self._ensure_canvas()
+        self._image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(self._image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        max_w = max(1, self.width() - 12)
+        max_h = max(1, self.height() - 12)
+        scaled = loaded.scaled(
+            max_w,
+            max_h,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        x = (self.width() - scaled.width()) / 2
+        y = (self.height() - scaled.height()) / 2
+        painter.drawImage(QPointF(x, y), scaled)
+        painter.end()
+
+        self._has_strokes = True
+        self.update()
+        self.changed.emit()
+
+    def _trimmed_image(self) -> QImage:
+        if self._image.isNull() or not self._has_strokes:
+            return QImage()
+
+        width = self._image.width()
+        height = self._image.height()
+        left = width
+        top = height
+        right = -1
+        bottom = -1
+
+        for y in range(height):
+            for x in range(width):
+                alpha = (self._image.pixel(x, y) >> 24) & 0xFF
+                if alpha:
+                    left = min(left, x)
+                    top = min(top, y)
+                    right = max(right, x)
+                    bottom = max(bottom, y)
+
+        if right < left or bottom < top:
+            return QImage()
+
+        padding = 4
+        start_x = max(0, left - padding)
+        start_y = max(0, top - padding)
+        end_x = min(width - 1, right + padding)
+        end_y = min(height - 1, bottom + padding)
+        return self._image.copy(start_x, start_y, end_x - start_x + 1, end_y - start_y + 1)
+
+    def is_empty(self) -> bool:
+        return self._trimmed_image().isNull()
+
+    def to_png_bytes(self) -> bytes:
+        image = self._trimmed_image()
+        if image.isNull():
+            return b""
+
+        data = QByteArray()
+        buffer = QBuffer(data)
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        image.save(buffer, "PNG")
+        buffer.close()
+        return bytes(data)
+
+    def _stroke_to(self, point: QPointF) -> None:
+        self._ensure_canvas()
+        painter = QPainter(self._image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(self._pen)
+        painter.drawLine(self._last_point, point)
+        painter.end()
+        self._last_point = QPointF(point)
+        self._has_strokes = True
+        self.update()
+        self.changed.emit()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drawing = True
+            self._last_point = QPointF(event.position())
+            self._stroke_to(QPointF(event.position()))
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._drawing and (event.buttons() & Qt.MouseButton.LeftButton):
+            self._stroke_to(QPointF(event.position()))
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton and self._drawing:
+            self._stroke_to(QPointF(event.position()))
+            self._drawing = False
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        self._ensure_canvas()
+        super().resizeEvent(event)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        self._ensure_canvas()
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#FFFFFF"))
+        painter.drawImage(0, 0, self._image)
+
+        border_style = (
+            Qt.PenStyle.SolidLine
+            if self._has_strokes
+            else Qt.PenStyle.DashLine
+        )
+        painter.setPen(QPen(QColor(theme.BORDER_COLOR), 1, border_style))
+        painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 6, 6)
+
+        if not self._has_strokes:
+            painter.setPen(QColor(theme.TEXT_LIGHT))
+            painter.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self._scale))))
+            painter.drawText(
+                self.rect(),
+                Qt.AlignmentFlag.AlignCenter,
+                "Assine com mouse ou caneta digital",
+            )
+        painter.end()
+
+
+class SignatureDialog(QDialog):
+    def __init__(self, scale: float, signature_png_bytes: bytes | None = None, parent=None):
+        super().__init__(parent)
+        self.scale = scale
+        self._signature_png_bytes: bytes | None = signature_png_bytes
+
+        self.setWindowTitle("Assinatura do Cliente")
+        self.setModal(True)
+        self.setMinimumSize(max(460, int(600 * scale)), max(320, int(420 * scale)))
+        self.setStyleSheet(
+            f"QDialog {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(max(12, int(14 * scale)), max(12, int(14 * scale)),
+                                  max(12, int(14 * scale)), max(12, int(14 * scale)))
+        layout.setSpacing(max(8, int(10 * scale)))
+
+        hint = QLabel("Desenhe a assinatura abaixo com mouse ou caneta da mesa digitalizadora.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"font-size:{max(8, int(9 * scale))}pt; color:{theme.TEXT_LIGHT};")
+        layout.addWidget(hint)
+
+        self.pad = SignaturePad(scale, self)
+        layout.addWidget(self.pad, 1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+
+        btn_clear = QPushButton("Limpar")
+        btn_clear.setFixedHeight(max(30, int(34 * scale)))
+        btn_clear.setStyleSheet(theme.secondary_btn_style(scale))
+        btn_clear.clicked.connect(lambda _checked=False: self.pad.clear())
+        buttons.addWidget(btn_clear)
+
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setFixedHeight(max(30, int(34 * scale)))
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(scale))
+        btn_cancel.clicked.connect(self.reject)
+        buttons.addWidget(btn_cancel)
+
+        self.btn_apply = QPushButton("Aplicar Assinatura")
+        self.btn_apply.setFixedHeight(max(30, int(34 * scale)))
+        self.btn_apply.setStyleSheet(theme.primary_btn_style(scale))
+        self.btn_apply.clicked.connect(self._apply_signature)
+        buttons.addWidget(self.btn_apply)
+        layout.addLayout(buttons)
+
+        self.pad.changed.connect(self._sync_apply_state)
+        if signature_png_bytes:
+            self.pad.set_signature_png_bytes(signature_png_bytes)
+        self._sync_apply_state()
+
+    def _sync_apply_state(self) -> None:
+        self.btn_apply.setEnabled(not self.pad.is_empty())
+
+    def _apply_signature(self) -> None:
+        png = self.pad.to_png_bytes()
+        if not png:
+            QMessageBox.warning(self, "Assinatura", "Faça uma assinatura antes de aplicar.")
+            return
+        self._signature_png_bytes = png
+        self.accept()
+
+    def signature_png_bytes(self) -> bytes | None:
+        return self._signature_png_bytes
+
+
 # ── View principal ────────────────────────────────────────────────────────────
 class RequisitionForm(QWidget):
     saved           = Signal(dict)
@@ -676,6 +943,7 @@ class RequisitionForm(QWidget):
         self._clients: list[dict] = []
         self._threads: list = []
         self._canvas_json: str = "{}"   # armazena o JSON do desenho
+        self._signature_png_bytes: bytes | None = None
         self._setup_ui()
         self._setup_hidden_shortcuts()
         self._load_clients()
@@ -789,6 +1057,8 @@ class RequisitionForm(QWidget):
             self.item_table,
             self.input_obs,
             self.btn_canvas,
+            self.btn_sign,
+            self.btn_clear_signature,
             self.btn_production,
             self.btn_save,
         ]
@@ -1392,17 +1662,32 @@ class RequisitionForm(QWidget):
 
         sig_col = QVBoxLayout()
         sig_col.addWidget(_field_label("✍️ ASSINATURA DO CLIENTE", s))
-        sig_col.addStretch()
-        sig_line = QFrame()
-        sig_line.setFrameShape(QFrame.Shape.HLine)
-        sig_line.setStyleSheet(f"color:{theme.BORDER_COLOR};")
-        sig_col.addWidget(sig_line)
-        lbl_click = QLabel("Imprimir e assinar")
-        lbl_click.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_click.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8,int(9*s))}pt; font-style:italic; border:none;"
+        self.signature_preview = QLabel("Sem assinatura digital")
+        self.signature_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.signature_preview.setMinimumHeight(max(72, int(90 * s)))
+        self.signature_preview.setStyleSheet(
+            f"background:#fff; border:1px dashed {theme.BORDER_COLOR}; border-radius:6px;"
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-style:italic;"
         )
-        sig_col.addWidget(lbl_click)
+        sig_col.addWidget(self.signature_preview, 1)
+
+        sig_btn_row = QHBoxLayout()
+        sig_btn_row.setContentsMargins(0, 0, 0, 0)
+        sig_btn_row.setSpacing(max(8, int(10 * s)))
+
+        self.btn_sign = QPushButton("Assinar")
+        self.btn_sign.setFixedHeight(max(28, int(32 * s)))
+        self.btn_sign.setStyleSheet(theme.secondary_btn_style(s))
+        self.btn_sign.clicked.connect(self._open_signature_dialog)
+        sig_btn_row.addWidget(self.btn_sign, 1)
+
+        self.btn_clear_signature = QPushButton("Limpar assinatura")
+        self.btn_clear_signature.setFixedHeight(max(28, int(32 * s)))
+        self.btn_clear_signature.setStyleSheet(theme.secondary_btn_style(s))
+        self.btn_clear_signature.clicked.connect(self._clear_signature)
+        sig_btn_row.addWidget(self.btn_clear_signature, 1)
+
+        sig_col.addLayout(sig_btn_row)
         sig_layout.addLayout(sig_col, 2)
 
         # QR Code
@@ -1432,6 +1717,7 @@ class RequisitionForm(QWidget):
         sig_layout.addLayout(qr_col, 1)
 
         layout.addWidget(sig_card, 1)
+        self._refresh_signature_preview()
         self._generate_qr()
         return wrapper
 
@@ -1462,9 +1748,117 @@ class RequisitionForm(QWidget):
         except Exception:
             pass
 
+    @staticmethod
+    def _decode_signature_payload(value) -> bytes | None:
+        if isinstance(value, (bytes, bytearray)):
+            return bytes(value) if value else None
+        if not isinstance(value, str):
+            return None
+
+        raw = value.strip()
+        if not raw:
+            return None
+
+        if raw.lower().startswith("data:image"):
+            parts = raw.split(",", 1)
+            raw = parts[1] if len(parts) > 1 else ""
+
+        raw = raw.replace("\n", "").replace("\r", "")
+        if not raw:
+            return None
+
+        try:
+            decoded = base64.b64decode(raw, validate=False)
+        except Exception:
+            return None
+        return decoded or None
+
+    def _extract_signature_from_requisition(self, data: dict | None) -> bytes | None:
+        if not isinstance(data, dict):
+            return None
+
+        candidates = [
+            data.get("signature_png"),
+            data.get("signature_png_b64"),
+            data.get("signature_base64"),
+            data.get("client_signature"),
+            data.get("client_signature_b64"),
+        ]
+        nested = data.get("signature")
+        if isinstance(nested, dict):
+            candidates.extend(
+                [
+                    nested.get("png"),
+                    nested.get("png_b64"),
+                    nested.get("base64"),
+                ]
+            )
+        elif nested is not None:
+            candidates.append(nested)
+
+        for candidate in candidates:
+            decoded = self._decode_signature_payload(candidate)
+            if decoded:
+                return decoded
+        return None
+
+    def _set_signature_png(self, signature_png_bytes: bytes | None) -> None:
+        self._signature_png_bytes = signature_png_bytes if signature_png_bytes else None
+        self._refresh_signature_preview()
+
+    def _refresh_signature_preview(self) -> None:
+        if not hasattr(self, "signature_preview"):
+            return
+
+        label = self.signature_preview
+        label.setPixmap(QPixmap())
+        if not self._signature_png_bytes:
+            label.setText("Imprimir e assinar")
+            label.setStyleSheet(
+                f"background:#fff; border:1px dashed {theme.BORDER_COLOR}; border-radius:6px;"
+                f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * self.scale))}pt; font-style:italic;"
+            )
+            if hasattr(self, "btn_clear_signature"):
+                self.btn_clear_signature.setEnabled(False)
+            return
+
+        pix = QPixmap()
+        if not pix.loadFromData(self._signature_png_bytes, "PNG"):
+            label.setText("Assinatura inválida")
+            if hasattr(self, "btn_clear_signature"):
+                self.btn_clear_signature.setEnabled(True)
+            return
+
+        target_w = max(1, label.width() - 12)
+        target_h = max(1, label.height() - 12)
+        scaled = pix.scaled(
+            target_w,
+            target_h,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        label.setText("")
+        label.setPixmap(scaled)
+        label.setStyleSheet(
+            f"background:#fff; border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+        )
+        if hasattr(self, "btn_clear_signature"):
+            self.btn_clear_signature.setEnabled(True)
+
+    def _open_signature_dialog(self) -> None:
+        dialog = SignatureDialog(self.scale, self._signature_png_bytes, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._set_signature_png(dialog.signature_png_bytes())
+
+    def _clear_signature(self) -> None:
+        if not self._signature_png_bytes:
+            return
+        self._set_signature_png(None)
+
     def showEvent(self, event):
         super().showEvent(event)
         self._generate_qr()
+        self._refresh_signature_preview()
 
     def refresh_logged_user(self):
         if hasattr(self, "lbl_vendor"):
@@ -1582,7 +1976,7 @@ class RequisitionForm(QWidget):
             digits = "55" + digits
         return digits
 
-    def _build_current_pdf_payload(self) -> tuple[dict, dict, str, str]:
+    def _build_current_pdf_payload(self) -> tuple[dict, dict, str, str, bytes | None]:
         data = self.get_form_data()
         ped_number = (data.get("ped_number") or "").strip()
         client = self.client_search.get_selected()
@@ -1610,7 +2004,7 @@ class RequisitionForm(QWidget):
             "cnpj": client.get("cnpj") or "",
         }
         obs = self.input_obs.toPlainText().strip()
-        return req, client_payload, obs, self._canvas_json
+        return req, client_payload, obs, self._canvas_json, self._signature_png_bytes
 
     def _find_saved_pdf_for_print(self) -> str:
         ped_number = self.input_ped.text().strip()
@@ -1681,6 +2075,7 @@ class RequisitionForm(QWidget):
         client: dict | None,
         obs: str,
         canvas_json: str,
+        signature_png_bytes: bytes | None = None,
         *,
         require_configured_folder: bool,
     ) -> str:
@@ -1693,7 +2088,14 @@ class RequisitionForm(QWidget):
             raise RuntimeError("A geração de PDF está indisponível porque o ReportLab não está instalado.")
 
         folder = self._resolve_pdf_output_folder(require_configured_folder=require_configured_folder, req=req)
-        return generate_pdf(req, client, obs or req.get("obs") or "", folder, canvas_json)
+        return generate_pdf(
+            req,
+            client,
+            obs or req.get("obs") or "",
+            folder,
+            canvas_json,
+            signature_png_bytes=signature_png_bytes,
+        )
 
     def _generate_saved_pdf(self, req: dict) -> str:
         client = {
@@ -1702,21 +2104,24 @@ class RequisitionForm(QWidget):
             "phone": req.get("phone") or "",
         }
         canvas_json = (req.get("canvas") or {}).get("json_data") or "{}"
+        signature_png = self._signature_png_bytes or self._extract_signature_from_requisition(req)
         return self._generate_pdf_file(
             req,
             client,
             req.get("obs") or "",
             canvas_json,
+            signature_png,
             require_configured_folder=True,
         )
 
     def _generate_current_pdf(self) -> str:
-        req, client, obs, canvas_json = self._build_current_pdf_payload()
+        req, client, obs, canvas_json, signature_png = self._build_current_pdf_payload()
         return self._generate_pdf_file(
             req,
             client,
             obs,
             canvas_json,
+            signature_png,
             require_configured_folder=False,
         )
 
@@ -2198,7 +2603,9 @@ class RequisitionForm(QWidget):
             return True
         if self.item_table.get_items():
             return True
-        return self._canvas_json not in ("", "{}")
+        if self._canvas_json not in ("", "{}"):
+            return True
+        return bool(self._signature_png_bytes)
 
     # ── API pública ──────────────────────────────────────────────────────────
     def get_form_data(self) -> dict:
@@ -2258,6 +2665,7 @@ class RequisitionForm(QWidget):
         canvas_data = data.get("canvas")
         self._canvas_json = (canvas_data or {}).get("json_data") or "{}"
         self._update_canvas_preview()
+        self._set_signature_png(self._extract_signature_from_requisition(data))
 
         if read_only:
             self._set_form_locked(
@@ -2289,6 +2697,7 @@ class RequisitionForm(QWidget):
         self.item_table.set_items([])
         self._canvas_json = "{}"
         self._update_canvas_preview()
+        self._set_signature_png(None)
 
     def apply_theme(self) -> None:
         s = self.scale
@@ -2321,3 +2730,8 @@ class RequisitionForm(QWidget):
         self.btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))
         self.btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
         self.btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))
+        if hasattr(self, "btn_sign"):
+            self.btn_sign.setStyleSheet(theme.secondary_btn_style(s))
+        if hasattr(self, "btn_clear_signature"):
+            self.btn_clear_signature.setStyleSheet(theme.secondary_btn_style(s))
+        self._refresh_signature_preview()
