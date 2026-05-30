@@ -1066,12 +1066,10 @@ class DrawingScene(QGraphicsScene):
     def _resolve_angle_style(self, degrees: float, style: str | None = None) -> str:
         normalized = self._normalize_angle_degrees(degrees)
         selected = str(style or "auto").strip().lower()
-        if selected in {"square", "line", "arc"}:
+        if selected in {"square", "arc"}:
             return selected
         if abs(normalized - 90.0) < 1e-3:
             return "square"
-        if abs(normalized - 180.0) < 1e-3:
-            return "line"
         return "arc"
 
     def _build_angle_marker_path(
@@ -1103,20 +1101,10 @@ class DrawingScene(QGraphicsScene):
             path.lineTo(p3)
             return path
 
-        if style == "line":
-            half = marker_len * 0.7
-            c1 = QPointF(base.x() - ux * half, base.y() - uy * half)
-            c2 = QPointF(base.x() + ux * half, base.y() + uy * half)
-            path.moveTo(c1)
-            path.lineTo(c2)
-            return path
-
         # Arc (meia-lua e demais ângulos)
         normalized = self._normalize_angle_degrees(degrees)
-        if normalized > 180.0:
-            normalized = 360.0 - normalized
-        if normalized < 5.0:
-            normalized = 5.0
+        if normalized > 359.9:
+            normalized = 359.9
         radius = max(14.0, min(46.0, dist * 0.3))
         rect = QRectF(start.x() - radius, start.y() - radius, radius * 2.0, radius * 2.0)
         start_deg = math.degrees(math.atan2(-uy, ux))
@@ -1125,9 +1113,6 @@ class DrawingScene(QGraphicsScene):
         return path
 
     def _update_angle_preview(self, start: QPointF, end: QPointF):
-        if not isinstance(self._preview_item, QGraphicsLineItem):
-            return
-        self._preview_item.setLine(start.x(), start.y(), end.x(), end.y())
         label = self._angle_mode_label or self._format_angle_label(start, end)
         resolved_style = self._resolve_angle_style(self._angle_mode_degrees, self._angle_mode_style)
         marker_path = self._build_angle_marker_path(start, end, self._angle_mode_degrees, resolved_style)
@@ -1159,16 +1144,6 @@ class DrawingScene(QGraphicsScene):
         resolved_style = self._resolve_angle_style(self._angle_mode_degrees, self._angle_mode_style)
         marker_path = self._build_angle_marker_path(start, end, self._angle_mode_degrees, resolved_style)
 
-        line_item = QGraphicsLineItem(start.x(), start.y(), end.x(), end.y())
-        line_item.setPen(self._pen())
-        line_item.setZValue(9000)
-        line_item.setData(0, {"type": "angle_dimension_line"})
-        line_item.setFlags(
-            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
-            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
-        )
-        self.addItem(line_item)
-
         marker_item = QGraphicsPathItem(marker_path)
         marker_item.setPen(self._pen())
         marker_item.setZValue(9000)
@@ -1191,7 +1166,6 @@ class DrawingScene(QGraphicsScene):
         )
         self.addItem(text_item)
 
-        self.cw._push_undo(line_item)
         self.cw._push_undo(marker_item)
         self.cw._push_undo(text_item)
         self.cw.changed.emit()
@@ -1347,13 +1321,6 @@ class DrawingScene(QGraphicsScene):
             if self._angle_mode_start is None:
                 self._angle_mode_start = QPointF(pos.x(), pos.y())
                 self._start = QPointF(pos.x(), pos.y())
-                self._preview_item = self.addLine(
-                    self._start.x(),
-                    self._start.y(),
-                    self._start.x() + 0.01,
-                    self._start.y(),
-                    self._pen(),
-                )
                 self._update_angle_preview(self._angle_mode_start, self._angle_mode_start)
             else:
                 end = (
@@ -2438,7 +2405,7 @@ class DrawingCanvas(QWidget):
             self,
             "Forma do ângulo",
             "Escolha o marcador visual:",
-            ["Automático", "Meia lua", "Quadrado", "Linha"],
+            ["Automático", "Meia lua", "Quadrado"],
             0,
             False,
         )
@@ -2449,7 +2416,6 @@ class DrawingCanvas(QWidget):
             "Automático": "auto",
             "Meia lua": "arc",
             "Quadrado": "square",
-            "Linha": "line",
         }
         style = style_map.get(style_label, "auto")
         label = f"{degrees:.1f}°"
