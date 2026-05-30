@@ -531,6 +531,7 @@ class MainWindow(QMainWindow):
         canvas_json = self.form_view._canvas_json
         client = self.form_view.client_search.get_selected()
         obs = self.form_view.input_obs.toPlainText().strip()
+        signature_png = getattr(self.form_view, "_signature_png_bytes", None)
 
         if self.form_view.req_id:
             req_id = self.form_view.req_id
@@ -538,38 +539,71 @@ class MainWindow(QMainWindow):
                 api.update_requisition,
                 req_id,
                 data,
-                on_result=lambda req: self._after_save(req, canvas_json, client, obs),
+                on_result=lambda req: self._after_save(
+                    req,
+                    canvas_json,
+                    client,
+                    obs,
+                    signature_png,
+                ),
                 on_error=self._on_save_error,
             )
         else:
             thread, worker = _run_in_thread(
                 api.create_requisition,
                 data,
-                on_result=lambda req: self._after_save(req, canvas_json, client, obs),
+                on_result=lambda req: self._after_save(
+                    req,
+                    canvas_json,
+                    client,
+                    obs,
+                    signature_png,
+                ),
                 on_error=self._on_save_error,
             )
         self._threads.append((thread, worker))
 
     def _after_save(self, req: dict, canvas_json: str,
-                    client: dict | None = None, obs: str = ""):
+                    client: dict | None = None, obs: str = "",
+                    signature_png_bytes: bytes | None = None):
         req_id = req["id"]
         self.form_view.req_id = req_id
         thread, worker = _run_in_thread(
             api.update_canvas,
             req_id,
             canvas_json,
-            on_result=lambda _: self._on_fully_saved(req, canvas_json, client, obs),
-            on_error=lambda _: self._on_fully_saved(req, canvas_json, client, obs),
+            on_result=lambda _: self._on_fully_saved(
+                req,
+                canvas_json,
+                client,
+                obs,
+                signature_png_bytes,
+            ),
+            on_error=lambda _: self._on_fully_saved(
+                req,
+                canvas_json,
+                client,
+                obs,
+                signature_png_bytes,
+            ),
         )
         self._threads.append((thread, worker))
 
     def _on_fully_saved(self, req: dict, canvas_json: str,
-                        client: dict | None, obs: str):
-        pdf_path = self._generate_pdf_sync(req, client, obs, canvas_json)
+                        client: dict | None, obs: str,
+                        signature_png_bytes: bytes | None = None):
+        pdf_path = self._generate_pdf_sync(
+            req,
+            client,
+            obs,
+            canvas_json,
+            signature_png_bytes=signature_png_bytes,
+        )
         self._show_saved(pdf_path)
 
     def _generate_pdf_sync(self, req: dict, client: dict | None,
-                           obs: str, canvas_json: str = "{}") -> str:
+                           obs: str, canvas_json: str = "{}",
+                           signature_png_bytes: bytes | None = None) -> str:
         try:
             from ..services.pdf_generator import generate_pdf, HAS_REPORTLAB
         except ImportError:
@@ -594,7 +628,14 @@ class MainWindow(QMainWindow):
         )
 
         try:
-            return generate_pdf(req, client, obs, folder, canvas_json)
+            return generate_pdf(
+                req,
+                client,
+                obs,
+                folder,
+                canvas_json,
+                signature_png_bytes=signature_png_bytes,
+            )
         except Exception as exc:
             QMessageBox.warning(
                 self,

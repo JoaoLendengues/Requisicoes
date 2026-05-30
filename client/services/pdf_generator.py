@@ -5,6 +5,7 @@ Modelo: Pinheiro Ferragens (base visual aprovada).
 
 from __future__ import annotations
 
+import base64
 import io
 import json
 import os
@@ -987,11 +988,68 @@ def _make_qr_bytes(text: str) -> bytes | None:
         return None
 
 
+def _decode_signature_payload(value) -> bytes | None:
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value) if value else None
+    if not isinstance(value, str):
+        return None
+
+    raw = value.strip()
+    if not raw:
+        return None
+
+    if raw.lower().startswith("data:image"):
+        parts = raw.split(",", 1)
+        raw = parts[1] if len(parts) > 1 else ""
+
+    raw = raw.replace("\n", "").replace("\r", "")
+    if not raw:
+        return None
+
+    try:
+        decoded = base64.b64decode(raw, validate=False)
+    except Exception:
+        return None
+    return decoded or None
+
+
+def _extract_signature_png_bytes(req: dict | None) -> bytes | None:
+    if not isinstance(req, dict):
+        return None
+
+    candidates = [
+        req.get("signature_png"),
+        req.get("signature_png_b64"),
+        req.get("signature_base64"),
+        req.get("client_signature"),
+        req.get("client_signature_b64"),
+    ]
+
+    nested = req.get("signature")
+    if isinstance(nested, dict):
+        candidates.extend(
+            [
+                nested.get("png"),
+                nested.get("png_b64"),
+                nested.get("base64"),
+            ]
+        )
+    elif nested is not None:
+        candidates.append(nested)
+
+    for candidate in candidates:
+        decoded = _decode_signature_payload(candidate)
+        if decoded:
+            return decoded
+    return None
+
+
 def _draw_footer(
     pdf: pdfcanvas.Canvas,
     x: float, y: float, w: float, h: float,
     obs: str,
     vendor_phone: str = "--",
+    signature_png_bytes: bytes | None = None,
 ) -> None:
     """Rodap? em tr?s caixas: observa??o, assinatura e QR code."""
 
@@ -1030,6 +1088,43 @@ def _draw_footer(
     sig_lbl = "ASSINATURA DO CLIENTE:"
     _txt(pdf, sig_lbl, sig_x + sig_w / 2, sig_text_y, 7.5, C_TEXT_SOFT,
          bold=False, align="center")
+    sig_img_x = sig_x + 10
+    sig_img_y = sig_line_y + 3
+    sig_img_w = max(1.0, sig_w - 20)
+    sig_img_h = max(1.0, (sig_text_y - 5) - sig_img_y)
+
+    if signature_png_bytes:
+        try:
+            signature_reader = ImageReader(io.BytesIO(signature_png_bytes))
+            img_w, img_h = signature_reader.getSize()
+            if img_w > 0 and img_h > 0:
+                scale = min(sig_img_w / img_w, sig_img_h / img_h)
+                draw_w = img_w * scale
+                draw_h = img_h * scale
+                draw_x = sig_x + (sig_w - draw_w) / 2
+                draw_y = sig_img_y + (sig_img_h - draw_h) / 2
+                pdf.drawImage(
+                    signature_reader,
+                    draw_x,
+                    draw_y,
+                    width=draw_w,
+                    height=draw_h,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+        except Exception:
+            pass
+    else:
+        _txt(
+            pdf,
+            "Imprimir e assinar",
+            sig_x + sig_w / 2,
+            y + h / 2 - 2,
+            7.2,
+            C_TEXT_SOFT,
+            bold=False,
+            align="center",
+        )
     _line(pdf, sig_x + 12, sig_line_y,
           sig_x + sig_w - 12, sig_line_y, C_TEXT, lw=0.8)
 
@@ -1331,6 +1426,7 @@ def generate_pdf(
     obs: str,
     folder: str,
     canvas_json: str = "{}",
+    signature_png_bytes: bytes | None = None,
 ) -> str:
     if not HAS_REPORTLAB:
         raise ImportError("reportlab não instalado. Execute: pip install reportlab>=4.0.0")
@@ -1407,7 +1503,17 @@ def generate_pdf(
     )
 
     observation = obs or req.get("obs") or ""
-    _draw_footer(pdf, mx, foot_y, cw, footer_h, observation, vendor_phone=vendor_phone)
+    resolved_signature = signature_png_bytes or _extract_signature_png_bytes(req)
+    _draw_footer(
+        pdf,
+        mx,
+        foot_y,
+        cw,
+        footer_h,
+        observation,
+        vendor_phone=vendor_phone,
+        signature_png_bytes=resolved_signature,
+    )
 
     if canvas_result:
         pdf.showPage()
