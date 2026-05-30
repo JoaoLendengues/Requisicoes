@@ -10,8 +10,8 @@ _ENV_PATH = os.path.join(_ROOT_DIR, ".env")
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "sqlite:///./requisicoes.db"
-    DATABASE_TYPE: Literal["sqlite", "oracle", "postgresql"] = "sqlite"
+    DATABASE_URL: str = "postgresql://tipinheiro:Pinheiro123@10.1.1.151:5432/requisicoes"
+    DATABASE_TYPE: Literal["sqlite", "oracle", "postgresql"] = "postgresql"
 
     SECRET_KEY: str = "mude-esta-chave-em-producao"
     ALGORITHM: str = "HS256"
