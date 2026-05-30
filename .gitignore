@@ -1,5 +1,6 @@
 # Ambiente
 .env
+CLAUDE.md
 __pycache__/
 *.py[cod]
 *.pyo
