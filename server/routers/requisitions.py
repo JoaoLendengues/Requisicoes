@@ -46,7 +46,7 @@ from ..schemas.production import (
     ProductionSummaryStatsResponse,
 )
 from ..schemas.requisition import (
-    RequisitionCreate, RequisitionUpdate, RequisitionResponse,
+    RequisitionCreate, RequisitionUpdate, RequisitionResponse, RequisitionListItem,
     StatusUpdate, CanvasUpdate, DeliveryDateUpdate,
 )
 from ..dependencies import (
@@ -77,6 +77,14 @@ _LOAD_OPTS = [
     selectinload(Requisition.items),
     selectinload(Requisition.status_history),
     selectinload(Requisition.canvas),
+    selectinload(Requisition.client),
+    selectinload(Requisition.vendor),
+]
+
+# Listagens não precisam de itens nem do canvas (desenho); status_history é
+# necessário só para derivar os campos de produção. Carrega o mínimo.
+_LIST_LOAD_OPTS = [
+    selectinload(Requisition.status_history),
     selectinload(Requisition.client),
     selectinload(Requisition.vendor),
 ]
@@ -1752,7 +1760,7 @@ def get_technical_panel_summary(
     )
 
 
-@router.get("/", response_model=List[RequisitionResponse])
+@router.get("/", response_model=List[RequisitionListItem])
 def list_requisitions(
     req_status: Optional[RequisitionStatus] = Query(None, alias="status"),
     client_id: Optional[int] = None,
@@ -1769,7 +1777,7 @@ def list_requisitions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    q = db.query(Requisition).options(*_LOAD_OPTS)
+    q = db.query(Requisition).options(*_LIST_LOAD_OPTS)
 
     if req_status:
         q = q.filter(Requisition.status == req_status)

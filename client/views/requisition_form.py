@@ -1294,11 +1294,21 @@ class RequisitionForm(QWidget):
             return
 
         matches.sort(key=lambda req: int(req.get("id") or 0), reverse=True)
-        selected = matches[0]
-        self.load_requisition(
-            selected,
-            read_only=session.should_open_requisition_read_only("history"),
+        req_id = int(matches[0].get("id") or 0)
+        if not req_id:
+            QMessageBox.warning(self, "PED", "PED não encontrado.")
+            return
+
+        # A listagem é enxuta (sem itens/desenho/assinatura); busca o registro
+        # completo antes de popular o formulário.
+        read_only = session.should_open_requisition_read_only("history")
+        thread, worker = _run_in_thread(
+            api.get_requisition,
+            req_id,
+            on_result=lambda full, ro=read_only: self.load_requisition(full, read_only=ro),
+            on_error=lambda msg: QMessageBox.critical(self, "PED", msg),
         )
+        self._threads.append((thread, worker))
 
     def _shortcut_set_delivery(self) -> None:
         if hasattr(self, "chk_entrega") and self.chk_entrega.isEnabled():

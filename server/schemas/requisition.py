@@ -196,3 +196,49 @@ class RequisitionResponse(BaseModel):
     canvas: Optional[CanvasDataResponse] = None
 
     model_config = {"from_attributes": True}
+
+
+class RequisitionListItem(BaseModel):
+    """Versão enxuta para listagens (Histórico/Busca).
+
+    Exclui os campos pesados que telas de lista NÃO usam — `items`,
+    `status_history`, `canvas` e `signature_png_b64` — para não trafegar
+    desenhos e assinaturas em base64 a cada linha.
+    """
+    id: int
+    ped_number: str
+    emission_date: datetime
+    delivery_date: Optional[date]
+    os_number: Optional[str] = None
+    vendor_id: int
+    vendor_name: Optional[str] = None
+    vendor_code: Optional[str] = None
+    client_id: int
+    client_code: Optional[str] = None
+    client_name: Optional[str] = None
+    obra: Optional[str] = None
+    nf_attachment: Optional[str] = None
+    retirada: bool
+    entrega: bool
+    delivery_address: Optional[str] = None
+    phone: Optional[str] = None
+    weight: float
+    obs: Optional[str] = None
+    status: RequisitionStatus
+    production_destination: Optional[str] = None
+    production_destination_display: Optional[str] = None
+    production_machine: Optional[str] = None
+    production_machine_display: Optional[str] = None
+    production_status: Optional[str] = None
+    production_operator_names: List[str] = []
+    production_operator_display: Optional[str] = None
+    production_sent_at: Optional[datetime] = None
+    production_finished_at: Optional[datetime] = None
+    cancel_reason: Optional[str] = None
+    invoiced: bool = False
+    delivered_at: Optional[datetime] = None
+    finalized_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
