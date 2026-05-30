@@ -13,6 +13,7 @@ import json
 import math
 import os
 from enum import Enum
+from uuid import uuid4
 
 from PySide6.QtCore import (
     Qt, QPointF, QRectF, Signal, QEvent,
@@ -218,7 +219,11 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         path = _deserialize_path(d)
         item = QGraphicsPathItem(path)
         item.setPen(pen)
-        item.setData(0, {"type": "angle_dimension_marker"})
+        marker_meta = {"type": "angle_dimension_marker"}
+        angle_link_id = str(d.get("angle_link_id", "")).strip()
+        if angle_link_id:
+            marker_meta["angle_link_id"] = angle_link_id
+        item.setData(0, marker_meta)
 
     elif t == "rect":
         item = HollowRectItem(d["x"], d["y"], d["w"], d["h"])
@@ -262,7 +267,11 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setDefaultTextColor(QColor(d.get("color", "#000000")))
         font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
         item.setFont(font)
-        item.setData(0, {"type": "angle_dimension_text"})
+        text_meta = {"type": "angle_dimension_text"}
+        angle_link_id = str(d.get("angle_link_id", "")).strip()
+        if angle_link_id:
+            text_meta["angle_link_id"] = angle_link_id
+        item.setData(0, text_meta)
 
     elif t == "image":
         path = d.get("path", "")
@@ -414,6 +423,7 @@ class DrawingScene(QGraphicsScene):
         # Snap to endpoints
         self._snap_point: QPointF | None = None
         self._snap_points_cache: list[QPointF] = []
+        self._syncing_angle_selection: bool = False
 
         self.selectionChanged.connect(self._on_selection_changed)
 
@@ -590,7 +600,9 @@ class DrawingScene(QGraphicsScene):
         return best_pt
 
     def _on_selection_changed(self):
-        """Sincroniza spin_font; remove edição inline de textos deselecionados."""
+        """Sincroniza selecao vinculada de angulo e estado de edicao de texto."""
+        if not self._syncing_angle_selection:
+            self._sync_angle_pair_selection()
         selected = set(self.selectedItems())
         for item in self.items():
             if isinstance(item, QGraphicsTextItem) and item not in selected:
@@ -607,13 +619,152 @@ class DrawingScene(QGraphicsScene):
                     self.cw.spin_font.blockSignals(False)
                 return
 
+    def _is_angle_marker(self, item: QGraphicsItem) -> bool:
+        meta = item.data(0)
+        return (
+            isinstance(item, QGraphicsPathItem)
+            and isinstance(meta, dict)
+            and meta.get("type") == "angle_dimension_marker"
+        )
+
+    def _is_angle_text(self, item: QGraphicsItem) -> bool:
+        meta = item.data(0)
+        return (
+            isinstance(item, QGraphicsTextItem)
+            and isinstance(meta, dict)
+            and meta.get("type") == "angle_dimension_text"
+        )
+
+    @staticmethod
+    def _new_angle_link_id() -> str:
+        return f"angle-{uuid4().hex}"
+
+    def _get_angle_link_id(self, item: QGraphicsItem) -> str:
+        meta = item.data(0)
+        if not isinstance(meta, dict):
+            return ""
+        value = meta.get("angle_link_id")
+        return str(value).strip() if value is not None else ""
+
+    def _set_angle_link_id(self, item: QGraphicsItem, link_id: str):
+        meta = item.data(0)
+        if not isinstance(meta, dict):
+            meta = {}
+        meta = dict(meta)
+        if "type" not in meta:
+            if isinstance(item, QGraphicsPathItem):
+                meta["type"] = "angle_dimension_marker"
+            elif isinstance(item, QGraphicsTextItem):
+                meta["type"] = "angle_dimension_text"
+        meta["angle_link_id"] = str(link_id)
+        item.setData(0, meta)
+
+    def _angle_marker_scene_center(self, marker: QGraphicsPathItem) -> QPointF:
+        return marker.mapToScene(marker.path().boundingRect().center())
+
+    def _find_angle_text_by_link_id(self, link_id: str) -> QGraphicsTextItem | None:
+        if not link_id:
+            return None
+        for item in self.items():
+            if not self._is_angle_text(item):
+                continue
+            if self._get_angle_link_id(item) == link_id:
+                return item
+        return None
+
+    def _find_closest_angle_text(self, marker: QGraphicsPathItem) -> QGraphicsTextItem | None:
+        center = self._angle_marker_scene_center(marker)
+        marker_bounds = marker.mapRectToScene(marker.path().boundingRect()).boundingRect()
+        max_range = max(60.0, max(marker_bounds.width(), marker_bounds.height()) * 2.5)
+        best_text = None
+        best_dist = float("inf")
+        for item in self.items():
+            if not self._is_angle_text(item):
+                continue
+            text_center = item.sceneBoundingRect().center()
+            dist = math.hypot(text_center.x() - center.x(), text_center.y() - center.y())
+            if dist < best_dist:
+                best_dist = dist
+                best_text = item
+        if best_text is not None and best_dist <= max_range:
+            return best_text
+        return None
+
+    def _find_closest_angle_marker(self, text_item: QGraphicsTextItem) -> QGraphicsPathItem | None:
+        center = text_item.sceneBoundingRect().center()
+        max_range = 240.0
+        best_marker = None
+        best_dist = float("inf")
+        for item in self.items():
+            if not self._is_angle_marker(item):
+                continue
+            marker_center = self._angle_marker_scene_center(item)
+            dist = math.hypot(marker_center.x() - center.x(), marker_center.y() - center.y())
+            if dist < best_dist:
+                best_dist = dist
+                best_marker = item
+        if best_marker is not None and best_dist <= max_range:
+            return best_marker
+        return None
+
+    def _ensure_angle_link_for_marker(self, marker: QGraphicsPathItem) -> str:
+        link_id = self._get_angle_link_id(marker)
+        if link_id:
+            return link_id
+        text_item = self._find_closest_angle_text(marker)
+        if text_item is not None:
+            link_id = self._get_angle_link_id(text_item)
+        if not link_id:
+            link_id = self._new_angle_link_id()
+        self._set_angle_link_id(marker, link_id)
+        if text_item is not None:
+            self._set_angle_link_id(text_item, link_id)
+        return link_id
+
+    def _find_linked_angle_text(self, marker: QGraphicsPathItem) -> QGraphicsTextItem | None:
+        link_id = self._ensure_angle_link_for_marker(marker)
+        text_item = self._find_angle_text_by_link_id(link_id)
+        if text_item is not None:
+            return text_item
+        return self._find_closest_angle_text(marker)
+
+    def _sync_angle_pair_selection(self):
+        selected = self.selectedItems()
+        angle_link_ids: set[str] = set()
+
+        for item in selected:
+            if self._is_angle_marker(item):
+                link_id = self._ensure_angle_link_for_marker(item)
+                if link_id:
+                    angle_link_ids.add(link_id)
+            elif self._is_angle_text(item):
+                link_id = self._get_angle_link_id(item)
+                if not link_id:
+                    marker = self._find_closest_angle_marker(item)
+                    if marker is not None:
+                        link_id = self._ensure_angle_link_for_marker(marker)
+                        self._set_angle_link_id(item, link_id)
+                if link_id:
+                    angle_link_ids.add(link_id)
+
+        if not angle_link_ids:
+            return
+
+        self._syncing_angle_selection = True
+        try:
+            for item in self.items():
+                if not (self._is_angle_marker(item) or self._is_angle_text(item)):
+                    continue
+                if self._get_angle_link_id(item) in angle_link_ids and not item.isSelected():
+                    item.setSelected(True)
+        finally:
+            self._syncing_angle_selection = False
+
     def _selected_angle_markers(self) -> list[QGraphicsPathItem]:
         markers: list[QGraphicsPathItem] = []
         for item in self.selectedItems():
-            if not isinstance(item, QGraphicsPathItem):
-                continue
-            meta = item.data(0)
-            if isinstance(meta, dict) and meta.get("type") == "angle_dimension_marker":
+            if self._is_angle_marker(item):
+                self._ensure_angle_link_for_marker(item)
                 markers.append(item)
         return markers
 
@@ -628,21 +779,45 @@ class DrawingScene(QGraphicsScene):
             resized_dim = max_dim * factor
             if resized_dim < self.ANGLE_MARKER_MIN_SIZE or resized_dim > self.ANGLE_MARKER_MAX_SIZE:
                 continue
-            center = bounds.center()
+            center = self._angle_marker_scene_center(marker)
+            text_item = self._find_linked_angle_text(marker)
+
             transform = QTransform()
-            transform.translate(center.x(), center.y())
+            local_center = bounds.center()
+            transform.translate(local_center.x(), local_center.y())
             transform.scale(factor, factor)
-            transform.translate(-center.x(), -center.y())
+            transform.translate(-local_center.x(), -local_center.y())
             marker.setPath(transform.map(path))
             marker.setTransformOriginPoint(marker.path().boundingRect().center())
+
+            if text_item is not None:
+                text_pos = text_item.pos()
+                vec_x = text_pos.x() - center.x()
+                vec_y = text_pos.y() - center.y()
+                text_item.setPos(
+                    QPointF(center.x() + (vec_x * factor), center.y() + (vec_y * factor))
+                )
             changed = True
         return changed
 
     def _rotate_selected_angle_markers(self, delta_degrees: float) -> bool:
         changed = False
+        rad = math.radians(delta_degrees)
+        cos_a = math.cos(rad)
+        sin_a = math.sin(rad)
         for marker in self._selected_angle_markers():
+            center = self._angle_marker_scene_center(marker)
+            text_item = self._find_linked_angle_text(marker)
             marker.setTransformOriginPoint(marker.path().boundingRect().center())
             marker.setRotation(marker.rotation() + delta_degrees)
+
+            if text_item is not None:
+                text_pos = text_item.pos()
+                vec_x = text_pos.x() - center.x()
+                vec_y = text_pos.y() - center.y()
+                rot_x = (vec_x * cos_a) - (vec_y * sin_a)
+                rot_y = (vec_x * sin_a) + (vec_y * cos_a)
+                text_item.setPos(QPointF(center.x() + rot_x, center.y() + rot_y))
             changed = True
         return changed
 
@@ -1194,11 +1369,12 @@ class DrawingScene(QGraphicsScene):
         label = self._angle_mode_label or self._format_angle_label(start, end)
         resolved_style = self._resolve_angle_style(self._angle_mode_degrees, self._angle_mode_style)
         marker_path = self._build_angle_marker_path(start, end, self._angle_mode_degrees, resolved_style)
+        link_id = self._new_angle_link_id()
 
         marker_item = QGraphicsPathItem(marker_path)
         marker_item.setPen(self._pen())
         marker_item.setZValue(9000)
-        marker_item.setData(0, {"type": "angle_dimension_marker"})
+        marker_item.setData(0, {"type": "angle_dimension_marker", "angle_link_id": link_id})
         marker_item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -1209,7 +1385,7 @@ class DrawingScene(QGraphicsScene):
         text_item.setDefaultTextColor(QColor(self.cw.color))
         text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
         text_item.setZValue(9001)
-        text_item.setData(0, {"type": "angle_dimension_text"})
+        text_item.setData(0, {"type": "angle_dimension_text", "angle_link_id": link_id})
         text_item.setPos(self._smart_label_pos(start, end, label))
         text_item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -3032,6 +3208,23 @@ class DrawingCanvas(QWidget):
         if not created:
             return
 
+        # Evita que pares de angulo colados compartilhem o mesmo vinculo do original.
+        angle_link_remap: dict[str, str] = {}
+        for item in created:
+            meta = item.data(0)
+            if not isinstance(meta, dict):
+                continue
+            if meta.get("type") not in {"angle_dimension_marker", "angle_dimension_text"}:
+                continue
+            old_link_id = str(meta.get("angle_link_id", "")).strip()
+            if not old_link_id:
+                continue
+            if old_link_id not in angle_link_remap:
+                angle_link_remap[old_link_id] = self.scene._new_angle_link_id()
+            new_meta = dict(meta)
+            new_meta["angle_link_id"] = angle_link_remap[old_link_id]
+            item.setData(0, new_meta)
+
         bounds = QRectF()
         for item in created:
             sr = item.mapToScene(item.boundingRect()).boundingRect()
@@ -3193,6 +3386,7 @@ class DrawingCanvas(QWidget):
         if isinstance(item, QGraphicsPathItem):
             if isinstance(meta, dict) and meta.get("type") == "angle_dimension_marker":
                 path = item.path()
+                angle_link_id = str(meta.get("angle_link_id", "")).strip()
                 return {
                     "type": "angle_dimension_marker",
                     "segments": _serialize_path_segments(path),
@@ -3201,6 +3395,7 @@ class DrawingCanvas(QWidget):
                     "pen": pen_data(item.pen()),
                     "rotation": rot,
                     "transform": transform_data,
+                    "angle_link_id": angle_link_id,
                 }
             path = item.path()
             points = []
@@ -3227,12 +3422,14 @@ class DrawingCanvas(QWidget):
                         "font_size": item.font().pointSize(),
                         "rotation": rot, "transform": transform_data}
             if isinstance(meta, dict) and meta.get("type") == "angle_dimension_text":
+                angle_link_id = str(meta.get("angle_link_id", "")).strip()
                 return {"type": "angle_dimension_text",
                         "x": item.pos().x(), "y": item.pos().y(),
                         "text": item.toPlainText(),
                         "color": item.defaultTextColor().name(),
                         "font_size": item.font().pointSize(),
-                        "rotation": rot, "transform": transform_data}
+                        "rotation": rot, "transform": transform_data,
+                        "angle_link_id": angle_link_id}
             return {"type": "text",
                     "x": item.pos().x(), "y": item.pos().y(),
                     "text": normalize_upper_text(item.toPlainText()),
@@ -3295,3 +3492,4 @@ class CanvasPreview(QGraphicsView):
         if rect.isNull():
             rect = QRectF(0, 0, 100, 80)
         self.fitInView(rect.adjusted(-10, -10, 10, 10), Qt.AspectRatioMode.KeepAspectRatio)
+
