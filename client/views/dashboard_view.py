@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -109,6 +110,25 @@ def _flat_secondary_btn_style(scale: float) -> str:
     )
 
 
+def _field_style(scale: float) -> str:
+    fs = max(8, int(9 * scale))
+    radius = max(12, int(14 * scale))
+    return (
+        f"QComboBox {{"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; border-radius:{radius}px;"
+        f"  padding:8px 28px 8px 12px; font-size:{fs}pt; font-weight:600;"
+        f"}}"
+        f"QComboBox:hover {{ border-color:{_rgba(theme.PRIMARY, 74)}; }}"
+        f"QComboBox:focus {{ border-color:{_rgba(theme.PRIMARY, 120)}; }}"
+        f"QComboBox::drop-down {{ border:none; width:24px; }}"
+        f"QComboBox QAbstractItemView {{"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; selection-background-color:{_rgba(theme.PRIMARY, 38)};"
+        f"}}"
+    )
+
+
 def _format_duration(seconds: object) -> str:
     if seconds in (None, "", "-"):
         return "-"
@@ -151,6 +171,22 @@ def _format_waiting_minutes(minutes: object) -> str:
     return f"{days}d {remaining_hours:02d}h"
 
 
+def _format_percentage(value: object) -> str:
+    try:
+        percentage = max(0.0, float(value))
+    except (TypeError, ValueError):
+        return "-"
+    return f"{percentage:.1f}%".replace(".", ",")
+
+
+def _format_weight_kg(value: object) -> str:
+    try:
+        weight = max(0.0, float(value))
+    except (TypeError, ValueError):
+        return "-"
+    return f"{weight:.2f}".replace(".", ",")
+
+
 def _machine_status_label(value: object) -> str:
     status = str(value or "").strip().casefold()
     if status == "funcionando":
@@ -174,9 +210,19 @@ class DashWorker(QObject):
     error = Signal(str)
     finished = Signal()
 
+    def __init__(self, ar_period: str, industria_period: str):
+        super().__init__()
+        self.ar_period = ar_period
+        self.industria_period = industria_period
+
     def run(self):
         try:
-            self.result.emit(api.get_management_dashboard())
+            self.result.emit(
+                api.get_management_dashboard(
+                    ar_period=self.ar_period,
+                    industria_period=self.industria_period,
+                )
+            )
         except api.APIError as exc:
             self.error.emit(exc.detail)
         except Exception as exc:
@@ -193,6 +239,14 @@ class DashboardView(QWidget):
         self.scale = scale
         self._threads: list[tuple[QThread, QObject]] = []
         self._metric_labels: dict[str, QLabel] = {}
+        self._machine_period_options = [
+            ("Últimos 30 dias", "30d"),
+            ("Últimos 7 dias", "7d"),
+            ("Hoje", "today"),
+            ("Mês passado", "last_month"),
+        ]
+        self.ar_period_combo: QComboBox | None = None
+        self.industria_period_combo: QComboBox | None = None
         self._setup_ui()
         self.refresh()
 
@@ -349,23 +403,24 @@ class DashboardView(QWidget):
         secondary_row.addWidget(self.alerts_card, 1)
         layout.addLayout(secondary_row)
 
-        machine_row = QHBoxLayout()
-        machine_row.setSpacing(max(12, int(16 * s)))
-        self.machines_ar_card = self._build_section_card(
+        self.machines_ar_card = self._build_machine_section_card(
             "MÁQUINAS QUE MAIS OPERAM - A&R",
-            "Ranking das máquinas da A&R por volume de operações finalizadas.",
+            "Ranking das máquinas da A&R por produções concluídas e ocupação no expediente.",
             self._build_top_machines_ar_table(),
             theme.PRIMARY_HOVER,
+            "ar_period_combo",
+            "30d",
         )
-        self.machines_industria_card = self._build_section_card(
-            "MÁQUINAS QUE MAIS OPERAM - INDÚSTRIA",
-            "Ranking das máquinas da Indústria por volume de operações finalizadas.",
+        self.machines_industria_card = self._build_machine_section_card(
+            "MÁQUINAS QUE MAIS OPERAM - PINHEIRO INDÚSTRIA",
+            "Ranking das máquinas da Pinheiro Indústria por produções concluídas e ocupação no expediente.",
             self._build_top_machines_industria_table(),
             theme.PRIMARY,
+            "industria_period_combo",
+            "30d",
         )
-        machine_row.addWidget(self.machines_ar_card, 1)
-        machine_row.addWidget(self.machines_industria_card, 1)
-        layout.addLayout(machine_row)
+        layout.addWidget(self.machines_ar_card)
+        layout.addWidget(self.machines_industria_card)
 
         self.recent_card = self._build_section_card(
             "Últimas Requisições",
@@ -500,6 +555,74 @@ class DashboardView(QWidget):
         layout.addWidget(body, 1)
         return card
 
+    def _build_machine_section_card(
+        self,
+        title: str,
+        subtitle: str,
+        body: QWidget,
+        accent_color: str,
+        combo_attr: str,
+        default_period: str,
+    ) -> QFrame:
+        s = self.scale
+        card = _make_shadow_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(
+            max(16, int(20 * s)),
+            max(14, int(18 * s)),
+            max(16, int(20 * s)),
+            max(14, int(18 * s)),
+        )
+        layout.setSpacing(max(10, int(12 * s)))
+
+        accent = QFrame()
+        accent.setFixedHeight(max(4, int(5 * s)))
+        accent.setStyleSheet(
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(accent_color, 235)}, stop:0.5 {_rgba(accent_color, 155)}, stop:1 {_rgba(accent_color, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+
+        title_row = QHBoxLayout()
+        title_row.setSpacing(max(10, int(12 * s)))
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet(
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
+        )
+
+        period_combo = QComboBox()
+        period_combo.setFixedHeight(max(34, int(38 * s)))
+        period_combo.setMinimumWidth(max(170, int(210 * s)))
+        period_combo.setStyleSheet(_field_style(s))
+        for label, value in self._machine_period_options:
+            period_combo.addItem(label, value)
+        selected_index = period_combo.findData(default_period)
+        if selected_index >= 0:
+            period_combo.setCurrentIndex(selected_index)
+        period_combo.currentIndexChanged.connect(lambda _=None: self._on_machine_period_changed())
+        setattr(self, combo_attr, period_combo)
+
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setWordWrap(True)
+        subtitle_label.setProperty("muted", "1")
+        subtitle_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
+
+        title_row.addWidget(title_label, 1)
+        title_row.addWidget(period_combo, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        layout.addWidget(accent)
+        layout.addLayout(title_row)
+        layout.addWidget(subtitle_label)
+        layout.addWidget(body, 1)
+        return card
+
     def _create_table(self, headers: list[str], stretch_columns: set[int]) -> QTableWidget:
         s = self.scale
         table = QTableWidget(0, len(headers))
@@ -579,33 +702,63 @@ class DashboardView(QWidget):
 
     def _build_top_machines_ar_table(self) -> QTableWidget:
         self.top_machines_ar_table = self._create_table(
-            ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
+            [
+                "POSIÇÃO",
+                "MÁQUINA",
+                "PRODUÇÕES",
+                "TEMPO MÉDIO",
+                "TEMPO DE TRABALHO",
+                "TEMPO PARADO",
+                "EFICIÊNCIA",
+                "PESO(KG)",
+                "STATUS",
+            ],
             {1},
         )
         header = self.top_machines_ar_table.horizontalHeader()
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
-        self.top_machines_ar_table.setColumnWidth(5, max(140, int(170 * self.scale)))
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_ar_table.setColumnWidth(8, max(140, int(170 * self.scale)))
         self.top_machines_ar_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
-        self.top_machines_ar_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        self.top_machines_ar_table.setMinimumHeight(max(300, int(340 * self.scale)))
         return self.top_machines_ar_table
 
     def _build_top_machines_industria_table(self) -> QTableWidget:
         self.top_machines_industria_table = self._create_table(
-            ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
+            [
+                "POSIÇÃO",
+                "MÁQUINA",
+                "PRODUÇÕES",
+                "TEMPO MÉDIO",
+                "TEMPO DE TRABALHO",
+                "TEMPO PARADO",
+                "EFICIÊNCIA",
+                "PESO(KG)",
+                "STATUS",
+            ],
             {1},
         )
         header = self.top_machines_industria_table.horizontalHeader()
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
-        self.top_machines_industria_table.setColumnWidth(5, max(140, int(170 * self.scale)))
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_industria_table.setColumnWidth(8, max(140, int(170 * self.scale)))
         self.top_machines_industria_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
-        self.top_machines_industria_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        self.top_machines_industria_table.setMinimumHeight(max(300, int(340 * self.scale)))
         return self.top_machines_industria_table
+
+    def _on_machine_period_changed(self):
+        self.refresh()
 
     def refresh(self):
         self._set_loading(True)
         self.error_label.hide()
 
-        worker = DashWorker()
+        ar_period = str(self.ar_period_combo.currentData() or "30d") if self.ar_period_combo else "30d"
+        industria_period = (
+            str(self.industria_period_combo.currentData() or "30d")
+            if self.industria_period_combo
+            else "30d"
+        )
+
+        worker = DashWorker(ar_period, industria_period)
         thread = QThread()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -624,6 +777,10 @@ class DashboardView(QWidget):
 
     def _set_loading(self, loading: bool):
         self.refresh_btn.setEnabled(not loading)
+        if self.ar_period_combo:
+            self.ar_period_combo.setEnabled(not loading)
+        if self.industria_period_combo:
+            self.industria_period_combo.setEnabled(not loading)
         if loading:
             self.updated_label.setText("Atualizando dados...")
             self.date_label.setText(_format_header_date())
@@ -741,13 +898,16 @@ class DashboardView(QWidget):
                 str(index),
                 str(row.get("machine_name") or "-"),
                 str(row.get("total_operations") or 0),
-                str(row.get("in_production_count") or 0),
                 _format_duration(row.get("average_seconds")),
+                _format_duration(row.get("work_time_seconds")),
+                _format_duration(row.get("stopped_time_seconds")),
+                _format_percentage(row.get("efficiency_percent")),
+                _format_weight_kg(row.get("total_weight_kg")),
                 str(row.get("machine_status") or "-"),
             ]
 
             for col, value in enumerate(values):
-                if col == 5:
+                if col == 8:
                     machine_status = str(row.get("machine_status") or "")
                     color = _machine_status_color(machine_status)
                     label = QLabel(_machine_status_label(machine_status))
@@ -850,7 +1010,7 @@ class DashboardView(QWidget):
 
     def _refresh_machine_status_labels(self, table: QTableWidget) -> None:
         """Re-estiliza os QLabel de STATUS embutidos nas células da tabela de máquinas."""
-        status_col = 5
+        status_col = 8
         for row in range(table.rowCount()):
             widget = table.cellWidget(row, status_col)
             if isinstance(widget, QLabel):
