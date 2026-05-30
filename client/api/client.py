@@ -179,6 +179,7 @@ def list_requisitions(
     emission_date_end: str = "",
     production_destination: str = "",
     production_machine: str = "",
+    production_operator: str = "",
     invoiced: bool | None = None,
 ) -> list:
     with _cli() as client:
@@ -195,6 +196,8 @@ def list_requisitions(
             params["production_destination"] = production_destination
         if production_machine:
             params["production_machine"] = production_machine
+        if production_operator:
+            params["production_operator"] = production_operator
         if invoiced is not None:
             params["invoiced"] = invoiced
         return _check(client.get("/requisitions/", params=params))

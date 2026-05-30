@@ -34,27 +34,25 @@ from ..core.datetime_utils import (
 )
 
 
-COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS", "FATURADO", "PRODUÇÃO", "MÁQUINA", "MOTIVO"]
+COLS = [
+    "PEDIDO",
+    "CLIENTE",
+    "OBRA",
+    "PESO",
+    "VENDEDOR",
+    "ENCAMINHADO PARA PRODUÇÃO EM",
+    "FINALIZADO EM",
+    "STATUS",
+    "PRODUÇÃO",
+    "MÁQUINA",
+    "OPERADOR",
+    "MOTIVO DE CANCELAMENTO",
+]
 
 PRODUCTION_OPTIONS = (
     ("Todas as produções", ""),
     ("A&R", "A&R"),
     ("Pinheiro Indústria", "Pinheiro Indústria"),
-)
-
-if "FATURADO" not in COLS:
-    COLS.insert(6, "FATURADO")
-
-_LEGACY_INVOICED_OPTIONS = (
-    ("TODOS", ""),
-    ("SIM", "sim"),
-    ("NÃO", "nao"),
-)
-
-INVOICED_OPTIONS = (
-    ("TODOS", ""),
-    ("SIM", "sim"),
-    ("NÃO", "nao"),
 )
 
 ALL_DATES_SENTINEL = QDate(2000, 1, 1)
@@ -271,7 +269,7 @@ class HistoryWorker(QObject):
         emission_date_end: str = "",
         production_destination: str = "",
         production_machine: str = "",
-        invoiced: str = "",
+        production_operator: str = "",
     ):
         super().__init__()
         self.status = status
@@ -280,15 +278,10 @@ class HistoryWorker(QObject):
         self.emission_date_end = emission_date_end
         self.production_destination = production_destination
         self.production_machine = production_machine
-        self.invoiced = invoiced
+        self.production_operator = production_operator
 
     def run(self):
         try:
-            invoiced_value = None
-            if self.invoiced == "sim":
-                invoiced_value = True
-            elif self.invoiced == "nao":
-                invoiced_value = False
             self.result.emit(
                 api.list_requisitions(
                     self.status,
@@ -298,7 +291,7 @@ class HistoryWorker(QObject):
                     emission_date_end=self.emission_date_end,
                     production_destination=self.production_destination,
                     production_machine=self.production_machine,
-                    invoiced=invoiced_value,
+                    production_operator=self.production_operator,
                 )
             )
         except Exception as exc:
@@ -329,6 +322,21 @@ class MachineOptionsWorker(QObject):
             self.finished.emit()
 
 
+class OperatorOptionsWorker(QObject):
+    result = Signal(object)
+    error = Signal(str)
+    finished = Signal()
+
+    def run(self):
+        try:
+            operators = api.list_operators()
+            self.result.emit(operators if isinstance(operators, list) else [])
+        except Exception as exc:
+            self.error.emit(str(exc))
+        finally:
+            self.finished.emit()
+
+
 class HistoryView(QWidget):
     open_requisition = Signal(int)
     guide_requested  = Signal()          # emitido pelo botão ? de ajuda
@@ -340,6 +348,8 @@ class HistoryView(QWidget):
         self._reqs: list[dict] = []
         self._setup_ui()
         self._reset_machine_filter()
+        self._reset_operator_filter()
+        self._load_operator_options()
 
     def _setup_ui(self):
         s = self.scale
@@ -546,19 +556,17 @@ class HistoryView(QWidget):
         period_col.addWidget(period_label)
         period_col.addLayout(period_row)
 
-        invoiced_col = QVBoxLayout()
-        invoiced_col.setSpacing(max(6, int(8 * s)))
-        invoiced_label = QLabel("FATURADO")
-        invoiced_label.setStyleSheet(
+        operator_col = QVBoxLayout()
+        operator_col.setSpacing(max(6, int(8 * s)))
+        operator_label = QLabel("OPERADOR")
+        operator_label.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
-        self.combo_invoiced = QComboBox()
-        for label, value in INVOICED_OPTIONS:
-            self.combo_invoiced.addItem(label, value)
-        self.combo_invoiced.setFixedHeight(max(38, int(44 * s)))
-        self.combo_invoiced.setStyleSheet(_field_style(s))
-        invoiced_col.addWidget(invoiced_label)
-        invoiced_col.addWidget(self.combo_invoiced)
+        self.combo_operator = QComboBox()
+        self.combo_operator.setFixedHeight(max(38, int(44 * s)))
+        self.combo_operator.setStyleSheet(_field_style(s))
+        operator_col.addWidget(operator_label)
+        operator_col.addWidget(self.combo_operator)
 
         production_col = QVBoxLayout()
         production_col.setSpacing(max(6, int(8 * s)))
@@ -644,12 +652,12 @@ class HistoryView(QWidget):
         row1.addLayout(period_col, 2)
         row1.addLayout(status_col, 1)
 
-        # Linha 2 — refinamentos + ações: FATURADO · PRODUÇÃO · MÁQUINA · [BUSCAR/LIMPAR]
+        # Linha 2 — refinamentos + ações: PRODUÇÃO · MÁQUINA · OPERADOR · [BUSCAR/LIMPAR]
         row2 = QHBoxLayout()
         row2.setSpacing(max(12, int(16 * s)))
-        row2.addLayout(invoiced_col, 1)
         row2.addLayout(production_col, 1)
         row2.addLayout(machine_col, 1)
+        row2.addLayout(operator_col, 1)
         row2.addStretch(1)
         row2.addLayout(buttons_col)
 
@@ -715,7 +723,7 @@ class HistoryView(QWidget):
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         apply_smooth_scroll(self.table)
         header_widget = self.table.horizontalHeader()
-        stretch_columns = {1, 2}
+        stretch_columns = {1, 2, 10, 11}
         for col in range(len(COLS)):
             mode = (
                 QHeaderView.ResizeMode.Stretch
@@ -724,22 +732,26 @@ class HistoryView(QWidget):
             )
             header_widget.setSectionResizeMode(col, mode)
         header_widget.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(10, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(11, QHeaderView.ResizeMode.Interactive)
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         self.table.setColumnWidth(1, max(180, int(220 * s)))
-        self.table.setColumnWidth(3, max(150, int(180 * s)))
-        self.table.setColumnWidth(5, max(150, int(180 * s)))
-        self.table.setColumnWidth(6, max(110, int(130 * s)))
-        self.table.setColumnWidth(7, max(150, int(170 * s)))
-        self.table.setColumnWidth(8, max(220, int(260 * s)))
-        self.table.setColumnWidth(9, max(160, int(200 * s)))
+        self.table.setColumnWidth(2, max(160, int(190 * s)))
+        self.table.setColumnWidth(4, max(150, int(180 * s)))
+        self.table.setColumnWidth(5, max(180, int(210 * s)))
+        self.table.setColumnWidth(6, max(180, int(210 * s)))
+        self.table.setColumnWidth(8, max(150, int(170 * s)))
+        self.table.setColumnWidth(9, max(180, int(210 * s)))
+        self.table.setColumnWidth(10, max(170, int(210 * s)))
+        self.table.setColumnWidth(11, max(180, int(220 * s)))
         self.table.setSortingEnabled(True)
         self.table.setStyleSheet(
             f"QTableWidget {{"
@@ -782,9 +794,9 @@ class HistoryView(QWidget):
         self._set_loading(True)
         status = self.combo_status.currentData() or ""
         emission_date_start, emission_date_end = period
-        invoiced = self.combo_invoiced.currentData() or ""
         production_destination = self.combo_production.currentData() or ""
         production_machine = self.combo_machine.currentData() or ""
+        production_operator = self.combo_operator.currentData() or ""
         search = self.input_search.text().strip()
 
         worker = HistoryWorker(
@@ -794,7 +806,7 @@ class HistoryView(QWidget):
             emission_date_end,
             production_destination,
             production_machine,
-            invoiced,
+            production_operator,
         )
         thread = QThread()
         worker.moveToThread(thread)
@@ -839,6 +851,14 @@ class HistoryView(QWidget):
         self.combo_machine.setCurrentIndex(0)
         self.combo_machine.blockSignals(False)
         self.combo_machine.setEnabled(False)
+
+    def _reset_operator_filter(self, placeholder: str = "Todos os operadores"):
+        self.combo_operator.blockSignals(True)
+        self.combo_operator.clear()
+        self.combo_operator.addItem(placeholder, "")
+        self.combo_operator.setCurrentIndex(0)
+        self.combo_operator.blockSignals(False)
+        self.combo_operator.setEnabled(False)
 
     def _on_production_changed(self):
         destination = self.combo_production.currentData() or ""
@@ -901,6 +921,41 @@ class HistoryView(QWidget):
         )
         self.error_label.show()
 
+    def _load_operator_options(self):
+        worker = OperatorOptionsWorker()
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.result.connect(self._populate_operator_options)
+        worker.error.connect(self._handle_operator_options_error)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        thread.start()
+        self._threads.append((thread, worker))
+
+    def _populate_operator_options(self, operators: object):
+        self.combo_operator.blockSignals(True)
+        self.combo_operator.clear()
+        self.combo_operator.addItem("Todos os operadores", "")
+        for operator in operators if isinstance(operators, list) else []:
+            if not isinstance(operator, dict):
+                continue
+            name = str(operator.get("name") or "").strip()
+            if name:
+                self.combo_operator.addItem(name, name)
+        self.combo_operator.setCurrentIndex(0)
+        self.combo_operator.blockSignals(False)
+        self.combo_operator.setEnabled(True)
+
+    def _handle_operator_options_error(self, message: str):
+        self._reset_operator_filter()
+        self.error_label.setText(
+            f"Não foi possível carregar os operadores cadastrados.\n\n{message}"
+        )
+        self.error_label.show()
+
     def _set_loading(self, loading: bool):
         self.refresh_btn.setEnabled(not loading)
         self.search_btn.setEnabled(not loading)
@@ -911,8 +966,8 @@ class HistoryView(QWidget):
         self.input_date_to.setEnabled(not loading)
         self.btn_date_from.setEnabled(not loading)
         self.btn_date_to.setEnabled(not loading)
-        self.combo_invoiced.setEnabled(not loading)
         self.combo_production.setEnabled(not loading)
+        self.combo_operator.setEnabled(not loading and self.combo_operator.count() > 0)
         if not loading:
             self.combo_machine.setEnabled(bool(self.combo_production.currentData()))
         elif self.combo_machine.isEnabled():
@@ -929,14 +984,19 @@ class HistoryView(QWidget):
     def _row_values(self, req: dict) -> list[str]:
         """Valores de exibição de uma linha (usado na tabela e na exportação)."""
         status = str(req.get("production_status") or req.get("status") or "")
+        try:
+            weight_value = float(req.get("weight") or 0.0)
+        except (TypeError, ValueError):
+            weight_value = 0.0
         return [
             str(req.get("ped_number") or "-"),
             str(req.get("client_name") or req.get("client_id") or "-"),
             str(req.get("obra") or "-"),
+            f"{weight_value:.2f}".replace(".", ","),
             str(req.get("vendor_name") or req.get("vendor_id") or "-"),
-            _format_date(req.get("emission_date")),
+            _format_datetime(req.get("production_sent_at")),
+            _format_datetime(req.get("production_finished_at")),
             STATUS_LABELS.get(status, status or "-"),
-            "SIM" if bool(req.get("invoiced")) or status == "faturado" else "NÃO",
             str(
                 req.get("production_destination_display")
                 or req.get("production_destination")
@@ -945,6 +1005,11 @@ class HistoryView(QWidget):
             str(
                 req.get("production_machine_display")
                 or req.get("production_machine")
+                or "-"
+            ),
+            str(
+                req.get("production_operator_display")
+                or ", ".join(req.get("production_operator_names") or [])
                 or "-"
             ),
             str(req.get("cancel_reason") or "-"),
@@ -982,7 +1047,7 @@ class HistoryView(QWidget):
                 cell.alignment = Alignment(horizontal="center", vertical="center")
             for req in self._reqs:
                 ws.append(self._row_values(req))
-            widths = [10, 34, 26, 22, 12, 24, 10, 18, 24, 26]
+            widths = [12, 32, 24, 12, 22, 22, 22, 18, 18, 18, 24, 30]
             for i, width in enumerate(widths, start=1):
                 ws.column_dimensions[get_column_letter(i)].width = width
             ws.freeze_panes = "A2"
@@ -1017,10 +1082,18 @@ class HistoryView(QWidget):
                 self.table.insertRow(row)
                 status      = str(req.get("production_status") or req.get("status") or "")
                 ped_raw     = req.get("ped_number")
-                date_raw    = str(req.get("emission_date") or "")
+                sent_raw    = str(req.get("production_sent_at") or "")
+                finished_raw = str(req.get("production_finished_at") or "")
+                try:
+                    weight_sort = float(req.get("weight") or 0.0)
+                except (TypeError, ValueError):
+                    weight_sort = 0.0
                 values = self._row_values(req)
                 for col, value in enumerate(values):
-                    if col == 5:
+                    if col == 7:
+                        item = SortableItem(value, sort_key=status)
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(row, col, item)
                         badge = QLabel(STATUS_LABELS.get(status, status or "-"))
                         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         color_map = {
@@ -1052,9 +1125,16 @@ class HistoryView(QWidget):
                             item.setData(Qt.ItemDataRole.UserRole, int(req_id))
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(row, col, item)
-                    elif col == 4:
-                        # Ordena DATA pela string ISO (YYYY-MM-DD... ordena lexicograficamente)
-                        item = SortableItem(value, sort_key=date_raw)
+                    elif col == 3:
+                        item = SortableItem(value, sort_key=weight_sort)
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(row, col, item)
+                    elif col == 5:
+                        item = SortableItem(value, sort_key=sent_raw)
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(row, col, item)
+                    elif col == 6:
+                        item = SortableItem(value, sort_key=finished_raw)
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(row, col, item)
                     else:
@@ -1096,9 +1176,9 @@ class HistoryView(QWidget):
         current = QDate(today.year, today.month, today.day)
         self.input_date_from.setDate(current)
         self.input_date_to.setDate(current)
-        self.combo_invoiced.setCurrentIndex(0)
         self.combo_production.setCurrentIndex(0)
         self._reset_machine_filter()
+        self.combo_operator.setCurrentIndex(0)
         self.input_search.clear()
         self.refresh()
 
@@ -1144,9 +1224,9 @@ class HistoryView(QWidget):
         self.input_date_to.setStyleSheet(_field_style(s))
         self.btn_date_from.setStyleSheet(_calendar_btn_style(s))
         self.btn_date_to.setStyleSheet(_calendar_btn_style(s))
-        self.combo_invoiced.setStyleSheet(_field_style(s))
         self.combo_production.setStyleSheet(_field_style(s))
         self.combo_machine.setStyleSheet(_field_style(s))
+        self.combo_operator.setStyleSheet(_field_style(s))
         self.input_search.setStyleSheet(_field_style(s))
         self.search_btn.setStyleSheet(_primary_action_btn_style(s))
         self.clear_btn.setStyleSheet(_flat_secondary_btn_style(s))

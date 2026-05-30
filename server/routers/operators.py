@@ -6,7 +6,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..dependencies import require_admin
+from ..dependencies import get_current_user, require_admin
 from ..models.operator import Operator
 from ..models.user import User
 from ..services.text_normalizer import normalize_upper_required
@@ -36,7 +36,7 @@ class OperatorUpdate(OperatorCreate):
 @router.get("/", response_model=list[OperatorResponse])
 def list_operators(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(get_current_user),
 ):
     return db.query(Operator).order_by(Operator.name.asc()).all()
 

@@ -56,15 +56,26 @@ MACHINE_STATUS_OPTIONS = (
     ("manutencao", "Manutenção"),
 )
 
-# Motivos predefinidos para cancelamento de requisições.
-# O rótulo é exibido no combo; o valor é o motivo gravado (em maiúsculas, padrão do sistema).
-# "OUTRO" abre campo de texto livre obrigatório.
+# Motivos padrão para cancelamento. O cadastro do sistema pode sobrescrever
+# esta lista, mas mantemos um fallback local para o caso de a API não responder.
+CANCEL_REASON_OTHER = "OUTRO"
 CANCEL_REASON_OPTIONS = (
-    ("DESISTÊNCIA", "Desistência"),
-    ("MATERIAL DANIFICADO / AVARIADO", "Material danificado / avariado"),
+    ("C01 - Cliente desistiu do pedido", "C01 - Cliente desistiu do pedido"),
+    ("C02 - Cliente alterou o projeto", "C02 - Cliente alterou o projeto"),
+    ("C03 - Pedido duplicado", "C03 - Pedido duplicado"),
+    ("C04 - Medidas incorretas", "C04 - Medidas incorretas"),
+    ("C05 - Quantidade incorreta", "C05 - Quantidade incorreta"),
+    ("C06 - Desenho técnico incorreto", "C06 - Desenho técnico incorreto"),
+    ("C07 - Falta de informações técnicas", "C07 - Falta de informações técnicas"),
+    ("C08 - Material indisponível", "C08 - Material indisponível"),
+    ("C09 - Equipamento indisponível", "C09 - Equipamento indisponível"),
+    ("C10 - Obra cancelada", "C10 - Obra cancelada"),
+    ("C11 - Requisição enviada incorretamente", "C11 - Requisição enviada incorretamente"),
+    ("C12 - Falta de aprovação interna", "C12 - Falta de aprovação interna"),
+    ("C13 - Problema logístico", "C13 - Problema logístico"),
+    ("C14 - Produção inviável", "C14 - Produção inviável"),
     ("OUTRO", "Outro"),
 )
-CANCEL_REASON_OTHER = "OUTRO"
 
 _ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
 
@@ -98,6 +109,32 @@ def _normalize_destination(destination: str) -> str:
 
 def _destination_card_meta(destination: str) -> dict | None:
     return _destination_card_meta_dict().get(_normalize_destination(destination))
+
+
+def _configured_cancel_reason_options() -> list[tuple[str, str]]:
+    try:
+        settings = api.get_operational_settings()
+    except Exception:
+        return list(CANCEL_REASON_OPTIONS)
+
+    options: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for item in (settings.get("cancel_reasons") or []) if isinstance(settings, dict) else []:
+        if not isinstance(item, dict):
+            continue
+        code = " ".join(str(item.get("code") or "").upper().split())
+        reason = " ".join(str(item.get("reason") or "").split())
+        if not code or not reason:
+            continue
+        value = f"{code} - {reason}"
+        if value in seen:
+            continue
+        seen.add(value)
+        options.append((value, value))
+
+    if (CANCEL_REASON_OTHER, "Outro") not in options:
+        options.append((CANCEL_REASON_OTHER, "Outro"))
+    return options or list(CANCEL_REASON_OPTIONS)
 
 
 
@@ -1874,7 +1911,7 @@ class ProductionView(QWidget):
         layout.addWidget(lbl)
 
         combo_reason = QComboBox()
-        for value, text in CANCEL_REASON_OPTIONS:
+        for value, text in _configured_cancel_reason_options():
             combo_reason.addItem(text, value)
         combo_reason.setStyleSheet(_machine_combo_style(self.scale))
         layout.addWidget(combo_reason)

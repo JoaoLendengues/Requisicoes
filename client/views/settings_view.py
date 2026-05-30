@@ -236,6 +236,7 @@ class SettingsView(QWidget):
         self.scale = scale
         self._threads: list[tuple[QThread, QObject]] = []
         self._pending_save_context: dict | None = None
+        self._cancel_reason_rows: list[dict[str, str]] = []
         self._setup_ui()
         if session.settings_show_billing:
             self.refresh_operational_settings(silent=True)
@@ -655,6 +656,74 @@ class SettingsView(QWidget):
             lay_sis.addWidget(self._billing_section)
             self._billing_section.setVisible(session.settings_show_billing)
 
+            self._cancel_reasons_section = QWidget()
+            cancel_vl = QVBoxLayout(self._cancel_reasons_section)
+            cancel_vl.setContentsMargins(0, 0, 0, 0)
+            cancel_vl.setSpacing(max(8, int(10 * s)))
+            cancel_vl.addWidget(_section("Motivos de Cancelamento", s))
+            cancel_vl.addWidget(_separator())
+
+            cancel_form_row = QHBoxLayout()
+            cancel_form_row.setSpacing(max(8, int(10 * s)))
+            cancel_form_row.addWidget(self._lbl("Código:", s))
+            self.input_cancel_reason_code = QLineEdit()
+            self.input_cancel_reason_code.setFixedHeight(max(38, int(44 * s)))
+            self.input_cancel_reason_code.setFixedWidth(max(110, int(130 * s)))
+            self.input_cancel_reason_code.setStyleSheet(_field_style(s))
+            self.input_cancel_reason_code.setPlaceholderText("C01")
+            cancel_form_row.addWidget(self.input_cancel_reason_code)
+            cancel_form_row.addWidget(self._lbl("Motivo:", s))
+            self.input_cancel_reason_text = QLineEdit()
+            self.input_cancel_reason_text.setFixedHeight(max(38, int(44 * s)))
+            self.input_cancel_reason_text.setStyleSheet(_field_style(s))
+            self.input_cancel_reason_text.setPlaceholderText("Descreva o motivo do cancelamento")
+            cancel_form_row.addWidget(self.input_cancel_reason_text, 1)
+            self._btn_add_cancel_reason = QPushButton("Adicionar / Atualizar")
+            self._btn_add_cancel_reason.setFixedHeight(max(38, int(44 * s)))
+            self._btn_add_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
+            self._btn_add_cancel_reason.clicked.connect(self._add_or_update_cancel_reason)
+            cancel_form_row.addWidget(self._btn_add_cancel_reason)
+            cancel_vl.addLayout(cancel_form_row)
+
+            cancel_actions_row = QHBoxLayout()
+            cancel_actions_row.setSpacing(max(8, int(10 * s)))
+            self._btn_remove_cancel_reason = QPushButton("Remover Selecionado")
+            self._btn_remove_cancel_reason.setFixedHeight(max(36, int(42 * s)))
+            self._btn_remove_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
+            self._btn_remove_cancel_reason.clicked.connect(self._remove_selected_cancel_reason)
+            cancel_actions_row.addWidget(self._btn_remove_cancel_reason)
+            self.cancel_reason_status = QLabel("Sincronizando motivos com o servidor...")
+            self.cancel_reason_status.setProperty("muted", "1")
+            self.cancel_reason_status.setStyleSheet(
+                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+            )
+            cancel_actions_row.addWidget(self.cancel_reason_status, 1)
+            cancel_vl.addLayout(cancel_actions_row)
+
+            self.cancel_reason_table = QTableWidget(0, 2)
+            apply_smooth_scroll(self.cancel_reason_table)
+            self.cancel_reason_table.setHorizontalHeaderLabels(["Código", "Motivo"])
+            self.cancel_reason_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            self.cancel_reason_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            self.cancel_reason_table.verticalHeader().setVisible(False)
+            self.cancel_reason_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+            self.cancel_reason_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+            self.cancel_reason_table.setAlternatingRowColors(True)
+            self.cancel_reason_table.setMinimumHeight(max(220, int(260 * s)))
+            self.cancel_reason_table.setStyleSheet(_table_style())
+            self.cancel_reason_table.itemSelectionChanged.connect(self._load_selected_cancel_reason)
+            cancel_vl.addWidget(self.cancel_reason_table)
+
+            cancel_hint = QLabel(
+                "Os motivos cadastrados aqui aparecem no cancelamento de requisições pela Produção. "
+                "Selecione uma linha para editar ou remover."
+            )
+            cancel_hint.setWordWrap(True)
+            cancel_hint.setProperty("muted", "1")
+            cancel_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            cancel_vl.addWidget(cancel_hint)
+            self._cancel_reasons_section.setVisible(session.settings_show_billing)
+
             # ── Painel Técnico embarcado (admin) ─────────────────────────────
             # Migrado da antiga tela "Painel Técnico" da sidebar para cá.
             self._technical_panel = None
@@ -663,37 +732,47 @@ class SettingsView(QWidget):
                 self._technical_panel = TechnicalPanelView(s, embedded=True)
                 self._technical_panel.guide_requested.connect(self.show_guide_requested)
 
+            cancel_card = _new_card()
+            cancel_card_layout = QVBoxLayout(cancel_card)
+            cancel_card_layout.setContentsMargins(*_cm)
+            cancel_card_layout.setSpacing(_cs)
+            cancel_card_layout.addWidget(self._cancel_reasons_section)
+
+            sis_page = QWidget()
+            sis_page.setObjectName("settingsTabPage")
+            sis_page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            sis_page.setStyleSheet(
+                f"QWidget#settingsTabPage {{ background:{page_bg}; }}"
+            )
+            sis_lt = QVBoxLayout(sis_page)
+            sis_lt.setContentsMargins(0, max(12, int(14 * s)), 0, 0)
+            sis_lt.setSpacing(max(14, int(18 * s)))
+            sis_lt.addWidget(card_sis)
+            if session.settings_show_billing:
+                sis_lt.addWidget(cancel_card)
             if self._technical_panel is not None:
-                # O card de configurações de sistema + o painel técnico convivem
-                # na mesma aba. O painel fica fora do card (sobre o page_bg) para
-                # preservar o contraste original entre seus cards e o fundo.
-                sis_page = QWidget()
-                sis_page.setObjectName("settingsTabPage")
-                sis_page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-                sis_page.setStyleSheet(
-                    f"QWidget#settingsTabPage {{ background:{page_bg}; }}"
-                )
-                sis_lt = QVBoxLayout(sis_page)
-                sis_lt.setContentsMargins(0, max(12, int(14 * s)), 0, 0)
-                sis_lt.setSpacing(max(14, int(18 * s)))
-                sis_lt.addWidget(card_sis)
                 sis_lt.addWidget(self._technical_panel)
-                sis_lt.addStretch()
-                self._system_tab_index = len(self._tab_btns)
-                _add_tab("Sistema", sis_page)
-            else:
-                _add_tab("Sistema", _wrap(card_sis))
+            sis_lt.addStretch()
+            self._system_tab_index = len(self._tab_btns)
+            _add_tab("Sistema", sis_page)
         else:
             self._technical_panel = None
             # Placeholders para roles sem acesso ao painel de sistema
             self._conn_section        = QWidget()
             self._billing_section     = QWidget()
+            self._cancel_reasons_section = QWidget()
             self.input_url            = QLineEdit()
             self.btn_test             = QPushButton()
             self.lbl_conn_status      = QLabel()
             self.input_pending_invoice_days = QSpinBox()
             self.input_min_delivery_days = QSpinBox()
             self.operational_status   = QLabel()
+            self.input_cancel_reason_code = QLineEdit()
+            self.input_cancel_reason_text = QLineEdit()
+            self._btn_add_cancel_reason = QPushButton()
+            self._btn_remove_cancel_reason = QPushButton()
+            self.cancel_reason_status = QLabel()
+            self.cancel_reason_table = QTableWidget(0, 2)
             # Atualizações do Sistema só aparece na aba Sistema (admin/gerente);
             # placeholders mantêm apply_theme e handlers seguros nos demais perfis.
             self._version_label       = QLabel()
@@ -1124,6 +1203,90 @@ class SettingsView(QWidget):
         lbl.setStyleSheet(style)
         return lbl
 
+    def _populate_cancel_reason_table(self, rows: list[dict[str, str]]) -> None:
+        self._cancel_reason_rows = [dict(row) for row in rows]
+        self.cancel_reason_table.setRowCount(0)
+        for row_data in self._cancel_reason_rows:
+            row = self.cancel_reason_table.rowCount()
+            self.cancel_reason_table.insertRow(row)
+            self.cancel_reason_table.setItem(row, 0, QTableWidgetItem(str(row_data.get("code") or "")))
+            self.cancel_reason_table.setItem(row, 1, QTableWidgetItem(str(row_data.get("reason") or "")))
+        self.cancel_reason_status.setText(
+            f"{len(self._cancel_reason_rows)} motivo(s) carregado(s)."
+        )
+
+    def _collect_cancel_reasons(self) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        seen_codes: set[str] = set()
+        for row in range(self.cancel_reason_table.rowCount()):
+            code_item = self.cancel_reason_table.item(row, 0)
+            reason_item = self.cancel_reason_table.item(row, 1)
+            code = " ".join(str(code_item.text() if code_item else "").upper().split())
+            reason = " ".join(str(reason_item.text() if reason_item else "").split())
+            if not code or not reason:
+                continue
+            if code in seen_codes:
+                raise ValueError(f"O código {code} está duplicado na lista de motivos.")
+            seen_codes.add(code)
+            rows.append({"code": code, "reason": reason})
+        return rows
+
+    def _load_selected_cancel_reason(self) -> None:
+        row = self.cancel_reason_table.currentRow()
+        if row < 0:
+            return
+        code_item = self.cancel_reason_table.item(row, 0)
+        reason_item = self.cancel_reason_table.item(row, 1)
+        self.input_cancel_reason_code.setText(str(code_item.text() if code_item else ""))
+        self.input_cancel_reason_text.setText(str(reason_item.text() if reason_item else ""))
+
+    def _add_or_update_cancel_reason(self) -> None:
+        code = " ".join(self.input_cancel_reason_code.text().upper().split())
+        reason = " ".join(self.input_cancel_reason_text.text().split())
+        if not code or not reason:
+            self.cancel_reason_status.setText("Informe código e motivo para salvar.")
+            self.cancel_reason_status.setStyleSheet(
+                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+            )
+            return
+
+        target_row = -1
+        for row in range(self.cancel_reason_table.rowCount()):
+            code_item = self.cancel_reason_table.item(row, 0)
+            if str(code_item.text() if code_item else "").upper() == code:
+                target_row = row
+                break
+
+        if target_row < 0:
+            target_row = self.cancel_reason_table.rowCount()
+            self.cancel_reason_table.insertRow(target_row)
+
+        self.cancel_reason_table.setItem(target_row, 0, QTableWidgetItem(code))
+        self.cancel_reason_table.setItem(target_row, 1, QTableWidgetItem(reason))
+        self.cancel_reason_table.selectRow(target_row)
+        self.input_cancel_reason_code.clear()
+        self.input_cancel_reason_text.clear()
+        self.cancel_reason_status.setText("Motivo pronto para salvar nas configurações.")
+        self.cancel_reason_status.setStyleSheet(
+            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+        )
+
+    def _remove_selected_cancel_reason(self) -> None:
+        row = self.cancel_reason_table.currentRow()
+        if row < 0:
+            self.cancel_reason_status.setText("Selecione um motivo para remover.")
+            self.cancel_reason_status.setStyleSheet(
+                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+            )
+            return
+        self.cancel_reason_table.removeRow(row)
+        self.input_cancel_reason_code.clear()
+        self.input_cancel_reason_text.clear()
+        self.cancel_reason_status.setText("Motivo removido da lista local. Salve para confirmar.")
+        self.cancel_reason_status.setStyleSheet(
+            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+        )
+
     def refresh_operational_settings(self, silent: bool = False):
         if not session.settings_show_billing:
             return
@@ -1155,6 +1318,16 @@ class SettingsView(QWidget):
             self.input_pending_invoice_days.setValue(days)
             min_deliv = int(data.get("min_delivery_business_days") or 0)
             self.input_min_delivery_days.setValue(min_deliv)
+            cancel_reasons = data.get("cancel_reasons") or []
+            normalized_reasons = [
+                {
+                    "code": " ".join(str(item.get("code") or "").upper().split()),
+                    "reason": " ".join(str(item.get("reason") or "").split()),
+                }
+                for item in cancel_reasons
+                if isinstance(item, dict)
+            ]
+            self._populate_cancel_reason_table(normalized_reasons)
             self.operational_status.setText(
                 f"Prazo sincronizado com o servidor: {days} dia(s)."
             )
@@ -1230,6 +1403,9 @@ class SettingsView(QWidget):
             self.operational_status.setText(
                 "Não foi possível sincronizar com o servidor. Usando valor local."
             )
+            self.cancel_reason_status.setText(
+                "Não foi possível sincronizar os motivos com o servidor."
+            )
             return
 
         if action == "save_operational":
@@ -1286,6 +1462,9 @@ class SettingsView(QWidget):
             self.operational_status.setText(
                 f"Prazo sincronizado com o servidor: {self.input_pending_invoice_days.value()} dia(s)."
             )
+            self.cancel_reason_status.setText(
+                f"{self.cancel_reason_table.rowCount()} motivo(s) sincronizado(s) com o servidor."
+            )
             QMessageBox.information(self, "Configurações", "Configurações aplicadas com sucesso.")
             if scale_changed:
                 self.scale_changed.emit(res.scale)
@@ -1295,11 +1474,14 @@ class SettingsView(QWidget):
             self.operational_status.setText(
                 "Não foi possível salvar o prazo no servidor. O valor local foi mantido."
             )
+            self.cancel_reason_status.setText(
+                "Não foi possível salvar os motivos de cancelamento no servidor."
+            )
             QMessageBox.warning(
                 self,
                 "Atenção",
-                "As configurações locais foram salvas, mas o prazo de alerta "
-                f"de faturamento não foi salvo no servidor.\n\n{error_message}",
+                "As configurações locais foram salvas, mas as configurações do sistema "
+                f"não foram salvas no servidor.\n\n{error_message}",
             )
             if scale_changed:
                 self.scale_changed.emit(res.scale)
@@ -1459,6 +1641,15 @@ class SettingsView(QWidget):
             # Admin / Gerente: salva aparência + prazo de faturamento no servidor
             pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
             min_delivery_business_days = int(self.input_min_delivery_days.value())
+            try:
+                cancel_reasons = self._collect_cancel_reasons()
+            except ValueError as exc:
+                QMessageBox.warning(self, "Configurações", str(exc))
+                self.cancel_reason_status.setText(str(exc))
+                self.cancel_reason_status.setStyleSheet(
+                    f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+                )
+                return
             res.save(**save_kwargs,
                      pending_invoice_alert_days=pending_invoice_alert_days,
                      min_delivery_business_days=min_delivery_business_days)
@@ -1475,6 +1666,7 @@ class SettingsView(QWidget):
                 {
                     "pending_invoice_alert_days": pending_invoice_alert_days,
                     "min_delivery_business_days": min_delivery_business_days,
+                    "cancel_reasons": cancel_reasons,
                 },
             )
         else:
@@ -1743,6 +1935,12 @@ class SettingsView(QWidget):
         self.input_url.setStyleSheet(_field_style(s))
         if session.settings_show_billing:
             self.input_pending_invoice_days.setStyleSheet(_spinbox_style(s))
+            self.input_min_delivery_days.setStyleSheet(_spinbox_style(s))
+            self.input_cancel_reason_code.setStyleSheet(_field_style(s))
+            self.input_cancel_reason_text.setStyleSheet(_field_style(s))
+            self._btn_add_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
+            self._btn_remove_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
+            self.cancel_reason_table.setStyleSheet(_table_style())
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self._input_pwd_current.setStyleSheet(_field_style(s))
         self._input_pwd_new.setStyleSheet(_field_style(s))
