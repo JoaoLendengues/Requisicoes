@@ -43,10 +43,12 @@ def require_manager_or_admin(current_user: User = Depends(get_current_user)) -> 
 
 
 def require_order_center_access(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in (Role.ADMIN, Role.GERENTE, Role.VENDEDOR):
+    if current_user.role not in (
+        Role.ADMIN, Role.GERENTE, Role.VENDEDOR, Role.PRODUCAO, Role.INDUSTRIA, Role.ENTREGA,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso restrito a administradores, gerentes e vendedores",
+            detail="Sem permissão para acessar a Central de Pedidos",
         )
     return current_user
 

@@ -34,7 +34,6 @@ class UserUpdate(BaseModel):
     role: Optional[Role] = None
     whatsapp: Optional[str] = None
     sector: Optional[str] = None
-    must_change_password: Optional[bool] = None
     is_active: Optional[bool] = None
 
     @field_validator("code", "name", mode="before")

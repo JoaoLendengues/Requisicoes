@@ -1,4 +1,4 @@
-import os
+﻿import os
 import unicodedata
 
 from PySide6.QtCore import Qt, Signal, QSize, QPoint, QPropertyAnimation, QEasingCurve
@@ -7,13 +7,12 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollA
 
 from ..core import theme
 from ..core.session import session
+from .smooth_scroll import apply_smooth_scroll
 
 
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "logo_sidebar.png")
 
 SIDEBAR_ICON_DIRS = [
-    r"Z:\REQUISIÇÕES (VENDAS)\ícones\PAINEL GERENCIAL\emoji\barral_lateral",
-    r"\\data04tg\TI\REQUISIÇÕES (VENDAS)\ícones\PAINEL GERENCIAL\emoji\barral_lateral",
     os.path.join(os.path.dirname(__file__), "..", "assets", "sidebar_icons"),
 ]
 
@@ -28,7 +27,6 @@ SIDEBAR_ICON_ALIASES = {
     "notificacoes": ["notificacoes", "notificações", "notificacao", "notificação", "sino", "bell"],
     "nova":         ["nova requisicao", "nova requisição", "requisicao", "requisição", "nova"],
     "dashboard":    ["painel gerencial", "dashboard", "painel"],
-    "tecnico":      ["painel tecnico", "painel técnico", "tecnico", "técnico", "dashboard", "painel gerencial"],
     "pedidos":      ["central de pedidos", "pedidos", "pedido"],
     "producao":     ["producao", "produção"],
     "historico":    ["historico", "histórico", "busca", "historico busca", "histórico busca"],
@@ -36,19 +34,18 @@ SIDEBAR_ICON_ALIASES = {
     "config":       ["configuracoes", "configurações", "config", "ajustes"],
     "feedback":     ["feedback", "feedbacks", "sugestao", "sugestoes", "bugs", "elogios", "problemas"],
     "usuario":      ["usuario", "usuário", "perfil"],
+    "trocar_usuario": ["trocar usuario", "trocar usuário", "alternar usuario", "alternar usuário", "switch user"],
     "sair":         ["sair", "logout"],
 }
 
 NAV_ITEMS = [
     ("nova",      "NOVA REQUISIÇÃO",    "nova"),
     ("dashboard", "PAINEL GERENCIAL",   "dashboard"),
-    ("tecnico",   "PAINEL TÉCNICO",     "tecnico"),
     ("pedidos",   "CENTRAL DE PEDIDOS", "pedidos"),
-    ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "producao"),
-    ("ar",        "A&&R",               "producao"),
+    ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "pinheiro_industria"),
+    ("ar",        "A&&R",               "ar"),
     ("historico", "HISTÓRICO / BUSCA",  "historico"),
     ("feedback",  "FEEDBACKS",          "feedback"),
-    ("usuarios",  "CENTRAL DE USUÁRIOS","usuarios"),
 ]
 
 BOTTOM_NAV_ITEMS = [
@@ -60,16 +57,12 @@ NAV_GROUPS = [
     [
         ("nova", "NOVA REQUISIÇÃO", "nova"),
         ("pedidos", "CENTRAL DE PEDIDOS", "pedidos"),
-        ("ar", "A&&R", "producao"),
-        ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "producao"),
+        ("ar", "A&&R", "ar"),
+        ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "pinheiro_industria"),
     ],
     [
         ("dashboard", "PAINEL GERENCIAL", "dashboard"),
         ("historico", "HISTÓRICO / BUSCA", "historico"),
-    ],
-    [
-        ("usuarios", "CENTRAL DE USUÁRIOS", "usuarios"),
-        ("tecnico", "PAINEL TÉCNICO", "tecnico"),
     ],
 ]
 
@@ -83,6 +76,14 @@ def _normalize_icon_name(value: str) -> str:
 
 
 def _find_sidebar_icon_path(icon_key: str) -> str:
+    if icon_key == "feedback":
+        forced_feedback_icon = os.path.join(
+            os.path.dirname(__file__), "..", "assets", "sidebar_icons", "feedback.png"
+        )
+        if os.path.exists(forced_feedback_icon):
+            _icon_path_cache[icon_key] = forced_feedback_icon
+            return forced_feedback_icon
+
     # Cache de caminho: não re-escaneia diretórios para ícones já resolvidos
     if icon_key in _icon_path_cache:
         return _icon_path_cache[icon_key]
@@ -240,14 +241,25 @@ class _ThemeToggle(QWidget):
         self._anim.setEndValue(QPoint(self._knob_x(dark), _KNOB_PAD))
         self._anim.start()
 
+    def _refresh_labels(self) -> None:
+        self._icon_lbl.setText("🌙" if self._dark else "☀️")
+        self._text_lbl.setText("MODO ESCURO" if self._dark else "MODO CLARO")
+
+    def set_dark(self, dark: bool, *, animate: bool = False) -> None:
+        self._dark = bool(dark)
+        if animate:
+            self._animate_to(self._dark)
+        else:
+            self._anim.stop()
+            self._pill.setStyleSheet(self._pill_style(self._dark))
+            self._knob.move(self._knob_x(self._dark), _KNOB_PAD)
+        self._refresh_labels()
+
     # ── Interação ─────────────────────────────────────────────────────────────
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self._dark = not self._dark
-            self._animate_to(self._dark)
-            self._icon_lbl.setText("🌙" if self._dark else "☀️")
-            self._text_lbl.setText("MODO ESCURO" if self._dark else "MODO CLARO")
+            self.set_dark(not self._dark, animate=True)
             self.toggled.emit(self._dark)
         super().mousePressEvent(event)
 
@@ -312,6 +324,7 @@ class _BellButton(QWidget):
 class Sidebar(QWidget):
     nav_clicked    = Signal(str)
     logout_clicked = Signal()
+    switch_user_clicked = Signal()
     bell_clicked   = Signal()
     theme_toggled  = Signal(bool)   # True = modo escuro
 
@@ -322,7 +335,7 @@ class Sidebar(QWidget):
         self._active = "nova"
         self.setObjectName("SidebarColumn")
         self._setup_ui()
-        self.setFixedWidth(max(212, int(236 * scale)))
+        self.setFixedWidth(max(140, int(236 * scale)))
 
     def _setup_ui(self):
         self.setStyleSheet(
@@ -337,6 +350,7 @@ class Sidebar(QWidget):
         # ── ScrollArea que envolve TODO o conteúdo da sidebar ─────────────────
         # Barra fina e discreta aparece automaticamente quando a escala for grande.
         self._sidebar_scroll = QScrollArea()
+        apply_smooth_scroll(self._sidebar_scroll)
         self._sidebar_scroll.setWidgetResizable(True)
         self._sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._sidebar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -369,7 +383,7 @@ class Sidebar(QWidget):
         logo_label = QLabel()
         pix = QPixmap(LOGO_PATH)
         if not pix.isNull():
-            width = max(152, int(176 * self.scale))
+            width = max(100, int(176 * self.scale))
             pix = pix.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
             logo_label.setPixmap(pix)
         else:
@@ -439,6 +453,10 @@ class Sidebar(QWidget):
         user_layout.addWidget(self.user_label, 1)
         panel_layout.addWidget(user_row)
         self._refresh_user_icon()
+
+        btn_switch_user = self._make_btn("TROCAR USUÁRIO", "usuario")
+        btn_switch_user.clicked.connect(self.switch_user_clicked.emit)
+        panel_layout.addWidget(btn_switch_user)
 
         btn_sair = self._make_btn("SAIR", "sair")
         btn_sair.clicked.connect(self.logout_clicked.emit)
@@ -553,5 +571,6 @@ class Sidebar(QWidget):
                 f"  border:1px solid {theme.SIDEBAR_INDICATOR};"
                 f"}}"
             )
+        self._theme_toggle.set_dark(theme.is_dark, animate=False)
         self._theme_toggle.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
         self._bell.setStyleSheet(f"background:{theme.SIDEBAR_BG};")

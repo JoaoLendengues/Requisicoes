@@ -1,6 +1,6 @@
-# Versão atual do cliente.
-# Este arquivo é sobrescrito automaticamente pelo GitHub Actions
+﻿# Versao atual do cliente.
+# Este arquivo e sobrescrito automaticamente pelo GitHub Actions
 # a cada build de release (passo "Atualizar version.py" no workflow).
-# Não edite manualmente antes de um release — use a tag do Git.
+# Nao edite manualmente antes de um release -- use a tag do Git.
 
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.2.0"

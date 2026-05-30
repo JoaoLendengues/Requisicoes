@@ -1,10 +1,12 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
-    QScrollArea, QLabel, QGraphicsOpacityEffect,
+    QScrollArea, QLabel, QGraphicsOpacityEffect, QGraphicsDropShadowEffect,
 )
-from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate
+from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate, Signal
+from PySide6.QtGui import QAction, QColor, QKeySequence
 
 from ..core import theme
+from ..widgets.smooth_scroll import SmoothScrollArea
 from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import local_now
 from ..core.resolution import res
@@ -25,6 +27,26 @@ from .user_center_view import UserCenterView
 from .feedback_view import FeedbackView
 
 
+import os
+
+from ..core.pdf_folders import vendor_subfolder as _vendor_subfolder
+
+
+def _vendor_pdf_folder(
+    base_folder: str,
+    user_code: str,
+    user_name: str,
+    user_role: str = "",
+    req_vendor_code: str = "",
+    req_vendor_name: str = "",
+) -> str:
+    """Retorna base_folder/<SUBPASTA_VENDEDOR>."""
+    return os.path.join(
+        base_folder,
+        _vendor_subfolder(user_code, user_name, user_role, req_vendor_code, req_vendor_name),
+    )
+
+
 PAGE_FORM = 0
 PAGE_HISTORY = 1
 PAGE_DASHBOARD = 2
@@ -38,28 +60,33 @@ PAGE_FEEDBACK = 9
 
 
 class MainWindow(QMainWindow):
+    switch_user_requested = Signal()
+
     def __init__(self):
         super().__init__()
-        self.scale = res.scale
+        self.scale = res.effective_scale
         self._threads: list = []
         self._unread_count = 0
         self._listener: NotificationListener | None = None
         self._shown_notif_ids: set[int] = set()   # evita toast duplicado
         self._theme_transition_overlay: QLabel | None = None
         self._theme_transition_anim: QPropertyAnimation | None = None
+        self._nav_overlay: QLabel | None = None
         self._setup_ui()
+        self._setup_hidden_shortcuts()
         self._setup_statusbar()
         self.setWindowTitle("Sistema de Requisições - Ferragens Pinheiro")
         if res.start_maximized:
             self.showMaximized()
         else:
-            width = max(1024, int(1280 * self.scale))
-            height = max(700, int(800 * self.scale))
+            width = max(640, int(1280 * self.scale))
+            height = max(480, int(800 * self.scale))
             self.resize(width, height)
         self._toast_manager = ToastManager(self)
         self._refresh_session_profile()
         self._start_notification_listener()
         self._navigate_to_home()
+        QTimer.singleShot(600, self._maybe_show_onboarding)
 
     def _setup_ui(self):
         self.setStyleSheet(f"background:{theme.CONTENT_BG};")
@@ -73,6 +100,7 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar(self.scale)
         self.sidebar.nav_clicked.connect(self._on_nav)
         self.sidebar.logout_clicked.connect(self._logout)
+        self.sidebar.switch_user_clicked.connect(self._switch_user)
         self.sidebar.bell_clicked.connect(self._show_notification_panel)
         self.sidebar.theme_toggled.connect(self._on_theme_toggle)
         root.addWidget(self.sidebar)
@@ -90,11 +118,11 @@ class MainWindow(QMainWindow):
         self.stack.setStyleSheet(f"background:{theme.CONTENT_BG};")
         # Tamanho mínimo escalado: abaixo disso o scroll entra em ação
         self.stack.setMinimumSize(
-            max(760, int(860 * self.scale)),
-            max(520, int(600 * self.scale)),
+            max(480, int(860 * self.scale)),
+            max(360, int(600 * self.scale)),
         )
 
-        self._scroll_main = QScrollArea()
+        self._scroll_main = SmoothScrollArea()
         self._scroll_main.setWidgetResizable(True)
         self._scroll_main.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll_main.setStyleSheet(
@@ -119,63 +147,38 @@ class MainWindow(QMainWindow):
         self._scroll_main.setWidget(self.stack)
         root.addWidget(self._scroll_main, 1)
 
+        # ── Inicialização lazy das views ─────────────────────────────────────
+        # Apenas o formulário (tela inicial) é criado agora.
+        # As demais views são instanciadas na primeira navegação via _ensure_view,
+        # evitando que o startup bloqueie a UI enquanto constrói widgets não usados.
         self.form_view = RequisitionForm(self.scale)
-        self.history_view = HistoryView(self.scale)
-        self.dashboard_view = DashboardView(self.scale)
-        self.technical_panel_view = TechnicalPanelView(self.scale)
-        self.order_center_view = OrderCenterView(self.scale)
-        self.pinheiro_industria_view = ProductionView(
-            self.scale,
-            destinations=("Pinheiro Indústria",),
-            title="PINHEIRO INDÚSTRIA",
-            subtitle="Acompanhamento operacional das requisições enviadas para a Pinheiro Indústria.",
-        )
-        self.ar_view = ProductionView(
-            self.scale,
-            destinations=("A&R",),
-            title="A&R",
-            subtitle="Acompanhamento operacional das requisições enviadas para a A&R.",
-        )
-        self.user_center_view = UserCenterView(self.scale)
-        self.settings_view = SettingsView(self.scale)
-        self.feedback_view = FeedbackView(self.scale)
+        self.history_view: HistoryView | None = None
+        self.dashboard_view: DashboardView | None = None
+        self.technical_panel_view: TechnicalPanelView | None = None
+        self.order_center_view: OrderCenterView | None = None
+        self.pinheiro_industria_view: ProductionView | None = None
+        self.ar_view: ProductionView | None = None
+        self.user_center_view: UserCenterView | None = None
+        self.settings_view: SettingsView | None = None
+        self.feedback_view: FeedbackView | None = None
 
-        self.stack.addWidget(self.form_view)
-        self.stack.addWidget(self.history_view)
-        self.stack.addWidget(self.dashboard_view)
-        self.stack.addWidget(self.technical_panel_view)
-        self.stack.addWidget(self.order_center_view)
-        self.stack.addWidget(self.pinheiro_industria_view)
-        self.stack.addWidget(self.ar_view)
-        self.stack.addWidget(self.user_center_view)
-        self.stack.addWidget(self.settings_view)
-        self.stack.addWidget(self.feedback_view)
+        self.stack.addWidget(self.form_view)       # PAGE_FORM = 0
+        from PySide6.QtWidgets import QWidget as _QW
+        for _ in range(9):                         # páginas 1-9: placeholders leves
+            self.stack.addWidget(_QW())
 
-        self.history_view.open_requisition.connect(
-            lambda req_id: self._open_requisition(req_id, "history")
-        )
-        self.order_center_view.open_requisition.connect(
-            lambda req_id: self._open_requisition(req_id, "order_center")
-        )
-        self.pinheiro_industria_view.open_requisition.connect(
-            lambda req_id: self._open_requisition(req_id, "production")
-        )
-        self.ar_view.open_requisition.connect(
-            lambda req_id: self._open_requisition(req_id, "production")
-        )
+        # Sinal do formulário conectado imediatamente (único que precisa existir já)
         self.form_view.save_requested.connect(self._save_requisition)
-        self.settings_view.scale_changed.connect(self._on_scale_changed)
+        self.form_view.guide_requested.connect(self.show_onboarding)
 
         # ── Visibilidade dos botões da sidebar por perfil ─────────────────────
         nav_visible = {
-            "nova":               not session.is_view_only,
+            "nova":               True,  # todos veem; A&R e Indústria em leitura
             "dashboard":          session.can_access_dashboard,
-            "tecnico":            session.can_access_technical_panel,
             "pedidos":            session.can_access_order_center,
             "pinheiro_industria": session.can_access_industria,
             "ar":                 session.can_access_ar,
             "historico":          True,
-            "usuarios":           session.can_manage_users,
             "config":             True,
             "feedback":           True,
         }
@@ -184,6 +187,37 @@ class MainWindow(QMainWindow):
             if btn:
                 btn.setVisible(visible)
         self.sidebar.refresh_separators()
+
+    def _setup_hidden_shortcuts(self) -> None:
+        # Atalhos intencionais "ocultos": não exibem dicas na interface.
+        shortcuts = {
+            "Ctrl+1": lambda: self._on_nav("nova"),
+            "Ctrl+2": lambda: self._on_nav("pedidos"),
+            "Ctrl+3": lambda: self._on_nav("ar"),
+            "Ctrl+4": lambda: self._on_nav("pinheiro_industria"),
+            "Ctrl+5": lambda: self._on_nav("dashboard"),
+            "Ctrl+6": lambda: self._on_nav("historico"),
+            "Ctrl+7": self._toggle_theme_shortcut,
+            "Ctrl+8": self._switch_user,
+            "Ctrl+9": self._logout,
+            "Ctrl+P": self._print_shortcut,
+        }
+
+        self._shortcut_actions: list[QAction] = []
+        for sequence, callback in shortcuts.items():
+            action = QAction(self)
+            action.setShortcut(QKeySequence(sequence))
+            action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            action.triggered.connect(callback)
+            self.addAction(action)
+            self._shortcut_actions.append(action)
+
+    def _toggle_theme_shortcut(self) -> None:
+        self._on_theme_toggle(not theme.is_dark)
+
+    def _print_shortcut(self) -> None:
+        if hasattr(self, "form_view") and hasattr(self.form_view, "btn_print") and self.form_view.btn_print.isEnabled():
+            self.form_view.btn_print.click()
 
     def _setup_statusbar(self):
         bar = self.statusBar()
@@ -212,6 +246,49 @@ class MainWindow(QMainWindow):
         self.form_view.refresh_logged_user()
         self._setup_statusbar()
 
+    def _nav_transition(self, page: int) -> None:
+        """Cross-fade suave ao trocar de página no stack (160 ms, OutCubic)."""
+        if self.stack.currentIndex() == page:
+            return
+
+        # Cancela overlay anterior se o usuário clicar rápido
+        if self._nav_overlay is not None:
+            self._nav_overlay.deleteLater()
+            self._nav_overlay = None
+
+        pixmap = self.stack.grab()
+        self.stack.setCurrentIndex(page)
+
+        if pixmap.isNull():
+            return
+
+        overlay = QLabel(self.stack)
+        overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        overlay.setScaledContents(True)
+        overlay.setPixmap(pixmap)
+        overlay.setGeometry(self.stack.rect())
+        overlay.raise_()
+        overlay.show()
+        self._nav_overlay = overlay
+
+        effect = QGraphicsOpacityEffect(overlay)
+        effect.setOpacity(1.0)
+        overlay.setGraphicsEffect(effect)
+
+        anim = QPropertyAnimation(effect, b"opacity", overlay)
+        anim.setDuration(140)
+        anim.setStartValue(1.0)
+        anim.setEndValue(0.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutQuart)
+
+        def _done():
+            overlay.deleteLater()
+            self._nav_overlay = None
+
+        anim.finished.connect(_done)
+        overlay._anim = anim   # mantém referência viva durante a animação
+        anim.start()
+
     def _on_nav(self, key: str):
         mapping = {
             "nova":               PAGE_FORM,
@@ -227,10 +304,12 @@ class MainWindow(QMainWindow):
         }
         page = mapping.get(key, PAGE_FORM)
 
+        # Garante que a view existe antes de tentar navegar para ela
+        self._ensure_view(page)
+
         # Guards defensivos — botões já estão ocultos para roles sem acesso,
         # mas mantemos a verificação como camada de segurança extra.
         guards = {
-            PAGE_FORM:               not session.is_view_only,
             PAGE_DASHBOARD:          session.can_access_dashboard,
             PAGE_TECHNICAL:          session.can_access_technical_panel,
             PAGE_ORDER_CENTER:       session.can_access_order_center,
@@ -240,10 +319,22 @@ class MainWindow(QMainWindow):
         }
         if page in guards and not guards[page]:
             return
+        if key in self.sidebar._nav_btns:
+            self.sidebar._highlight(key)
 
         if key == "nova":
+            if session.is_view_only:
+                # A&R e Indústria: apenas visualização, sem resetar o formulário.
+                # Se nenhuma requisição estiver carregada, exibe aviso no form.
+                if not self.form_view.req_id:
+                    self.form_view._set_form_locked(
+                        True,
+                        "Selecione uma requisição no Histórico ou na Central de Pedidos para visualizar.",
+                    )
+                self._nav_transition(PAGE_FORM)
+                return
             if not self._confirm_new_requisition():
-                self.stack.setCurrentIndex(PAGE_FORM)
+                self._nav_transition(PAGE_FORM)
                 self.sidebar._highlight("nova")
                 return
             self.form_view.reset()
@@ -267,20 +358,123 @@ class MainWindow(QMainWindow):
         elif page == PAGE_FEEDBACK:
             self.feedback_view.refresh()
 
-        self.stack.setCurrentIndex(page)
+        self._nav_transition(page)
 
     def _navigate_to_home(self) -> None:
         """Navega para a página inicial correta de acordo com o perfil."""
         if not session.is_view_only:
             return  # admin/gerente/vendedor já partem em PAGE_FORM por padrão
         if session.can_access_ar:
+            self._ensure_view(PAGE_AR)
             self.stack.setCurrentIndex(PAGE_AR)
             self.sidebar._highlight("ar")
             self.ar_view.refresh()
         else:
+            self._ensure_view(PAGE_PINHEIRO_INDUSTRIA)
             self.stack.setCurrentIndex(PAGE_PINHEIRO_INDUSTRIA)
             self.sidebar._highlight("pinheiro_industria")
             self.pinheiro_industria_view.refresh()
+
+    # ── Lazy loading de views ─────────────────────────────────────────────────
+
+    def _ensure_view(self, page: int) -> None:
+        """Cria e registra a view de ``page`` se ainda não foi inicializada.
+
+        Substitui o placeholder leve no QStackedWidget pela view real e conecta
+        os sinais correspondentes.  Chamada antes de qualquer navegação.
+        """
+        _attr = {
+            PAGE_HISTORY:            "history_view",
+            PAGE_DASHBOARD:          "dashboard_view",
+            PAGE_TECHNICAL:          "technical_panel_view",
+            PAGE_ORDER_CENTER:       "order_center_view",
+            PAGE_PINHEIRO_INDUSTRIA: "pinheiro_industria_view",
+            PAGE_AR:                 "ar_view",
+            PAGE_USER_CENTER:        "user_center_view",
+            PAGE_SETTINGS:           "settings_view",
+            PAGE_FEEDBACK:           "feedback_view",
+        }
+        attr = _attr.get(page)
+        if attr is None or getattr(self, attr) is not None:
+            return  # PAGE_FORM ou já criada
+
+        view = self._create_view_for_page(page)
+        setattr(self, attr, view)
+
+        # Troca o placeholder pela view real mantendo o índice correto
+        placeholder = self.stack.widget(page)
+        self.stack.removeWidget(placeholder)
+        placeholder.deleteLater()
+        self.stack.insertWidget(page, view)
+
+        self._connect_view_signals(page, view)
+
+    def _create_view_for_page(self, page: int):
+        """Instancia a view correspondente ao índice ``page``."""
+        if page == PAGE_HISTORY:
+            return HistoryView(self.scale)
+        if page == PAGE_DASHBOARD:
+            return DashboardView(self.scale)
+        if page == PAGE_TECHNICAL:
+            return TechnicalPanelView(self.scale)
+        if page == PAGE_ORDER_CENTER:
+            return OrderCenterView(self.scale)
+        if page == PAGE_PINHEIRO_INDUSTRIA:
+            return ProductionView(
+                self.scale,
+                destinations=("Pinheiro Indústria",),
+                title="PINHEIRO INDÚSTRIA",
+                subtitle="Acompanhamento operacional das requisições enviadas para a Pinheiro Indústria.",
+            )
+        if page == PAGE_AR:
+            return ProductionView(
+                self.scale,
+                destinations=("A&R",),
+                title="A&R",
+                subtitle="Acompanhamento operacional das requisições enviadas para a A&R.",
+            )
+        if page == PAGE_USER_CENTER:
+            return UserCenterView(self.scale)
+        if page == PAGE_SETTINGS:
+            return SettingsView(self.scale)
+        if page == PAGE_FEEDBACK:
+            return FeedbackView(self.scale)
+        raise ValueError(f"Página desconhecida: {page}")
+
+    def _connect_view_signals(self, page: int, view) -> None:
+        """Conecta os sinais da view recém-criada."""
+        if page == PAGE_HISTORY:
+            view.open_requisition.connect(
+                lambda req_id: self._open_requisition(req_id, "history")
+            )
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_ORDER_CENTER:
+            view.open_requisition.connect(
+                lambda req_id: self._open_requisition(req_id, "order_center")
+            )
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_DASHBOARD:
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_TECHNICAL:
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_USER_CENTER:
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_PINHEIRO_INDUSTRIA:
+            view.open_requisition.connect(
+                lambda req_id: self._open_requisition(req_id, "production")
+            )
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_AR:
+            view.open_requisition.connect(
+                lambda req_id: self._open_requisition(req_id, "production")
+            )
+            view.guide_requested.connect(self.show_onboarding)
+        elif page == PAGE_SETTINGS:
+            view.scale_changed.connect(self._on_scale_changed)
+            view.font_size_changed.connect(lambda: self._on_scale_changed(res.scale))
+            view.show_guide_requested.connect(self.show_onboarding)
+
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _confirm_new_requisition(self) -> bool:
         if not self.form_view.has_unsaved_data():
@@ -384,10 +578,20 @@ class MainWindow(QMainWindow):
             return ""
 
         from ..core.resolution import res as _res
+        from ..core.session import session as _session
 
-        folder = _res.pdf_folder.strip()
-        if not folder:
+        base_folder = _res.pdf_folder.strip()
+        if not base_folder:
             return ""
+
+        folder = _vendor_pdf_folder(
+            base_folder,
+            _session.user_code,
+            _session.user_name,
+            _session.role,
+            str(req.get("vendor_code") or ""),
+            str(req.get("vendor_name") or ""),
+        )
 
         try:
             return generate_pdf(req, client, obs, folder, canvas_json)
@@ -454,15 +658,19 @@ class MainWindow(QMainWindow):
         Inclui tanto eventos iniciais (não lidas do banco ao conectar)
         quanto pushes em tempo real. _shown_notif_ids garante que o
         toast apareça exatamente uma vez por notificação.
+
+        Apenas eventos com id real (registros do banco) incrementam o badge.
+        Eventos virtuais como stuck_requisition_events (id=None) exibem
+        toast mas não alteram o contador — a central não os exibe.
         """
         nid = data.get("id")
         if nid:
             if nid in self._shown_notif_ids:
                 return          # já exibido — ignora
             self._shown_notif_ids.add(nid)
+            self._unread_count += 1
+            self.sidebar.set_notification_count(self._unread_count)
 
-        self._unread_count += 1
-        self.sidebar.set_notification_count(self._unread_count)
         self._toast_manager.show(data, on_action=self._on_toast_action)
 
     def _on_toast_action(self, req_id):
@@ -599,7 +807,6 @@ class MainWindow(QMainWindow):
 
     def _capture_user_center_state(self) -> dict:
         return {
-            "import_path": self.user_center_view.input_import_path.text(),
             "search": self.user_center_view.search_input.text(),
             "selected_user_id": self.user_center_view._selected_user_id,
             "form_status": self.user_center_view.form_status.text(),
@@ -615,7 +822,6 @@ class MainWindow(QMainWindow):
         }
 
     def _restore_user_center_state(self, state: dict) -> None:
-        self.user_center_view.input_import_path.setText(state.get("import_path") or "")
         self.user_center_view.search_input.setText(state.get("search") or "")
         self.user_center_view._selected_user_id = state.get("selected_user_id")
         self.user_center_view.form_status.setText(state.get("form_status") or "Novo usuário")
@@ -654,6 +860,7 @@ class MainWindow(QMainWindow):
 
     def _restore_ui_state(self, state: dict) -> None:
         current_page = state.get("current_page", PAGE_FORM)
+        self._ensure_view(current_page)   # garante que a view existe antes de restaurar
         self.stack.setCurrentIndex(current_page)
         self._highlight_current_page()
         self.sidebar.set_notification_count(self._unread_count)
@@ -696,7 +903,7 @@ class MainWindow(QMainWindow):
         old_central = self.takeCentralWidget()
         if old_central is not None:
             old_central.deleteLater()
-        self.scale = res.scale
+        self.scale = res.effective_scale
         self._setup_ui()
         self._restore_ui_state(state)
         return self
@@ -791,16 +998,14 @@ class MainWindow(QMainWindow):
             f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
         )
         self.sidebar.apply_theme()
-        self.form_view.apply_theme()
-        self.history_view.apply_theme()
-        self.dashboard_view.apply_theme()
-        self.technical_panel_view.apply_theme()
-        self.order_center_view.apply_theme()
-        self.pinheiro_industria_view.apply_theme()
-        self.ar_view.apply_theme()
-        self.user_center_view.apply_theme()
-        self.settings_view.apply_theme()
-        self.feedback_view.apply_theme()
+        for _v in (
+            self.form_view, self.history_view, self.dashboard_view,
+            self.technical_panel_view, self.order_center_view,
+            self.pinheiro_industria_view, self.ar_view,
+            self.user_center_view, self.settings_view, self.feedback_view,
+        ):
+            if _v is not None:
+                _v.apply_theme()
         self._setup_statusbar()
 
     def _get_current_view(self):
@@ -816,6 +1021,8 @@ class MainWindow(QMainWindow):
 
     def _apply_theme_immediate(self) -> None:
         """Aplica tema apenas ao sidebar e à view atual (~30ms)."""
+        from PySide6.QtWidgets import QApplication
+
         bg = theme.CONTENT_BG
         self.setStyleSheet(f"background:{bg};")
         self._sep.setStyleSheet(
@@ -847,10 +1054,12 @@ class MainWindow(QMainWindow):
             current.apply_theme()
         self._setup_statusbar()
 
-    def _apply_theme_remaining(self) -> None:
-        """Aplica global stylesheet + views ocultas. Chamado após o fade-out."""
-        from PySide6.QtWidgets import QApplication
+        # Aplica o global_style enquanto o overlay ainda cobre a tela, assim os
+        # textos e paletas globais já estão corretos quando o fade-out terminar.
         QApplication.instance().setStyleSheet(theme.global_style())
+
+    def _apply_theme_remaining(self) -> None:
+        """Aplica views ocultas + atualiza sombras. Chamado após o fade-out."""
         current = self._get_current_view()
         for view in (
             self.form_view, self.history_view, self.dashboard_view,
@@ -858,8 +1067,39 @@ class MainWindow(QMainWindow):
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
         ):
-            if view is not current:
+            if view is not None and view is not current:
                 view.apply_theme()
+        # Atualiza a cor de todos os QGraphicsDropShadowEffect na janela inteira.
+        # Necessário porque os efeitos são criados uma única vez no __init__ com
+        # a cor do tema corrente; sem isso a sombra some ao trocar de tema.
+        self._refresh_all_shadows()
+
+    def _refresh_all_shadows(self) -> None:
+        """Percorre widgets criados e atualiza a cor das sombras."""
+        def _fix(root):
+            for child in root.findChildren(QWidget):
+                effect = child.graphicsEffect()
+                if isinstance(effect, QGraphicsDropShadowEffect):
+                    alpha = effect.color().alpha()
+                    color = QColor(theme.TEXT_DARK)
+                    color.setAlpha(alpha)
+                    effect.setColor(color)
+
+        # Sidebar e view atual: prioritários (o usuário vê agora)
+        _fix(self.sidebar)
+        current = self._get_current_view()
+        if current is not None:
+            _fix(current)
+
+        # Views já criadas mas ocultas
+        for view in (
+            self.form_view, self.history_view, self.dashboard_view,
+            self.technical_panel_view, self.order_center_view,
+            self.pinheiro_industria_view, self.ar_view,
+            self.user_center_view, self.settings_view, self.feedback_view,
+        ):
+            if view is not None and view is not current and view is not self.sidebar:
+                _fix(view)
 
     def _on_theme_toggle(self, dark: bool):
         """
@@ -903,8 +1143,903 @@ class MainWindow(QMainWindow):
             no_text="Não",
         )
         if reply:
-            self._notif_timer.stop()
-            if self._listener:
-                self._listener.stop()
+            self._stop_runtime_services()
             session.logout()
             self.close()
+
+    def _switch_user(self):
+        reply = ask_confirmation(
+            self,
+            "Trocar usuário",
+            "Deseja encerrar a sessão atual e voltar para a tela de login?",
+            yes_text="Sim",
+            no_text="Não",
+        )
+        if not reply:
+            return
+        self._stop_runtime_services()
+        session.logout()
+
+        # Mostra o login (opacity 0, vai fazer fade-in) antes de sumir
+        self.switch_user_requested.emit()
+
+        # Faz o fade-out desta janela e fecha ao terminar
+        self._switch_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._switch_anim.setDuration(220)
+        self._switch_anim.setStartValue(1.0)
+        self._switch_anim.setEndValue(0.0)
+        self._switch_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._switch_anim.finished.connect(self.close)
+        self._switch_anim.start()
+
+    # ── Tour guiado (spotlight) ───────────────────────────────────────────────
+
+    def _maybe_show_onboarding(self) -> None:
+        """Exibe o tour spotlight na primeira vez que este perfil faz login."""
+        if not res.guide_shown(session.role):
+            self._start_tour()
+
+    def show_onboarding(self) -> None:
+        """Abre o tour manualmente (chamado por Configurações)."""
+        self._start_tour()
+
+    def _start_tour(self) -> None:
+        from ..widgets.spotlight_overlay import SpotlightOverlay
+        steps = self._build_tour_steps(session.role)
+        overlay = SpotlightOverlay(self, steps, self.scale, role=session.role)
+        overlay.start()
+
+    def _build_tour_steps(self, role: str) -> list:
+        from ..widgets.spotlight_overlay import TourStep
+
+        mw = self
+
+        # ── Getters de widgets ────────────────────────────────────────────────
+        def nav(key):
+            """Getter para botão da barra lateral."""
+            return lambda: mw.sidebar._nav_btns.get(key)
+
+        def bell():
+            return mw.sidebar._bell
+
+        def form(attr):
+            """Getter para atributo do formulário."""
+            return lambda: getattr(mw.form_view, attr, None)
+
+        def hist(attr):
+            """Getter para atributo do histórico (carregado sob demanda)."""
+            return lambda: getattr(mw.history_view, attr, None) if mw.history_view else None
+
+        def ar(attr, key=None):
+            """Getter para widget da view A&R (carregada sob demanda)."""
+            def _get():
+                view = mw.ar_view
+                if view is None:
+                    return None
+                val = getattr(view, attr, None)
+                if key is not None and isinstance(val, dict):
+                    return val.get(key)
+                return val
+            return _get
+
+        def pin(attr, key=None):
+            """Getter para widget da view Pinheiro Indústria (carregada sob demanda)."""
+            def _get():
+                view = mw.pinheiro_industria_view
+                if view is None:
+                    return None
+                val = getattr(view, attr, None)
+                if key is not None and isinstance(val, dict):
+                    return val.get(key)
+                return val
+            return _get
+
+        def order(attr, key=None):
+            """Getter para widget da Central de Pedidos (carregada sob demanda)."""
+            def _get():
+                view = mw.order_center_view
+                if view is None:
+                    return None
+                val = getattr(view, attr, None)
+                if key is not None and isinstance(val, dict):
+                    return val.get(key)
+                return val
+            return _get
+
+        def dash(attr):
+            """Getter para widget do Dashboard (carregado sob demanda)."""
+            return lambda: getattr(mw.dashboard_view, attr, None) if mw.dashboard_view else None
+
+        def cfg(attr, idx=None):
+            """Getter para widget de Configurações (carregado sob demanda)."""
+            def _get():
+                view = mw.settings_view
+                if view is None:
+                    return None
+                val = getattr(view, attr, None)
+                if idx is not None and isinstance(val, list):
+                    return val[idx] if len(val) > idx else None
+                return val
+            return _get
+
+        # ── Passo de boas-vindas (sem spotlight) ──────────────────────────────
+        welcome = TourStep(
+            title="Bem-vindo ao Sistema de Requisições!",
+            body=(
+                "Este tour rápido apresenta as principais funcionalidades "
+                "disponíveis para o seu perfil.<br><br>"
+                "Clique em <b>Próximo</b> para começar, ou "
+                "<b>Pular tour</b> para ir direto ao sistema."
+            ),
+            tooltip_side="center",
+        )
+
+        # ── Passos por perfil ─────────────────────────────────────────────────
+        if role == "admin":
+            return [
+                welcome,
+                # ── Nova Requisição ───────────────────────────────────────────
+                TourStep(
+                    "Nova Requisição",
+                    "Crie e edite pedidos de compra. Preencha o PED, "
+                    "selecione o cliente, adicione os itens e defina o prazo. "
+                    "O <b>PDF é gerado automaticamente</b> ao salvar.",
+                    nav("nova"), "right", "nova",
+                ),
+                TourStep(
+                    "Número do PED",
+                    "Digite aqui o número do pedido. "
+                    "É o campo principal e <b>obrigatório</b> para salvar.",
+                    form("input_ped"), "bottom",
+                ),
+                TourStep(
+                    "Busca de Cliente",
+                    "Pesquise pelo nome, CNPJ ou código do cliente. "
+                    "O sistema busca nos <b>+112 mil cadastros</b> enquanto você digita.",
+                    form("client_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Itens",
+                    "Adicione os itens da requisição: descrição, quantidade e unidade. "
+                    "Pressione <b>Enter</b> para confirmar cada linha e avançar.",
+                    form("item_table"), "top",
+                ),
+                TourStep(
+                    "Prazo de Entrega",
+                    "Defina a data de entrega esperada. "
+                    "Pedidos com prazo vencido aparecem em vermelho no dashboard.",
+                    form("input_prazo"), "bottom",
+                ),
+                TourStep(
+                    "Editor de Desenho",
+                    "Clique no canvas para desenhar croquis e cotas diretamente "
+                    "na requisição. O desenho é exportado no PDF final.",
+                    form("canvas"), "top",
+                ),
+                TourStep(
+                    "Salvar / Imprimir",
+                    "Salvar registra a requisição e gera o PDF automaticamente. "
+                    "Imprimir abre o PDF gerado para impressão ou envio.",
+                    form("btn_save"), "top",
+                ),
+                # ── Central de Usuários ───────────────────────────────────────
+                TourStep(
+                    "Central de Usuários",
+                    "Em <b>Configurações → Usuários</b> você cadastra, edita e "
+                    "desativa membros da equipe e define o nível de acesso: "
+                    "<b>Vendedor, Gerente, A&R, Indústria ou Entrega</b>.",
+                    nav("config"), "right", "config",
+                ),
+                # ── Painel Gerencial ──────────────────────────────────────────
+                TourStep(
+                    "Painel Gerencial",
+                    "Visão executiva da operação: pedidos em produção, "
+                    "atrasos, faturamentos e ritmo diário.",
+                    nav("dashboard"), "right", "dashboard",
+                ),
+                TourStep(
+                    "Ranking de Vendedores",
+                    "Volume de requisições emitidas por vendedor no período. "
+                    "Identifique quem está mais ativo.",
+                    dash("vendors_card"), "right",
+                ),
+                TourStep(
+                    "Pedidos sem Confirmação",
+                    "Pedidos aguardando retorno da produção há mais de <b>1 hora</b>. "
+                    "Ação imediata necessária.",
+                    dash("alerts_card"), "left",
+                ),
+                TourStep(
+                    "Máquinas da A&R",
+                    "Ranking das máquinas da A&R por volume de operações. "
+                    "Identifique gargalos de produção.",
+                    dash("machines_ar_card"), "right",
+                ),
+                TourStep(
+                    "Máquinas da Indústria",
+                    "Ranking das máquinas da Pinheiro Indústria. "
+                    "Compare o desempenho entre as duas filiais.",
+                    dash("machines_industria_card"), "left",
+                ),
+                TourStep(
+                    "Últimas Requisições",
+                    "Visão rápida das requisições mais recentes do sistema. "
+                    "Duplo clique para abrir qualquer uma.",
+                    dash("recent_card"), "top",
+                ),
+                # ── Central de Pedidos ────────────────────────────────────────
+                TourStep(
+                    "Central de Pedidos",
+                    "Acompanhe todos os pedidos em andamento por status: "
+                    "aguardando recebimento, em produção, faturamento e cancelados.",
+                    nav("pedidos"), "right", "pedidos",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados para produção ainda não confirmados. "
+                    "Duplo clique para abrir e acompanhar.",
+                    order("_section_cards", "aguardando_recebimento"), "right",
+                ),
+                TourStep(
+                    "Em Produção",
+                    "Pedidos que já foram recebidos e estão sendo produzidos. "
+                    "Acompanhe em qual destino cada um está.",
+                    order("_section_cards", "em_producao"), "left",
+                ),
+                TourStep(
+                    "Aguardando Faturamento",
+                    "Pedidos com produção concluída. "
+                    "O vendedor precisa faturar e gerar o PDF final.",
+                    order("_section_cards", "aguardando_faturamento"), "right",
+                ),
+                TourStep(
+                    "Pedidos Faturados",
+                    "Pedidos já faturados. Disponíveis para consulta e "
+                    "reimpressão do PDF quando necessário.",
+                    order("_section_cards", "faturados"), "left",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
+                TourStep(
+                    "Histórico / Busca",
+                    "Busque qualquer requisição por status, cliente, data ou PED. "
+                    "Clique duas vezes para abrir e editar.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED, nome do cliente ou obra. "
+                    "Combine com os filtros de status e período para resultados precisos.",
+                    hist("input_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique em uma linha para abrir a requisição completa.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Gerencie backup automático, escala da interface, "
+                    "senha de acesso e alertas de faturamento.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Aba Aparência",
+                    "Ajuste a <b>escala da interface</b> e o <b>tamanho de fonte</b> "
+                    "para se adaptar a qualquer resolução de tela.",
+                    cfg("_tab_btns", 0), "bottom",
+                ),
+                TourStep(
+                    "Aba Conta",
+                    "Altere sua senha de acesso. "
+                    "Recomendado trocar periodicamente por segurança.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Aba Sistema",
+                    "Configure a <b>URL do servidor</b> e teste a conexão com o backend, "
+                    "ajuste os alertas de faturamento e o prazo mínimo de entrega. "
+                    "Aqui também fica o <b>Painel Técnico</b>, com a saúde do servidor "
+                    "em tempo real: conexão, tempo de resposta, uso de disco e erros.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
+                TourStep(
+                    "Aba Login",
+                    "Personalize o <b>fundo da tela de login</b> com imagens da empresa. "
+                    "Adicione, remova e visualize as imagens disponíveis.",
+                    cfg("_tab_btns", 3), "bottom",
+                ),
+                TourStep(
+                    "Aba Backup",
+                    "Configure o <b>backup automático</b> do banco de dados: "
+                    "horário de execução e retenção diária, semanal e mensal.",
+                    cfg("_tab_btns", 4), "bottom",
+                ),
+                TourStep(
+                    "Aba Usuários",
+                    "Cadastre, edite e desative os usuários do sistema e "
+                    "defina o nível de acesso de cada um.",
+                    cfg("_tab_btns", 5), "bottom",
+                ),
+                TourStep(
+                    "Aba Clientes",
+                    "Cadastre clientes individualmente ou <b>importe em lote</b> "
+                    "por planilha Excel, e mantenha a base de clientes atualizada.",
+                    cfg("_tab_btns", 6), "bottom",
+                ),
+                TourStep(
+                    "Aba Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 7), "bottom",
+                ),
+                TourStep(
+                    "Salvar Configurações",
+                    "Após ajustar as preferências, clique em "
+                    "<b>Salvar Configurações</b> para aplicar as mudanças.",
+                    cfg("btn_save"), "top",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
+                TourStep(
+                    "Notificações",
+                    "O sino exibe alertas em tempo real para eventos do sistema. "
+                    "Um <b>badge vermelho</b> indica notificações não lidas.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "gerente":
+            return [
+                welcome,
+                # ── Nova Requisição ───────────────────────────────────────────
+                TourStep(
+                    "Nova Requisição",
+                    "Crie requisições para qualquer vendedor da equipe. "
+                    "Como gerente, você tem acesso a <b>todos os pedidos</b>.",
+                    nav("nova"), "right", "nova",
+                ),
+                TourStep(
+                    "Número do PED",
+                    "Digite o número do pedido gerado no sistema de vendas. "
+                    "Campo <b>obrigatório</b> para salvar.",
+                    form("input_ped"), "bottom",
+                ),
+                TourStep(
+                    "Busca de Cliente",
+                    "Pesquise pelo nome, CNPJ ou código do cliente. "
+                    "O sistema busca nos <b>+112 mil cadastros</b> enquanto você digita.",
+                    form("client_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Itens",
+                    "Adicione os itens da requisição. "
+                    "Pressione <b>Enter</b> para confirmar cada linha e avançar.",
+                    form("item_table"), "top",
+                ),
+                TourStep(
+                    "Prazo de Entrega",
+                    "Defina a data de entrega. "
+                    "Pedidos vencidos aparecem em destaque no dashboard.",
+                    form("input_prazo"), "bottom",
+                ),
+                TourStep(
+                    "Editor de Desenho",
+                    "Desenhe croquis e cotas diretamente na requisição. "
+                    "O desenho é incluído no PDF final.",
+                    form("canvas"), "top",
+                ),
+                TourStep(
+                    "Salvar / Imprimir",
+                    "Salvar registra a requisição e envia o PDF para a pasta "
+                    "de rede do vendedor responsável.",
+                    form("btn_save"), "top",
+                ),
+                # ── Painel Gerencial ──────────────────────────────────────────
+                TourStep(
+                    "Painel Gerencial",
+                    "Indicadores executivos da operação: pedidos em produção, "
+                    "atrasos, faturamentos e ritmo diário.",
+                    nav("dashboard"), "right", "dashboard",
+                ),
+                TourStep(
+                    "Ranking de Vendedores",
+                    "Volume de requisições emitidas por vendedor. "
+                    "Identifique quem está mais ativo no período.",
+                    dash("vendors_card"), "right",
+                ),
+                TourStep(
+                    "Pedidos sem Confirmação",
+                    "Pedidos aguardando retorno da produção há mais de <b>1 hora</b>. "
+                    "Acompanhe para evitar atrasos.",
+                    dash("alerts_card"), "left",
+                ),
+                TourStep(
+                    "Máquinas em Operação",
+                    "Ranking das máquinas da A&R e da Indústria por volume. "
+                    "Identifique gargalos operacionais.",
+                    dash("machines_ar_card"), "right",
+                ),
+                TourStep(
+                    "Últimas Requisições",
+                    "Visão rápida das requisições mais recentes. "
+                    "Duplo clique para abrir qualquer uma.",
+                    dash("recent_card"), "top",
+                ),
+                # ── Central de Pedidos ────────────────────────────────────────
+                TourStep(
+                    "Central de Pedidos",
+                    "Todos os pedidos por status operacional. "
+                    "Acompanhe do recebimento ao faturamento.",
+                    nav("pedidos"), "right", "pedidos",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados para produção aguardando confirmação.",
+                    order("_section_cards", "aguardando_recebimento"), "right",
+                ),
+                TourStep(
+                    "Em Produção",
+                    "Pedidos já recebidos e em andamento na fábrica.",
+                    order("_section_cards", "em_producao"), "left",
+                ),
+                TourStep(
+                    "Aguardando Faturamento",
+                    "Produção concluída — o vendedor precisa faturar.",
+                    order("_section_cards", "aguardando_faturamento"), "right",
+                ),
+                TourStep(
+                    "Pedidos Faturados",
+                    "Histórico de pedidos já faturados para consulta.",
+                    order("_section_cards", "faturados"), "left",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
+                TourStep(
+                    "Histórico / Busca",
+                    "Acesse qualquer requisição já criada. "
+                    "Filtre por status, cliente, data ou PED.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED, nome do cliente ou obra "
+                    "para localizar rapidamente qualquer requisição.",
+                    hist("input_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar por qualquer coluna. "
+                    "Duplo clique na linha para abrir a requisição.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface, altere sua senha "
+                    "e configure alertas de faturamento.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Aparência",
+                    "Ajuste a escala e o tamanho de fonte para sua resolução.",
+                    cfg("_tab_btns", 0), "bottom",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso. Recomendado trocar periodicamente.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Sistema",
+                    "Configure alertas de faturamento e visualize as opções de conexão com o servidor.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse o <b>Guia Rápido</b> novamente.",
+                    cfg("_tab_btns", 3), "bottom",
+                ),
+                TourStep(
+                    "Salvar",
+                    "Clique em <b>Salvar Configurações</b> para aplicar as mudanças.",
+                    cfg("btn_save"), "top",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
+                TourStep(
+                    "Notificações",
+                    "Receba alertas em tempo real sobre pedidos, "
+                    "produções e faturamentos.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "vendedor":
+            return [
+                welcome,
+                # ── Nova Requisição ───────────────────────────────────────────
+                TourStep(
+                    "Nova Requisição",
+                    "Sua tela principal. Preencha o PED, selecione o cliente, "
+                    "adicione os itens e salve. "
+                    "O PDF vai automaticamente para a pasta da rede.",
+                    nav("nova"), "right", "nova",
+                ),
+                TourStep(
+                    "Número do PED",
+                    "Digite o número do pedido gerado no sistema de vendas. "
+                    "Campo <b>obrigatório</b> — sem PED não é possível salvar.",
+                    form("input_ped"), "bottom",
+                ),
+                TourStep(
+                    "Busca de Cliente",
+                    "Pesquise pelo nome, CNPJ ou código do cliente. "
+                    "O sistema busca nos <b>+112 mil cadastros</b> em tempo real.",
+                    form("client_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Itens",
+                    "Adicione cada item: descrição, quantidade e unidade. "
+                    "Pressione <b>Enter</b> para confirmar e avançar para o próximo.",
+                    form("item_table"), "top",
+                ),
+                TourStep(
+                    "Prazo de Entrega",
+                    "Informe a data de entrega combinada com o cliente. "
+                    "O setor de produção verá esse prazo.",
+                    form("input_prazo"), "bottom",
+                ),
+                TourStep(
+                    "Observações",
+                    "Use este campo para instruções especiais de produção, "
+                    "detalhes da obra ou qualquer informação adicional.",
+                    form("input_obs"), "top",
+                ),
+                TourStep(
+                    "Editor de Desenho",
+                    "Clique aqui para desenhar croquis e medidas. "
+                    "Ferramentas: caneta, linha, seta, retângulo e cota MM. "
+                    "O desenho vai incluído no PDF.",
+                    form("canvas"), "top",
+                ),
+                TourStep(
+                    "Salvar",
+                    "Clique em <b>Salvar</b> para registrar a requisição. "
+                    "O PDF é gerado e enviado para a sua pasta de rede.",
+                    form("btn_save"), "top",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
+                TourStep(
+                    "Histórico",
+                    "Todas as suas requisições ficam aqui. "
+                    "Filtre por status ou data e clique duas vezes "
+                    "para reabrir qualquer pedido.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Encontre rapidamente uma requisição pelo número do PED, "
+                    "nome do cliente ou obra.",
+                    hist("input_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique para reabrir e editar a requisição.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Aparência",
+                    "Escolha a escala e o tamanho de fonte "
+                    "mais confortáveis para a sua tela.",
+                    cfg("_tab_btns", 0), "bottom",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
+                TourStep(
+                    "Notificações",
+                    "Receba alertas quando sua requisição entrar em produção, "
+                    "for finalizada ou faturada.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "producao":
+            return [
+                welcome,
+                # ── Tela A&R ──────────────────────────────────────────────────
+                TourStep(
+                    "Fila A&R",
+                    "Sua tela principal. Acompanhe todos os pedidos "
+                    "enviados para produção na <b>A&R</b>.",
+                    nav("ar"), "right", "ar",
+                ),
+                TourStep(
+                    "Contadores de Status",
+                    "Totais em tempo real: <b>Aguardando Recebimento</b>, "
+                    "<b>Aguardando na Fila</b> e <b>Em Produção</b>.",
+                    ar("summary_waiting_receipt", "card"), "bottom",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados pelo vendedor mas ainda não recebidos. "
+                    "Selecione um e clique <b>Receber</b> "
+                    "para confirmar a chegada do material.",
+                    ar("waiting_receipt_panel", "card"), "right",
+                ),
+                TourStep(
+                    "Aguardando na Fila",
+                    "Pedidos já recebidos esperando uma máquina ficar livre. "
+                    "Selecione e clique <b>Enviar para Máquina</b> "
+                    "para iniciar a produção.",
+                    ar("waiting_queue_panel", "card"), "left",
+                ),
+                TourStep(
+                    "Máquinas em Produção",
+                    "Cada card representa uma máquina ativa com o pedido em andamento. "
+                    "Clique no pedido para <b>finalizar</b> ou <b>devolver para a fila</b>.",
+                    ar("machines_widget"), "top",
+                ),
+                TourStep(
+                    "Atualizar",
+                    "Clique em <b>ATUALIZAR</b> para recarregar todos os pedidos "
+                    "e máquinas com os dados mais recentes.",
+                    ar("refresh_btn"), "bottom",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
+                TourStep(
+                    "Histórico",
+                    "Busque qualquer requisição por PED, cliente ou status. "
+                    "Clique duas vezes para abrir os detalhes completos.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED ou nome do cliente "
+                    "para localizar uma requisição específica.",
+                    hist("input_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique para abrir a requisição completa.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
+                TourStep(
+                    "Notificações",
+                    "Receba alertas quando novos pedidos chegarem "
+                    "à fila da A&R.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "industria":
+            return [
+                welcome,
+                # ── Tela Pinheiro Indústria ────────────────────────────────────
+                TourStep(
+                    "Pinheiro Indústria",
+                    "Sua tela principal. Acompanhe todos os pedidos "
+                    "destinados à <b>Pinheiro Indústria</b>.",
+                    nav("pinheiro_industria"), "right", "pinheiro_industria",
+                ),
+                TourStep(
+                    "Contadores de Status",
+                    "Totais em tempo real: <b>Aguardando Recebimento</b>, "
+                    "<b>Aguardando na Fila</b> e <b>Em Produção</b>.",
+                    pin("summary_waiting_receipt", "card"), "bottom",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados pelo vendedor mas ainda não recebidos. "
+                    "Selecione um e clique <b>Receber</b> "
+                    "para confirmar a chegada do material.",
+                    pin("waiting_receipt_panel", "card"), "right",
+                ),
+                TourStep(
+                    "Aguardando na Fila",
+                    "Pedidos recebidos aguardando máquina disponível. "
+                    "Selecione e clique <b>Enviar para Máquina</b> "
+                    "para iniciar a produção.",
+                    pin("waiting_queue_panel", "card"), "left",
+                ),
+                TourStep(
+                    "Máquinas em Produção",
+                    "Cada card representa uma máquina ativa. "
+                    "Clique no pedido para <b>finalizar</b> "
+                    "ou <b>devolver para a fila</b>.",
+                    pin("machines_widget"), "top",
+                ),
+                TourStep(
+                    "Atualizar",
+                    "Clique em <b>ATUALIZAR</b> para recarregar todos os pedidos "
+                    "e máquinas com os dados mais recentes.",
+                    pin("refresh_btn"), "bottom",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
+                TourStep(
+                    "Histórico",
+                    "Busque qualquer requisição por PED, cliente ou status. "
+                    "Clique duas vezes para abrir os detalhes completos.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED ou nome do cliente "
+                    "para localizar uma requisição específica.",
+                    hist("input_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique para abrir a requisição completa.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
+                TourStep(
+                    "Notificações",
+                    "Receba alertas quando novos pedidos chegarem "
+                    "à fila da Indústria.",
+                    bell, "right",
+                ),
+            ]
+
+        if role == "entrega":
+            return [
+                welcome,
+                # ── Tela A&R (modo entrega) ───────────────────────────────────
+                TourStep(
+                    "Fila de Entrega",
+                    "Acompanhe os pedidos aguardando recebimento e entrega "
+                    "na <b>A&R</b>.",
+                    nav("ar"), "right", "ar",
+                ),
+                TourStep(
+                    "Contadores de Status",
+                    "Totais em tempo real: pedidos aguardando recebimento, "
+                    "na fila e em produção.",
+                    ar("summary_waiting_receipt", "card"), "bottom",
+                ),
+                TourStep(
+                    "Aguardando Recebimento",
+                    "Pedidos enviados para a A&R ainda não confirmados. "
+                    "Selecione e clique <b>Receber</b> para confirmar a chegada.",
+                    ar("waiting_receipt_panel", "card"), "right",
+                ),
+                TourStep(
+                    "Aguardando na Fila",
+                    "Pedidos já recebidos esperando máquina disponível.",
+                    ar("waiting_queue_panel", "card"), "left",
+                ),
+                TourStep(
+                    "Máquinas Ativas",
+                    "Acompanhe em qual máquina cada pedido está sendo produzido "
+                    "e finalize quando concluído.",
+                    ar("machines_widget"), "top",
+                ),
+                TourStep(
+                    "Atualizar",
+                    "Clique em <b>ATUALIZAR</b> para recarregar os dados "
+                    "mais recentes da fila.",
+                    ar("refresh_btn"), "bottom",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
+                TourStep(
+                    "Histórico",
+                    "Consulte o histórico completo de requisições. "
+                    "Clique duas vezes para abrir e verificar os detalhes.",
+                    nav("historico"), "right", "historico",
+                ),
+                TourStep(
+                    "Campo de Busca",
+                    "Digite o número do PED ou nome do cliente "
+                    "para localizar rapidamente uma requisição.",
+                    hist("input_search"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Resultados",
+                    "Clique nos cabeçalhos para ordenar. "
+                    "Duplo clique para abrir a requisição completa.",
+                    hist("table"), "top",
+                ),
+                # ── Configurações ─────────────────────────────────────────────
+                TourStep(
+                    "Configurações",
+                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Conta",
+                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
+                    cfg("_tab_btns", 1), "bottom",
+                ),
+                TourStep(
+                    "Ajuda",
+                    "Verifique atualizações disponíveis e acesse "
+                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
+                    cfg("_tab_btns", 2), "bottom",
+                ),
+                # ── Notificações ──────────────────────────────────────────────
+                TourStep(
+                    "Notificações",
+                    "Receba alertas quando novos pedidos chegarem "
+                    "para entrega.",
+                    bell, "right",
+                ),
+            ]
+
+        # Fallback genérico
+        return [
+            welcome,
+            TourStep(
+                "Nova Requisição",
+                "Crie e gerencie requisições.",
+                nav("nova"), "right", "nova",
+            ),
+            TourStep(
+                "Histórico",
+                "Busque e filtre todas as requisições.",
+                nav("historico"), "right", "historico",
+            ),
+            TourStep(
+                "Configurações",
+                "Personalize a aparência e gerencie sua conta.",
+                nav("config"), "right", "config",
+            ),
+        ]
+
+    def _stop_runtime_services(self):
+        if hasattr(self, "_notif_timer") and self._notif_timer is not None:
+            self._notif_timer.stop()
+        if self._listener:
+            self._listener.stop()

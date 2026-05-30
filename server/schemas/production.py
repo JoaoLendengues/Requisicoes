@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..models.production_machine import MachineOperationalStatus
 
@@ -18,6 +18,7 @@ class ProductionItemResponse(BaseModel):
     client_name: Optional[str] = None
     vendor_name: Optional[str] = None
     obra: Optional[str] = None
+    weight: Optional[float] = None
     status: str
     emission_date: datetime
     created_at: datetime
@@ -27,6 +28,7 @@ class ProductionItemResponse(BaseModel):
     operator_names: list[str] = []
     waiting_since: Optional[datetime] = None
     production_started_at: Optional[datetime] = None
+    operator_names: list[str] = Field(default_factory=list)
 
 
 class ProductionMachineCardResponse(BaseModel):
@@ -35,10 +37,11 @@ class ProductionMachineCardResponse(BaseModel):
     name: str
     sort_order: int
     status: MachineOperationalStatus
+    operators: list[str] = Field(default_factory=list)
     quantity_in_production: int
     finalized_count: int
     average_seconds: Optional[int] = None
-    rows: list[ProductionItemResponse] = []
+    rows: list[ProductionItemResponse] = Field(default_factory=list)
 
 
 class ProductionSummaryStatsResponse(BaseModel):
@@ -51,9 +54,9 @@ class ProductionDestinationSummaryResponse(BaseModel):
     generated_at: datetime
     destination: str
     stats: ProductionSummaryStatsResponse
-    waiting_receipt: list[ProductionItemResponse] = []
-    waiting_queue: list[ProductionItemResponse] = []
-    machines: list[ProductionMachineCardResponse] = []
+    waiting_receipt: list[ProductionItemResponse] = Field(default_factory=list)
+    waiting_queue: list[ProductionItemResponse] = Field(default_factory=list)
+    machines: list[ProductionMachineCardResponse] = Field(default_factory=list)
 
 
 class ProductionMachineStatusResponse(BaseModel):

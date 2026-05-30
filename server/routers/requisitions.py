@@ -41,7 +41,7 @@ from ..schemas.production import (
 )
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse,
-    StatusUpdate, CanvasUpdate,
+    StatusUpdate, CanvasUpdate, DeliveryDateUpdate,
 )
 from ..dependencies import (
     get_current_user,
@@ -50,8 +50,19 @@ from ..dependencies import (
     require_manager_or_admin,
     require_order_center_access,
 )
+from ..services.audit_service import diff_fields, log_action
+from ..services.notification_service import (
+    _notify_admins_gerentes,
+    dispatch               as push_all,
+    ensure_delivery_deadline_notifications,
+    ensure_pending_invoice_notifications,
+    notify_machine_status_change as build_machine_status_event,
+    notify_production_team as build_production_sent,
+    notify_vendor          as build_vendor_event,
+)
 from ..services.runtime_monitor import snapshot as runtime_snapshot
 from ..services.sse_manager import connected_user_ids
+from ..services.system_settings import get_min_delivery_business_days
 from ..services.text_normalizer import normalize_canvas_json_text, normalize_upper_required
 
 router = APIRouter(prefix="/requisitions", tags=["Requisições"])
@@ -200,6 +211,25 @@ def _sum_item_weights(items: Optional[list]) -> float:
     return sum((item.weight or 0.0) for item in (items or []))
 
 
+def _normalize_operator_name(value: object) -> str:
+    return normalize_upper_required(value).replace("|", " ").replace(";", " ").strip()
+
+
+def _parse_operator_names(raw: object) -> list[str]:
+    if raw is None:
+        return []
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for part in str(raw).split(";"):
+        normalized = _normalize_operator_name(part)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        names.append(normalized)
+    return names
+
+
 def _parse_production_note(note: Optional[str]) -> dict | None:
     if not note:
         return None
@@ -232,11 +262,7 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
                 data["reason"] = normalized_value
                 continue
             if normalized_key == "operators":
-                data["operators"] = [
-                    item.strip()
-                    for item in normalized_value.split(";")
-                    if item.strip()
-                ]
+                data["operators"] = _parse_operator_names(normalized_value)
                 continue
 
         if not data["machine"] and data["action"] in (
@@ -264,6 +290,43 @@ def _ensure_editable(req: Requisition):
         raise HTTPException(
             status_code=400,
             detail="Requisição em produção recebida ou finalizada não pode ser editada",
+        )
+
+
+def _add_business_days(start: date, n: int) -> date:
+    """Soma n dias úteis (segunda a sexta) a partir de `start`.
+    Sábado e domingo não contam. Feriados não são considerados."""
+    if n <= 0:
+        return start
+    current = start
+    added = 0
+    while added < n:
+        current += timedelta(days=1)
+        if current.weekday() < 5:  # 0=segunda ... 4=sexta
+            added += 1
+    return current
+
+
+def _ensure_delivery_within_min(delivery_date: date | None, current_user: User) -> None:
+    """Bloqueia datas de entrega abaixo do prazo mínimo em dias úteis.
+    Admin e gerente podem salvar abaixo do mínimo."""
+    if delivery_date is None:
+        return
+    role = _role_key(current_user.role)
+    if role in (Role.ADMIN.value, Role.GERENTE.value):
+        return
+    min_days = get_min_delivery_business_days()
+    if min_days <= 0:
+        return
+    earliest = _add_business_days(date.today(), min_days)
+    if delivery_date < earliest:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Prazo de entrega abaixo do mínimo: são necessários pelo menos "
+                f"{min_days} dia(s) útil(eis). Data mais próxima permitida: "
+                f"{earliest.strftime('%d/%m/%Y')}."
+            ),
         )
 
 
@@ -365,17 +428,18 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
                 status_code=400,
                 detail="Confirme o recebimento antes de finalizar a produção",
             )
-        req.status = RequisitionStatus.AGUARDANDO_FATURAMENTO
+        req.status = RequisitionStatus.FATURADO
         req.production_machine = None
         return
 
     if action == _PROD_CANCELED:
-        if len(reason.strip()) < 10:
+        if len(reason.strip()) < 5:
             raise HTTPException(
                 status_code=400,
-                detail="Informe um motivo de cancelamento com pelo menos 10 caracteres",
+                detail="Informe um motivo de cancelamento válido",
             )
-        req.status = RequisitionStatus.EM_ANDAMENTO
+        req.status = RequisitionStatus.CANCELADA
+        req.cancel_reason = reason.strip()
         req.finalized_at = None
         req.production_machine = None
         return
@@ -385,6 +449,17 @@ def _apply_manual_status_transition(
     req: Requisition,
     new_status: RequisitionStatus,
 ):
+    if req.status == RequisitionStatus.CANCELADA:
+        if new_status == RequisitionStatus.FATURADO:
+            raise HTTPException(
+                status_code=400,
+                detail="Requisições canceladas não podem ser faturadas diretamente",
+            )
+        req.status = new_status
+        req.finalized_at = None
+        req.production_machine = None
+        return
+
     if new_status == RequisitionStatus.FATURADO:
         if req.status != RequisitionStatus.AGUARDANDO_FATURAMENTO:
             raise HTTPException(
@@ -397,13 +472,13 @@ def _apply_manual_status_transition(
     if req.status == RequisitionStatus.AGUARDANDO_FATURAMENTO:
         raise HTTPException(
             status_code=400,
-            detail="Pedidos aguardando faturamento sÃ³ podem ser marcados como faturados",
+            detail="Pedidos aguardando faturamento só podem ser marcados como faturados",
         )
 
     if req.status == RequisitionStatus.FATURADO:
         raise HTTPException(
             status_code=400,
-            detail="Pedidos faturados nÃ£o podem retornar para outro status operacional",
+            detail="Pedidos faturados não podem retornar para outro status operacional",
         )
 
     req.status = new_status
@@ -426,10 +501,28 @@ def _production_events(req: Requisition) -> list[dict]:
                 "target": parsed["target"],
                 "machine": _normalize_machine_name(parsed.get("machine", "")),
                 "reason": parsed["reason"],
+                "operators": list(parsed.get("operators") or []),
                 "changed_at": entry.changed_at,
             }
         )
     return events
+
+
+def _cancel_reason_for(req: Requisition) -> str | None:
+    """Retorna o motivo de cancelamento da requisição.
+    Usa a coluna `cancel_reason` (preenchida nos cancelamentos novos) e,
+    como fallback para registros antigos, extrai o motivo do último evento
+    de produção CANCELADA registrado no histórico de status."""
+    direct = (getattr(req, "cancel_reason", None) or "").strip()
+    if direct:
+        return direct
+    for event in reversed(_production_events(req)):
+        if event.get("action") == _PROD_CANCELED:
+            reason = (event.get("reason") or "").strip()
+            if reason:
+                return reason
+            break
+    return None
 
 
 def _current_production_destination(req: Requisition) -> str:
@@ -643,6 +736,7 @@ def _production_item(
         client_name=req.client_name,
         vendor_name=req.vendor_name,
         obra=req.obra,
+        weight=req.weight,
         status=str(status_value),
         emission_date=req.emission_date,
         created_at=req.created_at,
@@ -743,6 +837,11 @@ def _build_production_summary(
                 name=machine_name,
                 sort_order=machine.sort_order,
                 status=machine.status,
+                operators=[
+                    _normalize_operator_name(operator.name)
+                    for operator in (getattr(machine, "operators", None) or [])
+                    if _normalize_operator_name(operator.name)
+                ],
                 quantity_in_production=len(rows),
                 finalized_count=len(finished_cycles),
                 average_seconds=average_seconds,
@@ -779,6 +878,12 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
     for req in reqs:
         destination = _current_production_destination(req) or None
         events = _production_events(req)
+        latest_event = events[-1] if events else None
+        legacy_production_canceled = (
+            req.status != RequisitionStatus.CANCELADA
+            and bool(latest_event)
+            and latest_event.get("action") == _PROD_CANCELED
+        )
 
         if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
             sent_event = _latest_production_event(req, _PROD_SEND)
@@ -828,26 +933,14 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
             )
 
         latest_finished = _latest_finished_cycle(req)
-        latest_event = events[-1] if events else None
         if latest_finished:
             production_durations.append(latest_finished["production_time_seconds"])
-        if req.status == RequisitionStatus.AGUARDANDO_FATURAMENTO and latest_finished:
-            pending_invoice_rows.append(
-                OrderCenterItemResponse(
-                    id=req.id,
-                    ped_number=req.ped_number,
-                    client_name=req.client_name,
-                    vendor_name=req.vendor_name,
-                    status=RequisitionStatus.AGUARDANDO_FATURAMENTO.value,
-                    emission_date=req.emission_date,
-                    delivery_date=req.delivery_date,
-                    destination=latest_finished["target"] or destination,
-                    received_at=latest_finished["received_at"],
-                    finished_at=latest_finished["finished_at"],
-                    production_time_seconds=latest_finished["production_time_seconds"],
-                )
+        if req.status in (RequisitionStatus.AGUARDANDO_FATURAMENTO, RequisitionStatus.FATURADO) and latest_finished:
+            invoiced_at = (
+                _latest_status_changed_at(req, RequisitionStatus.FATURADO)
+                or _latest_status_changed_at(req, RequisitionStatus.AGUARDANDO_FATURAMENTO)
+                or latest_finished["finished_at"]
             )
-        elif req.status == RequisitionStatus.FATURADO and latest_finished:
             billed_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
@@ -860,26 +953,31 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     destination=latest_finished["target"] or destination,
                     received_at=latest_finished["received_at"],
                     finished_at=latest_finished["finished_at"],
-                    invoiced_at=_latest_status_changed_at(req, RequisitionStatus.FATURADO),
+                    invoiced_at=invoiced_at,
                     production_time_seconds=latest_finished["production_time_seconds"],
                 )
             )
 
-        if req.status == RequisitionStatus.CANCELADA:
+        if req.status == RequisitionStatus.CANCELADA or legacy_production_canceled:
+            canceled_at = _latest_status_changed_at(req, RequisitionStatus.CANCELADA)
+            if canceled_at is None and latest_event:
+                canceled_at = latest_event.get("changed_at")
             canceled_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
                     ped_number=req.ped_number,
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
-                    status=req.status,
+                    status=RequisitionStatus.CANCELADA.value,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
-                    canceled_at=_latest_status_changed_at(req, RequisitionStatus.CANCELADA),
+                    destination=destination,
+                    canceled_at=canceled_at,
+                    cancel_reason=_cancel_reason_for(req),
                 )
             )
 
-        if req.delivery_date and req.delivery_date < today and _is_open_requisition(req):
+        if req.delivery_date and req.delivery_date < today and _is_open_requisition(req) and not legacy_production_canceled:
             delayed_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
@@ -1164,10 +1262,26 @@ def _is_backup_candidate(path: Path) -> bool:
 
 
 def _find_latest_backup_at() -> datetime | None:
-    roots: list[Path] = [_resolve_storage_root(), Path.cwd()]
+    # A pasta configurada em BACKUP_FOLDER é o destino real do pg_dump
+    # (backup_service.run_backup). Precisa ser o primeiro local verificado;
+    # caso contrário backups já realizados nunca são detectados.
+    roots: list[Path] = []
+    if settings.BACKUP_FOLDER:
+        roots.append(Path(settings.BACKUP_FOLDER))
+    roots.extend([_resolve_storage_root(), Path.cwd()])
+
     latest_timestamp = 0.0
 
+    seen: set[str] = set()
     for root in roots:
+        try:
+            key = str(root.resolve())
+        except Exception:
+            key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+
         if not root.exists() or not root.is_dir():
             continue
 
@@ -1329,7 +1443,17 @@ def list_requisitions(
         )
         setattr(req, "production_status", _history_production_status(req))
         setattr(req, "invoiced", req.status == RequisitionStatus.FATURADO)
+        setattr(req, "cancel_reason", _cancel_reason_for(req))
     return paginated
+
+
+def _check_invoice_alerts(db: Session) -> None:
+    """Verifica alertas de faturamento pendentes e envia notificações SSE."""
+    notifications = ensure_pending_invoice_notifications(db)
+    notifications += ensure_delivery_deadline_notifications(db)
+    if notifications:
+        db.commit()
+        push_all(notifications)
 
 
 @router.get("/dashboard/summary", response_model=ManagementDashboardResponse)
@@ -1337,15 +1461,7 @@ def get_management_dashboard(
     db: Session = Depends(get_db),
     _: User = Depends(require_manager_or_admin),
 ):
-    from ..services.notification_service import (
-        dispatch as push_all,
-        ensure_pending_invoice_notifications,
-    )
-
-    notifications = ensure_pending_invoice_notifications(db)
-    if notifications:
-        db.commit()
-        push_all(notifications)
+    _check_invoice_alerts(db)
 
     reqs = (
         db.query(Requisition)
@@ -1370,15 +1486,7 @@ def get_order_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
-    from ..services.notification_service import (
-        dispatch as push_all,
-        ensure_pending_invoice_notifications,
-    )
-
-    notifications = ensure_pending_invoice_notifications(db)
-    if notifications:
-        db.commit()
-        push_all(notifications)
+    _check_invoice_alerts(db)
 
     reqs = (
         db.query(Requisition)
@@ -1407,6 +1515,7 @@ def get_production_summary(
     visible = _filter_requisitions_for_user(reqs, current_user)
     machines = (
         db.query(ProductionMachine)
+        .options(selectinload(ProductionMachine.operators))
         .filter(ProductionMachine.destination == normalized_destination)
         .order_by(ProductionMachine.sort_order.asc(), ProductionMachine.id.asc())
         .all()
@@ -1444,11 +1553,6 @@ def update_production_machine_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from ..services.notification_service import (
-        dispatch as push_all,
-        notify_machine_status_change as build_machine_status_event,
-    )
-
     machine = (
         db.query(ProductionMachine)
         .filter(ProductionMachine.id == machine_id)
@@ -1484,6 +1588,7 @@ def create_requisition(
 ):
     items_data = data.items
     _ensure_unique_ped_number(db, data.ped_number)
+    _ensure_delivery_within_min(data.delivery_date, current_user)
     req = Requisition(
         **data.model_dump(exclude={"items", "weight"}),
         vendor_id=current_user.id,
@@ -1502,6 +1607,14 @@ def create_requisition(
         new_status=RequisitionStatus.EM_ANDAMENTO,
         changed_by_id=current_user.id,
     ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="CREATE",
+        changed_by=current_user,
+        changes={"ped_number": data.ped_number, "client_id": data.client_id},
+    )
     db.commit()
     return _get_or_404(db, req.id)
 
@@ -1515,6 +1628,7 @@ def get_requisition(
     req = _get_or_404(db, req_id)
     if not _can_view_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissão para visualizar esta requisição")
+    setattr(req, "cancel_reason", _cancel_reason_for(req))
     return req
 
 
@@ -1532,18 +1646,33 @@ def update_requisition(
     ped_number = data.ped_number if data.ped_number is not None else req.ped_number
     _ensure_unique_ped_number(db, ped_number, exclude_req_id=req.id)
 
-    for k, v in data.model_dump(exclude_unset=True, exclude={"items", "weight"}).items():
+    scalar_update = data.model_dump(exclude_unset=True, exclude={"items", "weight"})
+    if "delivery_date" in scalar_update:
+        _ensure_delivery_within_min(scalar_update["delivery_date"], current_user)
+    tracked = ["ped_number", "delivery_date", "os_number", "obra", "obs",
+               "retirada", "entrega", "delivery_address", "phone"]
+    changes = diff_fields(req, scalar_update, tracked)
+
+    for k, v in scalar_update.items():
         setattr(req, k, v)
 
     if data.items is not None:
+        old_count = len(req.items)
         for item in list(req.items):
             db.delete(item)
         db.flush()
         for item in data.items:
             db.add(RequisitionItem(**item.model_dump(), requisition_id=req.id))
         req.weight = _sum_item_weights(data.items)
+        new_count = len(data.items)
+        if old_count != new_count:
+            changes["items"] = {"old": f"{old_count} item(s)", "new": f"{new_count} item(s)"}
     elif data.weight is not None:
         req.weight = data.weight
+
+    if changes:
+        log_action(db, entity="requisition", entity_id=req.id, action="UPDATE",
+                   changed_by=current_user, changes=changes)
 
     db.commit()
     return _get_or_404(db, req_id)
@@ -1556,12 +1685,6 @@ def update_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from ..services.notification_service import (
-        notify_production_team as build_production_sent,
-        notify_vendor          as build_vendor_event,
-        dispatch               as push_all,
-    )
-
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
@@ -1598,7 +1721,7 @@ def update_status(
         elif action in (_PROD_QUEUED, _PROD_RETURNED_QUEUE):
             notifications.extend(build_vendor_event(db, req, "aguardando_na_fila"))
         elif action == _PROD_FINISHED:
-            notifications.extend(build_vendor_event(db, req, "aguardando_faturamento"))
+            notifications.extend(build_vendor_event(db, req, "faturado"))
         elif action == _PROD_CANCELED:
             notifications.extend(build_vendor_event(db, req, "prod_cancelada", prod.get("reason", "")))
     elif new_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
@@ -1651,16 +1774,78 @@ def attach_nf(
     return _get_or_404(db, req_id)
 
 
+@router.patch("/{req_id}/delivery-date", response_model=RequisitionResponse)
+def update_delivery_date(
+    req_id: int,
+    data: DeliveryDateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Produção (A&R / Indústria) altera o prazo de entrega com justificativa.
+    A requisição volta para o vendedor com status 'prazo_alterado' e notificação."""
+    role = _role_key(current_user.role)
+    if role not in (Role.ADMIN.value, Role.PRODUCAO.value, Role.INDUSTRIA.value):
+        raise HTTPException(
+            status_code=403,
+            detail="Apenas a produção pode alterar o prazo de entrega",
+        )
+
+    req = _get_or_404(db, req_id)
+    if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FATURADO):
+        raise HTTPException(
+            status_code=400,
+            detail="Não é possível alterar o prazo de uma requisição cancelada ou faturada",
+        )
+
+    destination = _destination_for_role(role)
+    if destination and _current_production_destination(req) != destination:
+        raise HTTPException(
+            status_code=403,
+            detail="Sem permissão para alterar o prazo desta requisição",
+        )
+
+    old_date = req.delivery_date
+    old_status = req.status
+    old_str = old_date.strftime("%d/%m/%Y") if old_date else "—"
+    new_str = data.delivery_date.strftime("%d/%m/%Y")
+
+    req.delivery_date = data.delivery_date
+    req.status = RequisitionStatus.PRAZO_ALTERADO
+    req.finalized_at = None
+    req.production_machine = None
+
+    note = f"Prazo alterado de {old_str} para {new_str}. Motivo: {data.reason}"
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        old_status=old_status,
+        new_status=RequisitionStatus.PRAZO_ALTERADO,
+        changed_by_id=current_user.id,
+        note=note,
+    ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "delivery_date": {"old": old_str, "new": new_str},
+            "motivo": data.reason,
+        },
+    )
+
+    notifications = build_vendor_event(db, req, "prazo_alterado", data.reason)
+    db.commit()
+    push_all(notifications)
+    return _get_or_404(db, req_id)
+
+
 @router.delete("/{req_id}", status_code=status.HTTP_204_NO_CONTENT)
 def cancel_requisition(
     req_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    from ..services.notification_service import (
-        notify_vendor as build_vendor_event,
-        dispatch      as push_all,
-    )
 
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
@@ -1673,13 +1858,20 @@ def cancel_requisition(
         new_status=RequisitionStatus.CANCELADA,
         changed_by_id=current_user.id,
     ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="DELETE",
+        changed_by=current_user,
+        changes={"ped_number": req.ped_number, "status": {"old": str(old_status), "new": "cancelada"}},
+    )
 
     notifications: list = []
     if req.vendor_id != current_user.id:
         notifications.extend(build_vendor_event(db, req, "cancelada"))
     else:
         # Mesmo que o vendedor cancele a própria req, admins/gerentes são notificados
-        from ..services.notification_service import _notify_admins_gerentes
         notifications.extend(
             _notify_admins_gerentes(
                 db, "cancelada",

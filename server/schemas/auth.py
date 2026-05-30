@@ -16,6 +16,11 @@ class FirstAccessStatusResponse(BaseModel):
     first_access_required: bool
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

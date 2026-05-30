@@ -28,6 +28,7 @@ class OrderCenterItemResponse(BaseModel):
     finished_at: Optional[datetime] = None
     invoiced_at: Optional[datetime] = None
     canceled_at: Optional[datetime] = None
+    cancel_reason: Optional[str] = None
     delay_days: Optional[int] = None
     production_time_seconds: Optional[int] = None
 

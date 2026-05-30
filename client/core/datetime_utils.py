@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
+from zoneinfo import ZoneInfo
 
 
-LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo or timezone.utc
+try:
+    LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+except Exception:
+    LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo or timezone.utc
 
 
 def local_now() -> datetime:
-    return datetime.now().astimezone()
+    return datetime.now(LOCAL_TIMEZONE)
 
 
 def parse_datetime(value: object, *, assume_utc_for_naive: bool = True) -> datetime | None:

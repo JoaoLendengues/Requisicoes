@@ -1,10 +1,11 @@
-"""
+﻿"""
 Formulário principal de requisição — fiel ao mockup fornecido.
 """
 import os
 import io
 import shutil
 import tempfile
+import unicodedata
 from datetime import date, datetime
 
 from PySide6.QtWidgets import (
@@ -12,10 +13,11 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QCheckBox,
     QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
-    QListWidget, QListWidgetItem,
+    QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
+    QAbstractSpinBox,
 )
-from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression, QRectF
-from PySide6.QtGui import QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
+from PySide6.QtCore import Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression, QRectF, QSize
+from PySide6.QtGui import QAction, QKeySequence, QPixmap, QColor, QFont, QRegularExpressionValidator, QPainter
 
 try:
     import qrcode
@@ -24,14 +26,16 @@ except ImportError:
     HAS_QR = False
 
 from ..core import theme
-from ..core.dialogs import apply_message_box_theme
+from ..widgets.smooth_scroll import SmoothScrollArea
+from ..core.datetime_utils import local_now
+from ..core.dialogs import apply_message_box_theme, ask_confirmation
 from ..core.resolution import res
 from ..core.session import session
 from ..core.text_case import bind_uppercase_line_edit, bind_uppercase_text_edit
 from ..api import client as api
 from ..widgets.status_badge import StatusBadge
 from ..widgets.item_table import ItemTable
-from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_scene
+from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_scene, Tool
 
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
@@ -162,25 +166,33 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
 # ── Campo de busca de cliente ─────────────────────────────────────────────────
 class ClientSearchBox(QWidget):
     """
-    Caixa de busca com dropdown em tempo real — filtragem no SERVIDOR.
-    Suporta 100k+ clientes. Debounce de 300 ms para não sobrecarregar a API.
-    Pesquisa por nome, código ou CPF/CNPJ (ignora pontuação).
+    Busca de cliente em tempo real — sempre via servidor.
+
+    Adequada para bases com 100k+ clientes: nenhum pré-carregamento.
+    Cada keystroke reinicia um debounce de 250 ms; ao disparar, envia o
+    termo ao servidor que retorna os 100 resultados mais relevantes usando
+    índices GIN de trigrama (busca por nome, código e CPF/CNPJ).
     """
     client_selected = Signal(object)   # dict do cliente ou None
+
+    _DEBOUNCE_MS  = 250   # ms de espera após o último keystroke
+    _SERVER_LIMIT = 100   # máximo de resultados por busca
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
         self._selected: dict | None = None
         self._threads: list = []
+        self._search_seq = 0
 
-        # Timer de debounce — dispara busca 300 ms após parar de digitar
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
-        self._debounce.setInterval(150)
+        self._debounce.setInterval(self._DEBOUNCE_MS)
         self._debounce.timeout.connect(self._do_search)
 
         self._setup_ui()
+
+    # ── Interface ─────────────────────────────────────────────────────────────
 
     def _setup_ui(self):
         s = self.scale
@@ -189,7 +201,7 @@ class ClientSearchBox(QWidget):
         lay.setSpacing(0)
 
         self.input = QLineEdit()
-        self.input.setPlaceholderText("Buscar por nome, código ou CPF/CNPJ...")
+        self.input.setPlaceholderText("Nome, código ou CPF/CNPJ...")
         self.input.setFixedHeight(max(30, int(36 * s)))
         self.input.setStyleSheet(theme.input_style(s))
         self.input.textChanged.connect(self._on_text)
@@ -214,43 +226,71 @@ class ClientSearchBox(QWidget):
         self._drop.installEventFilter(self)
         self._drop.hide()
 
-    # ── Digitação → debounce → busca no servidor ──────────────────────────────
+    # ── Digitação → debounce → servidor ───────────────────────────────────────
+
     def _on_text(self, text: str):
+        # Se o texto atual é o cliente já selecionado, ignora
         if self._selected:
             expected = f"{self._selected['code']} — {self._selected['name']}"
             if text == expected:
                 return
             self._selected = None
 
-        if len(text.strip()) < 2:
+        term = text.strip()
+        if len(term) < 2:
             self._debounce.stop()
             self._drop.hide()
             return
 
-        self._debounce.start()
+        self._debounce.start(self._DEBOUNCE_MS)
 
     def _do_search(self):
         term = self.input.text().strip()
         if len(term) < 2:
             return
 
-        # Feedback visual imediato
+        self._search_seq += 1
+        search_id = self._search_seq
+
+        # Indicador de carregamento enquanto aguarda o servidor
         self._drop.clear()
-        loading = QListWidgetItem("  ⌕ Buscando...")
+        loading = QListWidgetItem("  Buscando...")
         loading.setFlags(Qt.ItemFlag.NoItemFlags)
+        loading.setForeground(QColor(theme.TEXT_LIGHT))
         self._drop.addItem(loading)
         self._reposition()
         self._drop.show()
 
         t, w = _run_in_thread(
-            api.list_clients, term,
-            on_result=self._on_results,
-            on_error=lambda _: self._drop.hide(),
+            api.list_clients, term, self._SERVER_LIMIT,
+            on_result=lambda clients, sid=search_id: self._on_results(sid, clients),
+            on_error=lambda _, sid=search_id: self._on_search_error(sid),
         )
-        self._threads.append((t, w))
+        self._track_thread(t, w)
 
-    def _on_results(self, clients: list):
+    def _on_results(self, search_id: int, clients: list):
+        if search_id != self._search_seq:
+            return
+        if not isinstance(clients, list):
+            clients = []
+        self._render_results(clients)
+
+    def _on_search_error(self, search_id: int):
+        if search_id != self._search_seq:
+            return
         self._drop.clear()
+        it = QListWidgetItem("  Erro ao buscar — verifique a conexão")
+        it.setFlags(Qt.ItemFlag.NoItemFlags)
+        it.setForeground(QColor(theme.TEXT_LIGHT))
+        self._drop.addItem(it)
+        self._reposition()
+        self._drop.show()
+
+    # ── Renderização ──────────────────────────────────────────────────────────
+
+    def _render_results(self, clients: list):
+        self._drop.clear()
+
         if not clients:
             it = QListWidgetItem("  Nenhum cliente encontrado")
             it.setFlags(Qt.ItemFlag.NoItemFlags)
@@ -265,19 +305,23 @@ class ClientSearchBox(QWidget):
                 it = QListWidgetItem(label)
                 it.setData(Qt.ItemDataRole.UserRole, c)
                 self._drop.addItem(it)
-
         self._reposition()
         self._drop.show()
 
     def _reposition(self):
         s = self.scale
         gpos = self.input.mapToGlobal(self.input.rect().bottomLeft())
-        rows = min(max(self._drop.count(), 1), 8)
         row_h = max(30, int(34 * s))
+        # Ocupa todo o espaço disponível abaixo do campo na tela
+        screen = QApplication.primaryScreen().availableGeometry()
+        available_h = screen.bottom() - gpos.y() - 10
+        max_by_screen = max(4, available_h // row_h)
+        rows = min(max(self._drop.count(), 1), max_by_screen)
         self._drop.move(gpos)
         self._drop.resize(self.input.width(), rows * row_h + 6)
 
     # ── Seleção ───────────────────────────────────────────────────────────────
+
     def _pick(self, item: QListWidgetItem):
         client = item.data(Qt.ItemDataRole.UserRole)
         if not client:
@@ -289,7 +333,16 @@ class ClientSearchBox(QWidget):
         self._drop.hide()
         self.client_selected.emit(client)
 
+    def _first_selectable(self) -> QListWidgetItem | None:
+        """Retorna o primeiro item com dado de cliente (pula itens não-selecionáveis)."""
+        for i in range(self._drop.count()):
+            it = self._drop.item(i)
+            if it and it.data(Qt.ItemDataRole.UserRole) is not None:
+                return it
+        return None
+
     # ── Navegação por teclado ─────────────────────────────────────────────────
+
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.KeyPress:
             key = event.key()
@@ -299,13 +352,16 @@ class ClientSearchBox(QWidget):
                     self._drop.hide()
                     return True
                 if key == Qt.Key.Key_Down and self._drop.isVisible():
-                    if self._drop.count():
+                    first = self._first_selectable()
+                    if first:
                         self._drop.setFocus()
-                        self._drop.setCurrentRow(0)
+                        self._drop.setCurrentItem(first)
                     return True
                 if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     if self._drop.isVisible() and self._drop.count():
-                        self._pick(self._drop.item(0))
+                        first = self._first_selectable()
+                        if first:
+                            self._pick(first)
                     return True
 
             elif obj is self._drop:
@@ -324,7 +380,24 @@ class ClientSearchBox(QWidget):
 
         return super().eventFilter(obj, event)
 
+    # ── Utilitários internos ──────────────────────────────────────────────────
+
+    def _track_thread(self, thread: QThread, worker: QObject) -> None:
+        pair = (thread, worker)
+        self._threads.append(pair)
+
+        def _cleanup():
+            try:
+                self._threads.remove(pair)
+            except ValueError:
+                pass
+            worker.deleteLater()
+            thread.deleteLater()
+
+        thread.finished.connect(_cleanup)
+
     # ── API pública ───────────────────────────────────────────────────────────
+
     def set_clients(self, clients: list):
         """Mantido por compatibilidade — não é mais necessário."""
         pass
@@ -342,7 +415,7 @@ class ClientSearchBox(QWidget):
             on_result=self._on_client_loaded_by_id,
             on_error=lambda _: None,
         )
-        self._threads.append((t, w))
+        self._track_thread(t, w)
 
     def _on_client_loaded_by_id(self, client: dict):
         if not client:
@@ -387,10 +460,8 @@ class CanvasDialog(QDialog):
             f"QLabel {{ background-color:transparent; }}"
         )
 
-        # Tamanho: 90% da tela disponível
-        from PySide6.QtWidgets import QApplication
-        screen = QApplication.primaryScreen().availableGeometry()
-        self.resize(int(screen.width() * 0.90), int(screen.height() * 0.88))
+        # Dimensiona na tela primária (posição definitiva aplicada no showEvent)
+        self._pin_to_primary_screen()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -424,6 +495,49 @@ class CanvasDialog(QDialog):
 
     def get_json(self) -> str:
         return self.canvas.to_json()
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        """Esc desmarca a ferramenta ativa; não fecha o editor."""
+        if event.key() == Qt.Key.Key_Escape:
+            if self.canvas.tool != Tool.SELECT:
+                # Tinha ferramenta selecionada → volta para cursor de seleção
+                self.canvas._set_tool(Tool.SELECT)
+            # Em ambos os casos consome o evento — QDialog não vai chamar reject()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    # ------------------------------------------------------------------
+    # Contenção de monitor: sempre exibe na tela primária, sem vazar
+    # ------------------------------------------------------------------
+    def _pin_to_primary_screen(self) -> None:
+        """Dimensiona e posiciona o diálogo inteiramente na tela primária."""
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtWidgets import QLayout
+        geo = QGuiApplication.primaryScreen().availableGeometry()
+        w = int(geo.width()  * 0.90)
+        h = int(geo.height() * 0.88)
+        # Impede que o layout force a janela a crescer além dos limites da tela.
+        # SetNoConstraint: o layout para de propagar minimumSizeHint para a janela.
+        # setMinimumSize(1,1): remove qualquer mínimo explícito que o Qt tiver fixado.
+        if self.layout():
+            self.layout().setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        self.setMinimumSize(1, 1)
+        self.setMaximumSize(geo.width(), geo.height())
+        self.setGeometry(
+            geo.x() + (geo.width()  - w) // 2,
+            geo.y() + (geo.height() - h) // 2,
+            w,
+            h,
+        )
+
+    def showEvent(self, event) -> None:
+        """Após o Windows terminar de posicionar a janela, força a posição correta."""
+        super().showEvent(event)
+        # QTimer.singleShot(0) garante que o reposicionamento ocorre DEPOIS
+        # que o gerenciador de janelas do Windows terminar qualquer ajuste próprio.
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._pin_to_primary_screen)
 
 
 class _CanvasReadOnlyView(QGraphicsView):
@@ -553,6 +667,7 @@ class CanvasViewerDialog(QDialog):
 class RequisitionForm(QWidget):
     saved           = Signal(dict)
     save_requested  = Signal()          # emitido pelo botão Salvar do formulário
+    guide_requested = Signal()          # emitido pelo botão ? de ajuda
     req_id: int | None = None
 
     def __init__(self, scale: float = 1.0, parent=None):
@@ -562,6 +677,7 @@ class RequisitionForm(QWidget):
         self._threads: list = []
         self._canvas_json: str = "{}"   # armazena o JSON do desenho
         self._setup_ui()
+        self._setup_hidden_shortcuts()
         self._load_clients()
         self._update_canvas_preview()
 
@@ -572,7 +688,7 @@ class RequisitionForm(QWidget):
         root.setSpacing(0)
 
         # ScrollArea
-        self._page_scroll = QScrollArea()
+        self._page_scroll = SmoothScrollArea()
         self._page_scroll.setWidgetResizable(True)
         self._page_scroll.setStyleSheet(
             f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}"
@@ -636,9 +752,10 @@ class RequisitionForm(QWidget):
         btn_print.setFixedHeight(max(42, int(48 * s)))
         btn_print.setMinimumWidth(max(180, int(210 * s)))
         btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_print = btn_print
+        self._update_print_button_visual()
         btn_print.clicked.connect(self._print_requisition_pdf)
         save_row.addWidget(btn_print)
-        self.btn_print = btn_print
 
         save_row.addSpacing(max(8, int(10 * s)))
 
@@ -678,6 +795,245 @@ class RequisitionForm(QWidget):
         self._set_form_locked(False)
 
         layout.addStretch()
+
+    def _setup_hidden_shortcuts(self) -> None:
+        """Atalhos escondidos da tela Nova Requisição (letras simples)."""
+        shortcuts = {
+            "C": self._shortcut_open_calculator,
+            "P": self._shortcut_send_production,
+            "S": self._shortcut_save,
+            "W": self._shortcut_send_whatsapp,
+            "D": self._shortcut_open_drawing_editor,
+            "V": self._shortcut_open_drawing_viewer,
+            "N": self._shortcut_prompt_ped_action,
+            "E": self._shortcut_set_delivery,
+            "R": self._shortcut_set_pickup,
+        }
+
+        self._hidden_shortcut_actions: list[QAction] = []
+        for sequence, callback in shortcuts.items():
+            action = QAction(self)
+            action.setShortcut(QKeySequence(sequence))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            action.triggered.connect(
+                lambda _checked=False, cb=callback: self._run_hidden_shortcut(cb)
+            )
+            self.addAction(action)
+            self._hidden_shortcut_actions.append(action)
+
+    def _run_hidden_shortcut(self, callback) -> None:
+        if not self._can_process_hidden_shortcut():
+            return
+        callback()
+
+    def _can_process_hidden_shortcut(self) -> bool:
+        if not self.isVisible():
+            return False
+
+        if QApplication.activeModalWidget() is not None:
+            return False
+
+        focus = QApplication.focusWidget()
+        if focus is None:
+            return True
+
+        editable_types = (
+            QLineEdit,
+            QTextEdit,
+            QPlainTextEdit,
+            QComboBox,
+            QDateEdit,
+            QAbstractItemView,
+        )
+        widget = focus
+        while widget is not None:
+            if isinstance(widget, editable_types):
+                return False
+            widget = widget.parentWidget()
+        return True
+
+    def _shortcut_open_calculator(self) -> None:
+        if hasattr(self, "btn_calc") and self.btn_calc.isEnabled():
+            self.btn_calc.click()
+
+    def _shortcut_send_production(self) -> None:
+        if hasattr(self, "btn_production") and self.btn_production.isEnabled():
+            self.btn_production.click()
+
+    def _shortcut_save(self) -> None:
+        if hasattr(self, "btn_save") and self.btn_save.isEnabled():
+            self.btn_save.click()
+
+    def _shortcut_send_whatsapp(self) -> None:
+        if hasattr(self, "btn_whatsapp") and self.btn_whatsapp.isEnabled():
+            self.btn_whatsapp.click()
+
+    def _shortcut_open_drawing_editor(self) -> None:
+        if hasattr(self, "btn_canvas") and self.btn_canvas.isEnabled():
+            self.btn_canvas.click()
+
+    def _shortcut_open_drawing_viewer(self) -> None:
+        if hasattr(self, "btn_canvas_view") and self.btn_canvas_view.isEnabled():
+            self.btn_canvas_view.click()
+
+    def _shortcut_prompt_ped_action(self) -> None:
+        action = self._ask_ped_shortcut_action()
+        if not action:
+            return
+
+        ped_number = self._ask_ped_number()
+        if not ped_number:
+            return
+
+        if action == "fill":
+            self.input_ped.setText(ped_number)
+            self.input_ped.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            self.input_ped.selectAll()
+            return
+
+        self._open_requisition_by_ped(ped_number)
+
+    def _ask_ped_shortcut_action(self) -> str | None:
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setWindowTitle("Pedido")
+        msg.setText("O que deseja fazer com o número do PED?")
+        btn_fill = msg.addButton("Preencher PED", QMessageBox.ButtonRole.AcceptRole)
+        btn_open = msg.addButton("Abrir por pedido", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+
+        # Atalhos locais do diálogo: P=Preencher, A=Abrir, C=Cancelar
+        for key, button in (("P", btn_fill), ("A", btn_open), ("C", btn_cancel)):
+            action = QAction(msg)
+            action.setShortcut(QKeySequence(key))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            action.triggered.connect(button.click)
+            msg.addAction(action)
+
+        apply_message_box_theme(msg)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked == btn_fill:
+            return "fill"
+        if clicked == btn_open:
+            return "open"
+        return None
+
+    @staticmethod
+    def _normalize_ped_number(value: str | None) -> str:
+        digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+        if not digits:
+            return ""
+        normalized = digits.lstrip("0")
+        return normalized or "0"
+
+    def _ask_ped_number(self) -> str | None:
+        default_value = (self.input_ped.text() or "").strip()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Pedido")
+        dialog.setModal(True)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dialog.setStyleSheet(
+            f"QDialog {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
+            f"}}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        lbl = QLabel("Digite o número do PED:")
+        lbl.setStyleSheet(f"font-size:{max(8, int(10 * self.scale))}pt;")
+        layout.addWidget(lbl)
+
+        input_ped = QLineEdit(default_value)
+        input_ped.setPlaceholderText("Ex.: 123456")
+        input_ped.setValidator(QRegularExpressionValidator(QRegularExpression(r"\d*")))
+        input_ped.setStyleSheet(theme.input_style(self.scale))
+        input_ped.setMinimumWidth(max(240, int(280 * self.scale)))
+        layout.addWidget(input_ped)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
+        btn_ok = QPushButton("Confirmar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        btn_ok.clicked.connect(dialog.accept)
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dialog.reject)
+        buttons.addWidget(btn_ok)
+        buttons.addWidget(btn_cancel)
+        layout.addLayout(buttons)
+
+        btn_ok.setDefault(True)
+        btn_ok.setAutoDefault(True)
+        input_ped.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        input_ped.selectAll()
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        ped_number = (input_ped.text() or "").strip()
+        if not ped_number:
+            return None
+        if not ped_number.isdigit():
+            QMessageBox.warning(self, "PED", "Digite apenas números no campo PED.")
+            return None
+        if self._normalize_ped_number(ped_number) == "0":
+            QMessageBox.warning(self, "PED", "Informe um número de PED válido.")
+            return None
+        return ped_number
+
+    def _open_requisition_by_ped(self, ped_number: str) -> None:
+        if self.has_unsaved_data():
+            if not ask_confirmation(
+                self,
+                "Abrir requisição por PED",
+                "Existem dados no formulário atual que serão substituídos.\n\nDeseja continuar?",
+                yes_text="Sim",
+                no_text="Não",
+            ):
+                return
+
+        normalized_target = self._normalize_ped_number(ped_number)
+        thread, worker = _run_in_thread(
+            api.list_requisitions,
+            search=ped_number,
+            limit=200,
+            on_result=lambda data, target=normalized_target: self._on_requisition_search_by_ped(data, target),
+            on_error=lambda msg: QMessageBox.critical(self, "PED", msg),
+        )
+        self._threads.append((thread, worker))
+
+    def _on_requisition_search_by_ped(self, results: list, normalized_target: str) -> None:
+        matches = []
+        for req in (results or []):
+            req_norm = self._normalize_ped_number(str(req.get("ped_number") or ""))
+            if req_norm == normalized_target:
+                matches.append(req)
+
+        if not matches:
+            QMessageBox.warning(self, "PED", "PED não encontrado.")
+            return
+
+        matches.sort(key=lambda req: int(req.get("id") or 0), reverse=True)
+        selected = matches[0]
+        self.load_requisition(
+            selected,
+            read_only=session.should_open_requisition_read_only("history"),
+        )
+
+    def _shortcut_set_delivery(self) -> None:
+        if hasattr(self, "chk_entrega") and self.chk_entrega.isEnabled():
+            self.chk_entrega.setChecked(True)
+
+    def _shortcut_set_pickup(self) -> None:
+        if hasattr(self, "chk_retirada") and self.chk_retirada.isEnabled():
+            self.chk_retirada.setChecked(True)
 
     # ── Cabeçalho ─────────────────────────────────────────────────────────────
     def _build_header(self) -> QFrame:
@@ -737,7 +1093,9 @@ class RequisitionForm(QWidget):
         ped_col.addWidget(_field_label("PED:", s))
         self.input_ped = QLineEdit()
         self.input_ped.setPlaceholderText("Nº pedido")
-        self.input_ped.setFixedWidth(max(80, int(100*s)))
+        self._ped_min_width = max(80, int(100*s))
+        self._ped_max_width = max(180, int(240*s))
+        self.input_ped.setFixedWidth(self._ped_min_width)
         self.input_ped.setFixedHeight(max(30, int(36*s)))
         self.input_ped.setStyleSheet(
             f"font-size:{max(14,int(18*s))}pt; font-weight:bold; color:{theme.PRIMARY};"
@@ -748,11 +1106,36 @@ class RequisitionForm(QWidget):
         self.input_ped.setValidator(
             QRegularExpressionValidator(QRegularExpression(r"\d*"))
         )
-        self.input_ped.textChanged.connect(
-            lambda t: self.lbl_ped_num.setText(f"#{t.zfill(6)}" if t else "#000000")
-        )
+        def _resize_ped_field_width():
+            text = self.input_ped.text().strip()
+            sample = text if text else self.input_ped.placeholderText()
+            target = self.input_ped.fontMetrics().horizontalAdvance(sample) + max(18, int(24 * s))
+            target = max(self._ped_min_width, min(self._ped_max_width, target))
+            self.input_ped.setFixedWidth(target)
+
+        def _on_ped_changed(t: str):
+            self.lbl_ped_num.setText(f"#{t.zfill(6)}" if t else "#000000")
+            _resize_ped_field_width()
+
+        self.input_ped.textChanged.connect(_on_ped_changed)
+        _resize_ped_field_width()
         ped_col.addWidget(self.input_ped)
         layout.addLayout(ped_col)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        self.btn_guide.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+            f"QPushButton:hover {{ color:{theme.PRIMARY}; border-color:{theme.PRIMARY}; }}"
+        )
+        self.btn_guide.clicked.connect(self.guide_requested)
+        layout.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
 
         return card
 
@@ -774,12 +1157,16 @@ class RequisitionForm(QWidget):
             layout.addLayout(col)
 
         # Prazo de entrega
-        self.input_prazo = QDateEdit(QDate.currentDate())
+        self.input_prazo = QDateEdit(self._default_delivery_qdate())
         self.input_prazo.setDisplayFormat("dd/MM/yyyy")
-        self.input_prazo.setCalendarPopup(True)
+        self.input_prazo.setCalendarPopup(False)
+        self.input_prazo.setReadOnly(True)
+        self.input_prazo.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.input_prazo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.input_prazo.setFixedHeight(max(28,int(32*s)))
         self.input_prazo.setStyleSheet(theme.input_style(s))
         add_field("📦", "PRAZO DE ENTREGA", self.input_prazo)
+        self._apply_min_delivery_constraint()
 
         # Retirada — mutuamente exclusivo com Entrega
         chk_style = f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
@@ -809,6 +1196,46 @@ class RequisitionForm(QWidget):
         layout.addStretch()
 
         return card
+
+    # ── Prazo mínimo de entrega (dias úteis) ──────────────────────────────────
+    @staticmethod
+    def _earliest_delivery_qdate(min_days: int) -> QDate:
+        """Retorna a data mais cedo permitida, somando `min_days` dias úteis
+        (segunda a sexta) a partir de hoje. Sábado e domingo não contam."""
+        current = QDate.currentDate()
+        if min_days <= 0:
+            return current
+        added = 0
+        while added < min_days:
+            current = current.addDays(1)
+            if current.dayOfWeek() <= 5:  # 1=seg ... 5=sex
+                added += 1
+        return current
+
+    @classmethod
+    def _default_delivery_qdate(cls) -> QDate:
+        """Data padrão do prazo de entrega: sempre 5 dias úteis à frente."""
+        return cls._earliest_delivery_qdate(5)
+
+    def _apply_min_delivery_constraint(self) -> None:
+        """Aplica a data mínima de entrega ao seletor de prazo.
+        Admin/gerente podem gravar abaixo do mínimo, então não recebem trava."""
+        if getattr(session, "is_manager_or_admin", False):
+            return
+        try:
+            min_days = int(res._read_file().get("min_delivery_business_days", 0) or 0)
+        except Exception:
+            min_days = 0
+        if min_days <= 0:
+            return
+        earliest = self._earliest_delivery_qdate(min_days)
+        self.input_prazo.setMinimumDate(earliest)
+        if self.input_prazo.date() < earliest:
+            self.input_prazo.setDate(earliest)
+        self.input_prazo.setToolTip(
+            f"Prazo mínimo de entrega: {min_days} dia(s) útil(eis) "
+            f"(a partir de {earliest.toString('dd/MM/yyyy')})"
+        )
 
     # ── Seção Cliente ─────────────────────────────────────────────────────────
     def _build_client_section(self) -> QFrame:
@@ -1077,6 +1504,25 @@ class RequisitionForm(QWidget):
         self.btn_print.setEnabled(not busy)
         self.btn_print.setText("PREPARANDO IMPRESSÃO..." if busy else "IMPRIMIR")
 
+    def _update_print_button_visual(self) -> None:
+        if not hasattr(self, "btn_print"):
+            return
+
+        icon = None
+        for icon_name in ("SP_DialogPrintButton", "SP_PrinterIcon"):
+            std_icon = getattr(QStyle.StandardPixmap, icon_name, None)
+            if std_icon is None:
+                continue
+            candidate = self.style().standardIcon(std_icon)
+            if not candidate.isNull():
+                icon = candidate
+                break
+
+        if icon and not icon.isNull():
+            side = max(16, int(18 * self.scale))
+            self.btn_print.setIcon(icon)
+            self.btn_print.setIconSize(QSize(side, side))
+
     def _print_requisition_pdf(self):
         self._set_print_busy(True)
         try:
@@ -1154,7 +1600,7 @@ class RequisitionForm(QWidget):
         req["client_code"] = client.get("code") or ""
         req["vendor_name"] = session.user_name or ""
         req["vendor_whatsapp"] = session.whatsapp or ""
-        req["emission_date"] = datetime.now().isoformat()
+        req["emission_date"] = local_now().isoformat()
 
         client_payload = {
             "id": client.get("id"),
@@ -1171,7 +1617,11 @@ class RequisitionForm(QWidget):
         if not ped_number or not ped_number.isdigit() or int(ped_number) == 0:
             raise RuntimeError("Informe um número de requisição válido antes de imprimir.")
 
-        folder = self._resolve_pdf_output_folder(require_configured_folder=True)
+        req_hint = {
+            "vendor_code": getattr(self, "_req_vendor_code", ""),
+            "vendor_name": getattr(self, "_req_vendor_name", ""),
+        }
+        folder = self._resolve_pdf_output_folder(require_configured_folder=True, req=req_hint)
         if not os.path.isdir(folder):
             raise RuntimeError("A pasta de PDFs configurada não foi encontrada.")
 
@@ -1199,10 +1649,22 @@ class RequisitionForm(QWidget):
         )
         return pdf_candidates[0]
 
-    def _resolve_pdf_output_folder(self, require_configured_folder: bool = True) -> str:
-        folder = res.pdf_folder.strip()
-        if folder:
-            return folder
+    def _resolve_pdf_output_folder(
+        self,
+        require_configured_folder: bool = True,
+        req: dict | None = None,
+    ) -> str:
+        from ..core.pdf_folders import vendor_subfolder as _vendor_subfolder
+        base = res.pdf_folder.strip()
+        if base:
+            subfolder = _vendor_subfolder(
+                session.user_code,
+                session.user_name,
+                session.role,
+                str((req or {}).get("vendor_code") or ""),
+                str((req or {}).get("vendor_name") or ""),
+            )
+            return os.path.join(base, subfolder)
 
         if require_configured_folder:
             raise RuntimeError(
@@ -1230,7 +1692,7 @@ class RequisitionForm(QWidget):
         if not HAS_REPORTLAB:
             raise RuntimeError("A geração de PDF está indisponível porque o ReportLab não está instalado.")
 
-        folder = self._resolve_pdf_output_folder(require_configured_folder=require_configured_folder)
+        folder = self._resolve_pdf_output_folder(require_configured_folder=require_configured_folder, req=req)
         return generate_pdf(req, client, obs or req.get("obs") or "", folder, canvas_json)
 
     def _generate_saved_pdf(self, req: dict) -> str:
@@ -1510,6 +1972,21 @@ class RequisitionForm(QWidget):
             )
             return
 
+        if not (self.chk_retirada.isChecked() or self.chk_entrega.isChecked()):
+            QMessageBox.warning(
+                self,
+                "Produção",
+                "Marque Retirada ou Entrega para enviar para produção.",
+            )
+            return
+
+        invoice_action = self._confirm_invoice_before_send()
+        if invoice_action == "cancel":
+            return
+        if invoice_action == "save":
+            self.save_requested.emit()
+            return
+
         destination = self._pick_production_destination()
         if not destination:
             return
@@ -1527,13 +2004,37 @@ class RequisitionForm(QWidget):
         )
         self._threads.append((thread, worker))
 
+    def _confirm_invoice_before_send(self) -> str:
+        ped_number = (self.input_ped.text() or "").strip() or "sem PED"
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Este pedido foi faturado")
+        box.setText(f"Este pedido foi faturado ({ped_number})?")
+        box.setTextFormat(Qt.TextFormat.PlainText)
+
+        btn_yes = box.addButton("Sim", QMessageBox.ButtonRole.YesRole)
+        btn_save = box.addButton("Apenas salvar", QMessageBox.ButtonRole.ActionRole)
+        btn_cancel = box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+
+        box.setDefaultButton(btn_yes)
+        box.setEscapeButton(btn_cancel)
+        apply_message_box_theme(box)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == btn_yes:
+            return "yes"
+        if clicked == btn_save:
+            return "save"
+        return "cancel"
+
     def _pick_production_destination(self) -> str | None:
         msg = QMessageBox(self)
         msg.setWindowTitle("Enviar para produção")
         msg.setIcon(QMessageBox.Icon.Question)
-        msg.setText("Selecione para qual produção a requisição deve ser enviada.")
+        msg.setText("Para qual produção deseja enviar a requisição?")
 
-        btn_ar = msg.addButton("A&R", QMessageBox.ButtonRole.AcceptRole)
+        btn_ar = msg.addButton("A&&R", QMessageBox.ButtonRole.AcceptRole)
         btn_pinheiro = msg.addButton("Pinheiro Indústria", QMessageBox.ButtonRole.AcceptRole)
         msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
         apply_message_box_theme(msg)
@@ -1691,7 +2192,7 @@ class RequisitionForm(QWidget):
             return True
         if self.client_search.get_client_id() is not None:
             return True
-        if self.input_prazo.date() != QDate.currentDate():
+        if self.input_prazo.date() != self._default_delivery_qdate():
             return True
         if self.chk_retirada.isChecked() or self.chk_entrega.isChecked():
             return True
@@ -1722,11 +2223,18 @@ class RequisitionForm(QWidget):
         """Popula o formulário com dados de uma requisição existente."""
         self._set_form_locked(False)
         self.req_id = data.get("id")
+        # Guarda info do vendedor para uso em _find_saved_pdf_for_print
+        self._req_vendor_code = str(data.get("vendor_code") or "")
+        self._req_vendor_name = str(data.get("vendor_name") or "")
         self.input_ped.setText(str(data.get("ped_number") or ""))
         self.input_obra.setText(data.get("obra") or "")
         self._set_phone_text(data.get("phone") or "")
         self.input_address.setText(data.get("delivery_address") or "")
 
+        # Requisição existente: libera a data mínima para exibir o prazo salvo,
+        # mesmo que seja anterior ao mínimo vigente.
+        self.input_prazo.setMinimumDate(QDate(2000, 1, 1))
+        self.input_prazo.setToolTip("")
         delivery = data.get("delivery_date")
         if delivery:
             qd = QDate.fromString(str(delivery)[:10], "yyyy-MM-dd")
@@ -1771,7 +2279,8 @@ class RequisitionForm(QWidget):
         self.input_fone.clear()
         self.input_address.clear()
         self.input_obs.clear()
-        self.input_prazo.setDate(QDate.currentDate())
+        self.input_prazo.setDate(self._default_delivery_qdate())
+        self._apply_min_delivery_constraint()
         self.chk_retirada.setChecked(False)
         self.chk_entrega.setChecked(False)
         self.client_search.clear()
@@ -1808,6 +2317,7 @@ class RequisitionForm(QWidget):
         self.btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
         self.btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self._update_print_button_visual()
         self.btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))
         self.btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
         self.btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))

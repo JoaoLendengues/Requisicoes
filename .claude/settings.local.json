@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(find \"C:\\\\Users\\\\João\" -type d -name \"*PARALLEL*\" 2>/dev/null | head -20)",
-      "Bash(find \"C:\\\\Users\\\\João\\\\AppData\" -type l -name \"*PROJECT_PARALLELv2*\" 2>/dev/null | head -10)",
-      "Bash(git add *)"
-    ]
-  }
-}

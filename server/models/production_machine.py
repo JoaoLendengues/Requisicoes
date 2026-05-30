@@ -3,7 +3,16 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, Enum as SAEnum
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Enum as SAEnum,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -12,6 +21,14 @@ from ..database import Base
 class MachineOperationalStatus(str, enum.Enum):
     FUNCIONANDO = "funcionando"
     MANUTENCAO = "manutencao"
+
+
+production_machine_operators = Table(
+    "production_machine_operators",
+    Base.metadata,
+    Column("machine_id", ForeignKey("production_machines.id", ondelete="CASCADE"), primary_key=True),
+    Column("operator_id", ForeignKey("operators.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class ProductionMachine(Base):
@@ -32,6 +49,7 @@ class ProductionMachine(Base):
         SAEnum(
             MachineOperationalStatus,
             values_callable=lambda values: [item.value for item in values],
+            native_enum=False,
         ),
         default=MachineOperationalStatus.FUNCIONANDO,
     )
@@ -46,3 +64,8 @@ class ProductionMachine(Base):
     )
 
     updated_by = relationship("User", foreign_keys=[updated_by_id])
+    operators = relationship(
+        "Operator",
+        secondary=production_machine_operators,
+        order_by="Operator.name",
+    )
