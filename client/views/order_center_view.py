@@ -833,7 +833,7 @@ class OrderCenterView(QWidget):
         pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
-        table.setMinimumHeight(max(220, int(240 * s)))
+        table.setMinimumHeight(max(320, int(360 * s)))
         apply_smooth_scroll(table)
         return table
 
