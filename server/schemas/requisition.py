@@ -70,6 +70,7 @@ class RequisitionCreate(BaseModel):
     phone: Optional[str] = None
     weight: float = 0.0
     obs: Optional[str] = None
+    signature_png_b64: Optional[str] = None
     items: List[RequisitionItemCreate] = []
 
     @field_validator("ped_number")
@@ -95,6 +96,7 @@ class RequisitionUpdate(BaseModel):
     phone: Optional[str] = None
     weight: Optional[float] = None
     obs: Optional[str] = None
+    signature_png_b64: Optional[str] = None
     items: Optional[List[RequisitionItemCreate]] = None
 
     @field_validator("ped_number")
@@ -172,6 +174,7 @@ class RequisitionResponse(BaseModel):
     phone: Optional[str]
     weight: float
     obs: Optional[str] = None
+    signature_png_b64: Optional[str] = None
     status: RequisitionStatus
     production_destination: Optional[str] = None
     production_destination_display: Optional[str] = None

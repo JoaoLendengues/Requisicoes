@@ -781,7 +781,7 @@ class SignaturePad(QWidget):
         return self._image.copy(start_x, start_y, end_x - start_x + 1, end_y - start_y + 1)
 
     def is_empty(self) -> bool:
-        return self._trimmed_image().isNull()
+        return not self._has_strokes
 
     def to_png_bytes(self) -> bytes:
         image = self._trimmed_image()
@@ -797,21 +797,24 @@ class SignaturePad(QWidget):
 
     def _stroke_to(self, point: QPointF) -> None:
         self._ensure_canvas()
+        start = QPointF(self._last_point)
         painter = QPainter(self._image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(self._pen)
-        painter.drawLine(self._last_point, point)
+        painter.drawLine(start, point)
         painter.end()
         self._last_point = QPointF(point)
         self._has_strokes = True
-        self.update()
-        self.changed.emit()
+        margin = max(2.0, self._pen.widthF() + 2.0)
+        dirty_rect = QRectF(start, point).normalized().adjusted(-margin, -margin, margin, margin)
+        self.update(dirty_rect.toRect())
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             self._drawing = True
             self._last_point = QPointF(event.position())
             self._stroke_to(QPointF(event.position()))
+            self.changed.emit()
             event.accept()
             return
         super().mousePressEvent(event)
@@ -2612,6 +2615,9 @@ class RequisitionForm(QWidget):
         client_id = self.client_search.get_client_id()
         prazo = self.input_prazo.date().toString("yyyy-MM-dd")
         total_weight = self.item_table.get_total_weight()
+        signature_b64 = None
+        if self._signature_png_bytes:
+            signature_b64 = base64.b64encode(self._signature_png_bytes).decode("ascii")
         return {
             "ped_number":       self.input_ped.text().strip(),
             "client_id":        client_id,
@@ -2624,6 +2630,7 @@ class RequisitionForm(QWidget):
             "weight":           total_weight,
             "items":            self.item_table.get_items(),
             "obs":              self.input_obs.toPlainText().strip() or None,
+            "signature_png_b64": signature_b64,
         }
 
     def load_requisition(self, data: dict, read_only: bool = False):
