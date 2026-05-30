@@ -1434,8 +1434,8 @@ class MainWindow(QMainWindow):
                     order("_section_cards", "aguardando_faturamento"), "right",
                 ),
                 TourStep(
-                    "Pedidos Faturados",
-                    "Pedidos já faturados. Disponíveis para consulta e "
+                    "Pedidos Finalizados",
+                    "Pedidos já finalizados. Disponíveis para consulta e "
                     "reimpressão do PDF quando necessário.",
                     order("_section_cards", "faturados"), "left",
                 ),
@@ -1630,8 +1630,8 @@ class MainWindow(QMainWindow):
                     order("_section_cards", "aguardando_faturamento"), "right",
                 ),
                 TourStep(
-                    "Pedidos Faturados",
-                    "Histórico de pedidos já faturados para consulta.",
+                    "Pedidos Finalizados",
+                    "Histórico de pedidos já finalizados para consulta.",
                     order("_section_cards", "faturados"), "left",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────

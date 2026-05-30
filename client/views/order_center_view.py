@@ -166,6 +166,29 @@ def _format_waiting_minutes(minutes: object) -> str:
     return f"{days}d {hours:02d}h"
 
 
+def _format_waiting_label(minutes: object) -> str:
+    waiting = _format_waiting_minutes(minutes)
+    if waiting == "-":
+        return "-"
+    return f"Há {waiting}"
+
+
+def _format_weight(value: object) -> str:
+    try:
+        weight_value = float(value or 0.0)
+    except (TypeError, ValueError):
+        return "-"
+    return f"{weight_value:.2f}".replace(".", ",")
+
+
+def _format_deadline_met(value: object) -> str:
+    if value is True:
+        return "SIM"
+    if value is False:
+        return "NÃO"
+    return "-"
+
+
 def _build_production_note(action: str, destination: str) -> str:
     destination_text = str(destination or "").strip()
     return "|".join([PROD_NOTE_PREFIX, action, destination_text])
@@ -349,7 +372,7 @@ class OrderCenterView(QWidget):
         card_defs = [
             ("pedidos_aguardando_recebimento", theme.WARNING, "Aguardando Recebimento", "Pedidos pendentes de confirmação da produção."),
             ("pedidos_em_producao", theme.PRIMARY, "Pedidos em Produção", "Ordens que já entraram na esteira produtiva."),
-            ("pedidos_faturados", theme.STATUS_COLORS.get("faturado", theme.SUCCESS), "Pedidos Faturados", "Pedidos faturados e disponíveis para consulta."),
+            ("pedidos_faturados", theme.STATUS_COLORS.get("faturado", theme.SUCCESS), "Pedidos Finalizados", "Pedidos concluídos na produção e disponíveis para consulta."),
             ("pedidos_cancelados", theme.DANGER, "Pedidos Cancelados", "Cancelamentos registrados na operação."),
             ("pedidos_atrasados", theme.DANGER, "Pedidos Atrasados", "Pedidos com prazo vencido e ainda abertos."),
             ("tempo_medio_producao_segundos", theme.BORDER_COLOR, "Tempo Médio de Produção", "Indicador médio de conclusão da produção."),
@@ -376,7 +399,7 @@ class OrderCenterView(QWidget):
         chip_defs = [
             ("aguardando_recebimento", "Aguardando"),
             ("em_producao",            "Em Produção"),
-            ("faturados",              "Faturados"),
+            ("faturados",              "Finalizados"),
             ("cancelados",             "Cancelados"),
             ("atrasados",              "Atrasados"),
         ]
@@ -409,7 +432,7 @@ class OrderCenterView(QWidget):
         # ── Pré-constrói as seções (ficam no cache; visibilidade gerida) ──
         self._build_section("Pedidos aguardando recebimento", "aguardando_recebimento")
         self._build_section("Pedidos em produção",             "em_producao")
-        self._build_section("Pedidos faturados",               "faturados", pdf_action=True)
+        self._build_section("Pedidos finalizados",             "faturados", pdf_action=True)
         self._build_section("Pedidos cancelados",              "cancelados")
         self._build_section("Pedidos atrasados",               "atrasados")
 
@@ -664,7 +687,7 @@ class OrderCenterView(QWidget):
                 theme.PRIMARY,
             ),
             "faturados": (
-                "Pedidos faturados com consulta rápida do PDF e histórico da operação.",
+                "Pedidos finalizados com consulta rápida do PDF e histórico da operação.",
                 theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
             ),
             "cancelados": (
@@ -759,19 +782,19 @@ class OrderCenterView(QWidget):
 
     def _create_table_for_section(self, key: str) -> QTableWidget:
         headers_by_section = {
-            "aguardando_recebimento": ["PED", "CLIENTE", "VENDEDOR", "ENTREGA", "AGUARDANDO"],
-            "em_producao": ["PED", "CLIENTE", "VENDEDOR", "RECEBIDO EM", "DESTINO"],
-            "faturados": ["PED", "CLIENTE", "FATURADO EM", "FINALIZADO EM", "DESTINO"],
-            "cancelados": ["PED", "CLIENTE", "VENDEDOR", "CANCELADO EM", "MOTIVO"],
-            "atrasados": ["PED", "CLIENTE", "ENTREGA", "ATRASO", "STATUS"],
+            "aguardando_recebimento": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "DATA ENVIO PARA PRODUÇÃO", "PRAZO", "AGUARDANDO RECEBIMENTO"],
+            "em_producao": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "RECEBIDO EM", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "PRAZO"],
+            "faturados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "FATURADO EM", "FINALIZADO EM", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "ATENDEU AO PRAZO"],
+            "cancelados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "CANCELADO EM", "MOTIVO DE CANCELAMENTO"],
+            "atrasados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "PRAZO ENTREGA", "ATRASO", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "STATUS"],
         }
 
         stretch_columns = {
             "aguardando_recebimento": {1, 2},
-            "em_producao": {1, 2},
-            "faturados": {1},
-            "cancelados": {1, 4},
-            "atrasados": {1},
+            "em_producao": {1, 2, 7},
+            "faturados": {1, 2, 8},
+            "cancelados": {1, 2, 5},
+            "atrasados": {1, 2, 8},
         }
 
         headers = headers_by_section[key]
@@ -799,8 +822,8 @@ class OrderCenterView(QWidget):
         header.setMinimumHeight(max(34, int(40 * s)))
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         if key == "atrasados":
-            header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
-            table.setColumnWidth(4, max(210, int(240 * s)))
+            header.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
+            table.setColumnWidth(9, max(180, int(210 * s)))
             table.verticalHeader().setDefaultSectionSize(max(36, int(42 * s)))
 
         table.setSortingEnabled(True)
@@ -919,65 +942,129 @@ class OrderCenterView(QWidget):
                 ped_sort = int(ped_raw)
             except (TypeError, ValueError):
                 ped_sort = 0
+            try:
+                weight_sort = float(row_data.get("weight") or 0.0)
+            except (TypeError, ValueError):
+                weight_sort = 0.0
+
+            operator_display = ", ".join(
+                str(name).strip()
+                for name in (row_data.get("operator_names") or [])
+                if str(name).strip()
+            ) or "-"
 
             if key == "aguardando_recebimento":
                 values = [
                     str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
                     str(row_data.get("vendor_name") or "-"),
+                    _format_weight(row_data.get("weight")),
+                    _format_datetime(row_data.get("sent_to_production_at")),
                     _format_date(row_data.get("delivery_date")),
-                    _format_waiting_minutes(row_data.get("waiting_minutes")),
+                    _format_waiting_label(row_data.get("waiting_minutes")),
                 ]
-                sort_keys = [ped_sort, None, None,
-                             str(row_data.get("delivery_date") or ""),
-                             row_data.get("waiting_minutes") or 0]
+                sort_keys = [
+                    ped_sort,
+                    None,
+                    None,
+                    weight_sort,
+                    str(row_data.get("sent_to_production_at") or ""),
+                    str(row_data.get("delivery_date") or ""),
+                    row_data.get("waiting_minutes") or 0,
+                ]
             elif key == "em_producao":
                 values = [
                     str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
                     str(row_data.get("vendor_name") or "-"),
+                    _format_weight(row_data.get("weight")),
                     _format_datetime(row_data.get("received_at")),
                     str(row_data.get("destination") or "-"),
+                    str(row_data.get("machine_name") or "-"),
+                    operator_display,
+                    _format_date(row_data.get("delivery_date")),
                 ]
-                sort_keys = [ped_sort, None, None,
-                             str(row_data.get("received_at") or ""), None]
+                sort_keys = [
+                    ped_sort,
+                    None,
+                    None,
+                    weight_sort,
+                    str(row_data.get("received_at") or ""),
+                    None,
+                    None,
+                    None,
+                    str(row_data.get("delivery_date") or ""),
+                ]
             elif key == "faturados":
                 values = [
                     str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
+                    str(row_data.get("vendor_name") or "-"),
+                    _format_weight(row_data.get("weight")),
                     _format_datetime(row_data.get("invoiced_at")),
                     _format_datetime(row_data.get("finished_at")),
                     str(row_data.get("destination") or "-"),
+                    str(row_data.get("machine_name") or "-"),
+                    operator_display,
+                    _format_deadline_met(row_data.get("deadline_met")),
                 ]
-                sort_keys = [ped_sort, None,
-                             str(row_data.get("invoiced_at") or ""),
-                             str(row_data.get("finished_at") or ""),
-                             None]
+                sort_keys = [
+                    ped_sort,
+                    None,
+                    None,
+                    weight_sort,
+                    str(row_data.get("invoiced_at") or ""),
+                    str(row_data.get("finished_at") or ""),
+                    None,
+                    None,
+                    None,
+                    -1 if row_data.get("deadline_met") is None else int(bool(row_data.get("deadline_met"))),
+                ]
             elif key == "cancelados":
                 values = [
                     str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
                     str(row_data.get("vendor_name") or "-"),
+                    _format_weight(row_data.get("weight")),
                     _format_datetime(row_data.get("canceled_at")),
                     str(row_data.get("cancel_reason") or "-"),
                 ]
-                sort_keys = [ped_sort, None, None,
-                             str(row_data.get("canceled_at") or ""), None]
+                sort_keys = [
+                    ped_sort,
+                    None,
+                    None,
+                    weight_sort,
+                    str(row_data.get("canceled_at") or ""),
+                    None,
+                ]
             else:  # atrasados
                 values = [
                     str(ped_raw or "-"),
                     str(row_data.get("client_name") or "-"),
+                    str(row_data.get("vendor_name") or "-"),
+                    _format_weight(row_data.get("weight")),
                     _format_date(row_data.get("delivery_date")),
                     f"{row_data.get('delay_days') or 0} dia(s)",
+                    str(row_data.get("destination") or "-"),
+                    str(row_data.get("machine_name") or "-"),
+                    operator_display,
                     str(row_data.get("status") or "-"),
                 ]
-                sort_keys = [ped_sort, None,
-                             str(row_data.get("delivery_date") or ""),
-                             row_data.get("delay_days") or 0,
-                             None]
+                sort_keys = [
+                    ped_sort,
+                    None,
+                    None,
+                    weight_sort,
+                    str(row_data.get("delivery_date") or ""),
+                    row_data.get("delay_days") or 0,
+                    None,
+                    None,
+                    None,
+                    None,
+                ]
 
             for col, value in enumerate(values):
-                if key == "atrasados" and col == 4:
+                if key == "atrasados" and col == 9:
                     status = str(row_data.get("status") or "")
                     badge = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)

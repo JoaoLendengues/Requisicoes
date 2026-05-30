@@ -135,6 +135,17 @@ def _to_local_datetime(value: object) -> datetime | None:
     return parsed.astimezone(_LOCAL_TIMEZONE)
 
 
+def _did_finish_on_time(finished_at: object, delivery_date: date | None) -> bool | None:
+    if delivery_date is None:
+        return None
+
+    finished_local = _to_local_datetime(finished_at)
+    if finished_local is None:
+        return None
+
+    return finished_local.date() <= delivery_date
+
+
 def _normalize_machine_dashboard_period(value: str) -> str:
     key = str(value or "").strip().casefold() or "30d"
     if key not in _MACHINE_DASHBOARD_PERIODS:
@@ -1070,6 +1081,11 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
 
     for req in reqs:
         destination = _current_production_destination(req) or None
+        machine_name = _history_production_machine(req) or None
+        operator_names = _history_production_operator_names(req)
+        weight_value = float(req.weight or 0.0)
+        sent_event = _latest_production_event(req, _PROD_SEND)
+        sent_to_production_at = sent_event["changed_at"] if sent_event else None
         events = _production_events(req)
         latest_event = events[-1] if events else None
         legacy_production_canceled = (
@@ -1079,12 +1095,11 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         )
 
         if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
-            sent_event = _latest_production_event(req, _PROD_SEND)
             waiting_minutes = None
-            if sent_event and sent_event["changed_at"]:
+            if sent_to_production_at:
                 waiting_minutes = max(
                     0,
-                    int((now - sent_event["changed_at"]).total_seconds() // 60),
+                    int((now - sent_to_production_at).total_seconds() // 60),
                 )
             waiting_rows.append(
                 OrderCenterItemResponse(
@@ -1092,11 +1107,13 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     ped_number=req.ped_number,
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
+                    weight=weight_value,
                     status=req.status,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
                     destination=destination,
                     waiting_minutes=waiting_minutes,
+                    sent_to_production_at=sent_to_production_at,
                 )
             )
 
@@ -1104,24 +1121,22 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
             RequisitionStatus.AGUARDANDO_NA_FILA,
             RequisitionStatus.EM_PRODUCAO,
         ):
-            received_event = _latest_production_event(
-                req,
-                _PROD_STARTED,
-                _PROD_RECEIVED,
-                _PROD_QUEUED,
-                _PROD_RETURNED_QUEUE,
-            )
+            started_event = _latest_production_event(req, _PROD_STARTED)
+            received_event = started_event or _latest_production_event(req, _PROD_RECEIVED)
             production_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
                     ped_number=req.ped_number,
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
+                    weight=weight_value,
                     status=req.status,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
                     destination=destination,
                     received_at=received_event["changed_at"] if received_event else None,
+                    machine_name=machine_name,
+                    operator_names=operator_names,
                 )
             )
 
@@ -1129,27 +1144,37 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         if latest_finished:
             production_durations.append(latest_finished["production_time_seconds"])
         if req.status in (RequisitionStatus.AGUARDANDO_FATURAMENTO, RequisitionStatus.FATURADO) and latest_finished:
-            sent_event = _latest_production_event(req, _PROD_SEND)
             invoiced_at = (
-                (sent_event or {}).get("changed_at")
-                or _latest_status_changed_at(req, RequisitionStatus.FATURADO)
+                _latest_status_changed_at(req, RequisitionStatus.FATURADO)
                 or _latest_status_changed_at(req, RequisitionStatus.AGUARDANDO_FATURAMENTO)
                 or latest_finished["finished_at"]
+                or sent_to_production_at
             )
+            cycle_machine_name = _normalize_machine_name(latest_finished.get("machine")) or machine_name
+            cycle_operator_names = [
+                str(name).strip()
+                for name in (latest_finished.get("operators") or operator_names)
+                if str(name).strip()
+            ]
             billed_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
                     ped_number=req.ped_number,
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
+                    weight=weight_value,
                     status=RequisitionStatus.FATURADO.value,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
                     destination=latest_finished["target"] or destination,
+                    sent_to_production_at=sent_to_production_at,
                     received_at=latest_finished["received_at"],
                     finished_at=latest_finished["finished_at"],
                     invoiced_at=invoiced_at,
+                    machine_name=cycle_machine_name,
+                    operator_names=cycle_operator_names,
                     production_time_seconds=latest_finished["production_time_seconds"],
+                    deadline_met=_did_finish_on_time(latest_finished["finished_at"], req.delivery_date),
                 )
             )
 
@@ -1163,6 +1188,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     ped_number=req.ped_number,
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
+                    weight=weight_value,
                     status=RequisitionStatus.CANCELADA.value,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
@@ -1179,10 +1205,13 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     ped_number=req.ped_number,
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
+                    weight=weight_value,
                     status=req.status,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
                     destination=destination,
+                    machine_name=machine_name,
+                    operator_names=operator_names,
                     delay_days=max(0, (today - req.delivery_date).days),
                 )
             )

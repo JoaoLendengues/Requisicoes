@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class OrderCenterStatsResponse(BaseModel):
@@ -19,18 +19,23 @@ class OrderCenterItemResponse(BaseModel):
     ped_number: str
     client_name: Optional[str] = None
     vendor_name: Optional[str] = None
+    weight: Optional[float] = None
     status: str
     emission_date: Optional[datetime] = None
     delivery_date: Optional[date] = None
     destination: Optional[str] = None
     waiting_minutes: Optional[int] = None
+    sent_to_production_at: Optional[datetime] = None
     received_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     invoiced_at: Optional[datetime] = None
     canceled_at: Optional[datetime] = None
     cancel_reason: Optional[str] = None
+    machine_name: Optional[str] = None
+    operator_names: list[str] = Field(default_factory=list)
     delay_days: Optional[int] = None
     production_time_seconds: Optional[int] = None
+    deadline_met: Optional[bool] = None
 
 
 class OrderCenterResponse(BaseModel):
