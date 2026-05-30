@@ -31,6 +31,18 @@ FONT_SIZE_STEPS: list[tuple[str, float]] = [
 ]
 FONT_SIZE_FACTOR: dict[str, float] = {label: f for label, f in FONT_SIZE_STEPS}
 
+# ── Passos de tamanho dos pop-ups / painel de notificacao ─────────────────────
+# "Normal" (1.0) reproduz exatamente o tamanho atual.
+NOTIFICATION_SIZE_STEPS: list[tuple[str, float]] = [
+    ("Pequeno",      0.85),
+    ("Normal",       1.00),
+    ("Grande",       1.20),
+    ("Muito Grande", 1.40),
+]
+NOTIFICATION_SIZE_FACTOR: dict[str, float] = {
+    label: f for label, f in NOTIFICATION_SIZE_STEPS
+}
+
 
 def _ratio_to_scale(ratio: float) -> float:
     """Mapeia ratio de resolução (vs 1920×1080) para o fator de escala discreto.
@@ -87,6 +99,7 @@ class ResolutionManager:
         self._auto_scale   = self._calc_auto_scale()
         self._user_scale      = self._load_setting("font_scale", "100%")
         self._font_size_label = self._load_setting("font_size", "Normal")
+        self._notification_size_label = self._load_setting("notification_size", "Normal")
         self._server_url      = self._load_setting("server_url") or "http://10.1.1.151:5000"
         self._maximized       = self._load_setting("maximized", True)
         self._dark_mode       = bool(self._load_setting("dark_mode", False))
@@ -185,6 +198,17 @@ class ResolutionManager:
         return FONT_SIZE_FACTOR.get(self.font_size_label, 1.0)
 
     @property
+    def notification_size_label(self) -> str:
+        """Label do tamanho dos pop-ups de notificacao ('Pequeno'..'Muito Grande')."""
+        lbl = getattr(self, "_notification_size_label", "Normal")
+        return lbl if lbl in NOTIFICATION_SIZE_FACTOR else "Normal"
+
+    @property
+    def notification_factor(self) -> float:
+        """Multiplicador de tamanho dos pop-ups/painel de notificacao (0.85 – 1.40)."""
+        return NOTIFICATION_SIZE_FACTOR.get(self.notification_size_label, 1.0)
+
+    @property
     def effective_scale(self) -> float:
         """Escala efetiva = escala de interface × fator de fonte."""
         return round(self.scale * self.font_factor, 4)
@@ -222,6 +246,8 @@ class ResolutionManager:
                 self._user_scale = v
             if k == "font_size":
                 self._font_size_label = v
+            if k == "notification_size":
+                self._notification_size_label = v
             if k == "server_url":
                 self._server_url = v
             if k == "maximized":
