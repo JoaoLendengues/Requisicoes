@@ -17,6 +17,21 @@ arquivos/
 *.pdf
 *.xlsm
 
+# Build / empacotamento (PyInstaller + Inno Setup)
+build/
+dist/
+installer_output/
+*.spec.bak
+
+# Preferências locais do cliente (tema, escala, etc.) — não versionar
+client/settings.json
+
+# Campanhas de fundo da tela de login (imagens + config são dados do usuário)
+client/assets/login_backgrounds/
+
+# Claude Code (configurações locais do desenvolvedor)
+.claude/
+
 # IDE
 .vscode/settings.json
 .idea/

@@ -1,0 +1,163 @@
+﻿name: Build & Release
+
+# Dispara automaticamente quando uma tag v1.0.0 é publicada,
+# ou manualmente pelo GitHub Actions (útil para testes de build).
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão de teste (ex: 1.0.0-test)'
+        required: true
+        default: '1.0.0-test'
+      publish_release:
+        description: 'Publicar como Release no GitHub?'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # necessário para criar a release no GitHub
+
+jobs:
+  build:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+    steps:
+      # ── 1. Checkout do código ────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Python 3.11 ──────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # ── 3. Extrair versão (da tag ou do input manual) ───────────────────────
+      - name: Extrair versão
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}".TrimStart('v')
+          }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Versao detectada: $version"
+
+      # ── 4. Instalar dependências do cliente ──────────────────────────────────
+      # Instalamos apenas o que o cliente PyQt usa.
+      # O requirements.txt do projeto inclui deps do servidor (psycopg2, FastAPI,
+      # etc.) que não precisam ser empacotadas no executável.
+      - name: Instalar dependências do cliente
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install `
+            PySide6==6.11.1 `
+            requests `
+            httpx `
+            reportlab `
+            "qrcode[pil]" `
+            Pillow `
+            odfpy `
+            openpyxl `
+            pandas `
+            python-dotenv `
+            psutil `
+            pyinstaller
+
+      # ── 5. Injetar versão no version.py do cliente ──────────────────────────
+      - name: Atualizar version.py
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.VERSION }}"
+          Set-Content -Path "client/version.py" -Value "CURRENT_VERSION = `"$v`"" -Encoding utf8
+          Write-Host "client/version.py atualizado para $v"
+
+      # ── 6. Build com PyInstaller (app principal) ─────────────────────────────
+
+      # -- 5b. Criar settings.json padrao (nao esta no repositorio -- .gitignore) --
+      - name: Criar settings.json padrao
+        shell: pwsh
+        run: |
+          $defaults = @{
+            dark_mode               = $false
+            font_size               = "Normal"
+            font_scale              = "100%"
+            pending_invoice_alert_days = 1
+            bg_folder               = ""
+          } | ConvertTo-Json
+          Set-Content -Path "client/settings.json" -Value $defaults -Encoding utf8
+          Write-Host "client/settings.json criado com valores padrao"
+      - name: Build com PyInstaller
+        shell: pwsh
+        run: |
+          pyinstaller requisicoes.spec --noconfirm
+          Write-Host "Build concluido. Conteudo de dist/requisicoes:"
+          Get-ChildItem dist/requisicoes | Select-Object Name, Length
+
+      # ── 6b. Build do update_helper (executável standalone) ───────────────────
+      - name: Build update_helper
+        shell: pwsh
+        run: |
+          pyinstaller update_helper.spec --noconfirm
+          Write-Host "update_helper gerado:"
+          Get-ChildItem dist/ | Select-Object Name, Length
+          # Modo onefile: saída em dist\update_helper.exe (sem subpasta)
+          Copy-Item "dist\update_helper.exe" "dist\requisicoes\update_helper.exe" -Force
+          Write-Host "update_helper.exe copiado para dist/requisicoes/"
+
+      # ── 7. Build do instalador com Inno Setup ────────────────────────────────
+      - name: Build instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc    = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $version = "${{ steps.version.outputs.VERSION }}"
+          & $iscc "/DMyAppVersion=$version" "/DBuildRoot=dist\requisicoes" installer_script.iss
+          Write-Host "Instalador gerado em installer_output/"
+          Get-ChildItem installer_output/
+
+      # ── 8. Criar pacote portátil (ZIP) ───────────────────────────────────────
+      - name: Criar ZIP portátil
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $zipName = "Requisicoes_Portable_v${version}.zip"
+          Compress-Archive -Path "dist\requisicoes\*" -DestinationPath "dist\$zipName"
+          Write-Host "ZIP criado: dist/$zipName"
+
+      # ── 9. Publicar no GitHub Releases ───────────────────────────────────────
+      # Em execução manual, só publica se "publish_release" for true.
+      # Em execução por tag, publica sempre.
+      - name: Publicar no GitHub Releases
+        if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Requisições App v${{ steps.version.outputs.VERSION }}"
+          body_path: release_notes.md
+          files: |
+            installer_output/Requisicoes_Setup_v${{ steps.version.outputs.VERSION }}.exe
+            dist/Requisicoes_Portable_v${{ steps.version.outputs.VERSION }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 10. Resumo do build (sempre exibido) ─────────────────────────────────
+      - name: Resumo do build
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          Write-Host "=== BUILD CONCLUIDO ==="
+          Write-Host "Versao : $version"
+          Write-Host "Instalador:"
+          Get-ChildItem installer_output/ -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+          Write-Host "Portatil:"
+          Get-ChildItem dist/*.zip       -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+

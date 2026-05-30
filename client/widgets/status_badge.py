@@ -12,12 +12,12 @@ class StatusBadge(QLabel):
 
     def set_status(self, status: str):
         self._status = status
-        color = STATUS_COLORS.get(status, "#6B7280")
+        color = STATUS_COLORS.get(status, "#6B778C")
         label = STATUS_LABELS.get(status, status.upper())
         fs = max(8, int(10 * self.scale))
         self.setText(label.upper())
         self.setStyleSheet(
-            f"background:{color}; color:#fff; border-radius:5px;"
-            f"padding:4px 12px; font-size:{fs}pt; font-weight:bold;"
+            f"background:{color}; color:#fff; border-radius:8px;"
+            f"padding:4px 12px; font-size:{fs}pt; font-weight:600;"
         )
         self.setFixedHeight(max(24, int(28 * self.scale)))

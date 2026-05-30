@@ -6,6 +6,21 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class FirstAccessRequest(BaseModel):
+    code: str
+    password: str
+
+
+class FirstAccessStatusResponse(BaseModel):
+    code: str
+    first_access_required: bool
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -13,3 +28,4 @@ class Token(BaseModel):
     user_name: str
     user_code: str
     role: str
+    whatsapp: str | None = None

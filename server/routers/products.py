@@ -13,6 +13,7 @@ from ..schemas.product import (
     ProductResponse,
     ProductUpdate,
 )
+from ..services.text_normalizer import normalize_upper_required
 
 router = APIRouter(prefix="/products", tags=["Produtos"])
 
@@ -28,7 +29,7 @@ def list_products(
     q = db.query(Product).filter(Product.is_active == True)
 
     if code:
-        q = q.filter(Product.code == code.strip())
+        q = q.filter(Product.code == normalize_upper_required(code))
     elif search:
         search_term = f"%{search.strip()}%"
         q = q.filter(or_(
@@ -78,7 +79,7 @@ def update_product(
     return product
 
 
-@router.post("/bulk-import", response_model=ProductBulkImportResult)
+@router.post("/import/bulk", response_model=ProductBulkImportResult)
 def bulk_import_products(
     items: List[ProductBulkItem],
     db: Session = Depends(get_db),

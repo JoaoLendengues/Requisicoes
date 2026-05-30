@@ -2,6 +2,7 @@ from pydantic import BaseModel, field_validator
 from datetime import datetime, date
 from typing import Optional, List
 from ..models.requisition import RequisitionStatus
+from ..services.text_normalizer import normalize_upper_optional, normalize_upper_required
 
 
 def _validate_ped_number(value: Optional[str]) -> Optional[str]:
@@ -30,6 +31,25 @@ class RequisitionItemCreate(BaseModel):
     weight: Optional[float] = None
     draw_ref: Optional[str] = None
 
+    @field_validator("position", mode="before")
+    @classmethod
+    def normalize_required_text(cls, value: object) -> str:
+        return normalize_upper_required(value)
+
+    @field_validator(
+        "product_code",
+        "product_name",
+        "comp",
+        "desenv",
+        "chapa",
+        "tipo",
+        "draw_ref",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_text(cls, value: object) -> str | None:
+        return normalize_upper_optional(value)
+
 
 class RequisitionItemResponse(RequisitionItemCreate):
     id: int
@@ -57,6 +77,11 @@ class RequisitionCreate(BaseModel):
     def validate_ped_number(cls, value: str) -> str:
         return _validate_ped_number(value) or ""
 
+    @field_validator("os_number", "obra", "delivery_address", "obs", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: object) -> str | None:
+        return normalize_upper_optional(value)
+
 
 class RequisitionUpdate(BaseModel):
     ped_number: Optional[str] = None
@@ -77,10 +102,32 @@ class RequisitionUpdate(BaseModel):
     def validate_ped_number(cls, value: Optional[str]) -> Optional[str]:
         return _validate_ped_number(value)
 
+    @field_validator("os_number", "obra", "delivery_address", "obs", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: object) -> str | None:
+        return normalize_upper_optional(value)
+
 
 class StatusUpdate(BaseModel):
     status: RequisitionStatus
     note: Optional[str] = None
+
+
+class DeliveryDateUpdate(BaseModel):
+    delivery_date: date
+    reason: str
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: object) -> str:
+        return normalize_upper_required(value)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        if len(value.strip()) < 5:
+            raise ValueError("Informe um motivo com pelo menos 5 caracteres")
+        return value
 
 
 class CanvasUpdate(BaseModel):
@@ -113,6 +160,7 @@ class RequisitionResponse(BaseModel):
     os_number: Optional[str]
     vendor_id: int
     vendor_name: Optional[str] = None
+    vendor_code: Optional[str] = None
     client_id: int
     client_code: Optional[str] = None
     client_name: Optional[str] = None
@@ -125,6 +173,13 @@ class RequisitionResponse(BaseModel):
     weight: float
     obs: Optional[str] = None
     status: RequisitionStatus
+    production_destination: Optional[str] = None
+    production_destination_display: Optional[str] = None
+    production_machine: Optional[str] = None
+    production_machine_display: Optional[str] = None
+    production_status: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    invoiced: bool = False
     finalized_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime

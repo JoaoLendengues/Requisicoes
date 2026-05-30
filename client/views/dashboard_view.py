@@ -1,195 +1,902 @@
-"""Dashboard — acesso restrito a gerente e admin."""
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QFrame, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QGraphicsDropShadowEffect,
-)
-from PySide6.QtCore import Qt, QThread, QObject, Signal
-from PySide6.QtGui import QColor
+"""Painel gerencial com indicadores operacionais e alertas."""
 
-from ..core import theme
-from ..core.resolution import res
+from pathlib import Path
+
+from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtGui import QColor, QPalette, QPixmap
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
 from ..api import client as api
+from ..core import theme
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..core.datetime_utils import (
+    format_date as _format_date,
+    format_datetime as _format_datetime,
+    format_header_date as _format_header_date,
+    local_now,
+    parse_datetime as _parse_datetime,
+)
+
+
+_ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "dashboard_icons"
+_METRIC_ICON_FILES = {
+    "pedidos_em_producao": "pedidos_em_producao.png",
+    "pedidos_em_atraso": "pedidos_atrasados.png",
+    "pedidos_finalizados_hoje": "pedidos_concluidos.png",
+    "producao_pinheiro_industria": "producao_pinheiro_industria.png",
+    "producao_ar": "producao_ar.png",
+    "requisicoes_feitas_no_dia": "requisicoes_do_dia.png",
+    "pedidos_sem_confirmacao_1h": "aguardando_recebimento.png",
+    "tempo_medio_finalizacao_segundos": "tempo_medio_producao.png",
+}
+
+
+def _rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
+
+
+def _tint(color: str, alpha: int = 40) -> str:
+    """Cor sólida equivalente a rgba(color, alpha) sobre fundo branco."""
+    c = QColor(color)
+    a = alpha / 255.0
+    r = round(c.red() * a + 255 * (1 - a))
+    g = round(c.green() * a + 255 * (1 - a))
+    b = round(c.blue() * a + 255 * (1 - a))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
+    shadow = QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur)
+    shadow.setOffset(0, y_offset)
+    color = QColor(theme.TEXT_DARK)
+    color.setAlpha(alpha)
+    shadow.setColor(color)
+    widget.setGraphicsEffect(shadow)
+
+
+def _make_shadow_card(
+    scale: float,
+    background: str,
+    border_color: str | None = None,
+    radius: int = 18,
+    hover_background: str | None = None,
+) -> QFrame:
+    card = QFrame()
+    card.setObjectName("dashboardCard")
+    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
+    card.setStyleSheet(f"QFrame#dashboardCard {{ border-radius:{radius}px; }}")
+    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
+    return card
+
+
+def _metric_icon_path(key: str) -> Path | None:
+    filename = _METRIC_ICON_FILES.get(key)
+    if not filename:
+        return None
+    path = _ICON_DIR / filename
+    return path if path.exists() else None
+
+
+def _flat_secondary_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
+        f"QPushButton:pressed {{ background:#E7EEF7; }}"
+        f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
+    )
+
+
+def _format_duration(seconds: object) -> str:
+    if seconds in (None, "", "-"):
+        return "-"
+    try:
+        total_seconds = max(0, int(seconds))
+    except (TypeError, ValueError):
+        return "-"
+
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+
+    minutes, _ = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    return " ".join(parts[:2]) or "0m"
+
+
+def _format_waiting_minutes(minutes: object) -> str:
+    try:
+        total_minutes = max(0, int(minutes))
+    except (TypeError, ValueError):
+        return "-"
+
+    if total_minutes < 60:
+        return f"{total_minutes} min"
+
+    hours, remaining_minutes = divmod(total_minutes, 60)
+    if hours < 24:
+        return f"{hours}h {remaining_minutes:02d}m"
+
+    days, remaining_hours = divmod(hours, 24)
+    return f"{days}d {remaining_hours:02d}h"
+
+
+def _machine_status_label(value: object) -> str:
+    status = str(value or "").strip().casefold()
+    if status == "funcionando":
+        return "Funcionando"
+    if status == "manutencao":
+        return "Manutenção"
+    return str(value or "-") or "-"
+
+
+def _machine_status_color(value: object) -> str:
+    status = str(value or "").strip().casefold()
+    if status == "funcionando":
+        return theme.SUCCESS
+    if status == "manutencao":
+        return theme.WARNING
+    return theme.BORDER_COLOR
 
 
 class DashWorker(QObject):
-    result   = Signal(list)
-    error    = Signal(str)
+    result = Signal(object)
+    error = Signal(str)
     finished = Signal()
 
     def run(self):
         try:
-            self.result.emit(api.list_requisitions(limit=200))
-        except Exception as e:
-            self.error.emit(str(e))
+            self.result.emit(api.get_management_dashboard())
+        except api.APIError as exc:
+            self.error.emit(exc.detail)
+        except Exception as exc:
+            self.error.emit(str(exc))
         finally:
             self.finished.emit()
 
 
-def _card(color: str, title: str, value: str, scale: float) -> QFrame:
-    card = QFrame()
-    shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(12)
-    shadow.setOffset(0, 3)
-    shadow.setColor(QColor(0, 0, 0, 25))
-    card.setGraphicsEffect(shadow)
-    card.setStyleSheet(
-        f"background:{color}; border-radius:10px;"
-    )
-    layout = QVBoxLayout(card)
-    layout.setContentsMargins(max(14,int(18*scale)), max(12,int(16*scale)),
-                               max(14,int(18*scale)), max(12,int(16*scale)))
-
-    lbl_title = QLabel(title.upper())
-    lbl_title.setStyleSheet(
-        f"color:rgba(255,255,255,0.85); font-size:{max(8,int(9*scale))}pt;"
-        f"font-weight:bold; border:none; background:transparent;"
-    )
-    lbl_val = QLabel(value)
-    lbl_val.setStyleSheet(
-        f"color:#fff; font-size:{max(20,int(26*scale))}pt;"
-        f"font-weight:bold; border:none; background:transparent;"
-    )
-    layout.addWidget(lbl_title)
-    layout.addWidget(lbl_val)
-    return card
-
-
 class DashboardView(QWidget):
+    guide_requested = Signal()
+
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
-        self._threads: list = []
+        self._threads: list[tuple[QThread, QObject]] = []
+        self._metric_labels: dict[str, QLabel] = {}
         self._setup_ui()
         self.refresh()
 
     def _setup_ui(self):
         s = self.scale
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(max(12,int(16*s)), max(12,int(16*s)),
-                                   max(12,int(16*s)), max(12,int(16*s)))
-        layout.setSpacing(max(12,int(16*s)))
+        page_bg = theme.CONTENT_BG
+        self.setObjectName("dashboardView")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(f"QWidget#dashboardView {{ background:{page_bg}; }}")
+        root = QVBoxLayout(self)
+        root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
+                                max(18, int(24 * s)), max(18, int(24 * s)))
+        root.setSpacing(max(14, int(18 * s)))
 
-        title = QLabel("📊 DASHBOARD")
-        title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(14,int(17*s))}pt; font-weight:bold;"
+        header = QHBoxLayout()
+        header.setSpacing(max(12, int(16 * s)))
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(max(4, int(5 * s)))
+        title = QLabel("Painel de Produção")
+        title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
+        subtitle = QLabel(
+            "Visão executiva da operação industrial com indicadores, alertas e ritmo de produção."
         )
-        layout.addWidget(title)
+        subtitle.setProperty("muted", "1")
+        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
+        subtitle.setWordWrap(True)
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        header.addLayout(title_col, 1)
 
-        # Cards de contagem
-        self.cards_layout = QGridLayout()
-        self.cards_layout.setSpacing(max(10,int(12*s)))
-        layout.addLayout(self.cards_layout)
+        header_right = QHBoxLayout()
+        header_right.setSpacing(max(10, int(12 * s)))
 
-        self._stat_cards: dict[str, QLabel] = {}
+        info_card = _make_shadow_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(16, int(18 * s)),
+            hover_background=theme.CARD_BG,
+        )
+        info_layout = QVBoxLayout(info_card)
+        info_layout.setContentsMargins(max(14, int(16 * s)), max(10, int(12 * s)),
+                                       max(14, int(16 * s)), max(10, int(12 * s)))
+        info_layout.setSpacing(max(2, int(3 * s)))
+
+        date_hint = QLabel("DATA ATUAL")
+        date_hint.setProperty("muted", "1")
+        date_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;")
+        self.date_label = QLabel(_format_header_date())
+        self.date_label.setStyleSheet(f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;")
+        self.updated_label = QLabel("Atualizando dados...")
+        self.updated_label.setProperty("muted", "1")
+        self.updated_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
+        self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        info_layout.addWidget(date_hint)
+        info_layout.addWidget(self.date_label)
+        info_layout.addWidget(self.updated_label)
+
+        self.refresh_btn = QPushButton("ATUALIZAR")
+        self.refresh_btn.setFixedHeight(max(38, int(44 * s)))
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.refresh_btn.clicked.connect(self.refresh)
+        header_right.addWidget(info_card)
+        header_right.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        self.btn_guide.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+        )
+        self.btn_guide.clicked.connect(self.guide_requested)
+        header_right.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+
+        header.addLayout(header_right)
+
+        root.addLayout(header)
+
+        self.error_label = QLabel("")
+        self.error_label.hide()
+        self.error_label.setWordWrap(True)
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )
+        root.addWidget(self.error_label)
+
+        self._page_scroll = SmoothScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{page_bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{page_bg}; border:none;")
+        root.addWidget(self._page_scroll, 1)
+
+        self._page_content = QWidget()
+        self._page_content.setObjectName("dashboardContent")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(f"QWidget#dashboardContent {{ background:{page_bg}; }}")
+        self._page_scroll.setWidget(self._page_content)
+
+        layout = QVBoxLayout(self._page_content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(max(16, int(18 * s)))
+
+        metrics = QGridLayout()
+        metrics.setHorizontalSpacing(max(12, int(16 * s)))
+        metrics.setVerticalSpacing(max(12, int(16 * s)))
+        for column in range(4):
+            metrics.setColumnStretch(column, 1)
+        layout.addLayout(metrics)
+
         card_defs = [
-            ("total",         theme.PRIMARY,                       "Total de Requisições"),
-            ("em_andamento",  theme.STATUS_COLORS["em_andamento"], "Em Andamento"),
-            ("aguardando_recebimento", theme.STATUS_COLORS["aguardando_recebimento"], "Aguardando Recebimento"),
-            ("em_producao",   theme.STATUS_COLORS["em_producao"],  "Em Produção"),
-            ("cancelada",     theme.STATUS_COLORS["cancelada"],    "Canceladas"),
+            ("pedidos_em_producao", theme.PRIMARY, "Pedidos em Produção", "Requisições recebidas pela produção."),
+            ("pedidos_em_atraso", theme.DANGER, "Pedidos em Atraso", "Pedidos abertos com prazo vencido."),
+            ("pedidos_finalizados_hoje", theme.SUCCESS, "Finalizados Hoje", "Finalizações registradas no dia."),
+            ("requisicoes_feitas_no_dia", theme.PRIMARY_HOVER, "Requisições do Dia", "Novas requisições criadas hoje."),
+            ("producao_pinheiro_industria", theme.PRIMARY, "Produção Pinheiro Indústria", "Fila ativa enviada para esse destino."),
+            ("producao_ar", theme.PRIMARY_HOVER, "Produção da A&R", "Fila ativa enviada para esse destino."),
+            ("pedidos_sem_confirmacao_1h", theme.WARNING, "Sem Confirmação", "Aguardando retorno há mais de 1 hora."),
+            ("tempo_medio_finalizacao_segundos", theme.BORDER_COLOR, "Tempo Médio de Finalização", "Média entre recebimento e finalização."),
         ]
 
-        for i, (key, color, label) in enumerate(card_defs):
-            card = QFrame()
-            shadow = QGraphicsDropShadowEffect()
-            shadow.setBlurRadius(12)
-            shadow.setOffset(0, 3)
-            shadow.setColor(QColor(0, 0, 0, 25))
-            card.setGraphicsEffect(shadow)
-            card.setStyleSheet(f"background:{color}; border-radius:10px;")
-            cl = QVBoxLayout(card)
-            cl.setContentsMargins(max(14,int(18*s)), max(12,int(16*s)),
-                                   max(14,int(18*s)), max(12,int(16*s)))
-            lbl_t = QLabel(label.upper())
-            lbl_t.setStyleSheet(
-                f"color:rgba(255,255,255,0.85); font-size:{max(7,int(9*s))}pt;"
-                f"font-weight:bold; border:none; background:transparent;"
+        for index, (key, color, title_text, helper_text) in enumerate(card_defs):
+            row = index // 4
+            col = index % 4
+            metrics.addWidget(
+                self._build_metric_card(color, title_text, helper_text, key),
+                row,
+                col,
             )
-            lbl_v = QLabel("—")
-            lbl_v.setStyleSheet(
-                f"color:#fff; font-size:{max(18,int(24*s))}pt;"
-                f"font-weight:bold; border:none; background:transparent;"
+
+        secondary_row = QHBoxLayout()
+        secondary_row.setSpacing(max(12, int(16 * s)))
+        self.vendors_card = self._build_section_card(
+            "Vendedores com Mais Requisições",
+            "Ranking geral por volume de requisições emitidas.",
+            self._build_top_vendors_table(),
+            theme.PRIMARY,
+        )
+        self.alerts_card = self._build_section_card(
+            "Pedidos sem Confirmação",
+            "Pedidos aguardando retorno da produção por mais de 1 hora.",
+            self._build_alerts_table(),
+            theme.WARNING,
+        )
+        secondary_row.addWidget(self.vendors_card, 1)
+        secondary_row.addWidget(self.alerts_card, 1)
+        layout.addLayout(secondary_row)
+
+        machine_row = QHBoxLayout()
+        machine_row.setSpacing(max(12, int(16 * s)))
+        self.machines_ar_card = self._build_section_card(
+            "MÁQUINAS QUE MAIS OPERAM - A&R",
+            "Ranking das máquinas da A&R por volume de operações finalizadas.",
+            self._build_top_machines_ar_table(),
+            theme.PRIMARY_HOVER,
+        )
+        self.machines_industria_card = self._build_section_card(
+            "MÁQUINAS QUE MAIS OPERAM - INDÚSTRIA",
+            "Ranking das máquinas da Indústria por volume de operações finalizadas.",
+            self._build_top_machines_industria_table(),
+            theme.PRIMARY,
+        )
+        machine_row.addWidget(self.machines_ar_card, 1)
+        machine_row.addWidget(self.machines_industria_card, 1)
+        layout.addLayout(machine_row)
+
+        self.recent_card = self._build_section_card(
+            "Últimas Requisições",
+            "Visão rápida das requisições mais recentes do sistema.",
+            self._build_recent_table(),
+            theme.BORDER_COLOR,
+        )
+        layout.addWidget(self.recent_card)
+        layout.addStretch()
+
+    def _build_metric_card(
+        self,
+        color: str,
+        title: str,
+        helper_text: str,
+        key: str,
+    ) -> QFrame:
+        s = self.scale
+        card = _make_shadow_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(max(16, int(20 * s)), max(15, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(6, int(8 * s)))
+
+        value_label = QLabel("-")
+        value_label.setStyleSheet(
+            f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
+        )
+        value_label.setWordWrap(True)
+
+        title_label = QLabel(title)
+        title_label.setWordWrap(True)
+        title_label.setStyleSheet(
+            f"font-size:{max(9, int(11 * s))}pt; font-weight:700; background:transparent; border:none;"
+        )
+
+        helper_label = QLabel(helper_text)
+        helper_label.setWordWrap(True)
+        helper_label.setProperty("muted", "1")
+        helper_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent; border:none;")
+
+        accent_line = QFrame()
+        accent_line.setFixedHeight(max(4, int(5 * s)))
+        accent_line.setStyleSheet(
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(color, 235)}, stop:0.5 {_rgba(color, 155)}, stop:1 {_rgba(color, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+
+        header_row = QHBoxLayout()
+        header_row.setSpacing(max(10, int(12 * s)))
+        header_row.addWidget(value_label, 1, Qt.AlignmentFlag.AlignTop)
+
+        icon_label = self._build_metric_icon_label(key)
+        if icon_label is not None:
+            header_row.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+
+        layout.addLayout(header_row)
+        layout.addWidget(title_label)
+        layout.addWidget(helper_label)
+        layout.addStretch()
+        layout.addWidget(accent_line)
+
+        self._metric_labels[key] = value_label
+        return card
+
+    def _build_metric_icon_label(self, key: str) -> QLabel | None:
+        icon_path = _metric_icon_path(key)
+        if icon_path is None:
+            return None
+
+        pixmap = QPixmap(str(icon_path))
+        if pixmap.isNull():
+            return None
+
+        size = max(52, int(62 * self.scale))
+        label = QLabel()
+        label.setFixedSize(size, size)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setStyleSheet("background:transparent; border:none;")
+        label.setPixmap(
+            pixmap.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
             )
-            cl.addWidget(lbl_t)
-            cl.addWidget(lbl_v)
-            self._stat_cards[key] = lbl_v
-            self.cards_layout.addWidget(card, 0, i)   # 4 cards numa linha só
-
-        # Tabela de requisições recentes
-        lbl_rec = QLabel("🧾 Requisições Recentes")
-        lbl_rec.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(11,int(13*s))}pt; font-weight:bold;"
         )
-        layout.addWidget(lbl_rec)
+        return label
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["PED", "CLIENTE", "DATA", "STATUS"])
-        self.table.verticalHeader().setVisible(False)
-        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table.setStyleSheet(
-            f"QTableWidget {{ border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-            f"font-size:{max(9,int(10*s))}pt; }}"
-            f"QHeaderView::section {{ background:{theme.TABLE_HEADER_BG}; color:#fff;"
-            f"padding:6px; font-weight:bold; border:none; border-right:1px solid {theme.TABLE_BORDER}; }}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; }}"
+    def _build_section_card(self, title: str, subtitle: str, body: QWidget, accent_color: str) -> QFrame:
+        s = self.scale
+        card = _make_shadow_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
         )
-        layout.addWidget(self.table)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                  max(16, int(20 * s)), max(14, int(18 * s)))
+        layout.setSpacing(max(10, int(12 * s)))
+
+        accent = QFrame()
+        accent.setFixedHeight(max(4, int(5 * s)))
+        accent.setStyleSheet(
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(accent_color, 235)}, stop:0.5 {_rgba(accent_color, 155)}, stop:1 {_rgba(accent_color, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet(
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
+        )
+
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setWordWrap(True)
+        subtitle_label.setProperty("muted", "1")
+        subtitle_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
+
+        layout.addWidget(accent)
+        layout.addWidget(title_label)
+        layout.addWidget(subtitle_label)
+        layout.addWidget(body, 1)
+        return card
+
+    def _create_table(self, headers: list[str], stretch_columns: set[int]) -> QTableWidget:
+        s = self.scale
+        table = QTableWidget(0, len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.setAlternatingRowColors(True)
+        table.setWordWrap(False)
+        table.setFrameShape(QFrame.Shape.NoFrame)
+        table.setShowGrid(False)
+
+        header = table.horizontalHeader()
+        for index in range(len(headers)):
+            mode = (
+                QHeaderView.ResizeMode.Stretch
+                if index in stretch_columns
+                else QHeaderView.ResizeMode.ResizeToContents
+            )
+            header.setSectionResizeMode(index, mode)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.setMinimumHeight(max(34, int(40 * s)))
+        table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
+
+        table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
+            f"  color:{theme.BORDER_COLOR}; border-radius:14px;"
+            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.TEXT_DARK}; }}"
+        )
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        table.setPalette(pal)
+        table.viewport().setAutoFillBackground(True)
+        apply_smooth_scroll(table)
+        return table
+
+    def _build_top_vendors_table(self) -> QTableWidget:
+        self.top_vendors_table = self._create_table(
+            ["#", "VENDEDOR", "REQUISIÇÕES"],
+            {1},
+        )
+        self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
+        return self.top_vendors_table
+
+    def _build_alerts_table(self) -> QTableWidget:
+        self.alerts_table = self._create_table(
+            ["PED", "CLIENTE", "DESTINO", "AGUARDANDO"],
+            {1},
+        )
+        self.alerts_table.setMinimumHeight(max(220, int(250 * self.scale)))
+        return self.alerts_table
+
+    def _build_recent_table(self) -> QTableWidget:
+        self.recent_table = self._create_table(
+            ["PED", "CLIENTE", "VENDEDOR", "EMISSÃO", "STATUS", "DESTINO"],
+            {2, 4},
+        )
+        self.recent_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        return self.recent_table
+
+    def _build_top_machines_ar_table(self) -> QTableWidget:
+        self.top_machines_ar_table = self._create_table(
+            ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
+            {1},
+        )
+        header = self.top_machines_ar_table.horizontalHeader()
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_ar_table.setColumnWidth(5, max(140, int(170 * self.scale)))
+        self.top_machines_ar_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
+        self.top_machines_ar_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        return self.top_machines_ar_table
+
+    def _build_top_machines_industria_table(self) -> QTableWidget:
+        self.top_machines_industria_table = self._create_table(
+            ["#", "MÁQUINA", "OPERAÇÕES", "EM PRODUÇÃO", "TEMPO MÉDIO", "STATUS"],
+            {1},
+        )
+        header = self.top_machines_industria_table.horizontalHeader()
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_industria_table.setColumnWidth(5, max(140, int(170 * self.scale)))
+        self.top_machines_industria_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
+        self.top_machines_industria_table.setMinimumHeight(max(260, int(300 * self.scale)))
+        return self.top_machines_industria_table
 
     def refresh(self):
+        self._set_loading(True)
+        self.error_label.hide()
+
         worker = DashWorker()
         thread = QThread()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.result.connect(self._populate)
+        worker.error.connect(self._show_error)
         worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        thread.finished.connect(lambda: self._set_loading(False))
         thread.start()
         self._threads.append((thread, worker))
 
-    def _populate(self, reqs: list):
-        # Contagens
-        counts: dict[str, int] = {}
-        for r in reqs:
-            s = r.get("status", "")
-            counts[s] = counts.get(s, 0) + 1
+    def _cleanup_thread(self, thread: QThread, worker: QObject):
+        self._threads = [pair for pair in self._threads if pair != (thread, worker)]
 
-        self._stat_cards["total"].setText(str(len(reqs)))
-        for key, lbl in self._stat_cards.items():
-            if key != "total":
-                lbl.setText(str(counts.get(key, 0)))
+    def _set_loading(self, loading: bool):
+        self.refresh_btn.setEnabled(not loading)
+        if loading:
+            self.updated_label.setText("Atualizando dados...")
+            self.date_label.setText(_format_header_date())
 
-        # Tabela — 20 mais recentes
-        self.table.setRowCount(0)
-        for req in reqs[:20]:
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-            client_code = (req.get("client_code") or "").strip()
-            client_name = (req.get("client_name") or "").strip()
-            client_label = client_name or "—"
-            if client_code and client_name:
-                client_label = f"{client_code} - {client_name}"
-            elif client_code:
-                client_label = client_code
+    def _show_error(self, message: str):
+        self.error_label.setText(f"Não foi possível carregar o painel.\n\n{message}")
+        self.error_label.show()
 
-            vals = [
-                req.get("ped_number", ""),
-                client_label,
-                str(req.get("emission_date", ""))[:10],
-                req.get("status", ""),
+    def _populate(self, payload: object):
+        if not isinstance(payload, dict):
+            self._show_error("Resposta inválida do servidor.")
+            return
+
+        stats = payload.get("stats") or {}
+        if not isinstance(stats, dict):
+            stats = {}
+
+        for key, label in self._metric_labels.items():
+            value = stats.get(key)
+            if key == "tempo_medio_finalizacao_segundos":
+                label.setText(_format_duration(value))
+            else:
+                label.setText(str(value if value is not None else 0))
+
+        current = _parse_datetime(payload.get("generated_at")) or local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
+
+        self._fill_top_vendors_table(payload.get("top_vendors") or [])
+        self._fill_alerts_table(payload.get("receipt_alerts") or [])
+        self._fill_top_machines_table(
+            self.top_machines_ar_table,
+            payload.get("top_machines_ar") or [],
+            "Nenhuma máquina da A&R encontrada.",
+        )
+        self._fill_top_machines_table(
+            self.top_machines_industria_table,
+            payload.get("top_machines_industria") or [],
+            "Nenhuma máquina da Indústria encontrada.",
+        )
+        self._fill_recent_table(payload.get("recent_requisitions") or [])
+
+    def _fill_top_vendors_table(self, rows: object):
+        table = self.top_vendors_table
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, "Nenhum vendedor encontrado.")
+            return
+
+        for index, row in enumerate(items, start=1):
+            if not isinstance(row, dict):
+                continue
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(index),
+                str(row.get("vendor_name") or "-"),
+                str(row.get("requisition_count") or 0),
             ]
-            for col, val in enumerate(vals):
-                if col == 3:
-                    lbl = QLabel(theme.STATUS_LABELS.get(val, val))
-                    color = theme.STATUS_COLORS.get(val, "#6B7280")
-                    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    lbl.setStyleSheet(
-                        f"background:{color}; color:#fff; border-radius:4px;"
-                        f"font-weight:bold; padding:2px 6px; font-size:{max(8,int(9*self.scale))}pt;"
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(line, col, item)
+
+    def _fill_alerts_table(self, rows: object):
+        table = self.alerts_table
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, "Nenhum pedido aguardando confirmação há mais de 1 hora.")
+            return
+
+        for row in items:
+            if not isinstance(row, dict):
+                continue
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(row.get("ped_number") or "-"),
+                str(row.get("client_name") or "-"),
+                str(row.get("destination") or "-"),
+                _format_waiting_minutes(row.get("waiting_minutes")),
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(line, col, item)
+
+    def _fill_top_machines_table(
+        self,
+        table: QTableWidget,
+        rows: object,
+        empty_message: str,
+    ):
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, empty_message)
+            return
+
+        for index, row in enumerate(items, start=1):
+            if not isinstance(row, dict):
+                continue
+
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(index),
+                str(row.get("machine_name") or "-"),
+                str(row.get("total_operations") or 0),
+                str(row.get("in_production_count") or 0),
+                _format_duration(row.get("average_seconds")),
+                str(row.get("machine_status") or "-"),
+            ]
+
+            for col, value in enumerate(values):
+                if col == 5:
+                    machine_status = str(row.get("machine_status") or "")
+                    color = _machine_status_color(machine_status)
+                    label = QLabel(_machine_status_label(machine_status))
+                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    label.setStyleSheet(
+                        f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                        f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
-                    self.table.setCellWidget(row, col, lbl)
+                    table.setCellWidget(line, col, label)
                 else:
-                    item = QTableWidgetItem(str(val))
+                    item = QTableWidgetItem(value)
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.table.setItem(row, col, item)
+                    table.setItem(line, col, item)
+
+    def _fill_recent_table(self, rows: object):
+        table = self.recent_table
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, "Nenhuma requisição recente encontrada.")
+            return
+
+        for row in items:
+            if not isinstance(row, dict):
+                continue
+
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(row.get("ped_number") or "-"),
+                str(row.get("client_name") or "-"),
+                str(row.get("vendor_name") or "-"),
+                _format_date(row.get("emission_date")),
+                str(row.get("status") or "-"),
+                str(row.get("destination") or "-"),
+            ]
+
+            for col, value in enumerate(values):
+                if col == 4:
+                    status = str(row.get("status") or "")
+                    color_map = {
+                        "em_andamento": theme.PRIMARY_HOVER,
+                        "aguardando_recebimento": theme.WARNING,
+                        "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
+                        "aguardando_faturamento": theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
+                        "em_producao": theme.PRIMARY,
+                        "faturado": theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+                        "cancelada": theme.DANGER,
+                    }
+                    color = color_map.get(status, theme.BORDER_COLOR)
+                    label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
+                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    label.setStyleSheet(
+                        f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                        f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
+                    )
+                    table.setCellWidget(line, col, label)
+                else:
+                    item = QTableWidgetItem(value)
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    table.setItem(line, col, item)
+
+    def _set_empty_message(self, table: QTableWidget, message: str):
+        table.setRowCount(1)
+        table.setSpan(0, 0, 1, table.columnCount())
+        item = QTableWidgetItem(message)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item.setForeground(QColor(theme.TEXT_MEDIUM))
+        table.setItem(0, 0, item)
+
+    def _apply_table_style(self, table: QTableWidget) -> None:
+        s = self.scale
+        table.setStyleSheet(
+            f"QTableWidget {{"
+            f"  border:none; outline:none; background:{theme.CARD_BG};"
+            f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
+            f"  color:{theme.BORDER_COLOR}; border-radius:14px;"
+            f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QHeaderView::section {{"
+            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
+            f"}}"
+            f"QTableWidget::item {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"}}"
+            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.TEXT_DARK}; }}"
+        )
+        pal = table.palette()
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        table.setPalette(pal)
+        table.viewport().setAutoFillBackground(True)
+
+    def _refresh_machine_status_labels(self, table: QTableWidget) -> None:
+        """Re-estiliza os QLabel de STATUS embutidos nas células da tabela de máquinas."""
+        status_col = 5
+        for row in range(table.rowCount()):
+            widget = table.cellWidget(row, status_col)
+            if isinstance(widget, QLabel):
+                raw = widget.text()
+                if raw == "Funcionando":
+                    machine_status = "funcionando"
+                elif raw == "Manutenção":
+                    machine_status = "manutencao"
+                else:
+                    machine_status = ""
+                color = _machine_status_color(machine_status)
+                widget.setStyleSheet(
+                    f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                    f"font-weight:700; padding:4px 10px;"
+                    f"font-size:{max(7, int(8 * self.scale))}pt;"
+                )
+
+    def apply_theme(self) -> None:
+        s = self.scale
+        bg = theme.CONTENT_BG
+        self.setStyleSheet(f"QWidget#dashboardView {{ background:{bg}; }}")
+        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#dashboardContent {{ background:{bg}; }}")
+        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.error_label.setStyleSheet(
+            f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
+            f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
+            f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        )
+        for tbl in [
+            getattr(self, "top_vendors_table", None),
+            getattr(self, "alerts_table", None),
+            getattr(self, "top_machines_ar_table", None),
+            getattr(self, "top_machines_industria_table", None),
+            getattr(self, "recent_table", None),
+        ]:
+            if tbl is not None:
+                self._apply_table_style(tbl)
+        for tbl in [
+            getattr(self, "top_machines_ar_table", None),
+            getattr(self, "top_machines_industria_table", None),
+        ]:
+            if tbl is not None:
+                self._refresh_machine_status_labels(tbl)
+        for lbl in self._metric_labels.values():
+            lbl.setStyleSheet(
+                f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
+            )

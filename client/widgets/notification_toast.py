@@ -1,14 +1,31 @@
-from PySide6.QtWidgets import (
-    QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QGraphicsDropShadowEffect,
-)
+"""
+Sistema de toasts de notificação.
+
+NotificationToast  — card flutuante com slide (da direita) + fade simultâneos,
+                     barra de countdown e pausa automática ao hover.
+                     Usa os tokens TOAST_* de theme.py (suporte a dark mode).
+ToastManager       — fila sequencial: um toast de cada vez, com pausa entre eles.
+"""
 from PySide6.QtCore import (
-    Qt, QTimer, QPropertyAnimation, QEasingCurve, QPoint, Signal,
+    QEasingCurve, QParallelAnimationGroup, QPoint, QPropertyAnimation,
+    Qt, QTimer, Signal,
 )
-from PySide6.QtGui import QColor, QCursor
+from PySide6.QtGui import QColor, QCursor, QPainterPath, QRegion
+from PySide6.QtWidgets import (
+    QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
+    QPushButton, QVBoxLayout,
+)
 
+from ..core import theme
 
-_ICONS = {
+# ── Constantes ────────────────────────────────────────────────────────────────
+
+DISPLAY_MS   = 6_000   # tempo que o toast fica visível
+TOAST_WIDTH  = 360
+MARGIN       = 20      # margem do canto da tela
+_SLIDE_OVER  = 70      # deslocamento inicial fora do canto (entrada da direita)
+
+_ICONS: dict[str, str] = {
     "nova_requisicao":   "🏭",
     "em_producao":       "⚙️",
     "finalizada":        "✅",
@@ -17,167 +34,271 @@ _ICONS = {
     "requisicao_parada": "⏰",
 }
 
-_ACCENT = {
-    "nova_requisicao":   "#3B82F6",   # azul
-    "em_producao":       "#22C55E",   # verde
-    "finalizada":        "#22C55E",   # verde
-    "cancelada":         "#EF4444",   # vermelho
-    "prod_cancelada":    "#EAB308",   # amarelo
-    "requisicao_parada": "#EAB308",   # amarelo
+_ACCENT: dict[str, str] = {
+    "nova_requisicao":   "#2563EB",
+    "em_producao":       "#16A34A",
+    "finalizada":        "#16A34A",
+    "cancelada":         "#DC2626",
+    "prod_cancelada":    "#D97706",
+    "requisicao_parada": "#D97706",
 }
 
-DISPLAY_MS = 5500  # tempo em tela antes do auto-dismiss
-TOAST_WIDTH = 350
+_ACCENT_HOVER: dict[str, str] = {
+    "nova_requisicao":   "#1D4ED8",
+    "em_producao":       "#15803D",
+    "finalizada":        "#15803D",
+    "cancelada":         "#B91C1C",
+    "prod_cancelada":    "#B45309",
+    "requisicao_parada": "#B45309",
+}
 
+_ICONS.update({
+    "aguardando_faturamento": "🧾",
+    "faturado": "💰",
+    "faturamento_atrasado": "⏰",
+    "machine_status": "🛠️",
+})
+
+_ACCENT.update({
+    "aguardando_faturamento": "#D97706",
+    "faturado": "#16A34A",
+    "faturamento_atrasado": "#DC2626",
+    "machine_status": "#2563EB",
+})
+
+_ACCENT_HOVER.update({
+    "aguardando_faturamento": "#B45309",
+    "faturado": "#15803D",
+    "faturamento_atrasado": "#B91C1C",
+    "machine_status": "#1D4ED8",
+})
+
+_DEFAULT_ACCENT       = "#2563EB"
+_DEFAULT_ACCENT_HOVER = "#1D4ED8"
+
+
+# ── Toast individual ──────────────────────────────────────────────────────────
 
 class NotificationToast(QFrame):
-    """Toast flutuante estilo Samsung One UI."""
+    """Card flutuante: entra deslizando da direita, sai pelo mesmo lado."""
 
-    dismissed = Signal()
-    action_clicked = Signal(object)  # emite requisition_id (int ou None)
+    dismissed      = Signal()
+    action_clicked = Signal(object)
 
     def __init__(self, data: dict, parent=None):
-        flags = (
+        super().__init__(
+            parent,
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowStaysOnTopHint,
         )
-        super().__init__(parent, flags)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-
-        self._req_id = data.get("requisition_id")
-        self._slide_anim: QPropertyAnimation | None = None
-        self._visible_pos: QPoint | None = None
-
-        accent = _ACCENT.get(data.get("type", ""), "#3B82F6")
-        self._build_ui(data, accent)
-        self._apply_shadow()
-
-        self._timer = QTimer(self)
-        self._timer.setSingleShot(True)
-        self._timer.timeout.connect(self._slide_out)
-
-    # ── construção ──────────────────────────────────────────────────────────
-
-    def _build_ui(self, data: dict, accent: str):
-        self.setFixedWidth(TOAST_WIDTH)
-        self.setStyleSheet(
-            f"QFrame {{"
-            f"  background: #1E293B;"
-            f"  border: 1px solid #334155;"
-            f"  border-left: 4px solid {accent};"
-            f"  border-radius: 14px;"
-            f"}}"
-            f"QLabel {{ background: transparent; }}"
-        )
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.setWindowOpacity(0.0)
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(16, 14, 12, 10)
-        outer.setSpacing(6)
+        self._req_id    = data.get("requisition_id")
+        self._group:    QParallelAnimationGroup | None = None
+        self._remaining = DISPLAY_MS
+        self._type      = data.get("type", "")
 
-        # cabeçalho: ícone + título + fechar
+        accent = _ACCENT.get(self._type, _DEFAULT_ACCENT)
+        self._build(data, accent)
+        self._add_shadow()
+
+        self._dismiss_timer = QTimer(self)
+        self._dismiss_timer.setSingleShot(True)
+        self._dismiss_timer.timeout.connect(self._slide_out)
+
+    # ── Construção ────────────────────────────────────────────────────────────
+
+    def _build(self, data: dict, accent: str):
+        self.setFixedWidth(TOAST_WIDTH)
+        self.setObjectName("toastCard")
+        self._corner_radius = 12
+        self.setStyleSheet(
+            f"QFrame#toastCard {{"
+            f"  background: {theme.TOAST_BG};"
+            f"  border: none;"
+            f"  border-radius: {self._corner_radius}px;"
+            f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
+            f"}}"
+            f"QLabel {{ background: transparent; border: none; }}"
+        )
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(16, 13, 14, 10)
+        root.setSpacing(4)
+
+        # ── Cabeçalho: ícone + título + timestamp + fechar ──
         header = QHBoxLayout()
-        header.setSpacing(10)
+        header.setSpacing(8)
+        header.setContentsMargins(0, 0, 0, 0)
 
-        icon = QLabel(_ICONS.get(data.get("type", ""), "🔔"))
-        icon.setStyleSheet("font-size: 18px;")
-        header.addWidget(icon)
+        icon_lbl = QLabel(_ICONS.get(data.get("type", ""), "🔔"))
+        icon_lbl.setStyleSheet("font-size: 17px;")
+        icon_lbl.setFixedWidth(26)
+        header.addWidget(icon_lbl)
 
-        title = QLabel(data.get("title", "Notificação"))
-        title.setStyleSheet("color: #F1F5F9; font-size: 10pt; font-weight: bold;")
-        title.setWordWrap(True)
-        header.addWidget(title, 1)
+        title_lbl = QLabel(data.get("title", "Notificação"))
+        title_lbl.setStyleSheet(
+            f"color: {theme.TOAST_TITLE}; font-size: 9pt; font-weight: 700;"
+        )
+        title_lbl.setWordWrap(True)
+        header.addWidget(title_lbl, 1)
+
+        ts_lbl = QLabel("agora")
+        ts_lbl.setStyleSheet(
+            f"color: {theme.TOAST_MUTED}; font-size: 7pt; font-weight: 400;"
+        )
+        header.addWidget(ts_lbl)
 
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(22, 22)
+        close_btn.setFixedSize(20, 20)
         close_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         close_btn.setStyleSheet(
-            "QPushButton {"
-            "  background: transparent; color: #64748B; border: none;"
-            "  font-size: 11px; border-radius: 11px;"
-            "}"
-            "QPushButton:hover { background: #334155; color: #F1F5F9; }"
+            f"QPushButton {{"
+            f"  background: transparent; color: {theme.TOAST_CLOSE_FG};"
+            f"  border: none; font-size: 10px; border-radius: 10px;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f"  background: {theme.TOAST_CLOSE_HV}; color: {theme.TOAST_TITLE};"
+            f"}}"
         )
         close_btn.clicked.connect(self._slide_out)
         header.addWidget(close_btn)
-        outer.addLayout(header)
+        root.addLayout(header)
 
-        # mensagem
-        msg = QLabel(data.get("message", ""))
-        msg.setStyleSheet("color: #94A3B8; font-size: 9pt;")
-        msg.setWordWrap(True)
-        outer.addWidget(msg)
+        # ── Mensagem ──
+        msg = data.get("message", "")
+        if msg:
+            msg_lbl = QLabel(msg)
+            msg_lbl.setStyleSheet(
+                f"color: {theme.TOAST_BODY}; font-size: 8pt; font-weight: 400;"
+                f"padding-left: 34px;"
+            )
+            msg_lbl.setWordWrap(True)
+            root.addWidget(msg_lbl)
 
-        # barra de progresso (countdown)
-        self._bar = QFrame()
-        self._bar.setFixedHeight(3)
-        self._bar.setStyleSheet(
-            f"background: {accent}; border-radius: 2px; border: none;"
-        )
-        outer.addSpacing(4)
-        outer.addWidget(self._bar)
+        # Sem barra inferior para manter o popup limpo/sem linhas.
+        self._bar = None
+        self._bar_anim = None
+        self._apply_rounded_mask()
 
-        self._bar_anim = QPropertyAnimation(self._bar, b"maximumWidth")
-        self._bar_anim.setStartValue(TOAST_WIDTH - 28)
-        self._bar_anim.setEndValue(0)
-        self._bar_anim.setDuration(DISPLAY_MS)
-        self._bar_anim.setEasingCurve(QEasingCurve.Type.Linear)
-
-    def _apply_shadow(self):
+    def _add_shadow(self):
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(24)
-        shadow.setColor(QColor(0, 0, 0, 140))
+        shadow.setBlurRadius(28)
+        shadow.setColor(QColor(0, 44, 109, 26 if not theme.is_dark else 120))
         shadow.setOffset(0, 6)
         self.setGraphicsEffect(shadow)
 
-    # ── animação ────────────────────────────────────────────────────────────
+    def _apply_rounded_mask(self):
+        rect = self.rect()
+        if rect.isNull():
+            return
+        path = QPainterPath()
+        path.addRoundedRect(float(rect.x()), float(rect.y()), float(rect.width()), float(rect.height()),
+                            float(self._corner_radius), float(self._corner_radius))
+        polygon = path.toFillPolygon().toPolygon()
+        if not polygon.isEmpty():
+            self.setMask(QRegion(polygon))
+
+    # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def show_at(self, x: int, y: int):
-        """Exibe o toast com slide-up a partir de (x, y)."""
+        """Exibe o toast com animação de entrada: desliza da direita + fade in."""
         self.adjustSize()
+        self._apply_rounded_mask()
         h = self.sizeHint().height()
-        self._visible_pos = QPoint(x, y)
 
-        start = QPoint(x, y + h + 30)
-        self.move(start)
+        end_pos   = QPoint(x, y - h)
+        start_pos = QPoint(x + _SLIDE_OVER, y - h)
+
+        self.move(start_pos)
         self.show()
         self.raise_()
 
-        self._slide_anim = QPropertyAnimation(self, b"pos")
-        self._slide_anim.setStartValue(start)
-        self._slide_anim.setEndValue(self._visible_pos)
-        self._slide_anim.setDuration(380)
-        self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._slide_anim.start()
+        slide = QPropertyAnimation(self, b"pos")
+        slide.setStartValue(start_pos)
+        slide.setEndValue(end_pos)
+        slide.setDuration(380)
+        slide.setEasingCurve(QEasingCurve.Type.OutCubic)
 
-        self._bar_anim.start()
-        self._timer.start(DISPLAY_MS)
+        fade = QPropertyAnimation(self, b"windowOpacity")
+        fade.setStartValue(0.0)
+        fade.setEndValue(1.0)
+        fade.setDuration(300)
+        fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        self._group = QParallelAnimationGroup(self)
+        self._group.addAnimation(slide)
+        self._group.addAnimation(fade)
+        self._group.start()
+
+        if self._bar_anim is not None:
+            self._bar_anim.start()
+        self._remaining = DISPLAY_MS
+        self._dismiss_timer.start(DISPLAY_MS)
 
     def _slide_out(self):
-        self._timer.stop()
-        self._bar_anim.stop()
+        """Saída: desliza para a direita + fade out simultâneos."""
+        self._dismiss_timer.stop()
+        if self._bar_anim is not None:
+            self._bar_anim.stop()
+        if self._group:
+            self._group.stop()
 
-        if self._slide_anim:
-            self._slide_anim.stop()
+        cur = self.pos()
 
-        current = self.pos()
-        end = QPoint(current.x(), current.y() + self.height() + 30)
+        slide = QPropertyAnimation(self, b"pos")
+        slide.setStartValue(cur)
+        slide.setEndValue(QPoint(cur.x() + _SLIDE_OVER + TOAST_WIDTH // 4, cur.y()))
+        slide.setDuration(220)
+        slide.setEasingCurve(QEasingCurve.Type.InCubic)
 
-        self._slide_anim = QPropertyAnimation(self, b"pos")
-        self._slide_anim.setStartValue(current)
-        self._slide_anim.setEndValue(end)
-        self._slide_anim.setDuration(260)
-        self._slide_anim.setEasingCurve(QEasingCurve.Type.InCubic)
-        self._slide_anim.finished.connect(self._on_gone)
-        self._slide_anim.start()
+        fade = QPropertyAnimation(self, b"windowOpacity")
+        fade.setStartValue(self.windowOpacity())
+        fade.setEndValue(0.0)
+        fade.setDuration(200)
+        fade.setEasingCurve(QEasingCurve.Type.InCubic)
 
-    def _on_gone(self):
+        self._group = QParallelAnimationGroup(self)
+        self._group.addAnimation(slide)
+        self._group.addAnimation(fade)
+        self._group.finished.connect(self._on_hidden)
+        self._group.start()
+
+    def _on_hidden(self):
         self.hide()
         self.dismissed.emit()
         self.deleteLater()
 
-    # ── interação ────────────────────────────────────────────────────────────
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_rounded_mask()
+
+    # ── Hover: pausa e retomada ───────────────────────────────────────────────
+
+    def enterEvent(self, event):
+        remaining = self._dismiss_timer.remainingTime()
+        if remaining > 0:
+            self._remaining = remaining
+        self._dismiss_timer.stop()
+        if self._bar_anim is not None:
+            self._bar_anim.pause()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        if self._bar_anim is not None:
+            self._bar_anim.resume()
+        if self._remaining > 100:
+            self._dismiss_timer.start(self._remaining)
+        else:
+            self._slide_out()
+        super().leaveEvent(event)
+
+    # ── Interação ─────────────────────────────────────────────────────────────
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -186,47 +307,56 @@ class NotificationToast(QFrame):
         super().mousePressEvent(event)
 
 
-# ── Gerenciador de fila de toasts ────────────────────────────────────────────
+# ── Gerenciador sequencial ────────────────────────────────────────────────────
 
 class ToastManager:
-    """Empilha toasts no canto inferior direito da janela pai."""
+    """
+    Fila de toasts sequenciais: exibe um de cada vez no canto inferior direito.
+    Aguarda um intervalo entre o fim de um toast e o início do próximo.
+    """
 
-    MARGIN = 20
-    SPACING = 12
+    _GAP_MS = 380   # pausa entre toasts consecutivos (ms)
 
     def __init__(self, parent):
-        self._parent = parent
-        self._stack: list[NotificationToast] = []
+        self._parent   = parent
+        self._queue:   list[tuple[dict, object]] = []   # (data, on_action)
+        self._current: NotificationToast | None  = None
+
+        self._gap_timer = QTimer()
+        self._gap_timer.setSingleShot(True)
+        self._gap_timer.timeout.connect(self._show_next)
+
+    # ── API pública ───────────────────────────────────────────────────────────
 
     def show(self, data: dict, on_action=None):
+        """Enfileira um toast; exibe imediatamente se não houver nenhum ativo."""
+        self._queue.append((data, on_action))
+        if self._current is None and not self._gap_timer.isActive():
+            self._show_next()
+
+    # ── Internos ──────────────────────────────────────────────────────────────
+
+    def _target_pos(self) -> tuple[int, int]:
+        """Retorna (x, y_bottom) do canto inferior direito da janela pai."""
+        parent = self._parent
+        br = parent.mapToGlobal(parent.rect().bottomRight())
+        x = br.x() - TOAST_WIDTH - MARGIN
+        y = br.y() - MARGIN
+        return x, y
+
+    def _show_next(self):
+        if not self._queue:
+            return
+        data, on_action = self._queue.pop(0)
         toast = NotificationToast(data, parent=None)
-        toast.dismissed.connect(lambda t=toast: self._on_dismissed(t))
+        toast.dismissed.connect(self._on_dismissed)
         if on_action:
             toast.action_clicked.connect(on_action)
+        self._current = toast
+        x, y = self._target_pos()
+        toast.show_at(x, y)
 
-        self._stack.append(toast)
-        self._reposition()
-
-    def _reposition(self):
-        pw = self._parent
-        # cantos em coordenadas de tela
-        br = pw.mapToGlobal(
-            pw.rect().bottomRight()
-        )
-        x = br.x() - TOAST_WIDTH - self.MARGIN
-        y = br.y() - self.MARGIN
-
-        for toast in reversed(self._stack):
-            toast.adjustSize()
-            h = toast.sizeHint().height()
-            y -= h
-            if not toast.isVisible():
-                toast.show_at(x, y)
-            else:
-                toast.move(x, y)
-            y -= self.SPACING
-
-    def _on_dismissed(self, toast: NotificationToast):
-        if toast in self._stack:
-            self._stack.remove(toast)
-        self._reposition()
+    def _on_dismissed(self):
+        self._current = None
+        if self._queue:
+            self._gap_timer.start(self._GAP_MS)

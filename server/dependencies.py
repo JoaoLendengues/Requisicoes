@@ -33,8 +33,35 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
+def require_manager_or_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in (Role.ADMIN, Role.GERENTE):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acesso restrito a gerentes e administradores",
+        )
+    return current_user
+
+
+def require_order_center_access(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in (
+        Role.ADMIN, Role.GERENTE, Role.VENDEDOR, Role.PRODUCAO, Role.INDUSTRIA, Role.ENTREGA,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sem permissão para acessar a Central de Pedidos",
+        )
+    return current_user
+
+
 def require_creator(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in (Role.ADMIN, Role.VENDEDOR, Role.GERENTE):
+    if current_user.role not in (
+        Role.ADMIN,
+        Role.VENDEDOR,
+        Role.GERENTE,
+        Role.PRODUCAO,
+        Role.INDUSTRIA,
+        Role.ENTREGA,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sem permissão para criar ou editar requisições",

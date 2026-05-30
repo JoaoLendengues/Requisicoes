@@ -2,17 +2,8 @@
 Importacao de produtos a partir de arquivo .ods / .xlsx.
 Colunas esperadas: Codigo e Produto.
 """
-import re
-import unicodedata
-
 from ..api import client as api
-from .client_importer import ImportResult, read_spreadsheet
-
-
-def _normalize(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", str(text).strip().lower())
-    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
-    return re.sub(r"[^a-z0-9]", "", normalized)
+from .client_importer import ImportResult, _is_blank, _normalize, read_spreadsheet
 
 
 _COL_MAP = {
@@ -32,13 +23,6 @@ _COL_MAP = {
     "item": "name",
     "name": "name",
 }
-
-
-def _is_blank(value) -> bool:
-    if value is None:
-        return True
-    text = str(value).strip()
-    return not text or text.lower() in {"nan", "none"}
 
 
 def _map_columns(labels) -> dict[str, str]:
@@ -98,10 +82,10 @@ def import_products(path: str, on_progress=None) -> ImportResult:
     df, col_map = _prepare_dataframe(df)
     if "code" not in col_map or "name" not in col_map:
         found_columns = [str(col).strip() for col in list(df.columns) if not _is_blank(col)]
-        found_text = ", ".join(found_columns[:8]) if found_columns else "nenhuma coluna legivel"
+        found_text = ", ".join(found_columns[:8]) if found_columns else "nenhuma coluna legível"
         result.errors.append(
-            "Colunas obrigatorias nao encontradas. "
-            "Esperado: 'Codigo' e 'Produto'. "
+            "Colunas obrigatórias não encontradas. "
+            "Esperado: 'Código' e 'Produto'. "
             f"Encontrado: {found_text}."
         )
         return result
@@ -118,7 +102,7 @@ def import_products(path: str, on_progress=None) -> ImportResult:
         items.append({"code": code, "name": name})
 
     if not items:
-        result.errors.append("Nenhum produto valido encontrado na planilha.")
+        result.errors.append("Nenhum produto válido encontrado na planilha.")
         return result
 
     if on_progress:
@@ -133,22 +117,22 @@ def import_products(path: str, on_progress=None) -> ImportResult:
     except api.APIError as exc:
         if exc.status_code == 403:
             result.errors.append(
-                "Seu usuario nao tem permissao para importar produtos."
+                "Seu usuário não tem permissão para importar produtos."
             )
         elif exc.status_code == 404:
             result.errors.append(
-                "O servidor atual nao reconheceu a rota de produtos. "
+                "O servidor atual não reconheceu a rota de produtos. "
                 "Reinicie o servidor e tente novamente."
             )
         elif exc.status_code == 401:
             result.errors.append(
-                "Sua sessao expirou. Faca login novamente e repita a importacao."
+                "Sua sessão expirou. Faça login novamente e repita a importação."
             )
         else:
             result.errors.append(str(exc))
         return result
     except Exception as exc:
-        result.errors.append(f"Erro na comunicacao com o servidor: {exc}")
+        result.errors.append(f"Erro na comunicação com o servidor: {exc}")
         return result
 
     if on_progress:

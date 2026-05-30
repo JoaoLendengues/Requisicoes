@@ -1,3 +1,5 @@
+import threading
+
 import httpx
 from ..core.session import session
 from ..core.resolution import res
@@ -16,6 +18,37 @@ def _headers() -> dict:
 
 def _cli() -> httpx.Client:
     return httpx.Client(base_url=_url(), headers=_headers(), timeout=15.0)
+
+
+# ── Pool de conexão persistente ───────────────────────────────────────────────
+# httpx.Client é thread-safe para requisições concorrentes.  Reutilizar a
+# conexão TCP elimina o handshake a cada keystroke (~5–20 ms numa LAN).
+# Usado em list_clients/get_client (hot path da busca).  Outras funções
+# continuam usando _cli() (curta duração, headers embutidos no construtor).
+
+_pool_lock:     threading.Lock = threading.Lock()
+_pool:          httpx.Client | None = None
+_pool_base_url: str = ""
+
+
+def _get_pool() -> httpx.Client:
+    """Retorna o httpx.Client persistente, recriando se a URL do servidor mudou."""
+    global _pool, _pool_base_url
+    url = _url()
+    # Fast path — sem adquirir lock se já está OK
+    if _pool is not None and _pool_base_url == url and not _pool.is_closed:
+        return _pool
+    with _pool_lock:
+        # Verifica de novo dentro do lock (outro thread pode ter recriado)
+        if _pool is None or _pool_base_url != url or _pool.is_closed:
+            if _pool is not None:
+                try:
+                    _pool.close()
+                except Exception:
+                    pass
+            _pool = httpx.Client(base_url=url, timeout=10.0)
+            _pool_base_url = url
+    return _pool
 
 
 class APIError(Exception):
@@ -42,6 +75,24 @@ def login(code: str, password: str) -> dict:
         return _check(client.post("/auth/login", json={"code": code, "password": password}))
 
 
+def first_access(code: str, password: str) -> dict:
+    with _cli() as client:
+        return _check(client.post("/auth/first-access", json={"code": code, "password": password}))
+
+
+def change_password(current_password: str, new_password: str) -> dict:
+    with _cli() as client:
+        return _check(client.post(
+            "/auth/change-password",
+            json={"current_password": current_password, "new_password": new_password},
+        ))
+
+
+def get_first_access_status(code: str) -> dict:
+    with _cli() as client:
+        return _check(client.get("/auth/first-access-status", params={"code": code}))
+
+
 def get_me() -> dict:
     with _cli() as client:
         return _check(client.get("/auth/me"))
@@ -57,6 +108,11 @@ def create_user(data: dict) -> dict:
         return _check(client.post("/users/", json=data))
 
 
+def bulk_import_users(items: list) -> dict:
+    with _cli() as client:
+        return _check(client.post("/users/import/bulk", json=items, timeout=120))
+
+
 def update_user(user_id: int, data: dict) -> dict:
     with _cli() as client:
         return _check(client.patch(f"/users/{user_id}", json=data))
@@ -68,16 +124,20 @@ def deactivate_user(user_id: int):
 
 
 def list_clients(search: str = "", limit: int = 30) -> list:
-    with _cli() as client:
-        params: dict = {"limit": limit}
-        if search:
-            params["search"] = search
-        return _check(client.get("/clients/", params=params))
+    # Pool persistente: sem handshake TCP por keystroke
+    params: dict = {"limit": limit}
+    if search:
+        params["search"] = search
+    return _check(_get_pool().get("/clients/", params=params, headers=_headers()))
 
 
 def get_client(client_id: int) -> dict:
+    return _check(_get_pool().get(f"/clients/{client_id}", headers=_headers()))
+
+
+def bulk_import_clients(items: list) -> dict:
     with _cli() as client:
-        return _check(client.get(f"/clients/{client_id}"))
+        return _check(client.post("/clients/import/bulk", json=items, timeout=120))
 
 
 def create_client(data: dict) -> dict:
@@ -90,9 +150,9 @@ def update_client(client_id: int, data: dict) -> dict:
         return _check(client.patch(f"/clients/{client_id}", json=data))
 
 
-def bulk_import_clients(items: list) -> dict:
+def deactivate_client(client_id: int):
     with _cli() as client:
-        return _check(client.post("/clients/bulk-import", json=items, timeout=120))
+        _check(client.delete(f"/clients/{client_id}"))
 
 
 def list_products(search: str = "", code: str = "", limit: int = 30) -> list:
@@ -107,18 +167,117 @@ def list_products(search: str = "", code: str = "", limit: int = 30) -> list:
 
 def bulk_import_products(items: list) -> dict:
     with _cli() as client:
-        return _check(client.post("/products/bulk-import", json=items, timeout=120))
+        return _check(client.post("/products/import/bulk", json=items, timeout=120))
 
 
-def list_requisitions(status: str = "", search: str = "",
-                      skip: int = 0, limit: int = 50) -> list:
+def list_requisitions(
+    status: str = "",
+    search: str = "",
+    skip: int = 0,
+    limit: int = 50,
+    emission_date_start: str = "",
+    emission_date_end: str = "",
+    production_destination: str = "",
+    production_machine: str = "",
+    invoiced: bool | None = None,
+) -> list:
     with _cli() as client:
         params: dict = {"skip": skip, "limit": limit}
         if status:
             params["status"] = status
         if search:
             params["search"] = search
+        if emission_date_start:
+            params["emission_date_start"] = emission_date_start
+        if emission_date_end:
+            params["emission_date_end"] = emission_date_end
+        if production_destination:
+            params["production_destination"] = production_destination
+        if production_machine:
+            params["production_machine"] = production_machine
+        if invoiced is not None:
+            params["invoiced"] = invoiced
         return _check(client.get("/requisitions/", params=params))
+
+
+def get_management_dashboard() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/dashboard/summary"))
+
+
+def get_technical_panel_summary() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/technical-panel/summary"))
+
+
+def get_order_center() -> dict:
+    with _cli() as client:
+        return _check(client.get("/requisitions/order-center/summary"))
+
+
+def get_operational_settings() -> dict:
+    with _cli() as client:
+        return _check(client.get("/system-settings/operational"))
+
+
+def update_operational_settings(data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.patch("/system-settings/operational", json=data))
+
+
+def list_production_machine_registry() -> list:
+    with _cli() as client:
+        return _check(client.get("/production-machines/"))
+
+
+def create_production_machine(data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.post("/production-machines/", json=data))
+
+
+def update_production_machine(machine_id: int, data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/production-machines/{machine_id}", json=data))
+
+
+def list_operators() -> list:
+    with _cli() as client:
+        return _check(client.get("/operators/"))
+
+
+def create_operator(data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.post("/operators/", json=data))
+
+
+def update_operator(operator_id: int, data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/operators/{operator_id}", json=data))
+
+
+def delete_operator(operator_id: int):
+    with _cli() as client:
+        _check(client.delete(f"/operators/{operator_id}"))
+
+
+def get_production_summary(destination: str) -> dict:
+    with _cli() as client:
+        return _check(
+            client.get(
+                "/requisitions/production/summary",
+                params={"destination": destination},
+            )
+        )
+
+
+def get_production_machines(destination: str) -> list:
+    with _cli() as client:
+        return _check(
+            client.get(
+                "/requisitions/production/machines",
+                params={"destination": destination},
+            )
+        )
 
 
 def get_requisition(req_id: int) -> dict:
@@ -144,6 +303,26 @@ def update_status(req_id: int, status: str, note: str = "") -> dict:
         ))
 
 
+def update_delivery_date(req_id: int, delivery_date: str, reason: str) -> dict:
+    """Produção altera o prazo de entrega com justificativa.
+    delivery_date no formato ISO (YYYY-MM-DD)."""
+    with _cli() as client:
+        return _check(client.patch(
+            f"/requisitions/{req_id}/delivery-date",
+            json={"delivery_date": delivery_date, "reason": reason},
+        ))
+
+
+def update_production_machine_status(machine_id: int, status: str) -> dict:
+    with _cli() as client:
+        return _check(
+            client.patch(
+                f"/requisitions/production/machines/{machine_id}/status",
+                json={"status": status},
+            )
+        )
+
+
 def update_canvas(req_id: int, json_data: str) -> dict:
     with _cli() as client:
         return _check(client.patch(
@@ -162,14 +341,29 @@ def list_notifications() -> list:
         return _check(client.get("/notifications/"))
 
 
-def mark_notification_read(notif_id: int) -> dict:
+def mark_all_notifications_read() -> dict:
+    with _cli() as client:
+        return _check(client.patch("/notifications/read-all"))
+
+
+def mark_one_notification_read(notif_id: int) -> dict:
     with _cli() as client:
         return _check(client.patch(f"/notifications/{notif_id}/read"))
 
 
-def mark_all_notifications_read() -> dict:
+def create_feedback(message: str) -> dict:
     with _cli() as client:
-        return _check(client.patch("/notifications/read-all"))
+        return _check(client.post("/feedbacks/", json={"message": message}))
+
+
+def list_feedbacks() -> list:
+    with _cli() as client:
+        return _check(client.get("/feedbacks/"))
+
+
+def acknowledge_feedback(feedback_id: int) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/feedbacks/{feedback_id}/ack"))
 
 
 def health_check(server_url: str) -> bool:
@@ -178,3 +372,29 @@ def health_check(server_url: str) -> bool:
         return resp.status_code == 200
     except Exception:
         return False
+
+
+# ── Backup ────────────────────────────────────────────────────────────────────
+
+def trigger_backup() -> dict:
+    """Dispara backup manual no servidor. Retorna o resultado do run_backup."""
+    with _cli() as client:
+        return _check(client.post("/backup/run"))
+
+
+def list_backups() -> list:
+    """Retorna lista de backups existentes no servidor."""
+    with _cli() as client:
+        return _check(client.get("/backup/list"))
+
+
+def get_backup_settings() -> dict:
+    """Retorna as configurações de agendamento de backup."""
+    with _cli() as client:
+        return _check(client.get("/backup/settings"))
+
+
+def update_backup_settings(payload: dict) -> dict:
+    """Salva as configurações de agendamento de backup."""
+    with _cli() as client:
+        return _check(client.patch("/backup/settings", json=payload))
