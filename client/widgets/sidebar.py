@@ -514,9 +514,6 @@ class Sidebar(QWidget):
     def set_notification_count(self, count: int):
         self._bell.set_count(count)
 
-    def set_notification_count(self, count: int):
-        self._bell.set_count(count)
-
     def set_actions_visible(self, visible: bool):
         pass
 

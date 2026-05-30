@@ -1678,42 +1678,6 @@ def update_requisition(
     return _get_or_404(db, req_id)
 
 
-def _build_notifications(
-    db: Session,
-    req: Requisition,
-    old_status: RequisitionStatus,
-    new_status: RequisitionStatus,
-    note: str | None,
-) -> list:
-    from ..services.notification_service import build_production_sent, build_vendor_event
-
-    prod = _parse_production_note(note)
-    notifs = []
-
-    if prod:
-        action = prod["action"]
-        if action == _PROD_SEND:
-            notifs.extend(build_production_sent(db, req, prod["target"]))
-        elif action == _PROD_RECEIVED:
-            n = build_vendor_event(db, req, "em_producao")
-            if n:
-                notifs.append(n)
-        elif action == _PROD_FINISHED:
-            n = build_vendor_event(db, req, "finalizada")
-            if n:
-                notifs.append(n)
-        elif action == _PROD_CANCELED:
-            n = build_vendor_event(db, req, "prod_cancelada", prod.get("reason", ""))
-            if n:
-                notifs.append(n)
-    elif new_status == RequisitionStatus.CANCELADA:
-        n = build_vendor_event(db, req, "cancelada")
-        if n:
-            notifs.append(n)
-
-    return notifs
-
-
 @router.patch("/{req_id}/status", response_model=RequisitionResponse)
 def update_status(
     req_id: int,
