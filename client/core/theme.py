@@ -69,8 +69,8 @@ _LIGHT: dict = {
     "TOAST_BG":          "#E7ECF3",       # fundo do card (mais escuro para contraste)
     "TOAST_BORDER":      "#D9E1EC",       # borda externa
     "TOAST_TITLE":       "#1E2A3A",       # texto do título
-    "TOAST_BODY":        "#6B778C",       # texto da mensagem
-    "TOAST_MUTED":       "#94A0B2",       # timestamp / secundário
+    "TOAST_BODY":        "#475569",       # texto da mensagem (escurecido p/ contraste)
+    "TOAST_MUTED":       "#64748B",       # timestamp / secundário
     "TOAST_CLOSE_FG":    "#94A0B2",       # ícone fechar
     "TOAST_CLOSE_HV":    "#F5F7FA",       # hover fundo fechar
     "TOAST_SHADOW":      "rgba(0,44,109,0.12)",  # sombra suave azul
@@ -81,8 +81,8 @@ _LIGHT: dict = {
     "DRAWER_CARD":       "#FFFFFF",       # fundo de cada card
     "DRAWER_BORDER":     "#D9E1EC",       # bordas dos cards
     "DRAWER_TITLE":      "#1E2A3A",       # título dos cards
-    "DRAWER_BODY":       "#6B778C",       # mensagem dos cards
-    "DRAWER_MUTED":      "#94A0B2",       # timestamp / secundário
+    "DRAWER_BODY":       "#475569",       # mensagem dos cards (escurecido p/ contraste)
+    "DRAWER_MUTED":      "#64748B",       # timestamp / secundário
     "DRAWER_SCROLL":     "#D9E1EC",       # handle da barra de rolagem
     "DRAWER_OVERLAY":    "rgba(0,44,109,0.30)",  # overlay semitransparente
     "DRAWER_SHADOW":     "rgba(0,44,109,0.14)",  # sombra lateral
@@ -144,8 +144,8 @@ _DARK: dict = {
     "TOAST_BG":          "#1E293B",
     "TOAST_BORDER":      "#334155",
     "TOAST_TITLE":       "#F1F5F9",
-    "TOAST_BODY":        "#94A3B8",
-    "TOAST_MUTED":       "#475569",
+    "TOAST_BODY":        "#CBD5E1",
+    "TOAST_MUTED":       "#94A3B8",
     "TOAST_CLOSE_FG":    "#64748B",
     "TOAST_CLOSE_HV":    "#334155",
     "TOAST_SHADOW":      "rgba(0,0,0,0.40)",
@@ -156,8 +156,8 @@ _DARK: dict = {
     "DRAWER_CARD":       "#1E293B",
     "DRAWER_BORDER":     "rgba(255,255,255,0.08)",
     "DRAWER_TITLE":      "#F1F5F9",
-    "DRAWER_BODY":       "#64748B",
-    "DRAWER_MUTED":      "#475569",
+    "DRAWER_BODY":       "#CBD5E1",
+    "DRAWER_MUTED":      "#94A3B8",
     "DRAWER_SCROLL":     "rgba(255,255,255,0.15)",
     "DRAWER_OVERLAY":    "rgba(0,0,0,0.50)",
     "DRAWER_SHADOW":     "rgba(0,0,0,0.50)",

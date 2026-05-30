@@ -459,7 +459,7 @@ class NotificationDrawer(QWidget):
 
         title_lbl = QLabel(n.get("title", ""))
         title_lbl.setStyleSheet(
-            f"font-weight: 700; font-size: 9pt; color: {theme.DRAWER_TITLE};"
+            f"font-weight: 700; font-size: 10pt; color: {theme.DRAWER_TITLE};"
             f"background: transparent; border: none;"
             f"font-family: 'Inter', 'Segoe UI';"
         )
@@ -477,7 +477,7 @@ class NotificationDrawer(QWidget):
         if ts:
             ts_lbl = QLabel(ts)
             ts_lbl.setStyleSheet(
-                f"color: {theme.DRAWER_MUTED}; font-size: 7pt; background: transparent; border: none;"
+                f"color: {theme.DRAWER_MUTED}; font-size: 8pt; background: transparent; border: none;"
                 f"font-family: 'Inter', 'Segoe UI';"
             )
             top.addWidget(ts_lbl)
@@ -489,7 +489,7 @@ class NotificationDrawer(QWidget):
         if msg:
             msg_lbl = QLabel(msg)
             msg_lbl.setStyleSheet(
-                f"color: {theme.DRAWER_BODY}; font-size: 8pt;"
+                f"color: {theme.DRAWER_BODY}; font-size: 9pt;"
                 f"background: transparent; border: none;"
                 f"font-family: 'Inter', 'Segoe UI';"
                 f"padding-left: 32px;"

@@ -143,14 +143,14 @@ class NotificationToast(QFrame):
 
         title_lbl = QLabel(data.get("title", "Notificação"))
         title_lbl.setStyleSheet(
-            f"color: {theme.TOAST_TITLE}; font-size: 9pt; font-weight: 700;"
+            f"color: {theme.TOAST_TITLE}; font-size: 10pt; font-weight: 700;"
         )
         title_lbl.setWordWrap(True)
         header.addWidget(title_lbl, 1)
 
         ts_lbl = QLabel("agora")
         ts_lbl.setStyleSheet(
-            f"color: {theme.TOAST_MUTED}; font-size: 7pt; font-weight: 400;"
+            f"color: {theme.TOAST_MUTED}; font-size: 8pt; font-weight: 400;"
         )
         header.addWidget(ts_lbl)
 
@@ -175,7 +175,7 @@ class NotificationToast(QFrame):
         if msg:
             msg_lbl = QLabel(msg)
             msg_lbl.setStyleSheet(
-                f"color: {theme.TOAST_BODY}; font-size: 8pt; font-weight: 400;"
+                f"color: {theme.TOAST_BODY}; font-size: 9pt; font-weight: 400;"
                 f"padding-left: 34px;"
             )
             msg_lbl.setWordWrap(True)
