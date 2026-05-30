@@ -1,5 +1,12 @@
+import os
 from pydantic_settings import BaseSettings
 from typing import Literal
+
+
+# Caminho absoluto da raiz do projeto (independente de onde o servidor for iniciado).
+# server/config.py -> sobe 1 nivel -> raiz do projeto onde fica o .env
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_ENV_PATH = os.path.join(_ROOT_DIR, ".env")
 
 
 class Settings(BaseSettings):
@@ -35,7 +42,9 @@ class Settings(BaseSettings):
     BACKUP_DB_NAME: str = "requisicoes"
 
     class Config:
-        env_file = ".env"
+        # Caminho ABSOLUTO — garante leitura do .env independente do diretório
+        # de trabalho de quem inicia o servidor.
+        env_file = _ENV_PATH
         env_file_encoding = "utf-8-sig"  # suporta arquivos salvos com BOM no Windows
 
 
