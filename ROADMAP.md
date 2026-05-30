@@ -73,18 +73,26 @@ Responsaveis:
                  rejeita e lista conflitos). Usa rotas existentes; sem reiniciar servidor.
                  *** RESOLVIDO ***
 
-- [ ] [victor]   Relatorio de maquinas (corte e dobra) de A&R e Pinheiro Industria.
-                 Mostrar historico de uso, pedidos processados e tempo medio por maquina.
-
 ---
 
 ## Aguardando definicao
 
-- [ ] [victor]   Canvas: ferramenta Esquadro no editor de desenho.
-                 *** NAO IMPLEMENTAR ate receber autorizacao. Discutir especificacao primeiro. ***
-
 - [x] [joao]     Faturar pedido automaticamente ao enviar para producao (A&R e Pinheiro Industria).
                  *** RESOLVIDO ***
+
+---
+
+## Engavetado (revisitar futuramente)
+
+Ideias preservadas, fora da fila ativa por ora. Nao descartadas.
+
+- [ ] [victor]   Relatorio de maquinas (corte e dobra) de A&R e Pinheiro Industria.
+                 Mostrar historico de uso, pedidos processados e tempo medio por maquina.
+                 *** ENGAVETADO *** (sem prioridade no momento; revisitar quando houver demanda)
+
+- [ ] [victor]   Canvas: ferramenta Esquadro no editor de desenho.
+                 *** ENGAVETADO *** (falta de definicao/ideias ate o momento; discutir
+                 especificacao antes de qualquer implementacao)
 
 ---
 
