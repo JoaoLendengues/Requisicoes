@@ -1086,7 +1086,11 @@ class DrawingScene(QGraphicsScene):
             return QPainterPath()
 
         ux, uy = dx / dist, dy / dist
-        marker_len = max(12.0, min(40.0, dist * 0.22))
+        width_boost = max(0.0, float(self.cw.pen_width) - 1.0)
+        marker_len = max(
+            12.0 + (width_boost * 1.8),
+            min(68.0, (dist * 0.22) + (width_boost * 2.0)),
+        )
         perp_x, perp_y = -uy, ux
         base = QPointF(start.x() + (ux * marker_len * 0.2), start.y() + (uy * marker_len * 0.2))
         path = QPainterPath()
@@ -1105,7 +1109,10 @@ class DrawingScene(QGraphicsScene):
         normalized = self._normalize_angle_degrees(degrees)
         if normalized > 359.9:
             normalized = 359.9
-        radius = max(14.0, min(46.0, dist * 0.3))
+        radius = max(
+            14.0 + (width_boost * 1.6),
+            min(78.0, (dist * 0.3) + (width_boost * 2.4)),
+        )
         rect = QRectF(start.x() - radius, start.y() - radius, radius * 2.0, radius * 2.0)
         start_deg = math.degrees(math.atan2(-uy, ux))
         path.arcMoveTo(rect, start_deg)
@@ -1329,7 +1336,8 @@ class DrawingScene(QGraphicsScene):
                     else QPointF(pos.x(), pos.y())
                 )
                 self._commit_angle_measure(self._angle_mode_start, end)
-                self._update_angle_preview(self._angle_mode_start, end)
+                self.cancel_angle_mode()
+                self.cw._set_tool(Tool.SELECT)
             event.accept()
             return
 
@@ -1763,12 +1771,6 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
-        if event.key() == Qt.Key.Key_Escape and self._angle_mode_active:
-            self.cancel_angle_mode()
-            self.cw._set_tool(Tool.SELECT)
-            event.accept()
-            return
-
         focus_item = self.focusItem()
         if (
             isinstance(focus_item, QGraphicsTextItem)
@@ -2183,7 +2185,7 @@ class DrawingCanvas(QWidget):
 
         # Dica de teclado
         hint = QLabel(
-            "✨ Shift = traço reto  |  U = ângulo (contínuo, Esc para sair)  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  U = ângulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
