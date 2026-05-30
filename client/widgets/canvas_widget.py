@@ -728,13 +728,63 @@ class DrawingScene(QGraphicsScene):
             return text_item
         return self._find_closest_angle_text(marker)
 
+    def _default_angle_text_pos_for_marker(
+        self,
+        marker: QGraphicsPathItem,
+        label: str,
+        font_size: int,
+    ) -> QPointF:
+        scene_bounds = marker.mapRectToScene(marker.path().boundingRect()).boundingRect()
+        tw = max(34, int(len(label) * font_size * 0.68 + 10)) if label else 42
+        th = int(font_size * 2.0)
+        gap = max(4, int(font_size * 0.45))
+
+        candidates = [
+            QPointF(scene_bounds.center().x() - (tw / 2.0), scene_bounds.top() - th - gap),      # acima
+            QPointF(scene_bounds.right() + gap, scene_bounds.center().y() - (th / 2.0)),          # direita
+            QPointF(scene_bounds.center().x() - (tw / 2.0), scene_bounds.bottom() + gap),          # abaixo
+            QPointF(scene_bounds.left() - tw - gap, scene_bounds.center().y() - (th / 2.0)),      # esquerda
+        ]
+
+        for pos in candidates:
+            if not self._has_collision_at(QRectF(pos.x(), pos.y(), tw, th)):
+                return pos
+        return candidates[0]
+
+    def _pull_angle_text_closer_if_needed(
+        self,
+        marker: QGraphicsPathItem,
+        text_item: QGraphicsTextItem | None,
+    ) -> bool:
+        if text_item is None:
+            return False
+        scene_bounds = marker.mapRectToScene(marker.path().boundingRect()).boundingRect()
+        marker_center = scene_bounds.center()
+        text_center = text_item.sceneBoundingRect().center()
+        dist = math.hypot(text_center.x() - marker_center.x(), text_center.y() - marker_center.y())
+        max_dist = max(90.0, max(scene_bounds.width(), scene_bounds.height()) * 2.2)
+        if dist <= max_dist:
+            return False
+
+        label = text_item.toPlainText()
+        fs = text_item.font().pointSize()
+        if fs <= 0:
+            fs = max(8, int(9 * self.cw.scale))
+        new_pos = self._default_angle_text_pos_for_marker(marker, label, fs)
+        text_item.setPos(new_pos)
+        return True
+
     def _sync_angle_pair_selection(self):
         selected = self.selectedItems()
         angle_link_ids: set[str] = set()
+        pulled_any = False
 
         for item in selected:
             if self._is_angle_marker(item):
                 link_id = self._ensure_angle_link_for_marker(item)
+                linked_text = self._find_linked_angle_text(item)
+                if self._pull_angle_text_closer_if_needed(item, linked_text):
+                    pulled_any = True
                 if link_id:
                     angle_link_ids.add(link_id)
             elif self._is_angle_text(item):
@@ -759,6 +809,8 @@ class DrawingScene(QGraphicsScene):
                     item.setSelected(True)
         finally:
             self._syncing_angle_selection = False
+        if pulled_any:
+            self.cw.changed.emit()
 
     def _selected_angle_markers(self) -> list[QGraphicsPathItem]:
         markers: list[QGraphicsPathItem] = []
@@ -1096,6 +1148,51 @@ class DrawingScene(QGraphicsScene):
             return QPointF(alt_x, alt_y)
         return QPointF(def_x, def_y)
 
+    def _angle_label_pos(
+        self,
+        marker_path: QPainterPath,
+        start: QPointF,
+        end: QPointF,
+        label: str = "",
+    ) -> QPointF:
+        """Posiciona o texto do ângulo próximo ao marcador, evitando ficar longe da peça."""
+        bounds = marker_path.boundingRect()
+        if bounds.isNull():
+            return self._smart_label_pos(start, end, label)
+
+        fs = max(8, int(9 * self.cw.scale))
+        tw = max(34, int(len(label) * fs * 0.68 + 10)) if label else 42
+        th = int(fs * 2.0)
+        gap = max(4, int(fs * 0.45))
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+
+        if abs(dx) >= abs(dy):
+            # Base horizontal: texto acima (alternativa abaixo), sempre próximo do marcador.
+            def_x = bounds.center().x() - (tw / 2.0)
+            def_y = bounds.top() - th - gap
+            alt_x = def_x
+            alt_y = bounds.bottom() + gap
+        else:
+            # Base vertical: texto à direita (alternativa à esquerda), próximo do marcador.
+            def_x = bounds.right() + gap
+            def_y = bounds.center().y() - (th / 2.0)
+            alt_x = bounds.left() - tw - gap
+            alt_y = def_y
+
+        def_rect = QRectF(def_x, def_y, tw, th)
+        alt_rect = QRectF(alt_x, alt_y, tw, th)
+        def_collision = self._has_collision_at(def_rect)
+        alt_collision = self._has_collision_at(alt_rect)
+
+        if def_collision and not alt_collision:
+            return QPointF(alt_x, alt_y)
+        if not def_collision:
+            return QPointF(def_x, def_y)
+        if not alt_collision:
+            return QPointF(alt_x, alt_y)
+        return QPointF(def_x, def_y)
+
     def _has_collision_at(self, rect: QRectF) -> bool:
         """True se há itens de desenho reais (não cota/régua) na área indicada."""
         _ignore = {
@@ -1361,7 +1458,7 @@ class DrawingScene(QGraphicsScene):
         else:
             self._angle_text_preview_item.setPlainText(label)
             self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
-        self._angle_text_preview_item.setPos(self._smart_label_pos(start, end, label))
+        self._angle_text_preview_item.setPos(self._angle_label_pos(marker_path, start, end, label))
 
     def _commit_angle_measure(self, start: QPointF, end: QPointF):
         if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
@@ -1386,7 +1483,7 @@ class DrawingScene(QGraphicsScene):
         text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
         text_item.setZValue(9001)
         text_item.setData(0, {"type": "angle_dimension_text", "angle_link_id": link_id})
-        text_item.setPos(self._smart_label_pos(start, end, label))
+        text_item.setPos(self._angle_label_pos(marker_path, start, end, label))
         text_item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
