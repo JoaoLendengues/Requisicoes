@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLabel, QHeaderView, QAbstractItemView,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QModelIndex, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 
 from ..core import theme
@@ -18,6 +18,16 @@ DESENV_COL = 5
 CHAPA_COL = 6
 TIPO_COL = 7
 WEIGHT_COL = 8
+EDITABLE_FLOW_COLS = [
+    PRODUCT_CODE_COL,
+    PRODUCT_NAME_COL,
+    QUANTITY_COL,
+    COMP_COL,
+    DESENV_COL,
+    CHAPA_COL,
+    TIPO_COL,
+    WEIGHT_COL,
+]
 
 COLUMNS = [
     "POSIÇÃO",
@@ -63,11 +73,12 @@ class ItemTable(QWidget):
         )
         layout.addWidget(self.title_label)
 
-        self.table = QTableWidget(10, len(COLUMNS))
+        self.table = _ItemGridTable(10, len(COLUMNS), self)
         self.table.setHorizontalHeaderLabels(COLUMNS)
         self.table.verticalHeader().setVisible(False)
-        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         self.table.setAlternatingRowColors(True)
+        self.table.setTabKeyNavigation(True)
         self.table.horizontalHeader().setSectionResizeMode(
             PRODUCT_NAME_COL, QHeaderView.ResizeMode.Stretch
         )
@@ -325,3 +336,86 @@ class ItemTable(QWidget):
             return float(txt) if txt else None
         except ValueError:
             return None
+
+
+class _ItemGridTable(QTableWidget):
+    """QTableWidget com fluxo de Tab lateral para os itens da requisição."""
+
+    def keyPressEvent(self, event):
+        if (
+            event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace)
+            and self.state() != QAbstractItemView.State.EditingState
+        ):
+            self._clear_selected_cells()
+            event.accept()
+            return
+
+        if event.key() == Qt.Key.Key_Tab and not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+            current = self.currentIndex()
+            if self._is_last_weight_cell(current):
+                event.accept()
+                self.focusNextPrevChild(True)
+                return
+        super().keyPressEvent(event)
+
+    def moveCursor(self, action, modifiers):
+        if action in (
+            QAbstractItemView.CursorAction.MoveNext,
+            QAbstractItemView.CursorAction.MovePrevious,
+        ):
+            current = self.currentIndex()
+            if current.isValid():
+                if (
+                    action == QAbstractItemView.CursorAction.MoveNext
+                    and self._is_last_weight_cell(current)
+                ):
+                    QTimer.singleShot(0, lambda: self.focusNextPrevChild(True))
+                    return current
+                next_index = self._next_flow_index(current, action)
+                if next_index.isValid():
+                    return next_index
+        return super().moveCursor(action, modifiers)
+
+    def _is_last_weight_cell(self, index: QModelIndex) -> bool:
+        return (
+            index.isValid()
+            and index.column() == WEIGHT_COL
+            and index.row() >= self.rowCount() - 1
+        )
+
+    def _next_flow_index(self, current: QModelIndex, action) -> QModelIndex:
+        row = current.row()
+        col = current.column()
+
+        if col not in EDITABLE_FLOW_COLS:
+            fallback_col = PRODUCT_CODE_COL if action == QAbstractItemView.CursorAction.MoveNext else WEIGHT_COL
+            fallback_row = row
+            if action == QAbstractItemView.CursorAction.MovePrevious and row > 0:
+                fallback_row = row - 1
+            return self.model().index(fallback_row, fallback_col)
+
+        idx = EDITABLE_FLOW_COLS.index(col)
+        if action == QAbstractItemView.CursorAction.MoveNext:
+            if idx < len(EDITABLE_FLOW_COLS) - 1:
+                return self.model().index(row, EDITABLE_FLOW_COLS[idx + 1])
+            if row < self.rowCount() - 1:
+                return self.model().index(row + 1, PRODUCT_CODE_COL)
+            return current
+
+        if idx > 0:
+            return self.model().index(row, EDITABLE_FLOW_COLS[idx - 1])
+        if row > 0:
+            return self.model().index(row - 1, WEIGHT_COL)
+        return self.model().index(row, PRODUCT_CODE_COL)
+
+    def _clear_selected_cells(self) -> None:
+        indexes = sorted(self.selectedIndexes(), key=lambda idx: (idx.row(), idx.column()))
+        if not indexes:
+            return
+
+        model = self.model()
+        for idx in indexes:
+            row, col = idx.row(), idx.column()
+            if col == POSITION_COL:
+                continue
+            model.setData(idx, "")

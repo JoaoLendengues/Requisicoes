@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -185,6 +186,8 @@ class DashWorker(QObject):
 
 
 class DashboardView(QWidget):
+    guide_requested = Signal()
+
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale = scale
@@ -255,6 +258,21 @@ class DashboardView(QWidget):
         self.refresh_btn.clicked.connect(self.refresh)
         header_right.addWidget(info_card)
         header_right.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        self.btn_guide.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+        )
+        self.btn_guide.clicked.connect(self.guide_requested)
+        header_right.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+
         header.addLayout(header_right)
 
         root.addLayout(header)
@@ -269,7 +287,7 @@ class DashboardView(QWidget):
         )
         root.addWidget(self.error_label)
 
-        self._page_scroll = QScrollArea()
+        self._page_scroll = SmoothScrollArea()
         self._page_scroll.setWidgetResizable(True)
         self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{page_bg}; }}")
@@ -315,56 +333,47 @@ class DashboardView(QWidget):
 
         secondary_row = QHBoxLayout()
         secondary_row.setSpacing(max(12, int(16 * s)))
-        secondary_row.addWidget(
-            self._build_section_card(
-                "Vendedores com Mais Requisições",
-                "Ranking geral por volume de requisições emitidas.",
-                self._build_top_vendors_table(),
-                theme.PRIMARY,
-            ),
-            1,
+        self.vendors_card = self._build_section_card(
+            "Vendedores com Mais Requisições",
+            "Ranking geral por volume de requisições emitidas.",
+            self._build_top_vendors_table(),
+            theme.PRIMARY,
         )
-        secondary_row.addWidget(
-            self._build_section_card(
-                "Pedidos sem Confirmação",
-                "Pedidos aguardando retorno da produção por mais de 1 hora.",
-                self._build_alerts_table(),
-                theme.WARNING,
-            ),
-            1,
+        self.alerts_card = self._build_section_card(
+            "Pedidos sem Confirmação",
+            "Pedidos aguardando retorno da produção por mais de 1 hora.",
+            self._build_alerts_table(),
+            theme.WARNING,
         )
+        secondary_row.addWidget(self.vendors_card, 1)
+        secondary_row.addWidget(self.alerts_card, 1)
         layout.addLayout(secondary_row)
 
         machine_row = QHBoxLayout()
         machine_row.setSpacing(max(12, int(16 * s)))
-        machine_row.addWidget(
-            self._build_section_card(
-                "MÁQUINAS QUE MAIS OPERAM - A&R",
-                "Ranking das máquinas da A&R por volume de operações finalizadas.",
-                self._build_top_machines_ar_table(),
-                theme.PRIMARY_HOVER,
-            ),
-            1,
+        self.machines_ar_card = self._build_section_card(
+            "MÁQUINAS QUE MAIS OPERAM - A&R",
+            "Ranking das máquinas da A&R por volume de operações finalizadas.",
+            self._build_top_machines_ar_table(),
+            theme.PRIMARY_HOVER,
         )
-        machine_row.addWidget(
-            self._build_section_card(
-                "MÁQUINAS QUE MAIS OPERAM - INDÚSTRIA",
-                "Ranking das máquinas da Indústria por volume de operações finalizadas.",
-                self._build_top_machines_industria_table(),
-                theme.PRIMARY,
-            ),
-            1,
+        self.machines_industria_card = self._build_section_card(
+            "MÁQUINAS QUE MAIS OPERAM - INDÚSTRIA",
+            "Ranking das máquinas da Indústria por volume de operações finalizadas.",
+            self._build_top_machines_industria_table(),
+            theme.PRIMARY,
         )
+        machine_row.addWidget(self.machines_ar_card, 1)
+        machine_row.addWidget(self.machines_industria_card, 1)
         layout.addLayout(machine_row)
 
-        layout.addWidget(
-            self._build_section_card(
-                "Últimas Requisições",
-                "Visão rápida das requisições mais recentes do sistema.",
-                self._build_recent_table(),
-                theme.BORDER_COLOR,
-            )
+        self.recent_card = self._build_section_card(
+            "Últimas Requisições",
+            "Visão rápida das requisições mais recentes do sistema.",
+            self._build_recent_table(),
+            theme.BORDER_COLOR,
         )
+        layout.addWidget(self.recent_card)
         layout.addStretch()
 
     def _build_metric_card(
@@ -407,7 +416,9 @@ class DashboardView(QWidget):
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
         accent_line.setStyleSheet(
-            f"background:{color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(color, 235)}, stop:0.5 {_rgba(color, 155)}, stop:1 {_rgba(color, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
 
         header_row = QHBoxLayout()
@@ -468,7 +479,9 @@ class DashboardView(QWidget):
         accent = QFrame()
         accent.setFixedHeight(max(4, int(5 * s)))
         accent.setStyleSheet(
-            f"background:{accent_color}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(accent_color, 235)}, stop:0.5 {_rgba(accent_color, 155)}, stop:1 {_rgba(accent_color, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
 
         title_label = QLabel(title)
@@ -537,6 +550,7 @@ class DashboardView(QWidget):
         pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
+        apply_smooth_scroll(table)
         return table
 
     def _build_top_vendors_table(self) -> QTableWidget:

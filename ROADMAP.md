@@ -1,10 +1,5 @@
 # Roadmap do Projeto
 
-Arquivo para registrar:
-- correcao de bugs
-- proximas implementacoes
-- novas ideias
-
 Organizacao por prioridade:
 - Alta: critico, bloqueia fluxo ou gera retrabalho grande
 - Media: importante, mas com workaround
@@ -17,120 +12,76 @@ Responsaveis:
 
 ---
 
-## Correcao de Bugs
+## Alta prioridade
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-### 1. Calculadora de Peso
-Adicionar uma calculadora de peso acessível dentro do formulário de requisição.
-=======
-### Prioridade Alta
-- [ ] Ajustar filtro de datas da tela "HISTORICO/BUSCA" (esta puxando datas anteriores, nao somente a data selecionada)
-- [ ] Corrigir bug da tela de desenho: linha iniciando em ponto pre-definido
-- [ ] Ajustar contador de notificacoes na tela de notificacoes
-- [ ] Arrumar o fuso horario do sistema
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
-### Prioridade Alta
->>>>>>> a4fc778e62679e8be666b78334a8349b15bcf1d2
+- [x] [joao]     Campos "Entrega" e "Retirada" como obrigatorios em Nova Requisicao.
+                 Impede salvar se nenhuma das duas opcoes estiver selecionada.
+                 *** RESOLVIDO ***
 
-- [ ] [cappinho] Ajustar filtro de datas da tela "HISTORICO/BUSCA" (esta puxando datas anteriores, nao somente a data selecionada)
-- [ ] [cappinho] Corrigir contador de notificacoes na tela de notificacoes (badge nao reflete contagem correta)
-- [ ] [victor]   Corrigir bug da tela de desenho: linha iniciando em ponto pre-definido
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
+- [x] [joao]     A&R + Pinheiro Industria: alterar prazo de entrega com justificativa.
+                 Producao digita o motivo da alteracao; requisicao volta para o vendedor
+                 com notificacao e novo prazo visivel no historico.
+                 *** RESOLVIDO ***
 
-### Prioridade Media
+- [x] [joao]     Motivos predefinidos para cancelamento de requisicoes.
+                 Caixa de selecao: "Desistencia", "Material danificado / avariado", "Outro".
+                 Opcao "Outro" exige campo de texto livre obrigatorio.
+                 Mostrar motivo nas tabelas de historico e nas telas de A&R / Industria.
+                 *** RESOLVIDO ***
 
-- [ ] [cappinho] Ajustar calendario para aparecer o simbolo da seta para abrir o calendario
-
-### Prioridade Baixa
-
-- [ ] [victor]   Refinar o raio do ima para ficar mais amplo (expandir um pouco mais)
+- [x] [cappinho] Remover campo de importacao de usuario na Central de Usuarios.
+                 Central de Usuarios virou aba "Usuarios" dentro de Configuracoes,
+                 com acesso exclusivo para administradores. Campo de importacao removido.
+                 *** RESOLVIDO ***
 
 ---
 
-## Proximas Implementacoes
+## Media prioridade
 
-### Prioridade Alta
-<<<<<<< Updated upstream
+- [x] [joao]     Prazo minimo em dias uteis.
+                 Horario comercial: segunda a sexta 8h-18h, sabado 8h-12h.
+                 Novo parametro em Configuracoes > Sistema para definir o minimo.
+                 Notificar vendedor / gerente quando o prazo estiver proximo ou vencido.
+                 *** RESOLVIDO *** (sabado nao conta; admin/gerente podem gravar abaixo do minimo)
 
-- [ ] [joao]     Implementar sistema de atualizacoes (publicar versoes no GitHub e gerar executavel com Inno Setup)
-- [ ] [joao]     Refinar niveis de acesso (revisar permissoes por role em todas as telas)
+- [x] [cappinho] Painel Gerencial: identificar backups realizados (data, tamanho, status).
+                 Informacao ja disponivel no Painel Tecnico. Decidido nao replicar no
+                 Painel Gerencial.
+                 *** RESOLVIDO ***
 
-### Prioridade Media
+- [x] [joao]     Botao "Exportar para Excel" em Historico / Busca.
+                 Exporta os resultados filtrados atuais para .xlsx (openpyxl).
+                 Aproveitado para reagrupar os filtros em duas linhas (mais
+                 legivel e com folga para novos filtros).
+                 *** RESOLVIDO ***
 
-- [ ] [cappinho] Melhorar personalizacao da tela de configuracao
-- [ ] [victor]   Colocar emojis na impressao dos PDFs
+- [x] [joao]     A&R: ao enviar requisicao para maquina de corte, sempre encaminhar para
+                 maquina de dobra em seguida.
+                 Substituir botao "Finalizar" por "Encaminhar para Dobra" nas maquinas de
+                 corte. Exibir lista de maquinas de dobra disponiveis para escolha.
+                 Botao "Finalizar" permanece apenas nas maquinas de dobra.
+                 *** RESOLVIDO ***
 
-### Prioridade Baixa
+- [x] [joao]     Painel Tecnico movido para Configuracoes > aba "Sistema" (deixou de ser
+                 tela na sidebar). Cards reorganizados em secoes (Disponibilidade /
+                 Desempenho & Recursos / Usuarios), no padrao visual da aba.
+                 *** RESOLVIDO ***
 
-- [ ] [victor]   Polimento geral do app
+- [x] [joao]     Cadastro de clientes: nova aba "Clientes" em Configuracoes (admin).
+                 Lista por busca no servidor, cadastro individual (code/name/cnpj
+                 obrigatorios) e importacao em lote por planilha Excel (create-only,
+                 rejeita e lista conflitos). Usa rotas existentes; sem reiniciar servidor.
+                 *** RESOLVIDO ***
 
-<<<<<<< Updated upstream
----
-=======
-- [ ] Implementar sistema de atualizacoes (publicar versoes no GitHub e gerar executavel com Inno Setup)
-- [ ] Refinar niveis de acesso
-- [ ] Implementar sistema de backup periodico do banco de dados
-
-### Prioridade Media
-- [ ] Melhorar personalizacao da tela de configuracao
-- [ ] Colocar emojis na impressao dos PDFs
-- [ ] No PDF, alinhar mais a esquerda o titulo "Requisicao", data e nome do vendedor, aproximando de telefones, email e SIA/TAGUATINGA
-- [ ] Implementar filtro por vendedor na tela "HISTORICO/BUSCA"
-- [ ] Polimento de experiencia de usuario e performance do sistema
-- [ ] Adicionar ferramenta Curva no editor de desenho, com atalho de teclado na letra "C"
-
-### Prioridade Baixa
-- [ ] Polimento geral do app
-- [ ] Revisao geral do codigo
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-
-## Novas Ideias
-
-### Prioridade Alta
-
-- [ ] [victor]   Ajustar design dos pop-ups de notificacoes (minimalista e moderno ao mesmo tempo)
-
-### Prioridade Media
-
-- [ ] [victor]   Definir direcao visual unificada para componentes de feedback (toasts, drawers, modais)
-
-### Prioridade Baixa
-
-- [ ] [victor]   Criar checklist de consistencia visual antes de cada release
+- [ ] [victor]   Relatorio de maquinas (corte e dobra) de A&R e Pinheiro Industria.
+                 Mostrar historico de uso, pedidos processados e tempo medio por maquina.
 
 ---
-=======
-### Prioridade Alta
-- [ ] Implementar sistema de atualizacoes (publicar versoes no GitHub e gerar executavel com Inno Setup)
-- [ ] Refinar niveis de acesso
-- [ ] Implementar sistema de backup periodico do banco de dados
 
-### Prioridade Media
-- [ ] Melhorar personalizacao da tela de configuracao
-- [ ] Colocar emojis na impressao dos PDFs
-- [ ] No PDF, alinhar mais a esquerda o titulo "Requisicao", data e nome do vendedor, aproximando de telefones, email e SIA/TAGUATINGA
-- [ ] Implementar filtro por vendedor na tela "HISTORICO/BUSCA"
-- [ ] Polimento de experiencia de usuario e performance do sistema
-- [ ] Adicionar ferramenta Curva no editor de desenho, com atalho de teclado na letra "C"
+## Aguardando definicao
 
-### Prioridade Baixa
-- [ ] Polimento geral do app
-- [ ] Revisao geral do codigo
->>>>>>> Stashed changes
+- [ ] [victor]   Canvas: ferramenta Esquadro no editor de desenho.
+                 *** NAO IMPLEMENTAR ate receber autorizacao. Discutir especificacao primeiro. ***
 
-## Como usar este arquivo
-
-- Sempre adicionar item novo na secao correta e com prioridade definida.
-- Marcar com [x] quando concluir.
-- Incluir data de conclusao ao lado do [x] quando fechar um item. Ex: [x] 2026-05-22
-- Se abrir um item novo, indicar o responsavel entre colchetes. Ex: [joao]
+- [x] [joao]     Faturar pedido automaticamente ao enviar para producao (A&R e Pinheiro Industria).
+                 *** RESOLVIDO ***

@@ -81,7 +81,7 @@ def acknowledge_feedback(
 
     fb = db.query(Feedback).filter(Feedback.id == feedback_id).first()
     if not fb:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback nao encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback não encontrado.")
 
     can_notify_author = fb.read_at is None
     if can_notify_author:
@@ -94,7 +94,7 @@ def acknowledge_feedback(
             user_id=fb.user_id,
             type="feedback_read",
             title="Feedback em andamento",
-            message="Seu feedback foi lido e esta em processo de correcao.",
+            message="Seu feedback foi lido e está em processo de correção.",
             requisition_id=None,
         )
         db.add(notif)

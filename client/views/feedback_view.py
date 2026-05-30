@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..core.session import session
+from ..widgets.smooth_scroll import apply_smooth_scroll
 
 MAX_FEEDBACK_LEN = 150
 
@@ -132,10 +133,21 @@ class FeedbackView(QWidget):
         admin_layout.setContentsMargins(12, 12, 12, 12)
         admin_layout.setSpacing(8)
 
+        admin_title_row = QHBoxLayout()
+        admin_title_row.setContentsMargins(0, 0, 0, 0)
+        admin_title_row.setSpacing(0)
+
         self.admin_title = QLabel("Mensagens recebidas")
-        admin_layout.addWidget(self.admin_title)
+        self.admin_title.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.admin_title.setFixedHeight(max(18, int(22 * self.scale)))
+        self.admin_title.setFixedWidth(max(160, int(190 * self.scale)))
+        self.admin_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        admin_title_row.addWidget(self.admin_title)
+        admin_title_row.addStretch(1)
+        admin_layout.addLayout(admin_title_row)
 
         self.feedback_list = QListWidget()
+        apply_smooth_scroll(self.feedback_list)
         self.feedback_list.setWordWrap(True)
         self.feedback_list.setUniformItemSizes(False)
         self.feedback_list.currentRowChanged.connect(self._on_admin_selection_changed)
@@ -304,7 +316,8 @@ class FeedbackView(QWidget):
             f"font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
         )
         self.admin_title.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
+            f"background:transparent; border:none; color:{theme.TEXT_DARK};"
+            f"font-size:{max(9, int(11 * self.scale))}pt; font-weight:600;"
         )
 
         self.compose_card.setStyleSheet(theme.card_style())

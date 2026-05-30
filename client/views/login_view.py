@@ -1,7 +1,7 @@
 import os
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QEasingCurve, QObject, QPropertyAnimation, QThread, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core import login_backgrounds
 from ..core.resolution import res
 from ..core.session import session
 
@@ -251,13 +252,15 @@ class LoginView(QWidget):
         self._status_threads: list[tuple[QThread, QObject]] = []
         self._auto_prompted_codes: set[str] = set()
         self._pending_first_access_code: str | None = None
+        # background sazonal
+        self._bg_path:  str | None    = login_backgrounds.get_active_background()
+        self._bg_cache: QPixmap | None = None
+        # garantir que paintEvent() cubra o widget inteiro (sem flicker)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self._setup_ui()
 
     def _setup_ui(self):
-        self.setStyleSheet(
-            f"background:{theme.PRIMARY};"
-        )
-
+        # fundo é pintado no paintEvent; sem stylesheet de background aqui
         outer = QVBoxLayout(self)
         outer.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -376,6 +379,54 @@ class LoginView(QWidget):
             f"color:{theme.TEXT_WHITE}; font-size:{max(7, int(9 * self.scale))}pt; margin-top:18px; font-weight:600;"
         )
         outer.addWidget(footer)
+
+    # ── Fundo sazonal ────────────────────────────────────────────────────────
+
+    def fade_in(self, duration: int = 260) -> None:
+        """Anima windowOpacity 0 → 1 para entrada suave (troca de usuário)."""
+        self._fade_in_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade_in_anim.setDuration(duration)
+        self._fade_in_anim.setStartValue(0.0)
+        self._fade_in_anim.setEndValue(1.0)
+        self._fade_in_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade_in_anim.start()
+
+    def reload_background(self) -> None:
+        """Recarrega a campanha ativa (chamada após salvar configurações)."""
+        self._bg_path = login_backgrounds.get_active_background()
+        self._bg_cache = None
+        self._update_bg_cache()
+        self.update()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_bg_cache()
+
+    def _update_bg_cache(self) -> None:
+        """Redimensiona a imagem de fundo para cobrir o widget (cover)."""
+        if self._bg_path and os.path.isfile(self._bg_path):
+            pix = QPixmap(self._bg_path)
+            if not pix.isNull():
+                self._bg_cache = pix.scaled(
+                    self.size(),
+                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                return
+        self._bg_cache = None
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        if self._bg_cache and not self._bg_cache.isNull():
+            # centraliza (KeepAspectRatioByExpanding pode exceder o tamanho)
+            x = (self.width()  - self._bg_cache.width())  // 2
+            y = (self.height() - self._bg_cache.height()) // 2
+            painter.drawPixmap(x, y, self._bg_cache)
+        else:
+            painter.fillRect(self.rect(), QColor(theme.PRIMARY))
+        painter.end()
+
+    # ── Login ─────────────────────────────────────────────────────────────────
 
     def _do_login(self):
         code = self.input_code.text().strip()

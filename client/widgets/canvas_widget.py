@@ -1,13 +1,13 @@
 """
-Canvas de desenho tÃ©cnico com suporte a:
-- Ferramentas: SeleÃ§Ã£o, Caneta livre, Linha, RetÃ¢ngulo, Elipse, Texto
-- Shift: trava linha em 0Â°/45Â°/90Â°
-- InserÃ§Ã£o de imagem (PNG, JPG, BMP)
-- ReferÃªncia de arquivo PDF (exibe nome, abre externamente)
+Canvas de desenho técnico com suporte a:
+- Ferramentas: Seleção, Caneta livre, Linha, Retângulo, Elipse, Texto
+- Shift: trava linha em 0°/45°/90°
+- Inserção de imagem (PNG, JPG, BMP)
+- Referência de arquivo PDF (exibe nome, abre externamente)
 - Undo / Redo (Ctrl+Z / Ctrl+Y)
 - Ctrl+T: Free Transform (bounding box + arrastar cantos para girar)
-- Delete para apagar seleÃ§Ã£o
-- SerializaÃ§Ã£o completa para JSON (salvo no banco)
+- Delete para apagar seleção
+- Serialização completa para JSON (salvo no banco)
 """
 import json
 import math
@@ -16,10 +16,10 @@ from enum import Enum
 
 from PySide6.QtCore import (
     Qt, QPointF, QRectF, Signal, QEvent,
-    QByteArray, QBuffer, QIODevice, QMimeData,
+    QByteArray, QBuffer, QIODevice, QMimeData, QUrl,
 )
 from PySide6.QtGui import (
-    QColor, QFont, QPainter, QPainterPath, QPen, QBrush,
+    QColor, QFont, QPainter, QPainterPath, QPainterPathStroker, QPen, QBrush,
     QPixmap, QKeySequence, QAction, QCursor, QTransform, QGuiApplication,
 )
 from PySide6.QtWidgets import (
@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsTextItem,
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
-    QSizePolicy, QFrame, QComboBox,
+    QSizePolicy, QFrame, QComboBox, QApplication,
 )
 from ..core import theme
 from ..core.text_case import normalize_upper_text
@@ -40,6 +40,7 @@ class Tool(Enum):
     ERASER   = "eraser"
     LINE     = "line"
     ANGLE    = "angle"
+    RULER    = "ruler"
     ARROW    = "arrow"
     CURVE    = "curve"
     TRIANGLE = "triangle"
@@ -51,7 +52,7 @@ class Tool(Enum):
     IMAGE    = "image"
 
 
-# Mapeamento estilo de linha ? string JSON
+# Mapeamento estilo de linha -> string JSON
 _STYLE_TO_STR = {
     Qt.PenStyle.SolidLine:   "solid",
     Qt.PenStyle.DashLine:    "dash",
@@ -60,6 +61,7 @@ _STYLE_TO_STR = {
 }
 _STR_TO_STYLE = {v: k for k, v in _STYLE_TO_STR.items()}
 _CANVAS_CLIPBOARD_MIME = "application/x-requisicoes-canvas-items"
+_IMAGE_FILE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"}
 
 
 def _pixmap_to_base64(pixmap: QPixmap) -> str:
@@ -71,6 +73,116 @@ def _pixmap_to_base64(pixmap: QPixmap) -> str:
     data = bytes(buffer.data().toBase64()).decode("ascii")
     buffer.close()
     return data
+
+
+def _serialize_transform(t: QTransform) -> dict | None:
+    if t.isIdentity():
+        return None
+    return {
+        "m11": t.m11(),
+        "m12": t.m12(),
+        "m13": t.m13(),
+        "m21": t.m21(),
+        "m22": t.m22(),
+        "m23": t.m23(),
+        "m31": t.m31(),
+        "m32": t.m32(),
+        "m33": t.m33(),
+    }
+
+
+def _deserialize_transform(data) -> QTransform | None:
+    if not data:
+        return None
+    if isinstance(data, dict):
+        return QTransform(
+            float(data.get("m11", 1.0)),
+            float(data.get("m12", 0.0)),
+            float(data.get("m13", 0.0)),
+            float(data.get("m21", 0.0)),
+            float(data.get("m22", 1.0)),
+            float(data.get("m23", 0.0)),
+            float(data.get("m31", 0.0)),
+            float(data.get("m32", 0.0)),
+            float(data.get("m33", 1.0)),
+        )
+    if isinstance(data, (list, tuple)) and len(data) == 9:
+        return QTransform(
+            float(data[0]), float(data[1]), float(data[2]),
+            float(data[3]), float(data[4]), float(data[5]),
+            float(data[6]), float(data[7]), float(data[8]),
+        )
+    return None
+
+
+def _serialize_path_segments(path: QPainterPath) -> list[dict]:
+    segments: list[dict] = []
+    i = 0
+    count = path.elementCount()
+    while i < count:
+        el = path.elementAt(i)
+        if el.isMoveTo():
+            segments.append({"cmd": "M", "x": el.x, "y": el.y})
+            i += 1
+            continue
+        if el.isLineTo():
+            segments.append({"cmd": "L", "x": el.x, "y": el.y})
+            i += 1
+            continue
+        if el.isCurveTo() and (i + 2) < count:
+            c1 = el
+            c2 = path.elementAt(i + 1)
+            end = path.elementAt(i + 2)
+            segments.append({
+                "cmd": "C",
+                "c1": [c1.x, c1.y],
+                "c2": [c2.x, c2.y],
+                "end": [end.x, end.y],
+            })
+            i += 3
+            continue
+        i += 1
+    return segments
+
+
+def _deserialize_path(path_data: dict) -> QPainterPath:
+    segments = path_data.get("segments", [])
+    if isinstance(segments, list) and segments:
+        path = QPainterPath()
+        has_current = False
+        for seg in segments:
+            if not isinstance(seg, dict):
+                continue
+            cmd = str(seg.get("cmd", "")).upper()
+            if cmd == "M":
+                path.moveTo(QPointF(float(seg.get("x", 0.0)), float(seg.get("y", 0.0))))
+                has_current = True
+            elif cmd == "L" and has_current:
+                path.lineTo(QPointF(float(seg.get("x", 0.0)), float(seg.get("y", 0.0))))
+            elif cmd == "C" and has_current:
+                c1 = seg.get("c1", [0.0, 0.0])
+                c2 = seg.get("c2", [0.0, 0.0])
+                end = seg.get("end", [0.0, 0.0])
+                if (
+                    isinstance(c1, (list, tuple)) and len(c1) == 2
+                    and isinstance(c2, (list, tuple)) and len(c2) == 2
+                    and isinstance(end, (list, tuple)) and len(end) == 2
+                ):
+                    path.cubicTo(
+                        QPointF(float(c1[0]), float(c1[1])),
+                        QPointF(float(c2[0]), float(c2[1])),
+                        QPointF(float(end[0]), float(end[1])),
+                    )
+        return path
+
+    # Compatibilidade retroativa com payload antigo (lista de pontos em polilinha)
+    points = path_data.get("points", [])
+    path = QPainterPath()
+    if points:
+        path.moveTo(QPointF(points[0][0], points[0][1]))
+        for pt in points[1:]:
+            path.lineTo(QPointF(pt[0], pt[1]))
+    return path
 
 
 def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
@@ -87,21 +199,37 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
         item.setPen(pen)
 
+    elif t == "ruler_measure_line":
+        item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
+        item.setPen(pen)
+        item.setData(0, {"type": "ruler_measure_line"})
+
+    elif t == "manual_dimension_line":
+        item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
+        item.setPen(pen)
+        item.setData(0, {"type": "manual_dimension_line"})
+
+    elif t == "angle_dimension_line":
+        item = QGraphicsLineItem(d["x1"], d["y1"], d["x2"], d["y2"])
+        item.setPen(pen)
+        item.setData(0, {"type": "angle_dimension_line"})
+
+    elif t == "angle_dimension_marker":
+        path = _deserialize_path(d)
+        item = QGraphicsPathItem(path)
+        item.setPen(pen)
+        item.setData(0, {"type": "angle_dimension_marker"})
+
     elif t == "rect":
-        item = QGraphicsRectItem(d["x"], d["y"], d["w"], d["h"])
+        item = HollowRectItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
 
     elif t == "ellipse":
-        item = QGraphicsEllipseItem(d["x"], d["y"], d["w"], d["h"])
+        item = HollowEllipseItem(d["x"], d["y"], d["w"], d["h"])
         item.setPen(pen)
 
     elif t == "path":
-        path = QPainterPath()
-        points = d.get("points", [])
-        if points:
-            path.moveTo(QPointF(points[0][0], points[0][1]))
-            for pt in points[1:]:
-                path.lineTo(QPointF(pt[0], pt[1]))
+        path = _deserialize_path(d)
         item = QGraphicsPathItem(path)
         item.setPen(pen)
 
@@ -111,6 +239,30 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setDefaultTextColor(QColor(d.get("color", "#000000")))
         font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
         item.setFont(font)
+
+    elif t == "ruler_measure_text":
+        item = QGraphicsTextItem(d.get("text", ""))
+        item.setPos(QPointF(d["x"], d["y"]))
+        item.setDefaultTextColor(QColor(d.get("color", "#000000")))
+        font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
+        item.setFont(font)
+        item.setData(0, {"type": "ruler_measure_text"})
+
+    elif t == "manual_dimension_text":
+        item = QGraphicsTextItem(d.get("text", ""))
+        item.setPos(QPointF(d["x"], d["y"]))
+        item.setDefaultTextColor(QColor(d.get("color", "#000000")))
+        font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
+        item.setFont(font)
+        item.setData(0, {"type": "manual_dimension_text"})
+
+    elif t == "angle_dimension_text":
+        item = QGraphicsTextItem(d.get("text", ""))
+        item.setPos(QPointF(d["x"], d["y"]))
+        item.setDefaultTextColor(QColor(d.get("color", "#000000")))
+        font = QFont(theme.FONT_PRIMARY, d.get("font_size", 12))
+        item.setFont(font)
+        item.setData(0, {"type": "angle_dimension_text"})
 
     elif t == "image":
         path = d.get("path", "")
@@ -144,6 +296,10 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
 
     if item is not None and ("pos_x" in d or "pos_y" in d):
         item.setPos(QPointF(d.get("pos_x", 0.0), d.get("pos_y", 0.0)))
+    if item is not None and d.get("transform"):
+        t = _deserialize_transform(d.get("transform"))
+        if t is not None:
+            item.setTransform(t, False)
     if item is not None and rot:
         item.setRotation(rot)
 
@@ -172,20 +328,79 @@ def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False
     return {"items": count, "pdf": obj.get("pdf", "")}
 
 
-# -- Cena personalizada --------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Subclasses para formas ocas (hit-test somente na borda, não no interior)
+# ---------------------------------------------------------------------------
+
+class HollowRectItem(QGraphicsRectItem):
+    """Retângulo selecionável/clicável apenas na borda, não no interior vazio."""
+
+    def shape(self) -> QPainterPath:
+        stroker = QPainterPathStroker()
+        stroker.setWidth(max(self.pen().widthF(), 1.0) + 8.0)
+        outline = QPainterPath()
+        outline.addRect(self.rect())
+        return stroker.createStroke(outline)
+
+
+class HollowEllipseItem(QGraphicsEllipseItem):
+    """Elipse selecionável/clicável apenas na borda, não no interior vazio."""
+
+    def shape(self) -> QPainterPath:
+        stroker = QPainterPathStroker()
+        stroker.setWidth(max(self.pen().widthF(), 1.0) + 8.0)
+        outline = QPainterPath()
+        outline.addEllipse(self.rect())
+        return stroker.createStroke(outline)
+
+
+# Cena personalizada
 class DrawingScene(QGraphicsScene):
     def __init__(self, canvas_widget):
         super().__init__()
         self.cw = canvas_widget
         self._start: QPointF | None = None
+        self._ruler_line_item: QGraphicsLineItem | None = None
+        self._ruler_text_item: QGraphicsTextItem | None = None
         self._preview_item: QGraphicsItem | None = None
         self._path_item: QGraphicsPathItem | None = None
         self._painter_path: QPainterPath | None = None
         self._curve_source_item: QGraphicsItem | None = None
         self._curve_points_scene: list[QPointF] = []
         self._curve_segment_index: int = -1
-        self._angle_marker_preview_item: QGraphicsPathItem | None = None
+        self._curve_committed_points_scene: list[QPointF] = []
+        self._curve_session_active: bool = False
+        self._curve_dragging: bool = False
+        self._curve_bend_count: int = 0
+        # Ferramenta Curva (estilo Paint): 0=idle, 1=linha base, 2=ponto controle
+        self._curve_draw_phase: int = 0
+        self._curve_draw_start: QPointF | None = None
+        self._curve_draw_end:   QPointF | None = None
+        self._curve_ctrl_1: QPointF | None = None
+        self._curve_ctrl_2: QPointF | None = None
+        self._ruler_commit_on_release: bool = False
+        self._manual_dim_active: bool = False
+        self._manual_dim_label: str = ""
+        self._manual_dim_start: QPointF | None = None
+        self._manual_dim_line_item: QGraphicsLineItem | None = None
+        self._manual_dim_text_item: QGraphicsTextItem | None = None
+        self._manual_dim_block_release: bool = False
         self._angle_text_preview_item: QGraphicsTextItem | None = None
+        self._angle_marker_preview_item: QGraphicsPathItem | None = None
+        self._angle_mode_active: bool = False
+        self._angle_mode_start: QPointF | None = None
+        self._angle_mode_label: str = "90°"
+        self._angle_mode_degrees: float = 90.0
+        self._angle_mode_style: str = "auto"
+        self._angle_mode_block_release: bool = False
+        self._mirror_axis_active: bool = False
+        self._mirror_axis_start: QPointF | None = None
+        self._mirror_axis_line_item: QGraphicsLineItem | None = None
+        self._mirror_axis_block_release: bool = False
+        self._pen_last_point: QPointF | None = None
+        self._pen_shift_anchor: QPointF | None = None
+        self._pen_shift_base_path: QPainterPath | None = None
+        self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
 
         # Estado do Free Transform (Ctrl+T)
@@ -198,17 +413,21 @@ class DrawingScene(QGraphicsScene):
 
         # Snap to endpoints
         self._snap_point: QPointF | None = None
+        self._snap_points_cache: list[QPointF] = []
 
         self.selectionChanged.connect(self._on_selection_changed)
 
-    # -- Grade de fundo (visual only â€” nÃ£o serializada) -----------------------
+    # Grade de fundo (somente visual, não serializada)
     GRID_MINOR = 20
     GRID_MAJOR = 100
     # Tamanho dos handles do bounding box do Free Transform
     FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
-    FT_CORNER_ZONE = 22    # distÃ¢ncia mÃ¡xima do canto para ativar rotaÃ§Ã£o (px viewport)
+    FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
     # Snap to endpoints
-    SNAP_RADIUS    = 30    # raio de detecÃ§Ã£o em px de tela (constante com zoom)
+    SNAP_RADIUS    = 16    # raio de detecção em px de tela (constante com zoom)
+    PEN_MIN_STEP   = 0.8   # distância mínima para adicionar ponto no traço livre
+    CURVE_MAX_BENDS = 2    # comportamento do Paint clássico: até 2 "dobras"
+    RULER_PX_PER_MM = 3.78
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
@@ -234,7 +453,7 @@ class DrawingScene(QGraphicsScene):
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
             y += step
 
-    # -- Free Transform --------------------------------------------------------
+    # Free Transform
     def _view(self):
         views = self.views()
         return views[0] if views else None
@@ -253,7 +472,7 @@ class DrawingScene(QGraphicsScene):
         return QRectF(tl, br).normalized()
 
     def _in_rotation_zone_vp(self, vp_pos: QPointF) -> bool:
-        """True se vp_pos estÃ¡ na zona de rotaÃ§Ã£o (perto de um canto, fora do rect)."""
+        """True se vp_pos está na zona de rotação (perto de um canto, fora do rect)."""
         vp_rect = self._ft_bounding_rect_vp()
         if vp_rect.isNull():
             return False
@@ -280,7 +499,7 @@ class DrawingScene(QGraphicsScene):
         if self.cw.tool != Tool.SELECT:
             self.cw._set_tool(Tool.SELECT)
         self._ft_items = list(items)
-        # Pivot de rotaÃ§Ã£o = centro do bounding rect de cada item
+        # Pivot de rotação = centro do bounding rect de cada item
         for item in self._ft_items:
             item.setTransformOriginPoint(item.boundingRect().center())
         self._ft_active = True
@@ -296,11 +515,32 @@ class DrawingScene(QGraphicsScene):
         self.update()
         self.cw.changed.emit()
 
-    # -- Snap to endpoints -----------------------------------------------------
-    def _collect_snap_points(self) -> list:
+    # Snap to endpoints
+    def _collect_snap_points(self, skip_items: set[QGraphicsItem] | None = None) -> list:
         """Retorna todos os endpoints de itens existentes em coordenadas de cena."""
+        skip_items = skip_items or set()
         points = []
         for item in self.items():
+            if item in skip_items:
+                continue
+            meta = item.data(0) or {}
+            # Ignora overlays/itens transitórios para o snap não "grudar" no próprio preview.
+            if isinstance(meta, dict) and meta.get("type") in {
+                "ruler_overlay",
+                "ruler_measure_line",
+                "ruler_measure_text",
+                "manual_dimension_overlay",
+                "manual_dimension_line",
+                "manual_dimension_text",
+                "angle_dimension_overlay",
+                "angle_dimension_line",
+                "angle_dimension_marker",
+                "angle_dimension_text",
+                "mirror_axis_overlay",
+            }:
+                continue
+            if not item.isVisible():
+                continue
             if isinstance(item, QGraphicsLineItem):
                 ln = item.line()
                 points.append(item.mapToScene(ln.p1()))
@@ -318,10 +558,15 @@ class DrawingScene(QGraphicsScene):
                     points.append(item.mapToScene(QPointF(en.x, en.y)))
         return points
 
-    def _find_snap(self, scene_pos: QPointF) -> QPointF | None:
+    def _find_snap(
+        self,
+        scene_pos: QPointF,
+        *,
+        candidates: list[QPointF] | None = None,
+    ) -> QPointF | None:
         """
-        Retorna o endpoint mais prÃ³ximo de scene_pos se estiver dentro de
-        SNAP_RADIUS pixels de tela. Usa distÃ¢ncia de viewport para que o
+        Retorna o endpoint mais próximo de scene_pos se estiver dentro de
+        SNAP_RADIUS pixels de tela. Usa distância de viewport para que o
         raio seja constante independente do zoom.
         """
         view = self._view()
@@ -330,7 +575,8 @@ class DrawingScene(QGraphicsScene):
         vp_pos = QPointF(view.mapFromScene(scene_pos))
         best_pt = None
         best_dist = self.SNAP_RADIUS
-        for pt in self._collect_snap_points():
+        source = candidates if candidates is not None else self._collect_snap_points()
+        for pt in source:
             vp_pt = QPointF(view.mapFromScene(pt))
             d = math.hypot(vp_pos.x() - vp_pt.x(), vp_pos.y() - vp_pt.y())
             if d < best_dist:
@@ -339,7 +585,7 @@ class DrawingScene(QGraphicsScene):
         return best_pt
 
     def _on_selection_changed(self):
-        """Sincroniza spin_font; remove ediÃ§Ã£o inline de textos deselecionados."""
+        """Sincroniza spin_font; remove edição inline de textos deselecionados."""
         selected = set(self.selectedItems())
         for item in self.items():
             if isinstance(item, QGraphicsTextItem) and item not in selected:
@@ -395,7 +641,7 @@ class DrawingScene(QGraphicsScene):
 
         painter.restore()
 
-        # -- Indicador de snap (cÃ­rculo laranja no ponto de conexÃ£o) ----------
+        # Indicador de snap (círculo laranja no ponto de conexão)
         if self._snap_point is not None:
             view = self._view()
             if view:
@@ -438,104 +684,98 @@ class DrawingScene(QGraphicsScene):
         return QPointF(start.x() + dist * math.cos(rad),
                        start.y() + dist * math.sin(rad))
 
-    def _pick_curve_source_item(self, scene_pos: QPointF) -> QGraphicsItem | None:
-        """Escolhe forma selecionada para curvar; fallback para item sob o cursor."""
-        for item in self.selectedItems():
-            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem)):
-                return item
-        for item in self.items(scene_pos):
-            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem)):
-                item.setSelected(True)
-                return item
-        return None
+    def _commit_curve_draw(self, ctrl: QPointF):
+        """Aplica uma dobra da curva (até CURVE_MAX_BENDS) e finaliza ao atingir o limite."""
+        if not self._curve_draw_start or not self._curve_draw_end or not self._preview_item:
+            self._cancel_curve_draw()
+            return
+        if self._curve_bend_count <= 0:
+            self._curve_ctrl_1 = QPointF(ctrl.x(), ctrl.y())
+            path = QPainterPath(self._curve_draw_start)
+            path.quadTo(self._curve_ctrl_1, self._curve_draw_end)
+            self._preview_item.setPath(path)
+            self._curve_bend_count = 1
+            self._curve_draw_phase = 2
+            self._curve_dragging = False
+            self._start = None
+            return
 
-    def _item_curve_points_scene(self, item: QGraphicsItem) -> tuple[list[QPointF], bool]:
-        """Extrai os pontos em coordenadas de cena para curvar um segmento."""
-        if isinstance(item, QGraphicsLineItem):
-            ln = item.line()
-            return [item.mapToScene(ln.p1()), item.mapToScene(ln.p2())], False
+        self._curve_ctrl_2 = QPointF(ctrl.x(), ctrl.y())
+        path = QPainterPath(self._curve_draw_start)
+        path.cubicTo(self._curve_ctrl_1, self._curve_ctrl_2, self._curve_draw_end)
+        self._preview_item.setPath(path)
+        self._curve_bend_count = 2
 
-        if isinstance(item, QGraphicsRectItem):
-            r = item.rect()
-            pts = [
-                item.mapToScene(r.topLeft()),
-                item.mapToScene(r.topRight()),
-                item.mapToScene(r.bottomRight()),
-                item.mapToScene(r.bottomLeft()),
-                item.mapToScene(r.topLeft()),
-            ]
-            return pts, True
+        if self._curve_bend_count >= self.CURVE_MAX_BENDS:
+            item = self._preview_item
+            item.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            item.setSelected(True)
+            self.cw._push_undo(item)
+            self._preview_item = None
+            self._curve_draw_phase = 0
+            self._curve_draw_start = None
+            self._curve_draw_end = None
+            self._curve_ctrl_1 = None
+            self._curve_ctrl_2 = None
+            self._curve_bend_count = 0
+            self._curve_dragging = False
+            self._start = None
 
-        if isinstance(item, QGraphicsEllipseItem):
-            r = item.rect()
-            pts: list[QPointF] = []
-            samples = 40
-            for i in range(samples):
-                ang = (2.0 * math.pi * i) / samples
-                x = r.center().x() + (r.width() / 2.0) * math.cos(ang)
-                y = r.center().y() + (r.height() / 2.0) * math.sin(ang)
-                pts.append(item.mapToScene(QPointF(x, y)))
-            pts.append(pts[0])
-            return pts, True
+    def _cancel_curve_draw(self):
+        """Cancela qualquer fase da ferramenta Curva em andamento."""
+        if self._preview_item:
+            self.removeItem(self._preview_item)
+            self._preview_item = None
+        self._curve_draw_phase = 0
+        self._curve_draw_start = None
+        self._curve_draw_end = None
+        self._curve_ctrl_1 = None
+        self._curve_ctrl_2 = None
+        self._curve_bend_count = 0
+        self._curve_dragging = False
+        self._start = None
 
-        if isinstance(item, QGraphicsPathItem):
-            path = item.path()
-            pts: list[QPointF] = []
-            for i in range(path.elementCount()):
-                el = path.elementAt(i)
-                pts.append(item.mapToScene(QPointF(el.x, el.y)))
-            if len(pts) < 2:
-                return [], False
-            closed = math.hypot(pts[0].x() - pts[-1].x(), pts[0].y() - pts[-1].y()) < 0.01
-            return pts, closed
+    def _reset_curve_state(self):
+        self._curve_source_item = None
+        self._curve_points_scene = []
+        self._curve_segment_index = -1
+        self._curve_committed_points_scene = []
+        self._curve_session_active = False
+        self._curve_dragging = False
+        self._curve_bend_count = 0
+        self._start = None
 
-        return [], False
+    def _cancel_curve_session(self):
+        if self._curve_source_item:
+            self._curve_source_item.setVisible(True)
+        if self._curve_session_active and self._preview_item:
+            self.removeItem(self._preview_item)
+            self._preview_item = None
+        self._reset_curve_state()
 
-    def _points_to_path_scene(self, points: list[QPointF]) -> QPainterPath:
-        path = QPainterPath(points[0])
-        for p in points[1:]:
-            path.lineTo(p)
-        return path
+    def _finalize_curve_session(self):
+        if not (self._curve_session_active and self._preview_item and self._curve_source_item):
+            self._reset_curve_state()
+            return
 
-    def _distance_point_segment(self, p: QPointF, a: QPointF, b: QPointF) -> float:
-        ax, ay = a.x(), a.y()
-        bx, by = b.x(), b.y()
-        px, py = p.x(), p.y()
-        dx, dy = bx - ax, by - ay
-        denom = dx * dx + dy * dy
-        if denom <= 1e-9:
-            return math.hypot(px - ax, py - ay)
-        t = ((px - ax) * dx + (py - ay) * dy) / denom
-        t = max(0.0, min(1.0, t))
-        qx, qy = ax + t * dx, ay + t * dy
-        return math.hypot(px - qx, py - qy)
+        old_item = self._curve_source_item
+        self.removeItem(old_item)
+        if old_item in self.cw._undo_stack:
+            self.cw._undo_stack.remove(old_item)
 
-    def _closest_curve_segment_index(self, points: list[QPointF], scene_pos: QPointF) -> int:
-        if len(points) < 2:
-            return -1
-        best_i = -1
-        best_d = float("inf")
-        for i in range(len(points) - 1):
-            d = self._distance_point_segment(scene_pos, points[i], points[i + 1])
-            if d < best_d:
-                best_d = d
-                best_i = i
-        return best_i
+        item = self._preview_item
+        item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        item.setSelected(True)
+        self.cw._push_undo(item)
 
-    def _apply_curve_on_segment(self, points: list[QPointF], segment_index: int, control: QPointF, steps: int = 18) -> list[QPointF]:
-        """Substitui um segmento por uma curva quadrÃ¡tica."""
-        if segment_index < 0 or segment_index >= len(points) - 1:
-            return points
-        p0 = points[segment_index]
-        p1 = points[segment_index + 1]
-        curved: list[QPointF] = []
-        for i in range(steps + 1):
-            t = i / steps
-            u = 1.0 - t
-            x = (u * u * p0.x()) + (2 * u * t * control.x()) + (t * t * p1.x())
-            y = (u * u * p0.y()) + (2 * u * t * control.y()) + (t * t * p1.y())
-            curved.append(QPointF(x, y))
-        return points[:segment_index] + curved + points[segment_index + 2:]
+        self._preview_item = None
+        self._reset_curve_state()
 
     def _triangle_path(self, start: QPointF, end: QPointF) -> QPainterPath:
         """Triangulo isosceles dentro do retangulo definido por start/end."""
@@ -599,13 +839,222 @@ class DrawingScene(QGraphicsScene):
         path.lineTo(right)
         return path
 
+    def _ruler_pen(self, cosmetic: bool = True) -> QPen:
+        pen = QPen(QColor(theme.PRIMARY), float(max(1, self.cw.pen_width)))
+        pen.setCosmetic(cosmetic)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        return pen
+
+    def _smart_label_pos(self, start: QPointF, end: QPointF, label: str = "") -> QPointF:
+        """
+        Posiciona o texto da cota evitando sobreposição com outros elementos.
+
+        Linha vertical  → padrão à direita; se houver colisão, vai à esquerda.
+        Linha horizontal→ padrão acima;    se houver colisão, vai abaixo.
+        """
+        mid_x = (start.x() + end.x()) / 2.0
+        mid_y = (start.y() + end.y()) / 2.0
+        dx    = abs(end.x() - start.x())
+        dy    = abs(end.y() - start.y())
+
+        # Estimativa do tamanho do texto em coordenadas de cena
+        fs  = max(8, int(9 * self.cw.scale))
+        tw  = max(40, int(len(label) * fs * 0.72 + 12)) if label else 60
+        th  = int(fs * 2.2)
+        gap = max(8, int(fs * 1.3))
+
+        if dy > dx:
+            # Linha mais vertical → padrão: texto à DIREITA
+            def_x, def_y = mid_x + gap,          mid_y - th / 2
+            alt_x, alt_y = mid_x - gap - tw,     mid_y - th / 2
+        else:
+            # Linha mais horizontal → padrão: texto ACIMA
+            def_x, def_y = mid_x - tw / 2,  mid_y - gap - th
+            alt_x, alt_y = mid_x - tw / 2,  mid_y + gap
+
+        if self._has_collision_at(QRectF(def_x, def_y, tw, th)):
+            return QPointF(alt_x, alt_y)
+        return QPointF(def_x, def_y)
+
+    def _has_collision_at(self, rect: QRectF) -> bool:
+        """True se há itens de desenho reais (não cota/régua) na área indicada."""
+        _ignore = {
+            "ruler_overlay", "manual_dimension_overlay",
+            "ruler_measure_line", "ruler_measure_text",
+            "manual_dimension_line", "manual_dimension_text",
+            "angle_dimension_overlay", "angle_dimension_line", "angle_dimension_marker", "angle_dimension_text",
+            "mirror_axis_overlay",
+        }
+        for item in self.items(rect):
+            meta = item.data(0)
+            if isinstance(meta, dict) and meta.get("type") in _ignore:
+                continue
+            return True
+        return False
+
+    def _format_ruler_text(self, start: QPointF, end: QPointF) -> tuple[str, float]:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        dist = math.hypot(dx, dy)
+        dx_mm = dx / self.RULER_PX_PER_MM
+        dy_mm = dy / self.RULER_PX_PER_MM
+        dist_mm = dist / self.RULER_PX_PER_MM
+        dx_cm = dx_mm / 10.0
+        dy_cm = dy_mm / 10.0
+        dist_cm = dist_mm / 10.0
+        dx_m = dx_mm / 1000.0
+        dy_m = dy_mm / 1000.0
+        dist_m = dist_mm / 1000.0
+        text = (
+            f"Dist: {dist_mm:.1f} mm ({dist_cm:.2f} cm | {dist_m:.3f} m)   "
+            f"dX: {dx_mm:.1f} mm ({dx_cm:.2f} cm | {dx_m:.3f} m)   "
+            f"dY: {dy_mm:.1f} mm ({dy_cm:.2f} cm | {dy_m:.3f} m)"
+        )
+        return text, dist_mm
+
+    @staticmethod
+    def _format_fixed_measure(dist_mm: float) -> str:
+        abs_dist = abs(dist_mm)
+        if abs_dist >= 1000.0:
+            return f"{(dist_mm / 1000.0):.3f} m"
+        if abs_dist >= 10.0:
+            return f"{(dist_mm / 10.0):.2f} cm"
+        return f"{dist_mm:.1f} mm"
+
+    @staticmethod
+    def _format_angle_label(start: QPointF, end: QPointF) -> str:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        if math.hypot(dx, dy) < 1e-6:
+            return "0.0°"
+        angle_deg = math.degrees(math.atan2(dy, dx))
+        return f"{angle_deg:.1f}°"
+
+    def _commit_ruler_measure(self, start: QPointF, end: QPointF):
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+        text, dist_mm = self._format_ruler_text(start, end)
+        _ = text  # mantém o cálculo completo centralizado para régua dinâmica.
+
+        line_item = QGraphicsLineItem(start.x(), start.y(), end.x(), end.y())
+        line_item.setPen(self._ruler_pen(cosmetic=True))
+        line_item.setZValue(9000)
+        line_item.setData(0, {"type": "ruler_measure_line"})
+        line_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(line_item)
+
+        label = self._format_fixed_measure(dist_mm)
+        text_item = QGraphicsTextItem(label)
+        text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+        text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+        text_item.setZValue(9001)
+        text_item.setData(0, {"type": "ruler_measure_text"})
+        text_item.setPos(self._smart_label_pos(start, end, label))
+        text_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(text_item)
+
+        self.cw._push_undo(line_item)
+        self.cw._push_undo(text_item)
+        self.cw.changed.emit()
+
+    def commit_ruler_overlay(self):
+        if self._ruler_line_item is None:
+            return
+        line = self._ruler_line_item.line()
+        start = QPointF(line.x1(), line.y1())
+        end = QPointF(line.x2(), line.y2())
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+        self._commit_ruler_measure(start, end)
+
+    def _sync_ruler_visuals(self):
+        if self._ruler_line_item is not None:
+            self._ruler_line_item.setPen(self._ruler_pen(cosmetic=True))
+        if self._manual_dim_line_item is not None:
+            self._manual_dim_line_item.setPen(self._ruler_pen(cosmetic=True))
+        if self._mirror_axis_line_item is not None:
+            self._mirror_axis_line_item.setPen(self._ruler_pen(cosmetic=True))
+        for item in self.items():
+            meta = item.data(0) or {}
+            if (
+                isinstance(meta, dict)
+                and meta.get("type") in {"ruler_measure_line", "manual_dimension_line"}
+                and isinstance(item, QGraphicsLineItem)
+            ):
+                item.setPen(self._ruler_pen(cosmetic=True))
+
+    def _ensure_ruler_items(self):
+        if self._ruler_line_item is None:
+            self._ruler_line_item = self.addLine(0, 0, 0, 0, self._ruler_pen(cosmetic=True))
+            self._ruler_line_item.setZValue(10000)
+            self._ruler_line_item.setData(0, {"type": "ruler_overlay"})
+        else:
+            self._ruler_line_item.setPen(self._ruler_pen(cosmetic=True))
+
+        if self._ruler_text_item is None:
+            self._ruler_text_item = QGraphicsTextItem("")
+            self._ruler_text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+            self._ruler_text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+            self._ruler_text_item.setZValue(10001)
+            self._ruler_text_item.setData(0, {"type": "ruler_overlay"})
+            self.addItem(self._ruler_text_item)
+
+    def _update_ruler(self, start: QPointF, end: QPointF):
+        self._ensure_ruler_items()
+        if self._ruler_line_item is None or self._ruler_text_item is None:
+            return
+
+        self._ruler_line_item.setLine(start.x(), start.y(), end.x(), end.y())
+        text, _dist_mm = self._format_ruler_text(start, end)
+        self._ruler_text_item.setPlainText(text)
+        self._ruler_text_item.setPos(self._smart_label_pos(start, end, text))
+
+    def _ensure_manual_dimension_items(self):
+        if self._manual_dim_line_item is None:
+            self._manual_dim_line_item = self.addLine(0, 0, 0, 0, self._ruler_pen(cosmetic=True))
+            self._manual_dim_line_item.setZValue(10000)
+            self._manual_dim_line_item.setData(0, {"type": "manual_dimension_overlay"})
+        else:
+            self._manual_dim_line_item.setPen(self._ruler_pen(cosmetic=True))
+
+        if self._manual_dim_text_item is None:
+            self._manual_dim_text_item = QGraphicsTextItem("")
+            self._manual_dim_text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+            self._manual_dim_text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+            self._manual_dim_text_item.setZValue(10001)
+            self._manual_dim_text_item.setData(0, {"type": "manual_dimension_overlay"})
+            self.addItem(self._manual_dim_text_item)
+
+    def _update_manual_dimension_preview(self, start: QPointF, end: QPointF):
+        self._ensure_manual_dimension_items()
+        if self._manual_dim_line_item is None or self._manual_dim_text_item is None:
+            return
+        self._manual_dim_line_item.setLine(start.x(), start.y(), end.x(), end.y())
+        self._manual_dim_text_item.setPlainText(self._manual_dim_label)
+        self._manual_dim_text_item.setPos(self._smart_label_pos(start, end, self._manual_dim_label))
+
+    def _clear_manual_dimension_overlay(self):
+        if self._manual_dim_line_item is not None:
+            self.removeItem(self._manual_dim_line_item)
+            self._manual_dim_line_item = None
+        if self._manual_dim_text_item is not None:
+            self.removeItem(self._manual_dim_text_item)
+            self._manual_dim_text_item = None
+
     def _clear_angle_preview(self):
-        if self._angle_marker_preview_item is not None:
-            self.removeItem(self._angle_marker_preview_item)
-            self._angle_marker_preview_item = None
         if self._angle_text_preview_item is not None:
             self.removeItem(self._angle_text_preview_item)
             self._angle_text_preview_item = None
+        if self._angle_marker_preview_item is not None:
+            self.removeItem(self._angle_marker_preview_item)
+            self._angle_marker_preview_item = None
 
     @staticmethod
     def _normalize_angle_degrees(value: float) -> float:
@@ -615,10 +1064,11 @@ class DrawingScene(QGraphicsScene):
         return normalized
 
     def _resolve_angle_style(self, degrees: float, style: str | None = None) -> str:
+        normalized = self._normalize_angle_degrees(degrees)
         selected = str(style or "auto").strip().lower()
         if selected in {"square", "arc"}:
             return selected
-        if abs(self._normalize_angle_degrees(degrees) - 90.0) < 1e-3:
+        if abs(normalized - 90.0) < 1e-3:
             return "square"
         return "arc"
 
@@ -655,6 +1105,7 @@ class DrawingScene(QGraphicsScene):
             path.lineTo(p3)
             return path
 
+        # Arc (meia-lua e demais ângulos)
         normalized = self._normalize_angle_degrees(degrees)
         if normalized > 359.9:
             normalized = 359.9
@@ -669,40 +1120,41 @@ class DrawingScene(QGraphicsScene):
         return path
 
     def _update_angle_preview(self, start: QPointF, end: QPointF):
-        label = self.cw._format_angle_value(self.cw.angle_value_deg)
-        style = self._resolve_angle_style(self.cw.angle_value_deg, self.cw.angle_style)
-        marker_path = self._build_angle_marker_path(start, end, self.cw.angle_value_deg, style)
-
+        label = self._angle_mode_label or self._format_angle_label(start, end)
+        resolved_style = self._resolve_angle_style(self._angle_mode_degrees, self._angle_mode_style)
+        marker_path = self._build_angle_marker_path(start, end, self._angle_mode_degrees, resolved_style)
         if self._angle_marker_preview_item is None:
             self._angle_marker_preview_item = QGraphicsPathItem(marker_path)
             self._angle_marker_preview_item.setPen(self._pen())
             self._angle_marker_preview_item.setZValue(10000)
+            self._angle_marker_preview_item.setData(0, {"type": "angle_dimension_overlay"})
             self.addItem(self._angle_marker_preview_item)
         else:
             self._angle_marker_preview_item.setPath(marker_path)
             self._angle_marker_preview_item.setPen(self._pen())
-
         if self._angle_text_preview_item is None:
             self._angle_text_preview_item = QGraphicsTextItem(label)
             self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
-            self._angle_text_preview_item.setFont(QFont(theme.FONT_PRIMARY, self.cw.font_size))
+            self._angle_text_preview_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
             self._angle_text_preview_item.setZValue(10001)
+            self._angle_text_preview_item.setData(0, {"type": "angle_dimension_overlay"})
             self.addItem(self._angle_text_preview_item)
         else:
             self._angle_text_preview_item.setPlainText(label)
             self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
-            self._angle_text_preview_item.setFont(QFont(theme.FONT_PRIMARY, self.cw.font_size))
-        self._angle_text_preview_item.setPos(end + QPointF(10, -10))
+        self._angle_text_preview_item.setPos(self._smart_label_pos(start, end, label))
 
     def _commit_angle_measure(self, start: QPointF, end: QPointF):
         if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
             return
-        label = self.cw._format_angle_value(self.cw.angle_value_deg)
-        style = self._resolve_angle_style(self.cw.angle_value_deg, self.cw.angle_style)
-        marker_path = self._build_angle_marker_path(start, end, self.cw.angle_value_deg, style)
+        label = self._angle_mode_label or self._format_angle_label(start, end)
+        resolved_style = self._resolve_angle_style(self._angle_mode_degrees, self._angle_mode_style)
+        marker_path = self._build_angle_marker_path(start, end, self._angle_mode_degrees, resolved_style)
 
         marker_item = QGraphicsPathItem(marker_path)
         marker_item.setPen(self._pen())
+        marker_item.setZValue(9000)
+        marker_item.setData(0, {"type": "angle_dimension_marker"})
         marker_item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -710,9 +1162,11 @@ class DrawingScene(QGraphicsScene):
         self.addItem(marker_item)
 
         text_item = QGraphicsTextItem(label)
-        text_item.setPos(end + QPointF(10, -10))
         text_item.setDefaultTextColor(QColor(self.cw.color))
-        text_item.setFont(QFont(theme.FONT_PRIMARY, self.cw.font_size))
+        text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+        text_item.setZValue(9001)
+        text_item.setData(0, {"type": "angle_dimension_text"})
+        text_item.setPos(self._smart_label_pos(start, end, label))
         text_item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -721,6 +1175,110 @@ class DrawingScene(QGraphicsScene):
 
         self.cw._push_undo(marker_item)
         self.cw._push_undo(text_item)
+        self.cw.changed.emit()
+
+    def _cancel_angle_draw(self):
+        if self._preview_item is not None:
+            self.removeItem(self._preview_item)
+            self._preview_item = None
+        self._clear_angle_preview()
+        self._start = None
+
+    def begin_angle_mode(self, degrees: float, label: str, style: str):
+        self.cancel_angle_mode()
+        self.cancel_manual_dimension()
+        self.cancel_mirror_axis()
+        if self._ft_active:
+            self._exit_ft()
+        self._angle_mode_active = True
+        self._angle_mode_start = None
+        self._angle_mode_label = str(label or "").strip() or f"{float(degrees):.1f}°"
+        self._angle_mode_degrees = float(degrees)
+        self._angle_mode_style = style
+
+    def cancel_angle_mode(self):
+        self._angle_mode_active = False
+        self._angle_mode_start = None
+        self._angle_mode_block_release = False
+        self._cancel_angle_draw()
+
+    def begin_manual_dimension(self, label: str):
+        self.cancel_manual_dimension()
+        if self._ft_active:
+            self._exit_ft()
+        self._manual_dim_active = True
+        self._manual_dim_label = label
+        self._manual_dim_start = None
+
+    def cancel_manual_dimension(self):
+        self._manual_dim_active = False
+        self._manual_dim_label = ""
+        self._manual_dim_start = None
+        self._manual_dim_block_release = False
+        self._clear_manual_dimension_overlay()
+
+    def _ensure_mirror_axis_item(self):
+        if self._mirror_axis_line_item is None:
+            self._mirror_axis_line_item = self.addLine(0, 0, 0, 0, self._ruler_pen(cosmetic=True))
+            self._mirror_axis_line_item.setZValue(10000)
+            self._mirror_axis_line_item.setData(0, {"type": "mirror_axis_overlay"})
+        else:
+            self._mirror_axis_line_item.setPen(self._ruler_pen(cosmetic=True))
+
+    def _update_mirror_axis_preview(self, start: QPointF, end: QPointF):
+        self._ensure_mirror_axis_item()
+        if self._mirror_axis_line_item is None:
+            return
+        self._mirror_axis_line_item.setLine(start.x(), start.y(), end.x(), end.y())
+
+    def _clear_mirror_axis_overlay(self):
+        if self._mirror_axis_line_item is not None:
+            self.removeItem(self._mirror_axis_line_item)
+            self._mirror_axis_line_item = None
+
+    def begin_mirror_axis(self):
+        self.cancel_mirror_axis()
+        self.cancel_manual_dimension()
+        if self._ft_active:
+            self._exit_ft()
+        self._mirror_axis_active = True
+        self._mirror_axis_start = None
+
+    def cancel_mirror_axis(self):
+        self._mirror_axis_active = False
+        self._mirror_axis_start = None
+        self._mirror_axis_block_release = False
+        self._clear_mirror_axis_overlay()
+
+    def _commit_manual_dimension(self, start: QPointF, end: QPointF):
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+
+        line_item = QGraphicsLineItem(start.x(), start.y(), end.x(), end.y())
+        line_item.setPen(self._ruler_pen(cosmetic=True))
+        line_item.setZValue(9000)
+        line_item.setData(0, {"type": "manual_dimension_line"})
+        line_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(line_item)
+
+        text_item = QGraphicsTextItem(self._manual_dim_label)
+        text_item.setDefaultTextColor(QColor(theme.PRIMARY_HOVER))
+        text_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+        text_item.setZValue(9001)
+        text_item.setData(0, {"type": "manual_dimension_text"})
+        text_item.setPos(self._smart_label_pos(start, end, self._manual_dim_label))
+        text_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(text_item)
+
+        self.cw._push_undo(line_item)
+        self.cw._push_undo(text_item)
+        self.cw.changed.emit()
 
     def mousePressEvent(self, event):
         tool = self.cw.tool
@@ -731,7 +1289,59 @@ class DrawingScene(QGraphicsScene):
             super().mousePressEvent(event)
             return
 
-        # Free Transform ativo: verificar zona de rotaÃ§Ã£o nos cantos
+        if self._mirror_axis_active:
+            self._mirror_axis_block_release = True
+            if self._mirror_axis_start is None:
+                self._mirror_axis_start = QPointF(pos.x(), pos.y())
+                self._update_mirror_axis_preview(self._mirror_axis_start, self._mirror_axis_start)
+            else:
+                end = (
+                    self._constrain(self._mirror_axis_start, pos)
+                    if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                    else QPointF(pos.x(), pos.y())
+                )
+                start = self._mirror_axis_start
+                self.cw._mirror_selected_about_axis(start, end)
+                self.cancel_mirror_axis()
+            event.accept()
+            return
+
+        if self._manual_dim_active:
+            self._manual_dim_block_release = True
+            if self._manual_dim_start is None:
+                self._manual_dim_start = QPointF(pos.x(), pos.y())
+                self._update_manual_dimension_preview(self._manual_dim_start, self._manual_dim_start)
+            else:
+                end = (
+                    self._constrain(self._manual_dim_start, pos)
+                    if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                    else QPointF(pos.x(), pos.y())
+                )
+                start = self._manual_dim_start
+                self._commit_manual_dimension(start, end)
+                self.cancel_manual_dimension()
+            event.accept()
+            return
+
+        if self._angle_mode_active:
+            self._angle_mode_block_release = True
+            if self._angle_mode_start is None:
+                self._angle_mode_start = QPointF(pos.x(), pos.y())
+                self._start = QPointF(pos.x(), pos.y())
+                self._update_angle_preview(self._angle_mode_start, self._angle_mode_start)
+            else:
+                end = (
+                    self._constrain(self._angle_mode_start, pos)
+                    if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                    else QPointF(pos.x(), pos.y())
+                )
+                self._commit_angle_measure(self._angle_mode_start, end)
+                self.cancel_angle_mode()
+                self.cw._set_tool(Tool.SELECT)
+            event.accept()
+            return
+
+        # Free Transform ativo: verificar zona de rotação nos cantos
         if self._ft_active and event.button() == Qt.MouseButton.LeftButton:
             view = self._view()
             if view:
@@ -749,11 +1359,11 @@ class DrawingScene(QGraphicsScene):
                     self._ft_is_rotating = True
                     event.accept()
                     return
-                # Clique fora da Ã¡rea do bounding box ? sair do ft
+                # Clique fora da área do bounding box -> sair do FT
                 outer = self._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20)
                 if not outer.contains(vp_pos):
                     self._exit_ft()
-                    # nÃ£o retorna â€” deixa a seleÃ§Ã£o normal acontecer
+                    # Não retorna: deixa a seleção normal acontecer
 
         if tool == Tool.SELECT:
             super().mousePressEvent(event)
@@ -782,27 +1392,44 @@ class DrawingScene(QGraphicsScene):
             self.cw._insert_image(pos)
             return
 
+        # CURVE fase 2: clique inicia o arraste da dobra
+        if tool == Tool.CURVE and self._curve_draw_phase == 2:
+            self._curve_draw_phase = 3
+            self._curve_dragging = True
+            self._start = QPointF(pos.x(), pos.y())
+            event.accept()
+            return
+
         self._snap_point = None
+        self._snap_points_cache = []
         self._start = QPointF(pos.x(), pos.y())
+        self._pen_last_point = None
+        self._pen_shift_anchor = None
+        self._pen_shift_base_path = None
+        self._ruler_commit_on_release = (
+            tool == Tool.RULER
+            and bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+        )
 
         if tool == Tool.PEN:
             self._painter_path = QPainterPath(pos)
             self._path_item = QGraphicsPathItem()
             self._path_item.setPen(self._pen())
             self.addItem(self._path_item)
+            self._pen_last_point = QPointF(pos.x(), pos.y())
 
         elif tool == Tool.LINE:
             self._start = QPointF(pos.x(), pos.y())
-            # Pequeno segmento inicial para feedback visual instantÃ¢neo no primeiro clique.
+            # Cache de snap para a sessão atual de desenho da linha (evita varredura a cada mouse move).
+            self._snap_points_cache = self._collect_snap_points()
+            # Pequeno segmento inicial para feedback visual instantâneo no primeiro clique.
             self._preview_item = self.addLine(
                 self._start.x(), self._start.y(),
                 self._start.x() + 0.01, self._start.y(), self._pen()
             )
 
-        elif tool == Tool.ANGLE:
-            self._start = QPointF(pos.x(), pos.y())
-            self._clear_angle_preview()
-            self._update_angle_preview(self._start, self._start)
+        elif tool == Tool.RULER:
+            self._update_ruler(self._start, self._start)
 
         elif tool == Tool.ARROW:
             self._start = QPointF(pos.x(), pos.y())
@@ -811,37 +1438,18 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.CURVE:
-            source_item = self._pick_curve_source_item(pos)
-            if not source_item:
-                self._start = None
-                return
-
-            self._curve_source_item = source_item
-            self._curve_points_scene, _closed = self._item_curve_points_scene(source_item)
-            if len(self._curve_points_scene) < 2:
-                self._curve_source_item = None
-                self._start = None
-                return
-            self._curve_segment_index = self._closest_curve_segment_index(self._curve_points_scene, pos)
-            if self._curve_segment_index < 0:
-                self._curve_source_item = None
-                self._curve_points_scene = []
-                self._start = None
-                return
-
-            source_pen = source_item.pen()
-            source_item.setVisible(False)
-
-            curved_points = self._apply_curve_on_segment(
-                self._curve_points_scene,
-                self._curve_segment_index,
-                pos,
-            )
-            path = self._points_to_path_scene(curved_points)
-            curve_item = QGraphicsPathItem(path)
-            curve_item.setPen(source_pen)
-            self.addItem(curve_item)
-            self._preview_item = curve_item
+            # Fase 1: início — define ponto inicial da linha base
+            self._curve_draw_phase = 1
+            self._curve_bend_count = 0
+            self._curve_dragging = True
+            self._curve_draw_start = QPointF(pos.x(), pos.y())
+            self._curve_ctrl_1 = None
+            self._curve_ctrl_2 = None
+            p = QPainterPath(self._curve_draw_start)
+            p.lineTo(self._curve_draw_start)
+            self._preview_item = QGraphicsPathItem(p)
+            self._preview_item.setPen(self._pen())
+            self.addItem(self._preview_item)
 
         elif tool == Tool.TRIANGLE:
             self._preview_item = QGraphicsPathItem(self._triangle_path(self._start, pos))
@@ -859,10 +1467,16 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.RECT:
-            self._preview_item = self.addRect(QRectF(pos, pos), self._pen())
+            r = HollowRectItem(QRectF(pos, pos))
+            r.setPen(self._pen())
+            self.addItem(r)
+            self._preview_item = r
 
         elif tool == Tool.ELLIPSE:
-            self._preview_item = self.addEllipse(QRectF(pos, pos), self._pen())
+            e = HollowEllipseItem(QRectF(pos, pos))
+            e.setPen(self._pen())
+            self.addItem(e)
+            self._preview_item = e
 
         event.accept()
 
@@ -870,7 +1484,37 @@ class DrawingScene(QGraphicsScene):
         tool = self.cw.tool
         pos  = event.scenePos()
 
-        # Free Transform: rotaÃ§Ã£o fluida
+        if self._mirror_axis_active and self._mirror_axis_start is not None:
+            end = (
+                self._constrain(self._mirror_axis_start, pos)
+                if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                else QPointF(pos.x(), pos.y())
+            )
+            self._update_mirror_axis_preview(self._mirror_axis_start, end)
+            event.accept()
+            return
+
+        if self._manual_dim_active and self._manual_dim_start is not None:
+            end = (
+                self._constrain(self._manual_dim_start, pos)
+                if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                else QPointF(pos.x(), pos.y())
+            )
+            self._update_manual_dimension_preview(self._manual_dim_start, end)
+            event.accept()
+            return
+
+        if self._angle_mode_active and self._angle_mode_start is not None:
+            end = (
+                self._constrain(self._angle_mode_start, pos)
+                if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                else QPointF(pos.x(), pos.y())
+            )
+            self._update_angle_preview(self._angle_mode_start, end)
+            event.accept()
+            return
+
+        # Free Transform: rotação fluida
         if self._ft_is_rotating and self._ft_rotate_pivot is not None:
             angle = math.atan2(
                 pos.y() - self._ft_rotate_pivot.y(),
@@ -887,7 +1531,9 @@ class DrawingScene(QGraphicsScene):
             self._erase_at(pos)
             return
 
-        if self._start is None:
+        if self._start is None and not (
+            tool == Tool.CURVE and self._curve_draw_phase in (2, 3)
+        ):
             # Limpa indicador se o mouse saiu sem estar desenhando
             if self._snap_point is not None:
                 self._snap_point = None
@@ -898,11 +1544,36 @@ class DrawingScene(QGraphicsScene):
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
 
         if tool == Tool.PEN and self._painter_path and self._path_item:
+            if shift and self._pen_last_point is not None:
+                # Shift na caneta: trava em 0°/45°/90° usando âncora estável
+                # para manter uma única reta/diagonal limpa durante o arraste.
+                if self._pen_shift_anchor is None:
+                    self._pen_shift_anchor = QPointF(self._pen_last_point.x(), self._pen_last_point.y())
+                    self._pen_shift_base_path = QPainterPath(self._painter_path)
+                if self._pen_shift_base_path is not None:
+                    constrained = self._constrain(self._pen_shift_anchor, pos)
+                    straight_path = QPainterPath(self._pen_shift_base_path)
+                    straight_path.lineTo(constrained)
+                    self._painter_path = straight_path
+                    self._path_item.setPath(self._painter_path)
+                    self._pen_last_point = QPointF(constrained.x(), constrained.y())
+                    event.accept()
+                    return
+            else:
+                self._pen_shift_anchor = None
+                self._pen_shift_base_path = None
+
+            if self._pen_last_point is not None:
+                if math.hypot(pos.x() - self._pen_last_point.x(), pos.y() - self._pen_last_point.y()) < self.PEN_MIN_STEP:
+                    event.accept()
+                    return
             self._painter_path.lineTo(pos)
             self._path_item.setPath(self._painter_path)
+            self._pen_last_point = QPointF(pos.x(), pos.y())
 
         elif tool == Tool.LINE and self._preview_item:
-            snap = self._find_snap(pos)
+            snap = self._find_snap(pos, candidates=self._snap_points_cache)
+            old_snap = self._snap_point
             if snap is not None:
                 end = snap
                 self._snap_point = snap
@@ -911,23 +1582,31 @@ class DrawingScene(QGraphicsScene):
                 self._snap_point = None
             self._preview_item.setLine(self._start.x(), self._start.y(),
                                        end.x(), end.y())
-            self.update()
+            if old_snap != self._snap_point:
+                self.update()
 
-        elif tool == Tool.ANGLE:
+        elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
-            self._update_angle_preview(self._start, end)
+            self._update_ruler(self._start, end)
 
         elif tool == Tool.ARROW and self._preview_item:
             end = self._constrain(self._start, pos) if shift else pos
             self._preview_item.setPath(self._arrow_path(self._start, end))
 
-        elif tool == Tool.CURVE and self._preview_item and self._curve_points_scene:
-            curved_points = self._apply_curve_on_segment(
-                self._curve_points_scene,
-                self._curve_segment_index,
-                pos,
-            )
-            self._preview_item.setPath(self._points_to_path_scene(curved_points))
+        elif tool == Tool.CURVE and self._preview_item:
+            if self._curve_draw_phase == 1 and self._curve_draw_start:
+                # Atualiza linha reta: o fim segue o mouse
+                p = QPainterPath(self._curve_draw_start)
+                p.lineTo(pos)
+                self._preview_item.setPath(p)
+            elif self._curve_draw_phase == 3 and self._curve_draw_start and self._curve_draw_end:
+                # Arraste da dobra: preview da curva com controle no mouse.
+                p = QPainterPath(self._curve_draw_start)
+                if self._curve_bend_count <= 0 or self._curve_ctrl_1 is None:
+                    p.quadTo(pos, self._curve_draw_end)
+                else:
+                    p.cubicTo(self._curve_ctrl_1, pos, self._curve_draw_end)
+                self._preview_item.setPath(p)
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             self._preview_item.setPath(self._triangle_path(self._start, pos))
@@ -945,7 +1624,31 @@ class DrawingScene(QGraphicsScene):
             self._preview_item.setRect(QRectF(self._start, pos).normalized())
 
     def mouseReleaseEvent(self, event):
-        # Free Transform: fim da rotaÃ§Ã£o (mantÃ©m ft ativo para mais ajustes)
+        if self._mirror_axis_block_release and event.button() == Qt.MouseButton.LeftButton:
+            self._mirror_axis_block_release = False
+            event.accept()
+            return
+        if self._mirror_axis_active and event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            return
+
+        if self._manual_dim_block_release and event.button() == Qt.MouseButton.LeftButton:
+            self._manual_dim_block_release = False
+            event.accept()
+            return
+        if self._manual_dim_active and event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            return
+
+        if self._angle_mode_block_release and event.button() == Qt.MouseButton.LeftButton:
+            self._angle_mode_block_release = False
+            event.accept()
+            return
+        if self._angle_mode_active and event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            return
+
+        # Free Transform: fim da rotação (mantém ft ativo para mais ajustes)
         if self._ft_is_rotating:
             self._ft_is_rotating = False
             self._ft_rotate_pivot = None
@@ -968,19 +1671,13 @@ class DrawingScene(QGraphicsScene):
             self.cw._push_undo(item)
             self._path_item = None
             self._painter_path = None
-
-        elif tool == Tool.ANGLE:
-            end = self._constrain(self._start, pos) if shift else pos
-            self._commit_angle_measure(self._start, end)
-            self._clear_angle_preview()
-            self._start = None
-            self.cw._set_tool(Tool.SELECT)
-            event.accept()
-            return
+            self._pen_last_point = None
+            self._pen_shift_anchor = None
+            self._pen_shift_base_path = None
 
         elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
             if tool == Tool.LINE:
-                snap = self._find_snap(pos)
+                snap = self._find_snap(pos, candidates=self._snap_points_cache)
                 if snap is not None:
                     end = snap
                 elif shift:
@@ -1000,22 +1697,34 @@ class DrawingScene(QGraphicsScene):
             self.cw._push_undo(item)
             self._preview_item = None
 
-        elif tool == Tool.CURVE and self._preview_item and self._curve_source_item:
-            old_item = self._curve_source_item
-            self.removeItem(old_item)
-            if old_item in self.cw._undo_stack:
-                self.cw._undo_stack.remove(old_item)
+        elif tool == Tool.RULER:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._update_ruler(self._start, end)
+            if self._ruler_commit_on_release:
+                self._commit_ruler_measure(self._start, end)
+            self._ruler_commit_on_release = False
 
-            item = self._preview_item
-            item.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
-                          QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
-            item.setSelected(True)
-            self.cw._push_undo(item)
+        elif tool == Tool.CURVE and self._curve_draw_phase == 1:
+            # Fim do drag da linha base → transita para fase 2
+            if (self._curve_draw_start and
+                    math.hypot(pos.x() - self._curve_draw_start.x(),
+                               pos.y() - self._curve_draw_start.y()) < 3):
+                # Linha muito curta: cancela
+                self._cancel_curve_draw()
+            else:
+                self._curve_draw_end = QPointF(pos.x(), pos.y())
+                # Congela a linha reta no preview
+                p = QPainterPath(self._curve_draw_start)
+                p.lineTo(self._curve_draw_end)
+                self._preview_item.setPath(p)
+                self._curve_draw_phase = 2
+                self._curve_dragging = False
+            self._start = None
+            return  # não limpa _start nem _snap_points_cache abaixo
 
-            self._preview_item = None
-            self._curve_source_item = None
-            self._curve_points_scene = []
-            self._curve_segment_index = -1
+        elif tool == Tool.CURVE and self._curve_draw_phase == 3:
+            self._commit_curve_draw(pos)
+            return
 
         elif tool == Tool.TRIANGLE and self._preview_item:
             item = self._preview_item
@@ -1032,6 +1741,8 @@ class DrawingScene(QGraphicsScene):
             self._preview_item = None
 
         self._start = None
+        self._snap_points_cache = []
+        self._ruler_commit_on_release = False
 
     def keyPressEvent(self, event):
         # Enter ou Escape confirmam/saem do Free Transform
@@ -1040,14 +1751,66 @@ class DrawingScene(QGraphicsScene):
                 self._exit_ft()
                 event.accept()
                 return
+
+        if self._mirror_axis_active and event.key() == Qt.Key.Key_Escape:
+            self.cancel_mirror_axis()
+            event.accept()
+            return
+
+        if self._manual_dim_active and event.key() == Qt.Key.Key_Escape:
+            self.cancel_manual_dimension()
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Escape and self._curve_session_active:
+            self._cancel_curve_session()
+            event.accept()
+            return
+
+        if self._curve_draw_phase > 0 and event.key() == Qt.Key.Key_Escape:
+            self._cancel_curve_draw()
+            event.accept()
+            return
+
+        focus_item = self.focusItem()
+        if (
+            isinstance(focus_item, QGraphicsTextItem)
+            and focus_item.textInteractionFlags() != Qt.TextInteractionFlag.NoTextInteraction
+        ):
+            super().keyPressEvent(event)
+            return
+
+        step = 10.0 if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier) else 1.0
+        dx = 0.0
+        dy = 0.0
+        if event.key() == Qt.Key.Key_Left:
+            dx = -step
+        elif event.key() == Qt.Key.Key_Right:
+            dx = step
+        elif event.key() == Qt.Key.Key_Up:
+            dy = -step
+        elif event.key() == Qt.Key.Key_Down:
+            dy = step
+
+        if dx or dy:
+            selected = self.selectedItems()
+            if selected:
+                for item in selected:
+                    item.setPos(item.pos() + QPointF(dx, dy))
+                self.cw.changed.emit()
+                event.accept()
+                return
+
         if event.key() == Qt.Key.Key_Delete:
             for item in self.selectedItems():
                 self.removeItem(item)
+            self.cw.changed.emit()
+            event.accept()
+            return
         else:
             super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
-        """Duplo clique em texto ? ativa ediÃ§Ã£o inline."""
+        """Duplo clique em texto -> ativa edição inline."""
         if (self.cw.tool == Tool.SELECT
                 and event.button() == Qt.MouseButton.LeftButton):
             item = self.itemAt(event.scenePos(), QTransform())
@@ -1061,38 +1824,77 @@ class DrawingScene(QGraphicsScene):
         super().mouseDoubleClickEvent(event)
 
 
-# -- View com pan por botÃ£o do meio + Space+arraste ---------------------------
+# View com pan por botão do meio + Space + arraste
 class DrawingView(QGraphicsView):
     """
-    QGraphicsView com zoom por scroll e pan por botÃ£o do meio ou Space+drag.
-    TambÃ©m gerencia o cursor de rotaÃ§Ã£o quando Free Transform estÃ¡ ativo.
+    QGraphicsView com zoom por scroll e pan por botão do meio ou Space+drag.
+    Também gerencia o cursor de rotação quando Free Transform está ativo.
     """
 
-    def __init__(self, scene: QGraphicsScene, parent=None):
+    def __init__(self, scene: QGraphicsScene, canvas_widget=None, parent=None):
         super().__init__(scene, parent)
+        self._canvas_widget = canvas_widget
         self._panning    = False
         self._pan_start  = None
         self._space_held = False
+        self.setAcceptDrops(True)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        # AnchorViewCenter: mantém o centro ao redimensionar (AnchorUnderMouse causava
+        # scroll incorreto no primeiro show, pois o mouse ainda não está no canvas)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         vp = self.viewport()
         vp.installEventFilter(self)
-        vp.setMouseTracking(True)   # receber MouseMove sem botÃ£o pressionado
+        vp.setMouseTracking(True)   # receber MouseMove sem botão pressionado
+        vp.setAcceptDrops(True)
 
-    # -- Event filter no viewport ----------------------------------------------
+    def _can_accept_image_mime(self, mime: QMimeData | None) -> bool:
+        if mime is None:
+            return False
+        if mime.hasImage():
+            return True
+        if mime.hasUrls():
+            return True
+        if mime.hasText():
+            return True
+        return False
+
+    def dragEnterEvent(self, event):
+        if self._can_accept_image_mime(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if self._can_accept_image_mime(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        if self._canvas_widget is None:
+            super().dropEvent(event)
+            return
+        scene_pos = self.mapToScene(event.position().toPoint())
+        inserted = self._canvas_widget._handle_external_image_mime(event.mimeData(), scene_pos)
+        if inserted:
+            event.acceptProposedAction()
+            return
+        super().dropEvent(event)
+
+    # Event filter no viewport
     def eventFilter(self, obj, event):
         if obj is not self.viewport():
             return super().eventFilter(obj, event)
 
         t = event.type()
 
-        # -- Zoom por scroll ---------------------------------------------------
+        # Zoom por scroll
         if t == QEvent.Type.Wheel:
             factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
             self.scale(factor, factor)
             return True
 
-        # -- InÃ­cio do pan -----------------------------------------------------
+        # Início do pan
         if t == QEvent.Type.MouseButtonPress:
             mid        = event.button() == Qt.MouseButton.MiddleButton
             space_left = (event.button() == Qt.MouseButton.LeftButton
@@ -1101,7 +1903,7 @@ class DrawingView(QGraphicsView):
                 self._start_pan(event.position().toPoint())
                 return True
 
-        # -- Arraste do pan ----------------------------------------------------
+        # Arraste do pan
         if t == QEvent.Type.MouseMove and self._panning:
             delta = event.position().toPoint() - self._pan_start
             self._pan_start = event.position().toPoint()
@@ -1113,14 +1915,14 @@ class DrawingView(QGraphicsView):
             )
             return True
 
-        # -- Fim do pan --------------------------------------------------------
+        # Fim do pan
         if t == QEvent.Type.MouseButtonRelease and self._panning:
             if event.button() in (Qt.MouseButton.MiddleButton,
                                    Qt.MouseButton.LeftButton):
                 self._stop_pan()
                 return True
 
-        # -- Cursor de rotaÃ§Ã£o no Free Transform (hover sem botÃ£o) -------------
+        # Cursor de rotação no Free Transform (hover sem botão)
         if t == QEvent.Type.MouseMove and not self._panning:
             sc = self.scene()
             if hasattr(sc, "_ft_active") and sc._ft_active:
@@ -1134,7 +1936,7 @@ class DrawingView(QGraphicsView):
 
         return super().eventFilter(obj, event)
 
-    # -- Space + arrastar ------------------------------------------------------
+    # Space + arrastar
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._space_held = True
@@ -1148,7 +1950,7 @@ class DrawingView(QGraphicsView):
                 self.setCursor(Qt.CursorShape.ArrowCursor)
         super().keyReleaseEvent(event)
 
-    # -- Helpers ---------------------------------------------------------------
+    # Helpers
     def _start_pan(self, pos):
         self._panning   = True
         self._pan_start = pos
@@ -1162,7 +1964,7 @@ class DrawingView(QGraphicsView):
         self.setCursor(cursor)
 
 
-# -- Widget principal ----------------------------------------------------------
+# Widget principal
 class DrawingCanvas(QWidget):
     changed = Signal()
 
@@ -1174,23 +1976,22 @@ class DrawingCanvas(QWidget):
         self.pen_width  = 2
         self.pen_style  = Qt.PenStyle.SolidLine
         self.font_size  = 12
-        self.angle_value_deg = 90.0
-        self.angle_style = "auto"
         self._undo_stack: list[QGraphicsItem] = []
         self._redo_stack: list[QGraphicsItem] = []
         self._attached_pdf: str = ""
         self._clipboard_signature = ""
         self._paste_serial = 0
         self._last_click_scene_pos: QPointF | None = None
+        self._pen_dot_cursor: QCursor | None = None
         self._setup_ui()
 
-    # -- UI --------------------------------------------------------------------
+    # UI
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        title = QLabel("?? DESENHO / REFERÃŠNCIA")
+        title = QLabel("🎨 DESENHO / REFERÊNCIA")
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(
             f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
@@ -1198,110 +1999,117 @@ class DrawingCanvas(QWidget):
         layout.addWidget(title)
 
         s  = self.scale
-        fh = max(24, int(28 * s))
+        fh = max(28, int(34 * s))
         fs = max(8, int(9 * s))
         lbl_style = f"color:{theme.TEXT_MEDIUM}; font-size:{fs}pt;"
 
         def _lbl(txt):
             l = QLabel(txt)
             l.setStyleSheet(lbl_style)
+            l.setMinimumHeight(fh)
+            l.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             return l
 
-        # -- Linha 1: Ferramentas + Cor + Estilo + Fonte -----------------------
-        row1 = QHBoxLayout()
-        row1.setSpacing(4)
         self._tool_btns: dict[Tool, QPushButton] = {}
 
         tools = [
-            (Tool.SELECT,  "??? Selec.",   "S"),
-            (Tool.PEN,     "?? Caneta",   "P"),
-            (Tool.ERASER,  "?? Borracha", "X"),
-            (Tool.LINE,    "?? Linha",    "L"),
-            (Tool.ANGLE,   "ANG Ang.",     "U"),
-            (Tool.ARROW,   "? Seta",      "A"),
-            (Tool.CURVE,   "? Curva",    "C"),
-            (Tool.TRIANGLE, "? Triang.", "G"),
-            (Tool.PENTAGON, "? Penta",    "N"),
-            (Tool.HEXAGON,  "? Hexa",      "H"),
-            (Tool.RECT,    "? Ret.",     "R"),
-            (Tool.ELLIPSE, "? Elipse",   "E"),
-            (Tool.TEXT,    "T Texto",     "T"),
+            (Tool.SELECT,   "🖱️ Selec.",   "S"),
+            (Tool.PEN,      "✏️ Caneta",   "P"),
+            (Tool.ERASER,   "🧹 Borracha", "X"),
+            (Tool.LINE,     "📏 Linha",    "L"),
+            (Tool.ANGLE,    "∠ Ângulo",    "U"),
+            (Tool.ARROW,    "➡ Seta",      "A"),
+            (Tool.CURVE,    "〰 Curva",    "C"),
+            (Tool.TRIANGLE, "△ Triang.",  "G"),
+            (Tool.PENTAGON, "⬟ Penta",    "N"),
+            (Tool.HEXAGON,  "⬢ Hexa",     "H"),
+            (Tool.RECT,     "⬛ Ret.",     "R"),
+            (Tool.ELLIPSE,  "⭕ Elipse",   "E"),
+            (Tool.TEXT,     "T Texto",     "T"),
         ]
+
+        # Linha 1a: Ferramentas (separado das propriedades para não cortar nomes)
+        row_tools = QHBoxLayout()
+        row_tools.setSpacing(4)
         for t, label, key in tools:
-            btn = QPushButton(f"{label} [{key}]")
+            btn = QPushButton(label)
             btn.setCheckable(True)
             btn.setFixedHeight(fh)
+            btn.setToolTip(f"Atalho: {key}")
             btn.clicked.connect(lambda checked, tool=t: self._set_tool(tool))
             btn.setStyleSheet(self._tool_btn_style())
             self._tool_btns[t] = btn
-            row1.addWidget(btn)
+            row_tools.addWidget(btn)
+        row_tools.addStretch()
+        layout.addLayout(row_tools)
 
-        row1.addSpacing(8)
+        # Linha 1b: Propriedades do traço
+        row_props = QHBoxLayout()
+        row_props.setSpacing(4)
 
         # Cor
-        self.btn_color = QPushButton("??")
+        self.btn_color = QPushButton("🎨")
         self.btn_color.setFixedSize(fh, fh)
+        self.btn_color.setToolTip("Cor do traço")
         self.btn_color.setStyleSheet(
             f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
             f"font-size:{fs}pt;"
         )
         self.btn_color.clicked.connect(self._pick_color)
-        row1.addWidget(self.btn_color)
+        row_props.addWidget(self.btn_color)
 
-        row1.addSpacing(8)
+        row_props.addSpacing(8)
 
         # Espessura
-        row1.addWidget(_lbl("Esp.:"))
+        row_props.addWidget(_lbl("Esp.:"))
         self.spin_width = QSpinBox()
-        self.spin_width.setRange(1, 20)
+        self.spin_width.setRange(1, 26)
         self.spin_width.setValue(self.pen_width)
-        self.spin_width.setFixedWidth(max(44, int(52 * s)))
+        self.spin_width.setFixedWidth(max(56, int(68 * s)))
         self.spin_width.setFixedHeight(fh)
-        self.spin_width.valueChanged.connect(lambda v: setattr(self, "pen_width", v))
-        row1.addWidget(self.spin_width)
+        self.spin_width.valueChanged.connect(self._on_pen_width_changed)
+        row_props.addWidget(self.spin_width)
 
-        row1.addSpacing(8)
+        row_props.addSpacing(8)
 
         # Estilo de linha
-        row1.addWidget(_lbl("Linha:"))
+        row_props.addWidget(_lbl("Linha:"))
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
-        self.combo_style.setFixedWidth(max(110, int(130 * s)))
-        self.combo_style.addItem("--- SÃ³lida",     Qt.PenStyle.SolidLine)
+        self.combo_style.setFixedWidth(max(126, int(152 * s)))
+        self.combo_style.addItem("─── Sólida",     Qt.PenStyle.SolidLine)
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
-        self.combo_style.addItem("Â·Â·Â· Pontilhada", Qt.PenStyle.DotLine)
-        self.combo_style.addItem("-Â·- Misto",      Qt.PenStyle.DashDotLine)
-        self.combo_style.currentIndexChanged.connect(
-            lambda i: setattr(self, "pen_style", self.combo_style.itemData(i))
-        )
-        row1.addWidget(self.combo_style)
+        self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
+        self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
+        self.combo_style.currentIndexChanged.connect(self._on_pen_style_changed)
+        row_props.addWidget(self.combo_style)
 
-        row1.addSpacing(8)
+        row_props.addSpacing(8)
 
         # Tamanho da fonte
-        row1.addWidget(_lbl("Fonte:"))
+        row_props.addWidget(_lbl("Fonte:"))
         self.spin_font = QSpinBox()
         self.spin_font.setRange(6, 180)
         self.spin_font.setValue(self.font_size)
         self.spin_font.setSuffix(" pt")
-        self.spin_font.setFixedWidth(max(58, int(68 * s)))
+        self.spin_font.setFixedWidth(max(76, int(92 * s)))
         self.spin_font.setFixedHeight(fh)
         self.spin_font.valueChanged.connect(self._on_font_size_changed)
-        row1.addWidget(self.spin_font)
+        row_props.addWidget(self.spin_font)
 
-        row1.addStretch()
-        layout.addLayout(row1)
+        row_props.addStretch()
+        layout.addLayout(row_props)
 
-        # -- Linha 2: AÃ§Ãµes ----------------------------------------------------
+        # Linha 2: Ações
         row2 = QHBoxLayout()
         row2.setSpacing(4)
 
-        btn_undo = QPushButton("?? Desfazer")
+        btn_undo = QPushButton("↩️ Desfazer")
         btn_undo.setFixedHeight(fh)
         btn_undo.clicked.connect(self._undo)
         btn_undo.setStyleSheet(self._tool_btn_style())
 
-        btn_redo = QPushButton("?? Refazer")
+        btn_redo = QPushButton("↪️ Refazer")
         btn_redo.setFixedHeight(fh)
         btn_redo.clicked.connect(self._redo)
         btn_redo.setStyleSheet(self._tool_btn_style())
@@ -1310,13 +2118,13 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_redo)
         row2.addSpacing(8)
 
-        # RotaÃ§Ã£o via toolbar (mantida para precisÃ£o numÃ©rica)
-        row2.addWidget(_lbl("? Girar:"))
+        # Rotação via toolbar (mantida para precisão numérica)
+        row2.addWidget(_lbl("↻ Girar:"))
         self.spin_rotate = QDoubleSpinBox()
         self.spin_rotate.setRange(-360, 360)
         self.spin_rotate.setValue(45)
         self.spin_rotate.setSingleStep(15)
-        self.spin_rotate.setSuffix("Â°")
+        self.spin_rotate.setSuffix("°")
         self.spin_rotate.setFixedWidth(max(68, int(80 * s)))
         self.spin_rotate.setFixedHeight(fh)
         row2.addWidget(self.spin_rotate)
@@ -1327,19 +2135,39 @@ class DrawingCanvas(QWidget):
         btn_rotate.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_rotate)
 
+        btn_mirror_h = QPushButton("Horizontal")
+        btn_mirror_h.setFixedHeight(fh)
+        btn_mirror_h.setToolTip("Espelhar com cópia na horizontal (Ctrl+Shift+H)")
+        btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
+        btn_mirror_h.setStyleSheet(self._tool_btn_style())
+        row2.addWidget(btn_mirror_h)
+
+        btn_mirror_v = QPushButton("Vertical")
+        btn_mirror_v.setFixedHeight(fh)
+        btn_mirror_v.setToolTip("Espelhar com cópia na vertical (Ctrl+J)")
+        btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
+        btn_mirror_v.setStyleSheet(self._tool_btn_style())
+        row2.addWidget(btn_mirror_v)
+
         row2.addSpacing(8)
 
-        btn_img = QPushButton("??? Imagem")
+        btn_img = QPushButton("🖼️ Imagem")
         btn_img.setFixedHeight(fh)
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
 
-        btn_pdf = QPushButton("?? PDF")
+        btn_pdf = QPushButton("📎 PDF")
         btn_pdf.setFixedHeight(fh)
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
 
-        btn_clear = QPushButton("??? Limpar")
+        btn_dim = QPushButton("📏 MM")
+        btn_dim.setFixedHeight(fh)
+        btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
+        btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
+        btn_dim.setStyleSheet(self._tool_btn_style())
+
+        btn_clear = QPushButton("🗑️ Limpar")
         btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
         btn_clear.setStyleSheet(
@@ -1350,35 +2178,50 @@ class DrawingCanvas(QWidget):
         )
         row2.addWidget(btn_img)
         row2.addWidget(btn_pdf)
+        row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
         layout.addLayout(row2)
 
-        # -- Dica de teclado --------------------------------------------------
+        # Dica de teclado
         hint = QLabel(
-            "? Shift = traÃ§o reto  |  U = angulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
-            "BotÃ£o do meio / Space+drag = mover  |  "
+            "✨ Shift = traço reto  |  U = ângulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
+            "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
-            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
-            "Enter / Esc = confirmar  |  2Ã— clique = editar texto"
+            "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
+            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  "
+            "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
+        hint.setWordWrap(True)
         hint.setStyleSheet(
             f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
 
-        # -- Cena + View ------------------------------------------------------
+        # Cena + View
         self.scene = DrawingScene(self)
-        self.view  = DrawingView(self.scene)
+        # sceneRect fixo: impede que o viewport role quando o primeiro item é
+        # adicionado (sem rect fixo, Qt recalcula os limites e causa um scroll
+        # que faz o ponto inicial aparecer deslocado em relação ao clique)
+        self.scene.setSceneRect(-5000, -5000, 10000, 10000)
+        self.view  = DrawingView(self.scene, canvas_widget=self)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.view.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.BoundingRectViewportUpdate)
+        self.view.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontSavePainterState, True)
+        self.view.setOptimizationFlag(QGraphicsView.OptimizationFlag.DontAdjustForAntialiasing, True)
+        self.view.setCacheMode(QGraphicsView.CacheModeFlag.CacheBackground)
         self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
+        # Rubber-band respeita shape() de cada item (borda de rects/elipses ocas)
+        self.view.setRubberBandSelectionMode(Qt.ItemSelectionMode.IntersectsItemShape)
         self.view.setStyleSheet(
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
         self.view.setMinimumHeight(max(250, int(300 * self.scale)))
+        # Garante que a origem (0,0) da cena começa centralizada no viewport
+        self.view.centerOn(QPointF(0, 0))
         layout.addWidget(self.view)
 
-        # -- Painel de PDF ----------------------------------------------------
+        # Painel de PDF
         self.pdf_panel = QFrame()
         self.pdf_panel.setStyleSheet(
             f"background:{theme.SELECTION_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
@@ -1387,14 +2230,14 @@ class DrawingCanvas(QWidget):
         pdf_layout.setContentsMargins(10, 6, 10, 6)
         self.pdf_label = QLabel("Nenhum PDF anexado")
         self.pdf_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
-        btn_open_pdf = QPushButton("?? Abrir")
+        btn_open_pdf = QPushButton("📂 Abrir")
         btn_open_pdf.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_pdf.clicked.connect(self._open_pdf)
         btn_rm_pdf = QPushButton("X")
         btn_rm_pdf.setFixedWidth(28)
         btn_rm_pdf.setStyleSheet(theme.danger_btn_style(self.scale))
         btn_rm_pdf.clicked.connect(self._remove_pdf)
-        pdf_layout.addWidget(QLabel("?? PDF"))
+        pdf_layout.addWidget(QLabel("📎 PDF"))
         pdf_layout.addWidget(self.pdf_label, 1)
         pdf_layout.addWidget(btn_open_pdf)
         pdf_layout.addWidget(btn_rm_pdf)
@@ -1457,29 +2300,90 @@ class DrawingCanvas(QWidget):
         paste_action.triggered.connect(self._paste_from_clipboard)
         self.addAction(paste_action)
 
-        # Ctrl+T â€” Free Transform (estilo Photoshop)
+        # Ctrl+T -> Free Transform (estilo Photoshop)
         ft_action = QAction(self)
         ft_action.setShortcut(QKeySequence("Ctrl+T"))
         ft_action.triggered.connect(self.scene._enter_ft)
         self.addAction(ft_action)
 
-    # -- Ferramentas ----------------------------------------------------------
-    def _format_angle_value(self, degrees: float) -> str:
-        if abs(degrees - round(degrees)) < 1e-9:
-            return f"{int(round(degrees))}°"
-        return f"{degrees:.1f}°"
+        mirror_h_action = QAction(self)
+        mirror_h_action.setShortcut(QKeySequence("Ctrl+Shift+H"))
+        mirror_h_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        mirror_h_action.triggered.connect(self._mirror_selected_horizontal)
+        self.addAction(mirror_h_action)
 
-    def _ask_angle_tool_config(self) -> bool:
+        mirror_v_action = QAction(self)
+        mirror_v_action.setShortcut(QKeySequence("Ctrl+J"))
+        mirror_v_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        mirror_v_action.triggered.connect(self._mirror_selected_vertical)
+        self.addAction(mirror_v_action)
+
+        manual_dimension_action = QAction(self)
+        manual_dimension_action.setShortcut(QKeySequence(Qt.Key.Key_M))
+        manual_dimension_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        manual_dimension_action.triggered.connect(self._trigger_manual_dimension_shortcut)
+        self.addAction(manual_dimension_action)
+
+    def _trigger_manual_dimension_shortcut(self):
+        if not self.isVisible():
+            return
+        focus = QApplication.focusWidget()
+        if focus and (
+            focus.inherits("QLineEdit")
+            or focus.inherits("QTextEdit")
+            or focus.inherits("QPlainTextEdit")
+            or focus.inherits("QAbstractSpinBox")
+            or focus.inherits("QComboBox")
+        ):
+            return
+        self._add_or_edit_manual_dimension()
+
+    def _add_or_edit_manual_dimension(self):
+        """
+        Cota manual:
+        - Se houver texto selecionado, edita o conteúdo.
+        - Caso contrário, inicia o modo de cota manual (2 cliques para posicionar a linha).
+        """
+        selected = self.scene.selectedItems()
+        target_text = None
+        for item in selected:
+            if isinstance(item, QGraphicsTextItem):
+                target_text = item
+                break
+
+        default_value = target_text.toPlainText() if target_text else "Ø 12 mm"
+        text, ok = QInputDialog.getText(
+            self,
+            "Cota manual",
+            "Informe a cota (ex.: Ø 12 mm, 350 mm, 1.20 m):",
+            text=default_value,
+        )
+        if not ok:
+            return
+
+        label = normalize_upper_text(text)
+        label = (label or "").strip()
+        if not label:
+            return
+
+        if target_text is not None:
+            target_text.setPlainText(label)
+            self.changed.emit()
+            return
+        self._set_tool(Tool.SELECT)
+        self.scene.begin_manual_dimension(label)
+
+    def _ask_angle_mode_config(self) -> tuple[float, str, str] | None:
         preset, ok = QInputDialog.getItem(
             self,
-            "Angulo",
-            "Selecione o valor do angulo:",
+            "Ângulo",
+            "Selecione o valor do ângulo:",
             ["90°", "180°", "Personalizado..."],
             0,
             False,
         )
         if not ok:
-            return False
+            return None
 
         if preset == "90°":
             degrees = 90.0
@@ -1488,46 +2392,90 @@ class DrawingCanvas(QWidget):
         else:
             value, ok = QInputDialog.getDouble(
                 self,
-                "Angulo personalizado",
+                "Ângulo personalizado",
                 "Informe o valor em graus:",
-                self.angle_value_deg,
+                45.0,
                 0.1,
                 359.9,
                 1,
             )
             if not ok:
-                return False
+                return None
             degrees = float(value)
 
         style_label, ok = QInputDialog.getItem(
             self,
-            "Forma do angulo",
+            "Forma do ângulo",
             "Escolha o marcador visual:",
-            ["Automatico", "Meia lua", "Quadrado"],
+            ["Automático", "Meia lua", "Quadrado"],
             0,
             False,
         )
         if not ok:
-            return False
+            return None
 
-        self.angle_value_deg = float(degrees)
-        self.angle_style = {
-            "Automatico": "auto",
+        style_map = {
+            "Automático": "auto",
             "Meia lua": "arc",
             "Quadrado": "square",
-        }.get(style_label, "auto")
-        return True
+        }
+        style = style_map.get(style_label, "auto")
+        label = f"{degrees:.1f}°"
+        return degrees, label, style
 
+    def _get_pen_dot_cursor(self) -> QCursor:
+        """Cursor em formato de ponto para a ferramenta Caneta."""
+        if self._pen_dot_cursor is not None:
+            return self._pen_dot_cursor
+
+        size = 12
+        center = size // 2
+        pix = QPixmap(size, size)
+        pix.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        # Anel externo branco com borda preta para contraste em fundos claros/escuros.
+        painter.setPen(QPen(QColor("#000000"), 1.0))
+        painter.setBrush(QBrush(QColor(255, 255, 255, 220)))
+        painter.drawEllipse(QPointF(center, center), 3.6, 3.6)
+
+        # Centro sólido (ponto de precisão visual).
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor("#000000")))
+        painter.drawEllipse(QPointF(center, center), 1.3, 1.3)
+        painter.end()
+
+        self._pen_dot_cursor = QCursor(pix, center, center)
+        return self._pen_dot_cursor
+
+    # Ferramentas
     def _set_tool(self, tool: Tool):
+        if hasattr(self, "scene") and self.scene._mirror_axis_active:
+            self.scene.cancel_mirror_axis()
+        if hasattr(self, "scene") and self.scene._manual_dim_active:
+            self.scene.cancel_manual_dimension()
+        if hasattr(self, "scene") and self.scene._curve_draw_phase > 0:
+            self.scene._cancel_curve_draw()
+        if hasattr(self, "scene") and self.tool == Tool.ANGLE and tool != Tool.ANGLE:
+            self.scene.cancel_angle_mode()
         if tool == Tool.ANGLE:
-            if not self._ask_angle_tool_config():
+            config = self._ask_angle_mode_config()
+            if config is None:
                 tool = Tool.SELECT
+            else:
+                degrees, label, style = config
+                self.scene.begin_angle_mode(degrees, label, style)
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
         if tool == Tool.SELECT:
             self.view.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             self.view.setCursor(Qt.CursorShape.ArrowCursor)
+        elif tool == Tool.PEN:
+            self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
+            self.view.setCursor(self._get_pen_dot_cursor())
         elif tool == Tool.ERASER:
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.view.setCursor(Qt.CursorShape.CrossCursor)
@@ -1536,11 +2484,151 @@ class DrawingCanvas(QWidget):
             self.view.setCursor(Qt.CursorShape.CrossCursor)
 
     def _rotate_selected(self):
-        """Rotaciona os itens selecionados pelo Ã¢ngulo do spin (precisÃ£o numÃ©rica)."""
+        """Rotaciona os itens selecionados pelo ângulo do spin (precisão numérica)."""
         angle = self.spin_rotate.value()
         for item in self.scene.selectedItems():
             item.setTransformOriginPoint(item.boundingRect().center())
             item.setRotation(item.rotation() + angle)
+        self.changed.emit()
+
+    def _mirror_selected(self, horizontal: bool):
+        if self._text_editor_active():
+            return
+        selected = self.scene.selectedItems()
+        if not selected:
+            return
+        mirror_items = [item for item in selected if not isinstance(item, QGraphicsTextItem)]
+        if not mirror_items:
+            return
+
+        source_rect = QRectF()
+        has_rect = False
+        for item in mirror_items:
+            item_scene_rect = item.mapToScene(item.boundingRect()).boundingRect()
+            if not has_rect:
+                source_rect = item_scene_rect
+                has_rect = True
+            else:
+                source_rect = source_rect.united(item_scene_rect)
+        if not has_rect:
+            return
+
+        clones: list[QGraphicsItem] = []
+        for item in mirror_items:
+            item_dict = self._item_to_dict(item)
+            if not item_dict:
+                continue
+            clone = self._item_from_dict(item_dict)
+            if clone is None:
+                continue
+            clone.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+                | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            clone.setZValue(item.zValue())
+            self.scene.addItem(clone)
+
+            center = item.boundingRect().center()
+            mirror = QTransform()
+            mirror.translate(center.x(), center.y())
+            if horizontal:
+                mirror.scale(-1.0, 1.0)
+            else:
+                mirror.scale(1.0, -1.0)
+            mirror.translate(-center.x(), -center.y())
+            clone.setTransform(mirror, True)
+            clones.append(clone)
+
+        if not clones:
+            return
+
+        gap = 20.0
+        source_center = source_rect.center()
+        if horizontal:
+            target_center = QPointF(source_center.x() + source_rect.width() + gap, source_center.y())
+        else:
+            target_center = QPointF(source_center.x(), source_center.y() + source_rect.height() + gap)
+        delta = target_center - source_center
+
+        for item in selected:
+            item.setSelected(False)
+        for clone in clones:
+            clone.setPos(clone.pos() + delta)
+            clone.setSelected(True)
+            self._push_undo(clone)
+
+        self.changed.emit()
+
+    def _mirror_selected_horizontal(self):
+        self._mirror_selected(horizontal=True)
+
+    def _mirror_selected_vertical(self):
+        self._mirror_selected(horizontal=False)
+
+    def _start_manual_mirror_axis(self):
+        if self._text_editor_active():
+            return
+        selected = self.scene.selectedItems()
+        mirror_items = [item for item in selected if not isinstance(item, QGraphicsTextItem)]
+        if not mirror_items:
+            return
+        self._set_tool(Tool.SELECT)
+        self.scene.begin_mirror_axis()
+
+    def _mirror_selected_about_axis(self, axis_start: QPointF, axis_end: QPointF):
+        if self._text_editor_active():
+            return
+        if math.hypot(axis_end.x() - axis_start.x(), axis_end.y() - axis_start.y()) < 1e-6:
+            return
+
+        selected = self.scene.selectedItems()
+        if not selected:
+            return
+        mirror_items = [item for item in selected if not isinstance(item, QGraphicsTextItem)]
+        if not mirror_items:
+            return
+
+        clones: list[QGraphicsItem] = []
+        for item in mirror_items:
+            item_dict = self._item_to_dict(item)
+            if not item_dict:
+                continue
+            clone = self._item_from_dict(item_dict)
+            if clone is None:
+                continue
+            clone.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+                | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            clone.setZValue(item.zValue())
+            self.scene.addItem(clone)
+
+            p1_local = clone.mapFromScene(axis_start)
+            p2_local = clone.mapFromScene(axis_end)
+            dx = p2_local.x() - p1_local.x()
+            dy = p2_local.y() - p1_local.y()
+            if math.hypot(dx, dy) < 1e-6:
+                self.scene.removeItem(clone)
+                continue
+
+            angle_deg = math.degrees(math.atan2(dy, dx))
+            mirror = QTransform()
+            mirror.translate(p1_local.x(), p1_local.y())
+            mirror.rotate(angle_deg)
+            mirror.scale(1.0, -1.0)
+            mirror.rotate(-angle_deg)
+            mirror.translate(-p1_local.x(), -p1_local.y())
+            clone.setTransform(mirror, True)
+            clones.append(clone)
+
+        if not clones:
+            return
+
+        for item in selected:
+            item.setSelected(False)
+        for clone in clones:
+            clone.setSelected(True)
+            self._push_undo(clone)
         self.changed.emit()
 
     def _on_font_size_changed(self, v: int):
@@ -1552,6 +2640,60 @@ class DrawingCanvas(QWidget):
                 f = item.font()
                 f.setPointSize(v)
                 item.setFont(f)
+        self.changed.emit()
+
+    def _on_pen_width_changed(self, v: int):
+        self.pen_width = v
+        if hasattr(self, "scene"):
+            for item in self.scene.selectedItems():
+                if not isinstance(
+                    item,
+                    (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem),
+                ):
+                    continue
+                meta = item.data(0) or {}
+                if isinstance(meta, dict) and meta.get("type") in {
+                    "ruler_overlay",
+                    "ruler_measure_line",
+                    "manual_dimension_overlay",
+                    "manual_dimension_line",
+                    "angle_dimension_overlay",
+                    "mirror_axis_overlay",
+                }:
+                    continue
+                pen = item.pen()
+                pen.setWidth(v)
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                item.setPen(pen)
+            self.scene._sync_ruler_visuals()
+        self.changed.emit()
+
+    def _on_pen_style_changed(self, index: int):
+        self.pen_style = self.combo_style.itemData(index)
+        if not hasattr(self, "scene"):
+            return
+
+        for item in self.scene.selectedItems():
+            if not isinstance(
+                item,
+                (QGraphicsLineItem, QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem),
+            ):
+                continue
+            meta = item.data(0) or {}
+            if isinstance(meta, dict) and meta.get("type") in {
+                "ruler_overlay",
+                "ruler_measure_line",
+                "manual_dimension_overlay",
+                "manual_dimension_line",
+                "angle_dimension_overlay",
+            }:
+                continue
+            pen = item.pen()
+            pen.setStyle(self.pen_style)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            item.setPen(pen)
+
         self.changed.emit()
 
     def _pick_color(self):
@@ -1567,7 +2709,7 @@ class DrawingCanvas(QWidget):
                 f"background:{self.color}; border-radius:8px; border:1px solid {theme.BORDER_COLOR};"
             )
 
-    # -- Undo / Redo ----------------------------------------------------------
+    # Undo / Redo
     def _push_undo(self, item: QGraphicsItem):
         self._undo_stack.append(item)
         self._redo_stack.clear()
@@ -1587,7 +2729,7 @@ class DrawingCanvas(QWidget):
             self._undo_stack.append(item)
             self.changed.emit()
 
-    # -- Imagem ---------------------------------------------------------------
+    # Imagem
     def _insert_image(self, pos: QPointF = None):
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1603,7 +2745,7 @@ class DrawingCanvas(QWidget):
             return
         self._insert_image_from_pixmap(pixmap, pos=pos, path=path)
 
-    # -- PDF ------------------------------------------------------------------
+    # PDF
     def _attach_pdf(self):
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -1628,14 +2770,107 @@ class DrawingCanvas(QWidget):
         self.pdf_panel.setVisible(False)
         self.changed.emit()
 
-    # -- Limpar ---------------------------------------------------------------
+    # Limpar
     def _clear(self):
+        self.scene.cancel_angle_mode()
+        self.scene.cancel_mirror_axis()
+        self.scene.cancel_manual_dimension()
         self.scene.clear()
-        self.scene._angle_marker_preview_item = None
+        # Restaura o sceneRect fixo (scene.clear() o remove)
+        self.scene.setSceneRect(-5000, -5000, 10000, 10000)
+        self.scene._ruler_line_item = None
+        self.scene._ruler_text_item = None
+        self.scene._manual_dim_line_item = None
+        self.scene._manual_dim_text_item = None
         self.scene._angle_text_preview_item = None
+        self.scene._angle_marker_preview_item = None
+        self.scene._mirror_axis_line_item = None
         self._undo_stack.clear()
         self._redo_stack.clear()
         self.changed.emit()
+
+    def _image_paths_from_mime(self, mime: QMimeData) -> list[str]:
+        paths: list[str] = []
+        seen: set[str] = set()
+
+        def _push(path: str):
+            norm = os.path.normpath(str(path or "").strip().strip('"'))
+            if not norm:
+                return
+            ext = os.path.splitext(norm)[1].lower()
+            if ext not in _IMAGE_FILE_EXTENSIONS:
+                return
+            if not os.path.isfile(norm):
+                return
+            key = os.path.normcase(norm)
+            if key in seen:
+                return
+            seen.add(key)
+            paths.append(norm)
+
+        if mime.hasUrls():
+            for url in mime.urls():
+                if url.isLocalFile():
+                    _push(url.toLocalFile())
+
+        if mime.hasText():
+            raw = str(mime.text() or "")
+            for line in raw.replace("\r", "\n").split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                if line.lower().startswith("file://"):
+                    _push(QUrl(line).toLocalFile())
+                else:
+                    _push(line)
+
+        return paths
+
+    def _insert_image_files(self, paths: list[str], scene_pos: QPointF | None = None) -> int:
+        if not paths:
+            return 0
+        inserted = 0
+        self.scene.clearSelection()
+        for idx, path in enumerate(paths):
+            pixmap = QPixmap(path)
+            if pixmap.isNull():
+                continue
+            pos = None
+            if scene_pos is not None:
+                offset = 24.0 * idx
+                pos = QPointF(scene_pos.x() + offset, scene_pos.y() + offset)
+            item = self._insert_image_from_pixmap(pixmap, pos=pos, path=path)
+            if item:
+                item.setSelected(True)
+                inserted += 1
+        return inserted
+
+    def _handle_external_image_mime(self, mime: QMimeData, scene_pos: QPointF | None = None) -> bool:
+        paths = self._image_paths_from_mime(mime)
+        if paths:
+            return self._insert_image_files(paths, scene_pos=scene_pos) > 0
+
+        if mime.hasImage():
+            image = mime.imageData()
+            pixmap = QPixmap()
+            if isinstance(image, QPixmap):
+                pixmap = image
+            else:
+                try:
+                    pixmap = QPixmap.fromImage(image)
+                except Exception:
+                    pixmap = QPixmap()
+            if not pixmap.isNull():
+                self.scene.clearSelection()
+                item = self._insert_image_from_pixmap(
+                    pixmap,
+                    pos=scene_pos,
+                    image_data=_pixmap_to_base64(pixmap),
+                )
+                if item:
+                    item.setSelected(True)
+                    return True
+        return False
 
     def _copy_selection_to_clipboard(self):
         if self._text_editor_active():
@@ -1680,6 +2915,9 @@ class DrawingCanvas(QWidget):
             if isinstance(payload, dict) and isinstance(payload.get("items"), list):
                 self._paste_canvas_items(payload.get("items", []), payload_text)
                 return
+
+        if self._handle_external_image_mime(mime):
+            return
 
         pixmap = clipboard.pixmap()
         if pixmap.isNull():
@@ -1802,7 +3040,7 @@ class DrawingCanvas(QWidget):
             and item.textInteractionFlags() != Qt.TextInteractionFlag.NoTextInteraction
         )
 
-    # -- SerializaÃ§Ã£o ---------------------------------------------------------
+    # Serialização
     def to_json(self) -> str:
         items = []
         for item in self.scene.items():
@@ -1828,6 +3066,15 @@ class DrawingCanvas(QWidget):
         load_canvas_scene(self.scene, data, selectable=True)
 
     def _item_to_dict(self, item: QGraphicsItem) -> dict | None:
+        meta = item.data(0) or {}
+        if isinstance(meta, dict) and meta.get("type") in {
+            "ruler_overlay",
+            "manual_dimension_overlay",
+            "angle_dimension_overlay",
+            "mirror_axis_overlay",
+        }:
+            return None
+
         pen_data = lambda p: {
             "color": p.color().name(),
             "width": p.width(),
@@ -1835,45 +3082,93 @@ class DrawingCanvas(QWidget):
         }
 
         rot = item.rotation()
+        transform_data = _serialize_transform(item.transform())
 
         if isinstance(item, QGraphicsLineItem):
             ln = item.line()
+            if isinstance(meta, dict) and meta.get("type") == "ruler_measure_line":
+                return {"type": "ruler_measure_line",
+                        "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
+                        "pos_x": item.pos().x(), "pos_y": item.pos().y(),
+                        "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
+            if isinstance(meta, dict) and meta.get("type") == "manual_dimension_line":
+                return {"type": "manual_dimension_line",
+                        "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
+                        "pos_x": item.pos().x(), "pos_y": item.pos().y(),
+                        "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
+            if isinstance(meta, dict) and meta.get("type") == "angle_dimension_line":
+                return {"type": "angle_dimension_line",
+                        "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
+                        "pos_x": item.pos().x(), "pos_y": item.pos().y(),
+                        "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
             return {"type": "line",
                     "x1": ln.x1(), "y1": ln.y1(), "x2": ln.x2(), "y2": ln.y2(),
                     "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                    "pen": pen_data(item.pen()), "rotation": rot}
+                    "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsRectItem):
             r = item.rect()
             return {"type": "rect",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
                     "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                    "pen": pen_data(item.pen()), "rotation": rot}
+                    "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsEllipseItem):
             r = item.rect()
             return {"type": "ellipse",
                     "x": r.x(), "y": r.y(), "w": r.width(), "h": r.height(),
                     "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                    "pen": pen_data(item.pen()), "rotation": rot}
+                    "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsPathItem):
+            if isinstance(meta, dict) and meta.get("type") == "angle_dimension_marker":
+                path = item.path()
+                return {
+                    "type": "angle_dimension_marker",
+                    "segments": _serialize_path_segments(path),
+                    "pos_x": item.pos().x(),
+                    "pos_y": item.pos().y(),
+                    "pen": pen_data(item.pen()),
+                    "rotation": rot,
+                    "transform": transform_data,
+                }
             path = item.path()
             points = []
             for i in range(path.elementCount()):
                 el = path.elementAt(i)
                 points.append([el.x, el.y])
-            return {"type": "path", "points": points,
+            return {"type": "path", "points": points, "segments": _serialize_path_segments(path),
                     "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                    "pen": pen_data(item.pen()), "rotation": rot}
+                    "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsTextItem):
+            if isinstance(meta, dict) and meta.get("type") == "ruler_measure_text":
+                return {"type": "ruler_measure_text",
+                        "x": item.pos().x(), "y": item.pos().y(),
+                        "text": item.toPlainText(),
+                        "color": item.defaultTextColor().name(),
+                        "font_size": item.font().pointSize(),
+                        "rotation": rot, "transform": transform_data}
+            if isinstance(meta, dict) and meta.get("type") == "manual_dimension_text":
+                return {"type": "manual_dimension_text",
+                        "x": item.pos().x(), "y": item.pos().y(),
+                        "text": item.toPlainText(),
+                        "color": item.defaultTextColor().name(),
+                        "font_size": item.font().pointSize(),
+                        "rotation": rot, "transform": transform_data}
+            if isinstance(meta, dict) and meta.get("type") == "angle_dimension_text":
+                return {"type": "angle_dimension_text",
+                        "x": item.pos().x(), "y": item.pos().y(),
+                        "text": item.toPlainText(),
+                        "color": item.defaultTextColor().name(),
+                        "font_size": item.font().pointSize(),
+                        "rotation": rot, "transform": transform_data}
             return {"type": "text",
                     "x": item.pos().x(), "y": item.pos().y(),
                     "text": normalize_upper_text(item.toPlainText()),
                     "color": item.defaultTextColor().name(),
                     "font_size": item.font().pointSize(),
-                    "rotation": rot}
+                    "rotation": rot, "transform": transform_data}
 
         if isinstance(item, QGraphicsPixmapItem):
             meta = item.data(0) or {}
@@ -1883,7 +3178,7 @@ class DrawingCanvas(QWidget):
                     "image_data": meta.get("image_data", ""),
                     "display_w": meta.get("display_w", item.pixmap().width()),
                     "display_h": meta.get("display_h", item.pixmap().height()),
-                    "rotation": rot}
+                    "rotation": rot, "transform": transform_data}
 
         return None
 
@@ -1914,7 +3209,7 @@ class CanvasPreview(QGraphicsView):
     def set_json(self, data: str):
         self._last_result = load_canvas_scene(self._scene, data, selectable=False)
         if self._last_result["items"] == 0:
-            placeholder = self._scene.addText("??? Nenhum desenho salvo")
+            placeholder = self._scene.addText("🖼️ Nenhum desenho salvo")
             placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
             font = QFont(theme.FONT_PRIMARY, max(9, int(10 * self.scale_factor)))
             placeholder.setFont(font)
@@ -1930,7 +3225,3 @@ class CanvasPreview(QGraphicsView):
         if rect.isNull():
             rect = QRectF(0, 0, 100, 80)
         self.fitInView(rect.adjusted(-10, -10, 10, 10), Qt.AspectRatioMode.KeepAspectRatio)
-
-
-
-

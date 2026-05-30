@@ -1,7 +1,9 @@
+﻿import re
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from typing import List, Optional
 from ..database import get_db
 from ..models.client import Client
@@ -9,6 +11,14 @@ from ..schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientB
 from ..dependencies import get_current_user, require_admin
 
 router = APIRouter(prefix="/clients", tags=["Clientes"])
+
+
+def _cnpj_digits(cnpj: str | None) -> str | None:
+    """Extrai somente os dígitos numéricos de um CNPJ/CPF."""
+    if not cnpj:
+        return None
+    result = re.sub(r"[^0-9]", "", cnpj)
+    return result or None
 
 
 @router.get("/", response_model=List[ClientResponse])
@@ -21,31 +31,74 @@ def list_clients(
     q = db.query(Client).filter(Client.is_active == True)
 
     if search:
-        # Remove pontuação do termo buscado para comparar com código e CNPJ
-        plain = (search
-                 .replace(".", "")
-                 .replace("-", "")
-                 .replace("/", "")
-                 .replace(" ", ""))
+        term      = search.strip()
+        plain     = re.sub(r"[^0-9]", "", term)   # somente dígitos (para busca de CNPJ/código)
+        plain_nzero = plain.lstrip("0")
+        term_upper  = term.upper()
 
-        s      = f"%{search}%"
-        plain_s = f"%{plain}%"
+        s = f"%{term}%"
 
-        # Strip de pontuação nas colunas via SQL (compatível com SQLite e Oracle)
-        clean_code = func.replace(Client.code, ".", "")
-        clean_cnpj = func.replace(
-                        func.replace(
-                            func.replace(Client.cnpj, ".", ""),
-                        "-", ""),
-                     "/", "")
-
-        q = q.filter(or_(
+        # Filtros de busca — beneficiam dos índices GIN trigram criados em _migrate()
+        filters = [
             Client.name.ilike(s),
             Client.code.ilike(s),
-            clean_code.ilike(plain_s),
             Client.cnpj.ilike(s),
-            clean_cnpj.ilike(plain_s),
-        ))
+        ]
+        if plain:
+            clean_code = func.replace(Client.code, ".", "")
+            # Extrai dígitos do campo cnpj bruto — fallback para registros com
+            # cnpj_digits = NULL (funciona em SQLite e PostgreSQL sem regexp).
+            cnpj_raw = func.replace(
+                func.replace(
+                    func.replace(
+                        func.replace(func.coalesce(Client.cnpj, ""), ".", ""),
+                        "-", ""),
+                    "/", ""),
+                " ", "")
+            filters.extend([
+                clean_code.ilike(f"%{plain}%"),
+                Client.cnpj_digits.ilike(f"%{plain}%"),
+                cnpj_raw.ilike(f"%{plain}%"),          # fallback: cnpj sem pontuação
+            ])
+            if plain_nzero:
+                filters.append(func.ltrim(clean_code, "0").ilike(f"%{plain_nzero}%"))
+
+        q = q.filter(or_(*filters))
+
+        # Ordenação por relevância: correspondência exata primeiro
+        rank_rules: list = [
+            (func.upper(Client.code) == term_upper, 0),
+            (func.upper(Client.code).like(f"{term_upper}%"), 1),
+            (func.upper(Client.name).like(f"{term_upper}%"), 4),
+        ]
+        if plain:
+            # cnpj_raw reutilizado no ranking
+            cnpj_raw = func.replace(
+                func.replace(
+                    func.replace(
+                        func.replace(func.coalesce(Client.cnpj, ""), ".", ""),
+                        "-", ""),
+                    "/", ""),
+                " ", "")
+            rank_rules.extend([
+                (Client.cnpj_digits == plain, 2),
+                (Client.cnpj_digits.like(f"{plain}%"), 3),
+                (cnpj_raw == plain, 2),
+                (cnpj_raw.like(f"{plain}%"), 3),
+            ])
+            plain_upper = plain.upper()
+            clean_code_upper = func.upper(func.replace(Client.code, ".", ""))
+            rank_rules.extend([
+                (clean_code_upper == plain_upper, 2),
+                (clean_code_upper.like(f"{plain_upper}%"), 3),
+            ])
+            if plain_nzero:
+                rank_rules.append(
+                    (func.upper(func.ltrim(func.replace(Client.code, ".", ""), "0")) == plain_nzero.upper(), 2)
+                )
+
+        relevance = case(*rank_rules, else_=9)
+        return q.order_by(relevance, Client.name).limit(limit).all()
 
     return q.order_by(Client.name).limit(limit).all()
 
@@ -55,15 +108,15 @@ def create_client(
     data: ClientCreate, db: Session = Depends(get_db), _=Depends(require_admin)
 ):
     if db.query(Client).filter(Client.code == data.code).first():
-        raise HTTPException(status_code=400, detail="Código já cadastrado")
+        raise HTTPException(status_code=400, detail="Codigo ja cadastrado")
 
-    client = Client(**data.model_dump())
+    client = Client(**data.model_dump(), cnpj_digits=_cnpj_digits(data.cnpj))
     db.add(client)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="CNPJ já cadastrado para outro cliente")
+        raise HTTPException(status_code=400, detail="CNPJ ja cadastrado para outro cliente")
     db.refresh(client)
     return client
 
@@ -89,8 +142,11 @@ def update_client(
     if not client:
         raise HTTPException(status_code=404, detail="Cliente não encontrado")
 
-    for k, v in data.model_dump(exclude_unset=True).items():
+    update_data = data.model_dump(exclude_unset=True)
+    for k, v in update_data.items():
         setattr(client, k, v)
+    if "cnpj" in update_data:
+        client.cnpj_digits = _cnpj_digits(update_data["cnpj"])
 
     db.commit()
     db.refresh(client)
@@ -98,7 +154,6 @@ def update_client(
 
 
 @router.post("/import/bulk", response_model=BulkImportResult)
-@router.post("/bulk-import", response_model=BulkImportResult)
 def bulk_import_clients(
     items: List[ClientBulkItem],
     db: Session = Depends(get_db),
@@ -107,7 +162,7 @@ def bulk_import_clients(
     """
     Importa uma lista de clientes de uma vez.
     Clientes com código já existente são atualizados; os demais são criados.
-    Tudo ocorre numa única transação — muito mais rápido que chamadas individuais.
+    Tudo ocorre numa única transação - muito mais rápido que chamadas individuais.
     """
     result = BulkImportResult()
 
@@ -137,13 +192,14 @@ def bulk_import_clients(
                 if cli.cnpj and cli.cnpj in cnpj_seen:
                     cnpj_seen.discard(cli.cnpj)
                 cli.cnpj = cnpj
+                cli.cnpj_digits = _cnpj_digits(cnpj)
                 cnpj_seen.add(cnpj)
             result.updated += 1
         else:
             # Cria novo cliente; pula CNPJ se duplicado
             if cnpj and cnpj in cnpj_seen:
                 cnpj = None
-            new_cli = Client(code=code, name=name, cnpj=cnpj)
+            new_cli = Client(code=code, name=name, cnpj=cnpj, cnpj_digits=_cnpj_digits(cnpj))
             db.add(new_cli)
             existing[code] = new_cli
             if cnpj:

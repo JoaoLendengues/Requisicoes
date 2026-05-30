@@ -35,4 +35,8 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=5000,
         reload=False,
+        # NÃO usar workers > 1: o SSE manager usa asyncio.Queue em memória.
+        # Com múltiplos processos, cada worker teria sua própria fila e notificações
+        # enviadas de um worker não chegariam a usuários conectados em outro.
+        # Para escalar horizontalmente, seria necessário um broker externo (ex: Redis Pub/Sub).
     )

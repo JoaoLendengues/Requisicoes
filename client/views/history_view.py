@@ -5,12 +5,14 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QDateTimeEdit,
+    QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -22,6 +24,8 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..core.session import session
+from ..widgets.smooth_scroll import apply_smooth_scroll
+from ..widgets.sortable_item import SortableItem
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -30,7 +34,7 @@ from ..core.datetime_utils import (
 )
 
 
-COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS", "PRODUÇÃO", "MÁQUINA"]
+COLS = ["PED", "CLIENTE", "OBRA", "VENDEDOR", "DATA", "STATUS", "FATURADO", "PRODUÇÃO", "MÁQUINA", "MOTIVO"]
 
 PRODUCTION_OPTIONS = (
     ("Todas as produções", ""),
@@ -44,7 +48,7 @@ if "FATURADO" not in COLS:
 _LEGACY_INVOICED_OPTIONS = (
     ("TODOS", ""),
     ("SIM", "sim"),
-    ("NÃ£o", "nao"),
+    ("NÃO", "nao"),
 )
 
 INVOICED_OPTIONS = (
@@ -123,15 +127,49 @@ def _primary_action_btn_style(scale: float) -> str:
 
 def _field_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
+    arrow = _rgba(theme.TEXT_LIGHT, 220)
+    arrow_hover = _rgba(theme.TEXT_DARK, 210)
+    btn_bg = _rgba(theme.PRIMARY, 18)
+    btn_bg_hover = _rgba(theme.PRIMARY, 28)
     return (
         f"QLineEdit, QComboBox, QDateEdit {{"
         f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:14px;"
         f"  padding:9px 12px; font-size:{fs}pt; color:{theme.TEXT_DARK};"
         f"  selection-background-color:{_rgba(theme.PRIMARY, 24)}; selection-color:{theme.TEXT_DARK};"
         f"}}"
+        f"QComboBox {{ padding-right:34px; }}"
+        f"QDateEdit {{ padding-right:34px; }}"
         f"QLineEdit {{ placeholder-text-color:{theme.TEXT_MEDIUM}; }}"
         f"QLineEdit:focus, QComboBox:focus, QDateEdit:focus {{ border:1px solid {_rgba(theme.PRIMARY, 88)}; }}"
-        f"QComboBox::drop-down, QDateEdit::drop-down {{ border:none; width:24px; }}"
+        f"QComboBox::drop-down {{"
+        f"  subcontrol-origin:padding; subcontrol-position:top right;"
+        f"  width:24px; border:none; margin:3px 6px 3px 0;"
+        f"  border-radius:8px; background:{btn_bg};"
+        f"}}"
+        f"QComboBox::drop-down:hover {{ background:{btn_bg_hover}; }}"
+        f"QComboBox::down-arrow {{"
+        f"  width:0px; height:0px;"
+        f"  border-left:5px solid transparent; border-right:5px solid transparent;"
+        f"  border-top:6px solid {arrow};"
+        f"}}"
+        f"QComboBox::down-arrow:on {{ border-top:6px solid {arrow_hover}; }}"
+        f"QDateEdit::up-button, QDateEdit::down-button {{"
+        f"  subcontrol-origin:border; width:18px;"
+        f"  border:none; background:{btn_bg};"
+        f"}}"
+        f"QDateEdit::up-button {{ subcontrol-position:top right; margin:3px 6px 1px 0; border-top-left-radius:7px; border-top-right-radius:7px; }}"
+        f"QDateEdit::down-button {{ subcontrol-position:bottom right; margin:1px 6px 3px 0; border-bottom-left-radius:7px; border-bottom-right-radius:7px; }}"
+        f"QDateEdit::up-button:hover, QDateEdit::down-button:hover {{ background:{btn_bg_hover}; }}"
+        f"QDateEdit::up-arrow {{"
+        f"  width:0px; height:0px;"
+        f"  border-left:4px solid transparent; border-right:4px solid transparent;"
+        f"  border-bottom:6px solid {arrow};"
+        f"}}"
+        f"QDateEdit::down-arrow {{"
+        f"  width:0px; height:0px;"
+        f"  border-left:4px solid transparent; border-right:4px solid transparent;"
+        f"  border-top:6px solid {arrow};"
+        f"}}"
         f"QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{"
         f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; border:1px solid {theme.BORDER_COLOR};"
         f"  selection-background-color:{_rgba(theme.PRIMARY, 18)}; selection-color:{theme.TEXT_DARK};"
@@ -234,7 +272,6 @@ class HistoryWorker(QObject):
         production_destination: str = "",
         production_machine: str = "",
         invoiced: str = "",
-        created_by_user_id: int | None = None,
     ):
         super().__init__()
         self.status = status
@@ -244,7 +281,6 @@ class HistoryWorker(QObject):
         self.production_destination = production_destination
         self.production_machine = production_machine
         self.invoiced = invoiced
-        self.created_by_user_id = created_by_user_id
 
     def run(self):
         try:
@@ -263,7 +299,6 @@ class HistoryWorker(QObject):
                     production_destination=self.production_destination,
                     production_machine=self.production_machine,
                     invoiced=invoiced_value,
-                    created_by_user_id=self.created_by_user_id,
                 )
             )
         except Exception as exc:
@@ -296,6 +331,7 @@ class MachineOptionsWorker(QObject):
 
 class HistoryView(QWidget):
     open_requisition = Signal(int)
+    guide_requested  = Signal()          # emitido pelo botão ? de ajuda
 
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
@@ -408,7 +444,9 @@ class HistoryView(QWidget):
         filter_accent = QFrame()
         filter_accent.setFixedHeight(max(4, int(5 * s)))
         filter_accent.setStyleSheet(
-            f"background:{theme.PRIMARY_HOVER}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(theme.PRIMARY_HOVER, 235)}, stop:0.5 {_rgba(theme.PRIMARY_HOVER, 155)}, stop:1 {_rgba(theme.PRIMARY_HOVER, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
         filter_layout.addWidget(filter_accent)
 
@@ -434,9 +472,6 @@ class HistoryView(QWidget):
         filter_layout.addWidget(filter_title)
         filter_layout.addWidget(filter_shortcuts)
         filter_layout.addWidget(filter_subtitle)
-
-        controls = QHBoxLayout()
-        controls.setSpacing(max(12, int(16 * s)))
 
         status_col = QVBoxLayout()
         status_col.setSpacing(max(6, int(8 * s)))
@@ -586,14 +621,40 @@ class HistoryView(QWidget):
         buttons_row.addWidget(self.clear_btn)
         buttons_col.addLayout(buttons_row)
 
-        controls.addLayout(status_col, 1)
-        controls.addLayout(period_col, 2)
-        controls.addLayout(invoiced_col, 1)
-        controls.addLayout(production_col, 1)
-        controls.addLayout(machine_col, 1)
-        controls.addLayout(search_col, 2)
-        controls.addLayout(buttons_col)
-        filter_layout.addLayout(controls)
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.guide_btn = QPushButton("?")
+        self.guide_btn.setToolTip("Abrir guia rápido")
+        self.guide_btn.setFixedSize(sz_g, sz_g)
+        self.guide_btn.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"border:1px solid {theme.BORDER_COLOR};"
+            f"border-radius:{sz_g // 2}px; padding:0;"
+        )
+        self.guide_btn.clicked.connect(self.guide_requested)
+        buttons_col.addWidget(self.guide_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
+        # Filtros em duas linhas, agrupadas por intenção, para dar respiro e
+        # acomodar novos filtros no futuro sem espremer tudo numa linha só.
+        # Linha 1 — o que/quando buscar: BUSCA · PERÍODO · STATUS
+        row1 = QHBoxLayout()
+        row1.setSpacing(max(12, int(16 * s)))
+        row1.addLayout(search_col, 2)
+        row1.addLayout(period_col, 2)
+        row1.addLayout(status_col, 1)
+
+        # Linha 2 — refinamentos + ações: FATURADO · PRODUÇÃO · MÁQUINA · [BUSCAR/LIMPAR]
+        row2 = QHBoxLayout()
+        row2.setSpacing(max(12, int(16 * s)))
+        row2.addLayout(invoiced_col, 1)
+        row2.addLayout(production_col, 1)
+        row2.addLayout(machine_col, 1)
+        row2.addStretch(1)
+        row2.addLayout(buttons_col)
+
+        filter_layout.addLayout(row1)
+        filter_layout.addLayout(row2)
         root.addWidget(filter_card)
 
         results_card = _make_card(
@@ -611,10 +672,16 @@ class HistoryView(QWidget):
         results_accent = QFrame()
         results_accent.setFixedHeight(max(4, int(5 * s)))
         results_accent.setStyleSheet(
-            f"background:{theme.PRIMARY}; border:none; border-radius:{max(2, int(3 * s))}px;"
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(theme.PRIMARY, 235)}, stop:0.5 {_rgba(theme.PRIMARY, 155)}, stop:1 {_rgba(theme.PRIMARY, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
         )
         results_layout.addWidget(results_accent)
 
+        results_header = QHBoxLayout()
+        results_header.setSpacing(max(8, int(10 * s)))
+        results_title_col = QVBoxLayout()
+        results_title_col.setSpacing(max(2, int(3 * s)))
         results_title = QLabel("Resultados")
         results_title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
@@ -625,8 +692,17 @@ class HistoryView(QWidget):
         results_subtitle.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
         )
-        results_layout.addWidget(results_title)
-        results_layout.addWidget(results_subtitle)
+        results_title_col.addWidget(results_title)
+        results_title_col.addWidget(results_subtitle)
+        results_header.addLayout(results_title_col, 1)
+
+        self.export_btn = QPushButton("EXPORTAR EXCEL")
+        self.export_btn.setFixedHeight(max(36, int(42 * s)))
+        self.export_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.export_btn.setToolTip("Exportar os resultados atuais para uma planilha Excel")
+        self.export_btn.clicked.connect(self._export_excel)
+        results_header.addWidget(self.export_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        results_layout.addLayout(results_header)
 
         self.table = QTableWidget(0, len(COLS))
         self.table.setHorizontalHeaderLabels(COLS)
@@ -637,6 +713,7 @@ class HistoryView(QWidget):
         self.table.setFrameShape(QFrame.Shape.NoFrame)
         self.table.setShowGrid(False)
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        apply_smooth_scroll(self.table)
         header_widget = self.table.horizontalHeader()
         stretch_columns = {1, 2}
         for col in range(len(COLS)):
@@ -652,6 +729,7 @@ class HistoryView(QWidget):
         header_widget.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
@@ -661,6 +739,8 @@ class HistoryView(QWidget):
         self.table.setColumnWidth(6, max(110, int(130 * s)))
         self.table.setColumnWidth(7, max(150, int(170 * s)))
         self.table.setColumnWidth(8, max(220, int(260 * s)))
+        self.table.setColumnWidth(9, max(160, int(200 * s)))
+        self.table.setSortingEnabled(True)
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:none; outline:none; background:{theme.CARD_BG};"
@@ -671,6 +751,7 @@ class HistoryView(QWidget):
             f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
+            f"QHeaderView::section:hover {{ background:{theme.PRIMARY_HOVER}; }}"
             f"QTableWidget::item {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
             f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
@@ -714,7 +795,6 @@ class HistoryView(QWidget):
             production_destination,
             production_machine,
             invoiced,
-            created_by_user_id=session.user_id if session.filters_own_requisitions else None,
         )
         thread = QThread()
         worker.moveToThread(thread)
@@ -825,6 +905,7 @@ class HistoryView(QWidget):
         self.refresh_btn.setEnabled(not loading)
         self.search_btn.setEnabled(not loading)
         self.clear_btn.setEnabled(not loading)
+        self.export_btn.setEnabled(not loading)
         self.combo_status.setEnabled(not loading)
         self.input_date_from.setEnabled(not loading)
         self.input_date_to.setEnabled(not loading)
@@ -845,6 +926,78 @@ class HistoryView(QWidget):
         self.error_label.setText(f"Não foi possível carregar o histórico.\n\n{message}")
         self.error_label.show()
 
+    def _row_values(self, req: dict) -> list[str]:
+        """Valores de exibição de uma linha (usado na tabela e na exportação)."""
+        status = str(req.get("production_status") or req.get("status") or "")
+        return [
+            str(req.get("ped_number") or "-"),
+            str(req.get("client_name") or req.get("client_id") or "-"),
+            str(req.get("obra") or "-"),
+            str(req.get("vendor_name") or req.get("vendor_id") or "-"),
+            _format_date(req.get("emission_date")),
+            STATUS_LABELS.get(status, status or "-"),
+            "SIM" if bool(req.get("invoiced")) or status == "faturado" else "NÃO",
+            str(
+                req.get("production_destination_display")
+                or req.get("production_destination")
+                or "-"
+            ),
+            str(
+                req.get("production_machine_display")
+                or req.get("production_machine")
+                or "-"
+            ),
+            str(req.get("cancel_reason") or "-"),
+        ]
+
+    def _export_excel(self):
+        """Exporta os resultados atualmente carregados para uma planilha .xlsx."""
+        if not self._reqs:
+            QMessageBox.information(
+                self, "Exportar para Excel",
+                "Não há resultados para exportar. Faça uma busca primeiro.",
+            )
+            return
+        default_name = f"historico_requisicoes_{local_now().strftime('%Y%m%d_%H%M')}.xlsx"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar para Excel", default_name, "Planilha Excel (*.xlsx)"
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+        try:
+            import openpyxl
+            from openpyxl.styles import Alignment, Font, PatternFill
+            from openpyxl.utils import get_column_letter
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Histórico"
+            ws.append(COLS)
+            header_fill = PatternFill("solid", fgColor="1E3A5F")
+            for cell in ws[1]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            for req in self._reqs:
+                ws.append(self._row_values(req))
+            widths = [10, 34, 26, 22, 12, 24, 10, 18, 24, 26]
+            for i, width in enumerate(widths, start=1):
+                ws.column_dimensions[get_column_letter(i)].width = width
+            ws.freeze_panes = "A2"
+            wb.save(path)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(
+                self, "Exportar para Excel",
+                f"Não foi possível salvar a planilha.\n\n{exc}",
+            )
+            return
+        QMessageBox.information(
+            self, "Exportar para Excel",
+            f"{len(self._reqs)} requisição(ões) exportada(s) com sucesso.",
+        )
+
     def _populate(self, reqs: object):
         if not isinstance(reqs, list):
             self._show_error("Resposta inválida do servidor.")
@@ -852,6 +1005,7 @@ class HistoryView(QWidget):
             return
 
         self._reqs = [req for req in reqs if isinstance(req, dict)]
+        self.table.setSortingEnabled(False)
         self.table.clearSpans()
         self.table.setRowCount(0)
 
@@ -861,26 +1015,10 @@ class HistoryView(QWidget):
             for req in self._reqs:
                 row = self.table.rowCount()
                 self.table.insertRow(row)
-                status = str(req.get("production_status") or req.get("status") or "")
-                values = [
-                    str(req.get("ped_number") or "-"),
-                    str(req.get("client_name") or req.get("client_id") or "-"),
-                    str(req.get("obra") or "-"),
-                    str(req.get("vendor_name") or req.get("vendor_id") or "-"),
-                    _format_date(req.get("emission_date")),
-                    status or "-",
-                    "SIM" if bool(req.get("invoiced")) or status == "faturado" else "NÃO",
-                    str(
-                        req.get("production_destination_display")
-                        or req.get("production_destination")
-                        or "-"
-                    ),
-                    str(
-                        req.get("production_machine_display")
-                        or req.get("production_machine")
-                        or "-"
-                    ),
-                ]
+                status      = str(req.get("production_status") or req.get("status") or "")
+                ped_raw     = req.get("ped_number")
+                date_raw    = str(req.get("emission_date") or "")
+                values = self._row_values(req)
                 for col, value in enumerate(values):
                     if col == 5:
                         badge = QLabel(STATUS_LABELS.get(status, status or "-"))
@@ -902,10 +1040,28 @@ class HistoryView(QWidget):
                             f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                         )
                         self.table.setCellWidget(row, col, badge)
+                    elif col == 0:
+                        # Ordena PED numericamente
+                        try:
+                            sort_key = int(ped_raw)
+                        except (TypeError, ValueError):
+                            sort_key = 0
+                        item = SortableItem(value, sort_key=sort_key)
+                        req_id = req.get("id")
+                        if req_id is not None:
+                            item.setData(Qt.ItemDataRole.UserRole, int(req_id))
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(row, col, item)
+                    elif col == 4:
+                        # Ordena DATA pela string ISO (YYYY-MM-DD... ordena lexicograficamente)
+                        item = SortableItem(value, sort_key=date_raw)
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.table.setItem(row, col, item)
                     else:
                         item = QTableWidgetItem(value)
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(row, col, item)
+        self.table.setSortingEnabled(True)
 
         current = local_now()
         self.date_label.setText(_format_header_date(current))
@@ -921,8 +1077,18 @@ class HistoryView(QWidget):
 
     def _on_double_click(self, index):
         row = index.row()
+        if row < 0:
+            return
+        ped_item = self.table.item(row, 0)
+        if ped_item is not None:
+            req_id = ped_item.data(Qt.ItemDataRole.UserRole)
+            if req_id is not None:
+                self.open_requisition.emit(int(req_id))
+                return
         if 0 <= row < len(self._reqs):
-            self.open_requisition.emit(self._reqs[row]["id"])
+            req_id = self._reqs[row].get("id")
+            if req_id is not None:
+                self.open_requisition.emit(int(req_id))
 
     def _clear_filters(self):
         self.combo_status.setCurrentIndex(0)
@@ -984,4 +1150,5 @@ class HistoryView(QWidget):
         self.input_search.setStyleSheet(_field_style(s))
         self.search_btn.setStyleSheet(_primary_action_btn_style(s))
         self.clear_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.export_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self._apply_table_style()

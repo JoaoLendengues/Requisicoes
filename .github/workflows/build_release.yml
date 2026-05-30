@@ -1,4 +1,4 @@
-name: Build & Release
+﻿name: Build & Release
 
 # Dispara automaticamente quando uma tag v1.0.0 é publicada,
 # ou manualmente pelo GitHub Actions (útil para testes de build).
@@ -63,6 +63,7 @@ jobs:
           pip install `
             PySide6==6.11.1 `
             requests `
+            httpx `
             reportlab `
             "qrcode[pil]" `
             Pillow `
@@ -82,6 +83,20 @@ jobs:
           Write-Host "client/version.py atualizado para $v"
 
       # ── 6. Build com PyInstaller (app principal) ─────────────────────────────
+
+      # -- 5b. Criar settings.json padrao (nao esta no repositorio -- .gitignore) --
+      - name: Criar settings.json padrao
+        shell: pwsh
+        run: |
+          $defaults = @{
+            dark_mode               = $false
+            font_size               = "Normal"
+            font_scale              = "100%"
+            pending_invoice_alert_days = 1
+            bg_folder               = ""
+          } | ConvertTo-Json
+          Set-Content -Path "client/settings.json" -Value $defaults -Encoding utf8
+          Write-Host "client/settings.json criado com valores padrao"
       - name: Build com PyInstaller
         shell: pwsh
         run: |
@@ -126,8 +141,8 @@ jobs:
         if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: "Requisições Pinheiro v${{ steps.version.outputs.VERSION }}"
-          generate_release_notes: true
+          name: "Requisições App v${{ steps.version.outputs.VERSION }}"
+          body_path: release_notes.md
           files: |
             installer_output/Requisicoes_Setup_v${{ steps.version.outputs.VERSION }}.exe
             dist/Requisicoes_Portable_v${{ steps.version.outputs.VERSION }}.zip
@@ -145,3 +160,4 @@ jobs:
           Get-ChildItem installer_output/ -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
           Write-Host "Portatil:"
           Get-ChildItem dist/*.zip       -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+

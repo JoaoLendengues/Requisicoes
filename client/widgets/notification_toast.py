@@ -10,7 +10,7 @@ from PySide6.QtCore import (
     QEasingCurve, QParallelAnimationGroup, QPoint, QPropertyAnimation,
     Qt, QTimer, Signal,
 )
-from PySide6.QtGui import QColor, QCursor
+from PySide6.QtGui import QColor, QCursor, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
     QPushButton, QVBoxLayout,
@@ -92,6 +92,8 @@ class NotificationToast(QFrame):
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint,
         )
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.setWindowOpacity(0.0)
@@ -113,15 +115,16 @@ class NotificationToast(QFrame):
 
     def _build(self, data: dict, accent: str):
         self.setFixedWidth(TOAST_WIDTH)
+        self.setObjectName("toastCard")
+        self._corner_radius = 12
         self.setStyleSheet(
-            f"QFrame {{"
+            f"QFrame#toastCard {{"
             f"  background: {theme.TOAST_BG};"
-            f"  border: 1px solid {theme.TOAST_BORDER};"
-            f"  border-left: 4px solid {accent};"
-            f"  border-radius: 12px;"
+            f"  border: none;"
+            f"  border-radius: {self._corner_radius}px;"
             f"  font-family: '{theme.FONT_PRIMARY}', '{theme.FONT_FALLBACK}', 'Segoe UI';"
             f"}}"
-            f"QLabel {{ background: transparent; }}"
+            f"QLabel {{ background: transparent; border: none; }}"
         )
 
         root = QVBoxLayout(self)
@@ -178,33 +181,35 @@ class NotificationToast(QFrame):
             msg_lbl.setWordWrap(True)
             root.addWidget(msg_lbl)
 
-        # ── Barra de countdown ──
-        root.addSpacing(6)
-        self._bar = QFrame()
-        self._bar.setFixedHeight(2)
-        self._bar.setStyleSheet(
-            f"background: {accent}; border-radius: 1px; border: none;"
-        )
-        root.addWidget(self._bar)
-
-        self._bar_anim = QPropertyAnimation(self._bar, b"maximumWidth")
-        self._bar_anim.setStartValue(TOAST_WIDTH - 30)
-        self._bar_anim.setEndValue(0)
-        self._bar_anim.setDuration(DISPLAY_MS)
-        self._bar_anim.setEasingCurve(QEasingCurve.Type.Linear)
+        # Sem barra inferior para manter o popup limpo/sem linhas.
+        self._bar = None
+        self._bar_anim = None
+        self._apply_rounded_mask()
 
     def _add_shadow(self):
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(28)
-        shadow.setColor(QColor(0, 44, 109, 40 if not theme.is_dark else 150))
+        shadow.setColor(QColor(0, 44, 109, 26 if not theme.is_dark else 120))
         shadow.setOffset(0, 6)
         self.setGraphicsEffect(shadow)
+
+    def _apply_rounded_mask(self):
+        rect = self.rect()
+        if rect.isNull():
+            return
+        path = QPainterPath()
+        path.addRoundedRect(float(rect.x()), float(rect.y()), float(rect.width()), float(rect.height()),
+                            float(self._corner_radius), float(self._corner_radius))
+        polygon = path.toFillPolygon().toPolygon()
+        if not polygon.isEmpty():
+            self.setMask(QRegion(polygon))
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     def show_at(self, x: int, y: int):
         """Exibe o toast com animação de entrada: desliza da direita + fade in."""
         self.adjustSize()
+        self._apply_rounded_mask()
         h = self.sizeHint().height()
 
         end_pos   = QPoint(x, y - h)
@@ -231,14 +236,16 @@ class NotificationToast(QFrame):
         self._group.addAnimation(fade)
         self._group.start()
 
-        self._bar_anim.start()
+        if self._bar_anim is not None:
+            self._bar_anim.start()
         self._remaining = DISPLAY_MS
         self._dismiss_timer.start(DISPLAY_MS)
 
     def _slide_out(self):
         """Saída: desliza para a direita + fade out simultâneos."""
         self._dismiss_timer.stop()
-        self._bar_anim.stop()
+        if self._bar_anim is not None:
+            self._bar_anim.stop()
         if self._group:
             self._group.stop()
 
@@ -267,6 +274,10 @@ class NotificationToast(QFrame):
         self.dismissed.emit()
         self.deleteLater()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._apply_rounded_mask()
+
     # ── Hover: pausa e retomada ───────────────────────────────────────────────
 
     def enterEvent(self, event):
@@ -274,11 +285,13 @@ class NotificationToast(QFrame):
         if remaining > 0:
             self._remaining = remaining
         self._dismiss_timer.stop()
-        self._bar_anim.pause()
+        if self._bar_anim is not None:
+            self._bar_anim.pause()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self._bar_anim.resume()
+        if self._bar_anim is not None:
+            self._bar_anim.resume()
         if self._remaining > 100:
             self._dismiss_timer.start(self._remaining)
         else:

@@ -27,5 +27,6 @@ def update_operational_settings(
 ):
     saved = save_operational_settings(
         pending_invoice_alert_days=data.pending_invoice_alert_days,
+        min_delivery_business_days=data.min_delivery_business_days,
     )
     return OperationalSettingsResponse(**saved)

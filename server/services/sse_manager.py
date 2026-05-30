@@ -15,16 +15,8 @@ _queues: dict[int, list[asyncio.Queue]] = defaultdict(list)
 _loop: asyncio.AbstractEventLoop | None = None
 
 
-def connected_users_count() -> int:
-    return len(_queues)
-
-
 def connected_user_ids() -> list[int]:
     return list(_queues.keys())
-
-
-def active_connections_count() -> int:
-    return sum(len(queues) for queues in _queues.values())
 
 
 def push_to_user(user_id: int, data: dict) -> None:

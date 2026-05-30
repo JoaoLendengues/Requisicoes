@@ -46,6 +46,13 @@ a = Analysis(
         'pandas',
         'dotenv',
         'psutil',
+        'httpx',
+        'httpcore',
+        'h11',
+        'certifi',
+        'anyio',
+        'anyio._backends._asyncio',
+        'anyio._backends._trio',
     ],
     hookspath=[],
     hooksconfig={},
@@ -60,7 +67,6 @@ a = Analysis(
         'starlette',
         'jose',
         'passlib',
-        'httpx',
         'aiofiles',
     ],
     win_no_prefer_redirects=False,
@@ -87,7 +93,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # icon='client/assets/logo.ico',  # descomente quando tiver um .ico
+    icon='client/assets/icons/icon.ico',
 )
 
 coll = COLLECT(

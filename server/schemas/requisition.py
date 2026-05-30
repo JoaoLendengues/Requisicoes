@@ -113,6 +113,23 @@ class StatusUpdate(BaseModel):
     note: Optional[str] = None
 
 
+class DeliveryDateUpdate(BaseModel):
+    delivery_date: date
+    reason: str
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: object) -> str:
+        return normalize_upper_required(value)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        if len(value.strip()) < 5:
+            raise ValueError("Informe um motivo com pelo menos 5 caracteres")
+        return value
+
+
 class CanvasUpdate(BaseModel):
     json_data: str
 
@@ -143,6 +160,7 @@ class RequisitionResponse(BaseModel):
     os_number: Optional[str]
     vendor_id: int
     vendor_name: Optional[str] = None
+    vendor_code: Optional[str] = None
     client_id: int
     client_code: Optional[str] = None
     client_name: Optional[str] = None
@@ -160,6 +178,7 @@ class RequisitionResponse(BaseModel):
     production_machine: Optional[str] = None
     production_machine_display: Optional[str] = None
     production_status: Optional[str] = None
+    cancel_reason: Optional[str] = None
     invoiced: bool = False
     finalized_at: Optional[datetime]
     created_at: datetime

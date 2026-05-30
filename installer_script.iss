@@ -3,7 +3,7 @@
 ;   ISCC.exe /DMyAppVersion=1.0.0 /DBuildRoot=dist\requisicoes installer_script.iss
 ; O GitHub Actions passa essas variáveis automaticamente.
 
-#define MyAppName      "Requisições Pinheiro"
+#define MyAppName      "Requisições App"
 #define MyAppPublisher "Ferragens Pinheiro"
 #define MyAppURL       "https://github.com/JoaoLendengues/Requisicoes"
 
@@ -35,6 +35,7 @@ OutputBaseFilename=Requisicoes_Setup_v{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=client\assets\icons\icon_setup.ico
 
 UninstallDisplayIcon={app}\requisicoes.exe
 CloseApplications=force
@@ -61,9 +62,9 @@ Source: "{#BuildRoot}\_internal\*"; DestDir: "{app}\_internal"; Flags: ignorever
 Source: "{#BuildRoot}\_internal\client\settings.json"; DestDir: "{app}\_internal\client"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\Requisições Pinheiro";       Filename: "{app}\requisicoes.exe"
-Name: "{autodesktop}\Requisições Pinheiro"; Filename: "{app}\requisicoes.exe"; Tasks: desktopicon
-Name: "{group}\Desinstalar Requisições";    Filename: "{uninstallexe}"
+Name: "{group}\Requisições App";       Filename: "{app}\requisicoes.exe"
+Name: "{autodesktop}\Requisições App"; Filename: "{app}\requisicoes.exe"; Tasks: desktopicon
+Name: "{group}\Desinstalar Requisições App"; Filename: "{uninstallexe}"
 
 [Run]
 Filename: "{app}\requisicoes.exe"; Description: "Executar Requisições agora"; Flags: postinstall nowait skipifsilent

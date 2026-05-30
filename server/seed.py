@@ -1,6 +1,6 @@
 from .database import SessionLocal
-from .models.user import User, Role
-from .models.production_machine import ProductionMachine, MachineOperationalStatus
+from .models.production_machine import MachineOperationalStatus, ProductionMachine
+from .models.user import Role, User
 from .services.auth_service import hash_password
 from .services.text_normalizer import normalize_upper_required
 
@@ -47,16 +47,18 @@ def seed_admin() -> None:
     try:
         if db.query(User).filter(User.code == "1").first():
             return
-        db.add(User(
-            code="1",
-            name="Administrador",
-            email="admin@pinheiroferragens.com.br",
-            hashed_password=hash_password("admin123"),
-            role=Role.ADMIN,
-            is_active=True,
-        ))
+        db.add(
+            User(
+                code="1",
+                name="Administrador",
+                email="admin@pinheiroferragens.com.br",
+                hashed_password=hash_password("admin123"),
+                role=Role.ADMIN,
+                is_active=True,
+            )
+        )
         db.commit()
-        print("[seed] Admin criado — código: 1 / senha: admin123")
+        print("[seed] Admin criado - codigo: 1 / senha: admin123")
     finally:
         db.close()
 
@@ -64,51 +66,23 @@ def seed_admin() -> None:
 def seed_production_machines() -> None:
     db = SessionLocal()
     try:
+        if db.query(ProductionMachine.id).first():
+            return
+
         catalogs = {
             "Pinheiro Indústria": PINHEIRO_MACHINES,
             "A&R": AR_MACHINES,
         }
-        machines = db.query(ProductionMachine).all()
-        existing_by_order = {
-            (machine.destination, int(machine.sort_order or 0)): machine
-            for machine in machines
-        }
-        existing_by_name = {
-            (machine.destination, machine.name): machine
-            for machine in machines
-        }
-        changed = False
         for destination, names in catalogs.items():
             for index, name in enumerate(names, start=1):
-                display_name = _machine_display_name(index, name)
-                machine = existing_by_order.get((destination, index))
-                if machine is None:
-                    machine = existing_by_name.get((destination, display_name))
-
-                if machine is not None:
-                    if machine.name != display_name:
-                        machine.name = display_name
-                        changed = True
-                    if int(machine.sort_order or 0) != index:
-                        machine.sort_order = index
-                        changed = True
-                    if machine.status is None:
-                        machine.status = MachineOperationalStatus.FUNCIONANDO
-                        changed = True
-                    continue
-
-                machine = ProductionMachine(
-                    destination=destination,
-                    name=display_name,
-                    sort_order=index,
-                    status=MachineOperationalStatus.FUNCIONANDO,
+                db.add(
+                    ProductionMachine(
+                        destination=destination,
+                        name=_machine_display_name(index, name),
+                        sort_order=index,
+                        status=MachineOperationalStatus.FUNCIONANDO,
+                    )
                 )
-                db.add(machine)
-                existing_by_order[(destination, index)] = machine
-                existing_by_name[(destination, display_name)] = machine
-                changed = True
-
-        if changed:
-            db.commit()
+        db.commit()
     finally:
         db.close()

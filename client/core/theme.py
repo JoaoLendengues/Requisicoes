@@ -56,6 +56,7 @@ _LIGHT: dict = {
     # Status de requisição
     "STATUS_COLORS": {
         "em_andamento":           "#2D7FF9",
+        "prazo_alterado":         "#7C3AED",
         "aguardando_recebimento": "#F3A01B",
         "aguardando_na_fila":     "#C7790A",
         "aguardando_faturamento": "#A16207",
@@ -65,7 +66,7 @@ _LIGHT: dict = {
     },
 
     # ── Tokens: Toast de notificação ──────────────────────────────────────────
-    "TOAST_BG":          "#FFFFFF",       # fundo do card
+    "TOAST_BG":          "#E7ECF3",       # fundo do card (mais escuro para contraste)
     "TOAST_BORDER":      "#D9E1EC",       # borda externa
     "TOAST_TITLE":       "#1E2A3A",       # texto do título
     "TOAST_BODY":        "#6B778C",       # texto da mensagem
@@ -87,7 +88,7 @@ _LIGHT: dict = {
     "DRAWER_SHADOW":     "rgba(0,44,109,0.14)",  # sombra lateral
 }
 
-# ── Paleta escura (modo dark — implementação futura) ──────────────────────────
+# ── Paleta escura (modo dark) ─────────────────────────────────────────────────
 
 _DARK: dict = {
     # Sidebar / rodapé
@@ -130,6 +131,7 @@ _DARK: dict = {
     # Status de requisição
     "STATUS_COLORS": {
         "em_andamento":           "#60A5FA",
+        "prazo_alterado":         "#A78BFA",
         "aguardando_recebimento": "#FBBF24",
         "aguardando_na_fila":     "#F59E0B",
         "aguardando_faturamento": "#D97706",
@@ -165,6 +167,7 @@ _DARK: dict = {
 
 STATUS_LABELS: dict = {
     "em_andamento":           "Em Andamento",
+    "prazo_alterado":         "Prazo Alterado",
     "aguardando_recebimento": "Aguardando Recebimento",
     "aguardando_na_fila":     "Aguardando na Fila",
     "aguardando_faturamento": "Aguardando Faturamento",
@@ -175,8 +178,8 @@ STATUS_LABELS: dict = {
 
 # ── Fontes (invariantes) ──────────────────────────────────────────────────────
 
-FONT_PRIMARY  = "Poppins"
-FONT_FALLBACK = "Inter"
+FONT_PRIMARY  = "Inter"
+FONT_FALLBACK = "Segoe UI"
 
 # ── Estado de modo e inicialização ────────────────────────────────────────────
 
