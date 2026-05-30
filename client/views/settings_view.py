@@ -537,6 +537,30 @@ class SettingsView(QWidget):
             lay_sis.setContentsMargins(*_cm)
             lay_sis.setSpacing(_cs)
 
+            # Atualizações do Sistema (primeiro tópico)
+            from ..version import CURRENT_VERSION as _CURRENT_VERSION
+            lay_sis.addWidget(_section("Atualizações do Sistema", s))
+            lay_sis.addWidget(_separator())
+            update_row = QHBoxLayout()
+            update_row.setSpacing(max(8, int(10 * s)))
+            self._version_label = QLabel(f"Versão atual: v{_CURRENT_VERSION}")
+            self._version_label.setProperty("muted", "1")
+            self._version_label.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            update_row.addWidget(self._version_label)
+            update_row.addStretch()
+            self.btn_check_update = QPushButton("Verificar atualizações")
+            self.btn_check_update.setFixedHeight(max(38, int(44 * s)))
+            self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
+            self.btn_check_update.clicked.connect(self._check_updates)
+            update_row.addWidget(self.btn_check_update)
+            lay_sis.addLayout(update_row)
+            self._update_status_label = QLabel("")
+            self._update_status_label.setProperty("muted", "1")
+            self._update_status_label.setStyleSheet(
+                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+            )
+            lay_sis.addWidget(self._update_status_label)
+
             # Conexão com o Servidor (admin only)
             self._conn_section = QWidget()
             conn_vl = QVBoxLayout(self._conn_section)
@@ -670,6 +694,11 @@ class SettingsView(QWidget):
             self.input_pending_invoice_days = QSpinBox()
             self.input_min_delivery_days = QSpinBox()
             self.operational_status   = QLabel()
+            # Atualizações do Sistema só aparece na aba Sistema (admin/gerente);
+            # placeholders mantêm apply_theme e handlers seguros nos demais perfis.
+            self._version_label       = QLabel()
+            self.btn_check_update     = QPushButton()
+            self._update_status_label = QLabel()
 
         # ════════════════════════════════════════════════════════════════
         # ABA: Login (admin only)
@@ -1020,31 +1049,6 @@ class SettingsView(QWidget):
         lay_help = QVBoxLayout(card_help)
         lay_help.setContentsMargins(*_cm)
         lay_help.setSpacing(_cs)
-
-        lay_help.addWidget(_section("Atualizações do Sistema", s))
-        lay_help.addWidget(_separator())
-
-        update_row = QHBoxLayout()
-        update_row.setSpacing(max(8, int(10 * s)))
-        from ..version import CURRENT_VERSION as _CURRENT_VERSION
-        self._version_label = QLabel(f"Versão atual: v{_CURRENT_VERSION}")
-        self._version_label.setProperty("muted", "1")
-        self._version_label.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
-        update_row.addWidget(self._version_label)
-        update_row.addStretch()
-        self.btn_check_update = QPushButton("Verificar atualizações")
-        self.btn_check_update.setFixedHeight(max(38, int(44 * s)))
-        self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_check_update.clicked.connect(self._check_updates)
-        update_row.addWidget(self.btn_check_update)
-        lay_help.addLayout(update_row)
-
-        self._update_status_label = QLabel("")
-        self._update_status_label.setProperty("muted", "1")
-        self._update_status_label.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
-        )
-        lay_help.addWidget(self._update_status_label)
 
         lay_help.addWidget(_section("Guia Rápido", s))
         lay_help.addWidget(_separator())
