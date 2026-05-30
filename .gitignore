@@ -33,6 +33,9 @@ client/assets/login_backgrounds/
 # Claude Code (configurações locais do desenvolvedor)
 .claude/
 
+# Pente Fino — auditoria interna privada (não versionar)
+pente_fino/
+
 # IDE
 .vscode/settings.json
 .idea/
