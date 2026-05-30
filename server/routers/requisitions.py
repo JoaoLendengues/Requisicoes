@@ -213,6 +213,7 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
         "target": _canonical_destination(parts[2]),
         "machine": "",
         "reason": "",
+        "operators": [],
     }
 
     for raw_segment in parts[3:]:
@@ -229,6 +230,13 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
                 continue
             if normalized_key == "reason":
                 data["reason"] = normalized_value
+                continue
+            if normalized_key == "operators":
+                data["operators"] = [
+                    item.strip()
+                    for item in normalized_value.split(";")
+                    if item.strip()
+                ]
                 continue
 
         if not data["machine"] and data["action"] in (
@@ -626,6 +634,7 @@ def _production_item(
     waiting_since: datetime | None = None,
     production_started_at: datetime | None = None,
     machine_name: str | None = None,
+    operator_names: list[str] | None = None,
 ) -> ProductionItemResponse:
     status_value = getattr(req.status, "value", req.status)
     return ProductionItemResponse(
@@ -640,6 +649,7 @@ def _production_item(
         delivery_date=req.delivery_date,
         destination=_current_production_destination(req) or None,
         machine_name=_normalize_machine_name(machine_name) or None,
+        operator_names=[str(name).strip() for name in (operator_names or []) if str(name).strip()],
         waiting_since=waiting_since,
         production_started_at=production_started_at,
     )
@@ -699,6 +709,7 @@ def _build_production_summary(
                 _production_item(
                     req,
                     machine_name=current_machine,
+                    operator_names=(started_event or {}).get("operators") or [],
                     production_started_at=started_event["changed_at"] if started_event else None,
                 )
             )

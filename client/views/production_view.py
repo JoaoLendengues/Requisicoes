@@ -810,7 +810,7 @@ class ProductionView(QWidget):
         actions.addWidget(btn_cancel)
         layout.addLayout(actions)
 
-        table = self._build_table(["PED", "CLIENTE", "INICIO"], stretch_columns={1})
+        table = self._build_table(["PED", "CLIENTE", "OPERADOR", "INICIO"], stretch_columns={1, 2})
         table.setMinimumHeight(max(180, int(210 * s)))
         rows = [row for row in (machine.get("rows") or []) if isinstance(row, dict)]
         self._fill_machine_table(table, rows)
@@ -849,14 +849,22 @@ class ProductionView(QWidget):
         for req in rows:
             row = table.rowCount()
             table.insertRow(row)
+            operator_names = [
+                str(name or "").strip()
+                for name in (req.get("operator_names") or [])
+                if str(name or "").strip()
+            ]
             values = [
                 str(req.get("ped_number") or ""),
                 str(req.get("client_name") or "-"),
+                ", ".join(operator_names) if operator_names else "-",
                 _format_elapsed(req.get("production_started_at")),
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if operator_names:
+                    item.setToolTip(", ".join(operator_names))
                 table.setItem(row, col, item)
 
     def _selected_stage_row(self, stage: str) -> dict | None:

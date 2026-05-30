@@ -24,6 +24,7 @@ class ProductionItemResponse(BaseModel):
     delivery_date: Optional[date] = None
     destination: Optional[str] = None
     machine_name: Optional[str] = None
+    operator_names: list[str] = []
     waiting_since: Optional[datetime] = None
     production_started_at: Optional[datetime] = None
 
