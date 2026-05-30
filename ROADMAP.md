@@ -85,3 +85,68 @@ Responsaveis:
 
 - [x] [joao]     Faturar pedido automaticamente ao enviar para producao (A&R e Pinheiro Industria).
                  *** RESOLVIDO ***
+
+---
+
+# Pente Fino - Revisao Geral do Sistema
+
+Auditar **cada tela** verificando:
+- Endpoints da API que ela consome
+- Tabelas do banco que ela le/escreve
+- Fluxos de dados (de onde vem, pra onde vai)
+- Informacoes orfas / desperdicadas
+- Pontos de quebra / inconsistencias (ex.: modelo Python diferente do schema do banco)
+- Permissoes por perfil
+
+## Telas a revisar (na ordem)
+
+### Sidebar principal - NAV_ITEMS
+
+- [ ] **1. Nova Requisicao** (`nova`) - formulario central, signature, canvas, itens, prazo, envio para producao
+- [ ] **2. Painel Gerencial** (`dashboard`) - admin/gerente, metricas e graficos
+- [ ] **3. Central de Pedidos** (`pedidos`) - 5 secoes: aguardando, em producao, faturados, cancelados, atrasados
+- [ ] **4. Entregas** (`entregas`) - *novo, adicionado pelo cappinheiro recentemente*
+- [ ] **5. Pinheiro Industria** (`pinheiro_industria`) - cards por maquina + acoes de producao
+- [ ] **6. A&R** (`ar`) - cards por maquina + corte->dobra
+- [ ] **7. Historico / Busca** (`historico`) - filtros + export Excel
+- [ ] **8. Feedbacks** (`feedback`) - registro/visualizacao de feedbacks
+
+### Sidebar - BOTTOM_NAV_ITEMS
+
+- [ ] **9. Configuracoes** (`config`) - admin only, com abas:
+  - [ ] 9.1. Aparencia
+  - [ ] 9.2. Conta (trocar senha)
+  - [ ] 9.3. Sistema (URL servidor, alertas, prazo minimo, motivos de cancelamento, Painel Tecnico embarcado)
+  - [ ] 9.4. Login (backgrounds)
+  - [ ] 9.5. Backup
+  - [ ] 9.6. Usuarios
+  - [ ] 9.7. Clientes
+  - [ ] 9.8. Cadastro de Maquinas
+  - [ ] 9.9. Operadores
+  - [ ] 9.10. Ajuda
+
+### Fluxos transversais (nao sao telas, mas conectam varias)
+
+- [ ] **A.** Notificacoes (SSE + tabela `notifications`)
+- [ ] **B.** Auditoria (`audit_log`)
+- [ ] **C.** Geracao de PDF (caminho da rede, fallback)
+- [ ] **D.** Atualizacao automatica (GitHub releases)
+- [ ] **E.** Backup periodico (`pg_dump`)
+- [ ] **F.** Status flow das requisicoes (em_andamento -> producao -> faturado)
+
+## Template de auditoria por tela
+
+Para cada item da lista, produzir:
+
+```
+### Tela: <Nome>
+- View: client/views/<arquivo>.py
+- Endpoints consumidos:
+  - GET  /<rota>     -> funcao X
+  - POST /<rota>     -> funcao Y
+- Tabelas de banco lidas:  requisitions, clients...
+- Tabelas escritas:        ...
+- Permissoes (por role):   admin: ..., gerente: ..., vendedor: ...
+- Fluxo de dados:          ...
+- Achados:                 ...
+```
