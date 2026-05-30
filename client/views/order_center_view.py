@@ -4,7 +4,10 @@ import os
 import webbrowser
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import (
+    QEasingCurve, QObject, QParallelAnimationGroup,
+    QPropertyAnimation, QThread, Qt, Signal,
+)
 from PySide6.QtGui import QColor, QFontMetrics, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -202,6 +205,14 @@ class OrderCenterView(QWidget):
         self._metric_labels: dict[str, QLabel] = {}
         self._tables: dict[str, QTableWidget] = {}
         self._section_cards: dict = {}
+        # Filtros: chaves ativas = tabelas visíveis. Persiste entre refreshes.
+        self._active_sections: set[str] = {
+            "aguardando_recebimento", "em_producao",
+            "faturados", "cancelados", "atrasados",
+        }
+        self._filter_chips: dict[str, QPushButton] = {}
+        self._sections_container: QWidget | None = None
+        self._anim_group: QParallelAnimationGroup | None = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -350,18 +361,201 @@ class OrderCenterView(QWidget):
                 index % 4,
             )
 
-        grid_top = QGridLayout()
-        grid_top.setHorizontalSpacing(max(12, int(16 * s)))
-        grid_top.setVerticalSpacing(max(12, int(16 * s)))
-        grid_top.setColumnStretch(0, 1)
-        grid_top.setColumnStretch(1, 1)
-        layout.addLayout(grid_top)
-        grid_top.addWidget(self._build_section("Pedidos aguardando recebimento", "aguardando_recebimento"), 0, 0)
-        grid_top.addWidget(self._build_section("Pedidos em produção", "em_producao"), 0, 1)
-        grid_top.addWidget(self._build_section("Pedidos faturados", "faturados", pdf_action=True), 1, 0)
-        grid_top.addWidget(self._build_section("Pedidos cancelados", "cancelados"), 1, 1)
-        grid_top.addWidget(self._build_section("Pedidos atrasados", "atrasados"), 2, 0, 1, 2)
+        # ── Barra de filtros ──────────────────────────────────────────────
+        filter_bar = QHBoxLayout()
+        filter_bar.setSpacing(max(6, int(8 * s)))
+        filter_bar.setContentsMargins(0, 0, 0, 0)
+
+        filter_lbl = QLabel("MOSTRAR:")
+        filter_lbl.setStyleSheet(
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+        )
+        filter_bar.addWidget(filter_lbl)
+
+        chip_defs = [
+            ("aguardando_recebimento", "Aguardando"),
+            ("em_producao",            "Em Produção"),
+            ("faturados",              "Faturados"),
+            ("cancelados",             "Cancelados"),
+            ("atrasados",              "Atrasados"),
+        ]
+        for key, label in chip_defs:
+            chip = QPushButton(label)
+            chip.setCheckable(True)
+            chip.setChecked(key in self._active_sections)
+            chip.setFixedHeight(max(28, int(32 * s)))
+            chip.setStyleSheet(self._chip_style(s))
+            chip.toggled.connect(lambda _checked, k=key: self._on_chip_toggled(k, _checked))
+            filter_bar.addWidget(chip)
+            self._filter_chips[key] = chip
+
+        filter_bar.addStretch()
+
+        self._btn_apply_filter = QPushButton("APLICAR")
+        self._btn_apply_filter.setFixedHeight(max(28, int(32 * s)))
+        self._btn_apply_filter.setStyleSheet(_primary_action_btn_style(s))
+        self._btn_apply_filter.clicked.connect(self._apply_section_filter)
+        filter_bar.addWidget(self._btn_apply_filter)
+
+        self._btn_reset_filter = QPushButton("TODOS")
+        self._btn_reset_filter.setFixedHeight(max(28, int(32 * s)))
+        self._btn_reset_filter.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_reset_filter.clicked.connect(self._reset_filter)
+        filter_bar.addWidget(self._btn_reset_filter)
+
+        layout.addLayout(filter_bar)
+
+        # ── Pré-constrói as seções (ficam no cache; visibilidade gerida) ──
+        self._build_section("Pedidos aguardando recebimento", "aguardando_recebimento")
+        self._build_section("Pedidos em produção",             "em_producao")
+        self._build_section("Pedidos faturados",               "faturados", pdf_action=True)
+        self._build_section("Pedidos cancelados",              "cancelados")
+        self._build_section("Pedidos atrasados",               "atrasados")
+
+        # ── Container dinâmico das seções ────────────────────────────────
+        self._sections_container = QWidget()
+        self._sections_container.setObjectName("sectionsContainer")
+        self._sections_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._sections_container.setStyleSheet(
+            f"QWidget#sectionsContainer {{ background:{page_bg}; }}"
+        )
+        layout.addWidget(self._sections_container)
         layout.addStretch()
+
+        self._rebuild_sections_layout(animate=False)
+
+    # ── Chip style ───────────────────────────────────────────────────────────
+    def _chip_style(self, scale: float) -> str:
+        fs = max(8, int(9 * scale))
+        return (
+            f"QPushButton {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_MEDIUM};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:999px;"
+            f"  padding:4px 14px; font-size:{fs}pt; font-weight:700; outline:none;"
+            f"}}"
+            f"QPushButton:hover {{ border-color:{_rgba(theme.PRIMARY, 80)}; color:{theme.TEXT_DARK}; }}"
+            f"QPushButton:checked {{"
+            f"  background:{theme.PRIMARY}; color:#FFFFFF; border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QPushButton:checked:hover {{ background:{theme.PRIMARY_HOVER}; border-color:{theme.PRIMARY_HOVER}; }}"
+        )
+
+    # ── Lógica de filtros ─────────────────────────────────────────────────────
+    def _on_chip_toggled(self, key: str, checked: bool):
+        """Registra intenção do usuário mas NÃO aplica ainda (só ao clicar Aplicar)."""
+        # Não impede que todos sejam desmarcados — o Aplicar exige ao menos 1
+        pass
+
+    def _apply_section_filter(self):
+        """Lê os chips marcados e reconstrói o layout com animação."""
+        selected = {k for k, chip in self._filter_chips.items() if chip.isChecked()}
+        if not selected:
+            # Garante ao menos 1 seção visível
+            for chip in self._filter_chips.values():
+                chip.setChecked(True)
+            selected = set(self._active_sections)
+        if selected == self._active_sections:
+            # Sem mudança real — apenas garante layout correto
+            self._rebuild_sections_layout(animate=False)
+            return
+        self._active_sections = selected
+        self._rebuild_sections_layout(animate=True)
+
+    def _reset_filter(self):
+        """Marca todos os chips e aplica."""
+        for chip in self._filter_chips.values():
+            chip.setChecked(True)
+        self._active_sections = set(self._filter_chips.keys())
+        self._rebuild_sections_layout(animate=True)
+
+    # ── Reconstrução do layout ────────────────────────────────────────────────
+    def _rebuild_sections_layout(self, animate: bool = True):
+        """
+        Reconstrói o QGridLayout do container com as seções ativas.
+        Distribui em 2 colunas; última seção ímpar ocupa largura total.
+        """
+        if self._sections_container is None:
+            return
+
+        s = self.scale
+        gap = max(12, int(16 * s))
+
+        # Remove layout antigo sem destruir os widgets (reparent pra None)
+        old_layout = self._sections_container.layout()
+        if old_layout is not None:
+            while old_layout.count():
+                item = old_layout.takeAt(0)
+                w = item.widget()
+                if w is not None:
+                    w.setParent(None)  # type: ignore[arg-type]
+                sub = item.layout()
+                if sub is not None:
+                    while sub.count():
+                        si = sub.takeAt(0)
+                        sw = si.widget()
+                        if sw is not None:
+                            sw.setParent(None)  # type: ignore[arg-type]
+            QWidget().setLayout(old_layout)  # descarta layout
+
+        section_order = [
+            "aguardando_recebimento", "em_producao",
+            "faturados", "cancelados", "atrasados",
+        ]
+        visible = [k for k in section_order if k in self._active_sections]
+
+        grid = QGridLayout(self._sections_container)
+        grid.setHorizontalSpacing(gap)
+        grid.setVerticalSpacing(gap)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+
+        for i, key in enumerate(visible):
+            card = self._section_cards[key]
+            row_idx = i // 2
+            col_idx = i % 2
+            # Última item ímpar → span 2 colunas
+            if i == len(visible) - 1 and len(visible) % 2 == 1:
+                grid.addWidget(card, row_idx, 0, 1, 2)
+            else:
+                grid.addWidget(card, row_idx, col_idx)
+            card.show()
+
+        # Esconde cards que não estão na seleção
+        for key, card in self._section_cards.items():
+            if key not in self._active_sections:
+                card.hide()
+
+        if animate:
+            self._animate_sections_in(visible)
+
+    def _animate_sections_in(self, keys: list[str]):
+        """Anima a entrada de cada seção visível com slide-down (height)."""
+        if self._anim_group and self._anim_group.state() == QParallelAnimationGroup.State.Running:
+            self._anim_group.stop()
+
+        group = QParallelAnimationGroup(self)
+        for key in keys:
+            card = self._section_cards[key]
+            natural_h = card.sizeHint().height() or max(280, int(320 * self.scale))
+            anim = QPropertyAnimation(card, b"maximumHeight", self)
+            anim.setDuration(220)
+            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            anim.setStartValue(0)
+            anim.setEndValue(natural_h)
+            group.addAnimation(anim)
+            card.setMaximumHeight(0)
+        group.finished.connect(lambda: self._remove_height_constraint(keys))
+        self._anim_group = group
+        group.start()
+
+    def _remove_height_constraint(self, keys: list[str]):
+        """Remove o limite de altura após animação para não travar redimensionamento."""
+        for key in keys:
+            card = self._section_cards.get(key)
+            if card is not None:
+                card.setMaximumHeight(16_777_215)  # QWIDGETSIZE_MAX
 
     def _build_metric_card(
         self,
@@ -560,6 +754,7 @@ class OrderCenterView(QWidget):
         self._tables[key] = table
         layout.addWidget(table, 1)
         self._section_cards[key] = card
+        # Não adiciona ao layout aqui — o container dinâmico gerencia a posição
         return card
 
     def _create_table_for_section(self, key: str) -> QTableWidget:
@@ -638,7 +833,7 @@ class OrderCenterView(QWidget):
         pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
-        table.setMinimumHeight(max(220, int(240 * s)))
+        table.setMinimumHeight(max(320, int(360 * s)))
         apply_smooth_scroll(table)
         return table
 
@@ -979,7 +1174,16 @@ class OrderCenterView(QWidget):
         self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
         self._page_content.setStyleSheet(f"QWidget#orderCenterContent {{ background:{bg}; }}")
+        if self._sections_container is not None:
+            self._sections_container.setStyleSheet(
+                f"QWidget#sectionsContainer {{ background:{bg}; }}"
+            )
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_apply_filter.setStyleSheet(_primary_action_btn_style(s))
+        self._btn_reset_filter.setStyleSheet(_flat_secondary_btn_style(s))
+        chip_style = self._chip_style(s)
+        for chip in self._filter_chips.values():
+            chip.setStyleSheet(chip_style)
         self.error_label.setStyleSheet(
             f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
             f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"

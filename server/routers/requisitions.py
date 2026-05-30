@@ -657,6 +657,47 @@ def _history_production_machine(req: Requisition) -> str:
     return ""
 
 
+def _history_production_operator_names(req: Requisition) -> list[str]:
+    if req.status == RequisitionStatus.EM_PRODUCAO:
+        started_event = _latest_production_event(req, _PROD_STARTED, _PROD_RECEIVED)
+        operator_names = [
+            str(name).strip()
+            for name in ((started_event or {}).get("operators") or [])
+            if str(name).strip()
+        ]
+        if operator_names:
+            return operator_names
+
+    latest_cycle = _latest_finished_cycle(req)
+    if latest_cycle:
+        operator_names = [
+            str(name).strip()
+            for name in (latest_cycle.get("operators") or [])
+            if str(name).strip()
+        ]
+        if operator_names:
+            return operator_names
+
+    started_event = _latest_production_event(req, _PROD_STARTED, _PROD_RECEIVED)
+    return [
+        str(name).strip()
+        for name in ((started_event or {}).get("operators") or [])
+        if str(name).strip()
+    ]
+
+
+def _history_production_sent_at(req: Requisition) -> datetime | None:
+    latest_send_event = _latest_production_event(req, _PROD_SEND)
+    changed_at = (latest_send_event or {}).get("changed_at")
+    return changed_at if isinstance(changed_at, datetime) else None
+
+
+def _history_production_finished_at(req: Requisition) -> datetime | None:
+    latest_cycle = _latest_finished_cycle(req)
+    finished_at = (latest_cycle or {}).get("finished_at")
+    return finished_at if isinstance(finished_at, datetime) else None
+
+
 def _history_production_status(req: Requisition) -> str:
     current_status = str(getattr(req.status, "value", req.status) or "")
     if req.status == RequisitionStatus.CANCELADA:
@@ -757,6 +798,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
     started_at: datetime | None = None
     started_target: str | None = None
     started_machine: str | None = None
+    started_operators: list[str] = []
 
     for event in _production_events(req):
         changed_at = event["changed_at"]
@@ -771,6 +813,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
             started_at = changed_at
             started_target = target
             started_machine = machine
+            started_operators = list(event.get("operators") or [])
             continue
 
         if action == _PROD_FINISHED:
@@ -781,6 +824,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
                         "finished_at": changed_at,
                         "target": started_target,
                         "machine": started_machine,
+                        "operators": list(started_operators),
                         "production_time_seconds": max(
                             0,
                             int((changed_at - started_at).total_seconds()),
@@ -790,6 +834,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
             started_at = None
             started_target = None
             started_machine = None
+            started_operators = []
             continue
 
         if action in (
@@ -801,6 +846,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
             started_at = None
             started_target = None
             started_machine = None
+            started_operators = []
 
     return cycles
 
@@ -1083,8 +1129,10 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         if latest_finished:
             production_durations.append(latest_finished["production_time_seconds"])
         if req.status in (RequisitionStatus.AGUARDANDO_FATURAMENTO, RequisitionStatus.FATURADO) and latest_finished:
+            sent_event = _latest_production_event(req, _PROD_SEND)
             invoiced_at = (
-                _latest_status_changed_at(req, RequisitionStatus.FATURADO)
+                (sent_event or {}).get("changed_at")
+                or _latest_status_changed_at(req, RequisitionStatus.FATURADO)
                 or _latest_status_changed_at(req, RequisitionStatus.AGUARDANDO_FATURAMENTO)
                 or latest_finished["finished_at"]
             )
@@ -1586,6 +1634,7 @@ def list_requisitions(
     vendor_id: Optional[int] = None,
     production_destination: Optional[str] = None,
     production_machine: Optional[str] = None,
+    production_operator: Optional[str] = None,
     invoiced: Optional[bool] = None,
     emission_date_start: Optional[date] = None,
     emission_date_end: Optional[date] = None,
@@ -1636,6 +1685,16 @@ def list_requisitions(
             if _normalize_text(_history_production_machine(req)) == machine_key
         ]
 
+    if production_operator:
+        operator_key = _normalize_text(production_operator)
+        visible = [
+            req for req in visible
+            if any(
+                _normalize_text(name) == operator_key
+                for name in _history_production_operator_names(req)
+            )
+        ]
+
     if invoiced is not None:
         visible = [
             req for req in visible
@@ -1654,6 +1713,11 @@ def list_requisitions(
             "production_machine_display",
             _history_production_machine(req) or None,
         )
+        operator_names = _history_production_operator_names(req)
+        setattr(req, "production_operator_names", operator_names)
+        setattr(req, "production_operator_display", ", ".join(operator_names) or None)
+        setattr(req, "production_sent_at", _history_production_sent_at(req))
+        setattr(req, "production_finished_at", _history_production_finished_at(req))
         setattr(req, "production_status", _history_production_status(req))
         setattr(req, "invoiced", req.status == RequisitionStatus.FATURADO)
         setattr(req, "cancel_reason", _cancel_reason_for(req))

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from ..dependencies import get_current_user, require_admin
+from ..dependencies import get_current_user, require_manager_or_admin
 from ..models.user import User
 from ..schemas.system_settings import (
     OperationalSettingsResponse,
@@ -23,10 +23,15 @@ def get_operational_settings(_: User = Depends(get_current_user)):
 @router.patch("/operational", response_model=OperationalSettingsResponse)
 def update_operational_settings(
     data: OperationalSettingsUpdate,
-    _: User = Depends(require_admin),
+    _: User = Depends(require_manager_or_admin),
 ):
     saved = save_operational_settings(
         pending_invoice_alert_days=data.pending_invoice_alert_days,
         min_delivery_business_days=data.min_delivery_business_days,
+        cancel_reasons=(
+            [item.model_dump() for item in data.cancel_reasons]
+            if data.cancel_reasons is not None
+            else None
+        ),
     )
     return OperationalSettingsResponse(**saved)
