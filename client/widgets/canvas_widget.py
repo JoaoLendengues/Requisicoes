@@ -428,6 +428,11 @@ class DrawingScene(QGraphicsScene):
     PEN_MIN_STEP   = 0.8   # distância mínima para adicionar ponto no traço livre
     CURVE_MAX_BENDS = 2    # comportamento do Paint clássico: até 2 "dobras"
     RULER_PX_PER_MM = 3.78
+    ANGLE_MARKER_SCALE_STEP = 1.1
+    ANGLE_MARKER_ROTATE_STEP = 5.0
+    ANGLE_MARKER_ROTATE_FAST_STEP = 15.0
+    ANGLE_MARKER_MIN_SIZE = 8.0
+    ANGLE_MARKER_MAX_SIZE = 4000.0
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
@@ -601,6 +606,45 @@ class DrawingScene(QGraphicsScene):
                     self.cw.spin_font.setValue(size)
                     self.cw.spin_font.blockSignals(False)
                 return
+
+    def _selected_angle_markers(self) -> list[QGraphicsPathItem]:
+        markers: list[QGraphicsPathItem] = []
+        for item in self.selectedItems():
+            if not isinstance(item, QGraphicsPathItem):
+                continue
+            meta = item.data(0)
+            if isinstance(meta, dict) and meta.get("type") == "angle_dimension_marker":
+                markers.append(item)
+        return markers
+
+    def _resize_selected_angle_markers(self, factor: float) -> bool:
+        changed = False
+        for marker in self._selected_angle_markers():
+            path = marker.path()
+            bounds = path.boundingRect()
+            max_dim = max(bounds.width(), bounds.height())
+            if max_dim <= 1e-6:
+                continue
+            resized_dim = max_dim * factor
+            if resized_dim < self.ANGLE_MARKER_MIN_SIZE or resized_dim > self.ANGLE_MARKER_MAX_SIZE:
+                continue
+            center = bounds.center()
+            transform = QTransform()
+            transform.translate(center.x(), center.y())
+            transform.scale(factor, factor)
+            transform.translate(-center.x(), -center.y())
+            marker.setPath(transform.map(path))
+            marker.setTransformOriginPoint(marker.path().boundingRect().center())
+            changed = True
+        return changed
+
+    def _rotate_selected_angle_markers(self, delta_degrees: float) -> bool:
+        changed = False
+        for marker in self._selected_angle_markers():
+            marker.setTransformOriginPoint(marker.path().boundingRect().center())
+            marker.setRotation(marker.rotation() + delta_degrees)
+            changed = True
+        return changed
 
     def drawForeground(self, painter: QPainter, rect: QRectF):
         """Desenha o bounding box do Free Transform quando ativo."""
@@ -1779,6 +1823,32 @@ class DrawingScene(QGraphicsScene):
             super().keyPressEvent(event)
             return
 
+        key = event.key()
+        mods = event.modifiers()
+        has_selected_angle_marker = bool(self._selected_angle_markers())
+        if has_selected_angle_marker:
+            if key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
+                if self._resize_selected_angle_markers(self.ANGLE_MARKER_SCALE_STEP):
+                    self.cw.changed.emit()
+                    event.accept()
+                    return
+            if key in (Qt.Key.Key_Minus, Qt.Key.Key_Underscore):
+                if self._resize_selected_angle_markers(1.0 / self.ANGLE_MARKER_SCALE_STEP):
+                    self.cw.changed.emit()
+                    event.accept()
+                    return
+            if (mods & Qt.KeyboardModifier.AltModifier) and key in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+                rotate_step = (
+                    self.ANGLE_MARKER_ROTATE_FAST_STEP
+                    if (mods & Qt.KeyboardModifier.ShiftModifier)
+                    else self.ANGLE_MARKER_ROTATE_STEP
+                )
+                delta = -rotate_step if key == Qt.Key.Key_Left else rotate_step
+                if self._rotate_selected_angle_markers(delta):
+                    self.cw.changed.emit()
+                    event.accept()
+                    return
+
         step = 10.0 if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier) else 1.0
         dx = 0.0
         dy = 0.0
@@ -2189,7 +2259,7 @@ class DrawingCanvas(QWidget):
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
-            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  "
+            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  Angulo selecionado: +/- = tamanho  |  Alt+<-/> = girar (Shift = 15 deg)  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
         hint.setWordWrap(True)
