@@ -82,6 +82,56 @@ def _migrate():
             pass
 
 
+def _migrate_ped_unique():
+    """Garante UNIQUE em requisitions.ped_number.
+
+    Idempotente e ciente de duplicatas: se já existir índice/constraint único
+    cobrindo ped_number, não faz nada; se houver PEDs duplicados pré-existentes,
+    NÃO cria o índice (evita falha) e loga um aviso claro para limpeza manual;
+    caso contrário, cria o índice único.
+    """
+    try:
+        from sqlalchemy import inspect as _inspect
+
+        insp = _inspect(engine)
+
+        # Já protegido por índice único?
+        for ix in insp.get_indexes("requisitions"):
+            if ix.get("unique") and ix.get("column_names") == ["ped_number"]:
+                return
+        # ...ou por unique constraint?
+        try:
+            for uc in insp.get_unique_constraints("requisitions"):
+                if uc.get("column_names") == ["ped_number"]:
+                    return
+        except Exception:
+            pass
+
+        # Há duplicatas? Se sim, não cria (constraint falharia) e avisa.
+        with engine.connect() as conn:
+            dups = conn.execute(text(
+                "SELECT ped_number FROM requisitions "
+                "GROUP BY ped_number HAVING COUNT(*) > 1"
+            )).fetchall()
+        if dups:
+            sample = [str(d[0]) for d in dups[:20]]
+            print(
+                f"[MIGRATION][PED] {len(dups)} PED(s) duplicado(s) no banco — "
+                f"indice unico NAO criado. Limpe as duplicatas e reinicie. "
+                f"Exemplos: {sample}"
+            )
+            return
+
+        with engine.begin() as conn:
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_requisitions_ped_number_unique "
+                "ON requisitions (ped_number)"
+            ))
+        print("[MIGRATION][PED] indice unico garantido em requisitions.ped_number")
+    except Exception as exc:
+        print(f"[MIGRATION][PED] falhou ao aplicar UNIQUE em ped_number: {exc}")
+
+
 def _migrate_production_machine_operators():
     """
     Migra production_machine_operators de user_id para operator_id.
@@ -112,6 +162,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _migrate_production_machine_operators()
     _migrate()
+    _migrate_ped_unique()
     seed_admin()
     seed_production_machines()
     try:

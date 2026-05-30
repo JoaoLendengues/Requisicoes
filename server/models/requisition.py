@@ -24,7 +24,7 @@ class Requisition(Base):
     __tablename__ = "requisitions"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    ped_number: Mapped[str] = mapped_column(String(50), index=True)
+    ped_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     emission_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     os_number: Mapped[str | None] = mapped_column(String(50), nullable=True)

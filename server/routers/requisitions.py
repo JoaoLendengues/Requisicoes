@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import or_, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from collections import Counter
@@ -324,6 +325,20 @@ def _ensure_unique_ped_number(
 ):
     duplicate = _find_duplicate_ped_number(db, ped_number, exclude_req_id)
     if duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"O número de PED {ped_number} já está salvo em outra requisição.",
+        )
+
+
+def _commit_or_ped_conflict(db: Session, ped_number: str) -> None:
+    """Commit que converte a violação de unicidade do PED (constraint do banco)
+    em um 409 limpo. Rede de segurança contra condição de corrida que escapa da
+    checagem prévia em `_ensure_unique_ped_number`."""
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"O número de PED {ped_number} já está salvo em outra requisição.",
@@ -2027,7 +2042,7 @@ def create_requisition(
         changed_by=current_user,
         changes={"ped_number": data.ped_number, "client_id": data.client_id},
     )
-    db.commit()
+    _commit_or_ped_conflict(db, data.ped_number)
     return _get_or_404(db, req.id)
 
 
@@ -2086,7 +2101,7 @@ def update_requisition(
         log_action(db, entity="requisition", entity_id=req.id, action="UPDATE",
                    changed_by=current_user, changes=changes)
 
-    db.commit()
+    _commit_or_ped_conflict(db, ped_number)
     return _get_or_404(db, req_id)
 
 
