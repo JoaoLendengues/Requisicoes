@@ -39,6 +39,7 @@ class Tool(Enum):
     PEN      = "pen"
     ERASER   = "eraser"
     LINE     = "line"
+    ANGLE    = "angle"
     ARROW    = "arrow"
     CURVE    = "curve"
     TRIANGLE = "triangle"
@@ -183,6 +184,8 @@ class DrawingScene(QGraphicsScene):
         self._curve_source_item: QGraphicsItem | None = None
         self._curve_points_scene: list[QPointF] = []
         self._curve_segment_index: int = -1
+        self._angle_marker_preview_item: QGraphicsPathItem | None = None
+        self._angle_text_preview_item: QGraphicsTextItem | None = None
         self.setBackgroundBrush(QBrush(QColor("#ffffff")))
 
         # Estado do Free Transform (Ctrl+T)
@@ -596,6 +599,129 @@ class DrawingScene(QGraphicsScene):
         path.lineTo(right)
         return path
 
+    def _clear_angle_preview(self):
+        if self._angle_marker_preview_item is not None:
+            self.removeItem(self._angle_marker_preview_item)
+            self._angle_marker_preview_item = None
+        if self._angle_text_preview_item is not None:
+            self.removeItem(self._angle_text_preview_item)
+            self._angle_text_preview_item = None
+
+    @staticmethod
+    def _normalize_angle_degrees(value: float) -> float:
+        normalized = float(value) % 360.0
+        if normalized < 0.0:
+            normalized += 360.0
+        return normalized
+
+    def _resolve_angle_style(self, degrees: float, style: str | None = None) -> str:
+        selected = str(style or "auto").strip().lower()
+        if selected in {"square", "arc"}:
+            return selected
+        if abs(self._normalize_angle_degrees(degrees) - 90.0) < 1e-3:
+            return "square"
+        return "arc"
+
+    def _build_angle_marker_path(
+        self,
+        start: QPointF,
+        end: QPointF,
+        degrees: float,
+        style: str,
+    ) -> QPainterPath:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        dist = math.hypot(dx, dy)
+        if dist < 1e-6:
+            return QPainterPath()
+
+        ux, uy = dx / dist, dy / dist
+        width_boost = max(0.0, float(self.cw.pen_width) - 1.0)
+        marker_len = max(
+            12.0 + (width_boost * 1.8),
+            min(68.0, (dist * 0.22) + (width_boost * 2.0)),
+        )
+        perp_x, perp_y = -uy, ux
+        base = QPointF(start.x() + (ux * marker_len * 0.2), start.y() + (uy * marker_len * 0.2))
+        path = QPainterPath()
+
+        if style == "square":
+            p1 = QPointF(base.x() + ux * marker_len, base.y() + uy * marker_len)
+            p2 = QPointF(p1.x() + perp_x * marker_len, p1.y() + perp_y * marker_len)
+            p3 = QPointF(base.x() + perp_x * marker_len, base.y() + perp_y * marker_len)
+            path.moveTo(base)
+            path.lineTo(p1)
+            path.lineTo(p2)
+            path.lineTo(p3)
+            return path
+
+        normalized = self._normalize_angle_degrees(degrees)
+        if normalized > 359.9:
+            normalized = 359.9
+        radius = max(
+            14.0 + (width_boost * 1.6),
+            min(78.0, (dist * 0.3) + (width_boost * 2.4)),
+        )
+        rect = QRectF(start.x() - radius, start.y() - radius, radius * 2.0, radius * 2.0)
+        start_deg = math.degrees(math.atan2(-uy, ux))
+        path.arcMoveTo(rect, start_deg)
+        path.arcTo(rect, start_deg, normalized)
+        return path
+
+    def _update_angle_preview(self, start: QPointF, end: QPointF):
+        label = self.cw._format_angle_value(self.cw.angle_value_deg)
+        style = self._resolve_angle_style(self.cw.angle_value_deg, self.cw.angle_style)
+        marker_path = self._build_angle_marker_path(start, end, self.cw.angle_value_deg, style)
+
+        if self._angle_marker_preview_item is None:
+            self._angle_marker_preview_item = QGraphicsPathItem(marker_path)
+            self._angle_marker_preview_item.setPen(self._pen())
+            self._angle_marker_preview_item.setZValue(10000)
+            self.addItem(self._angle_marker_preview_item)
+        else:
+            self._angle_marker_preview_item.setPath(marker_path)
+            self._angle_marker_preview_item.setPen(self._pen())
+
+        if self._angle_text_preview_item is None:
+            self._angle_text_preview_item = QGraphicsTextItem(label)
+            self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
+            self._angle_text_preview_item.setFont(QFont(theme.FONT_PRIMARY, self.cw.font_size))
+            self._angle_text_preview_item.setZValue(10001)
+            self.addItem(self._angle_text_preview_item)
+        else:
+            self._angle_text_preview_item.setPlainText(label)
+            self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
+            self._angle_text_preview_item.setFont(QFont(theme.FONT_PRIMARY, self.cw.font_size))
+        self._angle_text_preview_item.setPos(end + QPointF(10, -10))
+
+    def _commit_angle_measure(self, start: QPointF, end: QPointF):
+        if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
+            return
+        label = self.cw._format_angle_value(self.cw.angle_value_deg)
+        style = self._resolve_angle_style(self.cw.angle_value_deg, self.cw.angle_style)
+        marker_path = self._build_angle_marker_path(start, end, self.cw.angle_value_deg, style)
+
+        marker_item = QGraphicsPathItem(marker_path)
+        marker_item.setPen(self._pen())
+        marker_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(marker_item)
+
+        text_item = QGraphicsTextItem(label)
+        text_item.setPos(end + QPointF(10, -10))
+        text_item.setDefaultTextColor(QColor(self.cw.color))
+        text_item.setFont(QFont(theme.FONT_PRIMARY, self.cw.font_size))
+        text_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(text_item)
+
+        self.cw._push_undo(marker_item)
+        self.cw._push_undo(text_item)
+
     def mousePressEvent(self, event):
         tool = self.cw.tool
         pos  = event.scenePos()
@@ -672,6 +798,11 @@ class DrawingScene(QGraphicsScene):
                 self._start.x(), self._start.y(),
                 self._start.x() + 0.01, self._start.y(), self._pen()
             )
+
+        elif tool == Tool.ANGLE:
+            self._start = QPointF(pos.x(), pos.y())
+            self._clear_angle_preview()
+            self._update_angle_preview(self._start, self._start)
 
         elif tool == Tool.ARROW:
             self._start = QPointF(pos.x(), pos.y())
@@ -782,6 +913,10 @@ class DrawingScene(QGraphicsScene):
                                        end.x(), end.y())
             self.update()
 
+        elif tool == Tool.ANGLE:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._update_angle_preview(self._start, end)
+
         elif tool == Tool.ARROW and self._preview_item:
             end = self._constrain(self._start, pos) if shift else pos
             self._preview_item.setPath(self._arrow_path(self._start, end))
@@ -833,6 +968,15 @@ class DrawingScene(QGraphicsScene):
             self.cw._push_undo(item)
             self._path_item = None
             self._painter_path = None
+
+        elif tool == Tool.ANGLE:
+            end = self._constrain(self._start, pos) if shift else pos
+            self._commit_angle_measure(self._start, end)
+            self._clear_angle_preview()
+            self._start = None
+            self.cw._set_tool(Tool.SELECT)
+            event.accept()
+            return
 
         elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
             if tool == Tool.LINE:
@@ -1030,6 +1174,8 @@ class DrawingCanvas(QWidget):
         self.pen_width  = 2
         self.pen_style  = Qt.PenStyle.SolidLine
         self.font_size  = 12
+        self.angle_value_deg = 90.0
+        self.angle_style = "auto"
         self._undo_stack: list[QGraphicsItem] = []
         self._redo_stack: list[QGraphicsItem] = []
         self._attached_pdf: str = ""
@@ -1071,6 +1217,7 @@ class DrawingCanvas(QWidget):
             (Tool.PEN,     "✏️ Caneta",   "P"),
             (Tool.ERASER,  "🧹 Borracha", "X"),
             (Tool.LINE,    "📏 Linha",    "L"),
+            (Tool.ANGLE,   "ANG Ang.",     "U"),
             (Tool.ARROW,   "➡ Seta",      "A"),
             (Tool.CURVE,   "〰 Curva",    "C"),
             (Tool.TRIANGLE, "△ Triang.", "G"),
@@ -1209,7 +1356,7 @@ class DrawingCanvas(QWidget):
 
         # ── Dica de teclado ──────────────────────────────────────────────────
         hint = QLabel(
-            "✨ Shift = traço reto  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  U = angulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  "
@@ -1272,6 +1419,7 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_P: Tool.PEN,
             Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
+            Qt.Key.Key_U: Tool.ANGLE,
             Qt.Key.Key_A: Tool.ARROW,
             Qt.Key.Key_C: Tool.CURVE,
             Qt.Key.Key_G: Tool.TRIANGLE,
@@ -1316,7 +1464,7 @@ class DrawingCanvas(QWidget):
         self.addAction(ft_action)
 
     # ── Ferramentas ──────────────────────────────────────────────────────────
-    def _set_tool(self, tool: Tool):
+\ \ \ \ def\ _format_angle_value\(self,\ degrees:\ float\)\ ->\ str:\n\ \ \ \ \ \ \ \ if\ abs\(degrees\ -\ round\(degrees\)\)\ <\ 1e-9:\n\ \ \ \ \ \ \ \ \ \ \ \ return\ f"\{int\(round\(degrees\)\)}°"\n\ \ \ \ \ \ \ \ return\ f"\{degrees:\.1f}°"\n\n\ \ \ \ def\ _ask_angle_tool_config\(self\)\ ->\ bool:\n\ \ \ \ \ \ \ \ preset,\ ok\ =\ QInputDialog\.getItem\(\n\ \ \ \ \ \ \ \ \ \ \ \ self,\n\ \ \ \ \ \ \ \ \ \ \ \ "Angulo",\n\ \ \ \ \ \ \ \ \ \ \ \ "Selecione\ o\ valor\ do\ angulo:",\n\ \ \ \ \ \ \ \ \ \ \ \ \["90°",\ "180°",\ "Personalizado\.\.\."],\n\ \ \ \ \ \ \ \ \ \ \ \ 0,\n\ \ \ \ \ \ \ \ \ \ \ \ False,\n\ \ \ \ \ \ \ \ \)\n\ \ \ \ \ \ \ \ if\ not\ ok:\n\ \ \ \ \ \ \ \ \ \ \ \ return\ False\n\n\ \ \ \ \ \ \ \ if\ preset\ ==\ "90°":\n\ \ \ \ \ \ \ \ \ \ \ \ degrees\ =\ 90\.0\n\ \ \ \ \ \ \ \ elif\ preset\ ==\ "180°":\n\ \ \ \ \ \ \ \ \ \ \ \ degrees\ =\ 180\.0\n\ \ \ \ \ \ \ \ else:\n\ \ \ \ \ \ \ \ \ \ \ \ value,\ ok\ =\ QInputDialog\.getDouble\(\n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ self,\n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ "Angulo\ personalizado",\n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ "Informe\ o\ valor\ em\ graus:",\n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ self\.angle_value_deg,\n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ 0\.1,\n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ 359\.9,\n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ 1,\n\ \ \ \ \ \ \ \ \ \ \ \ \)\n\ \ \ \ \ \ \ \ \ \ \ \ if\ not\ ok:\n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ return\ False\n\ \ \ \ \ \ \ \ \ \ \ \ degrees\ =\ float\(value\)\n\n\ \ \ \ \ \ \ \ style_label,\ ok\ =\ QInputDialog\.getItem\(\n\ \ \ \ \ \ \ \ \ \ \ \ self,\n\ \ \ \ \ \ \ \ \ \ \ \ "Forma\ do\ angulo",\n\ \ \ \ \ \ \ \ \ \ \ \ "Escolha\ o\ marcador\ visual:",\n\ \ \ \ \ \ \ \ \ \ \ \ \["Automatico",\ "Meia\ lua",\ "Quadrado"],\n\ \ \ \ \ \ \ \ \ \ \ \ 0,\n\ \ \ \ \ \ \ \ \ \ \ \ False,\n\ \ \ \ \ \ \ \ \)\n\ \ \ \ \ \ \ \ if\ not\ ok:\n\ \ \ \ \ \ \ \ \ \ \ \ return\ False\n\n\ \ \ \ \ \ \ \ self\.angle_value_deg\ =\ float\(degrees\)\n\ \ \ \ \ \ \ \ self\.angle_style\ =\ \{\n\ \ \ \ \ \ \ \ \ \ \ \ "Automatico":\ "auto",\n\ \ \ \ \ \ \ \ \ \ \ \ "Meia\ lua":\ "arc",\n\ \ \ \ \ \ \ \ \ \ \ \ "Quadrado":\ "square",\n\ \ \ \ \ \ \ \ }\.get\(style_label,\ "auto"\)\n\ \ \ \ \ \ \ \ return\ True\n\n\ \ \ \ def\ _set_tool\(self,\ tool:\ Tool\):\n\ \ \ \ \ \ \ \ if\ tool\ ==\ Tool\.ANGLE:\n\ \ \ \ \ \ \ \ \ \ \ \ if\ not\ self\._ask_angle_tool_config\(\):\n\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ tool\ =\ Tool\.SELECT
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
@@ -1723,3 +1871,7 @@ class CanvasPreview(QGraphicsView):
         if rect.isNull():
             rect = QRectF(0, 0, 100, 80)
         self.fitInView(rect.adjusted(-10, -10, 10, 10), Qt.AspectRatioMode.KeepAspectRatio)
+
+
+
+
