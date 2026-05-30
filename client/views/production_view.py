@@ -330,7 +330,6 @@ class ProductionView(QWidget):
         }
         self._machine_cards: dict[int, dict] = {}
         self._machines_data: list[dict] = []
-        self._pending_machine_request: dict | None = None
         self._setup_ui()
         if self.destination in session.visible_production_destinations:
             self.refresh()
@@ -468,8 +467,8 @@ class ProductionView(QWidget):
         machine_title_col.addWidget(machine_title)
         machine_title_col.addWidget(machine_subtitle)
         machine_subtitle.setText(
-            "Selecione a requisicao em 'Aguardando Recebimento' ou 'Aguardando na Fila' "
-            "e depois clique em 'Usar nesta maquina'."
+            "Acompanhe as maquinas desta producao e use os cards para abrir, finalizar "
+            "ou devolver requisicoes que ja estao em producao."
         )
         machines_header.addLayout(machine_title_col, 1)
 
@@ -860,12 +859,6 @@ class ProductionView(QWidget):
         status_row.addWidget(status_button)
         layout.addLayout(status_row)
 
-        assign_btn = QPushButton("Usar nesta maquina")
-        assign_btn.setFixedHeight(max(34, int(38 * s)))
-        assign_btn.setStyleSheet(_primary_action_btn_style(s))
-        assign_btn.clicked.connect(lambda: self._assign_selected_to_machine(int(machine["id"])))
-        layout.addWidget(assign_btn)
-
         actions = QHBoxLayout()
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
@@ -906,7 +899,6 @@ class ProductionView(QWidget):
             "card": card,
             "table": table,
             "combo": status_combo,
-            "assign_btn": assign_btn,
             "rows": rows,
             "machine": dict(machine),
         }
@@ -1013,24 +1005,119 @@ class ProductionView(QWidget):
             return
         self.open_requisition.emit(int(req["id"]))
 
-    def _clear_pending_machine_request(self):
-        self._pending_machine_request = None
+    def _start_production_selection(self, req: dict):
+        machine = self._pick_machine_for_production(req)
+        if not machine:
+            return
+        self._start_production(req, machine=machine)
 
-    def _arm_machine_assignment(self, req: dict, source_label: str):
-        self._pending_machine_request = dict(req)
-        ped = str(req.get("ped_number") or "")
-        self._show_info(
-            f"Requisicao PED {ped} pronta para envio.\n\n"
-            f"Agora clique em 'Usar nesta maquina' no card da {source_label} desejada."
+    def _pick_machine_for_production(self, req: dict) -> dict | None:
+        machines = [
+            dict(machine)
+            for machine in self._machines_data
+            if str(machine.get("name") or "").strip()
+        ]
+        if not machines:
+            self._show_error("Nao ha maquinas cadastradas para este destino.")
+            return None
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Selecionar Maquina")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
         )
 
-    def _selected_request_for_machine_assignment(self) -> dict | None:
-        if self._pending_machine_request:
-            return dict(self._pending_machine_request)
-        return (
-            self._selected_stage_row(WAITING_RECEIPT_STAGE)
-            or self._selected_stage_row(WAITING_QUEUE_STAGE)
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(max(8, int(10 * self.scale)))
+
+        ped = str(req.get("ped_number") or "-")
+        header = QLabel(f"Requisicao PED #{ped}")
+        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        layout.addWidget(header)
+
+        helper = QLabel("Clique na maquina que sera usada nesta producao.")
+        helper.setWordWrap(True)
+        helper.setProperty("muted", "1")
+        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        layout.addWidget(helper)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ border:1px solid {theme.BORDER_COLOR}; background:{theme.CARD_BG}; border-radius:12px; }}"
         )
+        scroll.setMinimumHeight(max(220, int(250 * self.scale)))
+        content = QWidget()
+        scroll.setWidget(content)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(12, 10, 12, 10)
+        content_layout.setSpacing(max(8, int(10 * self.scale)))
+
+        def _select_machine(selected_machine: dict):
+            dlg.setProperty("_machine_id", int(selected_machine["id"]))
+            dlg.accept()
+
+        btn_style = (
+            f"QPushButton {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
+            f"  padding:12px 14px; font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+            f"}}"
+            f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 80)}; }}"
+            f"QPushButton:pressed {{ background:{theme.SELECTION_BG}; }}"
+            f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
+        )
+        for machine in machines:
+            machine_name = str(machine.get("name") or "").strip()
+            operator_names = [
+                str(name or "").strip()
+                for name in (machine.get("operators") or [])
+                if str(name or "").strip()
+            ]
+            status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
+            operator_summary = ", ".join(operator_names) if operator_names else "Sem operadores cadastrados"
+            btn = QPushButton(
+                f"{machine_name}\n"
+                f"Status: {status_label}\n"
+                f"Operadores: {operator_summary}"
+            )
+            btn.setMinimumHeight(max(78, int(92 * self.scale)))
+            btn.setStyleSheet(btn_style)
+            btn.setEnabled(bool(operator_names))
+            btn.clicked.connect(
+                lambda checked=False, current_machine=dict(machine): _select_machine(current_machine)
+            )
+            if operator_names:
+                btn.setToolTip(f"Selecionar {machine_name}")
+            else:
+                btn.setToolTip("Cadastre operadores para liberar esta maquina.")
+            content_layout.addWidget(btn)
+        content_layout.addStretch()
+        layout.addWidget(scroll)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dlg.reject)
+        buttons.addWidget(btn_cancel)
+        layout.addLayout(buttons)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        machine_id = dlg.property("_machine_id")
+        for machine in machines:
+            if int(machine["id"]) == int(machine_id):
+                return machine
+        self._show_error("Nao foi possivel localizar a maquina selecionada.")
+        return None
 
     def _pick_machine_operators(self, machine: dict) -> list[str] | None:
         operator_names = [
@@ -1138,7 +1225,10 @@ class ProductionView(QWidget):
         return [str(name).strip() for name in (dlg.property("_operators") or []) if str(name).strip()]
 
     def _assign_selected_to_machine(self, machine_id: int):
-        req = self._selected_request_for_machine_assignment()
+        req = (
+            self._selected_stage_row(WAITING_RECEIPT_STAGE)
+            or self._selected_stage_row(WAITING_QUEUE_STAGE)
+        )
         if not req:
             self._show_info(
                 "Selecione uma requisicao em 'Aguardando Recebimento' ou 'Aguardando na Fila' "
@@ -1149,22 +1239,6 @@ class ProductionView(QWidget):
         card = self._machine_cards.get(machine_id)
         if not card:
             self._show_error("NÃ£o foi possÃ­vel localizar o card da mÃ¡quina selecionada.")
-            return
-
-        self._start_production(req, machine=dict(card.get("machine") or {}))
-
-    def _assign_selected_to_machine(self, machine_id: int):
-        req = self._selected_request_for_machine_assignment()
-        if not req:
-            self._show_info(
-                "Selecione uma requisicao em 'Aguardando Recebimento' ou 'Aguardando na Fila' "
-                "e depois use esta maquina."
-            )
-            return
-
-        card = self._machine_cards.get(machine_id)
-        if not card:
-            self._show_error("Nao foi possivel localizar o card da maquina selecionada.")
             return
 
         self._start_production(req, machine=dict(card.get("machine") or {}))
@@ -1198,7 +1272,7 @@ class ProductionView(QWidget):
         if clicked == btn_queue:
             self._move_to_queue(req)
         elif clicked == btn_machine:
-            self._arm_machine_assignment(req, self.destination)
+            self._start_production_selection(req)
         elif clicked == btn_cancel:
             self._cancel_to_progress(req)
 
@@ -1271,7 +1345,7 @@ class ProductionView(QWidget):
 
     def _start_production(self, req: dict, *, machine: dict | None = None):
         if machine is None:
-            self._arm_machine_assignment(req, self.destination)
+            self._start_production_selection(req)
             return
 
         machine_name = str(machine.get("name") or "").strip()
@@ -1301,7 +1375,7 @@ class ProductionView(QWidget):
         if not req:
             self._show_info("Selecione uma requisição na grade aguardando na fila.")
             return
-        self._arm_machine_assignment(req, self.destination)
+        self._start_production_selection(req)
 
     def _cancel_selected_stage(self, stage: str):
         req = self._selected_stage_row(stage)
@@ -1643,7 +1717,6 @@ class ProductionView(QWidget):
         self._threads.append((thread, worker))
 
     def _after_action(self, success_message: str):
-        self._clear_pending_machine_request()
         self.refresh()
         self._show_info(success_message)
 
@@ -1686,7 +1759,6 @@ class ProductionView(QWidget):
         for card in self._machine_cards.values():
             self._apply_table_style(card["table"])
             card["combo"].setStyleSheet(_machine_combo_style(s))
-            card["assign_btn"].setStyleSheet(_primary_action_btn_style(s))
 
 
 
