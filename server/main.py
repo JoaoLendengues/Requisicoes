@@ -37,6 +37,7 @@ def _migrate():
         "ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP",
         "ALTER TABLE requisitions ADD COLUMN obs TEXT",
+        "ALTER TABLE requisitions ADD COLUMN signature_png_b64 TEXT",
         "ALTER TABLE requisitions ADD COLUMN production_destination TEXT",
         "ALTER TABLE requisitions ADD COLUMN production_machine TEXT",
         "ALTER TABLE requisitions ADD COLUMN cancel_reason TEXT",
