@@ -230,7 +230,7 @@ class DeliveryCenterView(QWidget):
         metrics = QGridLayout()
         metrics.setHorizontalSpacing(max(12, int(16 * s)))
         metrics.setVerticalSpacing(max(12, int(16 * s)))
-        for column in range(3):
+        for column in range(4):
             metrics.setColumnStretch(column, 1)
         content_layout.addLayout(metrics)
 
@@ -238,6 +238,7 @@ class DeliveryCenterView(QWidget):
             ("deliveries_today", theme.PRIMARY, "ENTREGAS PARA HOJE", "Pedidos com entrega prevista para o dia atual."),
             ("delayed_deliveries", theme.DANGER, "ENTREGAS ATRASADAS", "Pedidos de entrega pendente com prazo vencido."),
             ("changed_delivery_deadlines", theme.WARNING, "PRAZO DE ENTREGA ALTERADO", "Entregas pendentes com prazo ajustado."),
+            ("completed_deliveries", theme.SUCCESS, "ENTREGAS REALIZADAS", "Pedidos de entrega concluídos."),
         ]
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
             metrics.addWidget(

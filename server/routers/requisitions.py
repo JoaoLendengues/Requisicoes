@@ -1271,6 +1271,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
     deliveries_today = 0
     delayed_deliveries = 0
     changed_delivery_deadlines = 0
+    completed_deliveries = 0
 
     for req in reqs:
         if not req.entrega or req.status == RequisitionStatus.CANCELADA:
@@ -1279,6 +1280,9 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
         deadline_changed_at = _delivery_deadline_changed_at(req)
         delivered_at = getattr(req, "delivered_at", None)
         delivery_date = req.delivery_date
+
+        if delivered_at is not None:
+            completed_deliveries += 1
 
         if delivered_at is None and delivery_date is not None:
             if delivery_date == today:
@@ -1318,6 +1322,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
             deliveries_today=deliveries_today,
             delayed_deliveries=delayed_deliveries,
             changed_delivery_deadlines=changed_delivery_deadlines,
+            completed_deliveries=completed_deliveries,
         ),
         rows=rows[:200],
     )

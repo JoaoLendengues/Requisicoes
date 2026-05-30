@@ -8,6 +8,7 @@ class DeliveryCenterStatsResponse(BaseModel):
     deliveries_today: int
     delayed_deliveries: int
     changed_delivery_deadlines: int
+    completed_deliveries: int
 
 
 class DeliveryCenterItemResponse(BaseModel):
