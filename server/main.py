@@ -58,20 +58,9 @@ def _migrate():
 
         # ── Índices de busca rápida de clientes (pg_trgm) ─────────────────────
         "CREATE EXTENSION IF NOT EXISTS pg_trgm",
-        "ALTER TABLE clients ADD COLUMN cnpj_digits VARCHAR(20)",
-        # Backfill PostgreSQL: usa regexp_replace (roda uma vez, fica no histórico)
-        "UPDATE clients SET cnpj_digits = regexp_replace(coalesce(cnpj, ''), '[^0-9]', '', 'g') "
-        "WHERE cnpj IS NOT NULL AND cnpj_digits IS NULL",
-        # Backfill compatível com SQLite e PostgreSQL: re-executa a cada boot
-        # para corrigir registros que ficaram com cnpj_digits NULL ou vazio.
-        # replace() aninhado remove os separadores típicos de CPF/CNPJ (.  -  /  espaço).
-        "UPDATE clients SET cnpj_digits = replace(replace(replace(replace("
-        "coalesce(cnpj,''),'.',''),'-',''),'/',''),' ','') "
-        "WHERE cnpj IS NOT NULL AND (cnpj_digits IS NULL OR cnpj_digits = '')",
         "CREATE INDEX IF NOT EXISTS idx_clients_name_trgm  ON clients USING GIN (name  gin_trgm_ops)",
         "CREATE INDEX IF NOT EXISTS idx_clients_code_trgm  ON clients USING GIN (code  gin_trgm_ops)",
         "CREATE INDEX IF NOT EXISTS idx_clients_cnpj_trgm  ON clients USING GIN (cnpj  gin_trgm_ops)",
-        "CREATE INDEX IF NOT EXISTS idx_clients_cnpj_digits_trgm ON clients USING GIN (cnpj_digits gin_trgm_ops)",
 
         # ── Índices de performance para requisições ───────────────────────────
         # PostgreSQL NÃO cria índice automático em colunas FK — apenas em PK/UNIQUE.
