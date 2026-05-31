@@ -583,28 +583,11 @@ class MainWindow(QMainWindow):
     def _after_save(self, req: dict, canvas_json: str,
                     client: dict | None = None, obs: str = "",
                     signature_png_bytes: bytes | None = None):
-        req_id = req["id"]
-        self.form_view.req_id = req_id
-        thread, worker = _run_in_thread(
-            api.update_canvas,
-            req_id,
-            canvas_json,
-            on_result=lambda _: self._on_fully_saved(
-                req,
-                canvas_json,
-                client,
-                obs,
-                signature_png_bytes,
-            ),
-            on_error=lambda _: self._on_fully_saved(
-                req,
-                canvas_json,
-                client,
-                obs,
-                signature_png_bytes,
-            ),
-        )
-        self._threads.append((thread, worker))
+        # O canvas (desenho) já foi gravado junto na transação da requisição
+        # (campo canvas_json no payload de create/update). Não há mais uma
+        # segunda chamada que pudesse falhar em silêncio: vai direto ao PDF.
+        self.form_view.req_id = req["id"]
+        self._on_fully_saved(req, canvas_json, client, obs, signature_png_bytes)
 
     def _on_fully_saved(self, req: dict, canvas_json: str,
                         client: dict | None, obs: str,

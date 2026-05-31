@@ -2025,7 +2025,7 @@ def create_requisition(
     _ensure_unique_ped_number(db, data.ped_number)
     _ensure_delivery_within_min(data.delivery_date, current_user)
     req = Requisition(
-        **data.model_dump(exclude={"items", "weight"}),
+        **data.model_dump(exclude={"items", "weight", "canvas_json"}),
         vendor_id=current_user.id,
         weight=_sum_item_weights(items_data),
     )
@@ -2035,7 +2035,11 @@ def create_requisition(
     for item in items_data:
         db.add(RequisitionItem(**item.model_dump(), requisition_id=req.id))
 
-    db.add(CanvasData(requisition_id=req.id))
+    # Canvas (desenho) gravado na MESMA transação — atômico com a requisição.
+    db.add(CanvasData(
+        requisition_id=req.id,
+        json_data=normalize_canvas_json_text(data.canvas_json) or "{}",
+    ))
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=None,
@@ -2081,7 +2085,7 @@ def update_requisition(
     ped_number = data.ped_number if data.ped_number is not None else req.ped_number
     _ensure_unique_ped_number(db, ped_number, exclude_req_id=req.id)
 
-    scalar_update = data.model_dump(exclude_unset=True, exclude={"items", "weight"})
+    scalar_update = data.model_dump(exclude_unset=True, exclude={"items", "weight", "canvas_json"})
     if "delivery_date" in scalar_update:
         _ensure_delivery_within_min(scalar_update["delivery_date"], current_user)
     tracked = ["ped_number", "delivery_date", "os_number", "obra", "obs",
@@ -2104,6 +2108,14 @@ def update_requisition(
             changes["items"] = {"old": f"{old_count} item(s)", "new": f"{new_count} item(s)"}
     elif data.weight is not None:
         req.weight = data.weight
+
+    # Canvas (desenho) na MESMA transação — atômico com a requisição.
+    if data.canvas_json is not None:
+        normalized_canvas = normalize_canvas_json_text(data.canvas_json) or "{}"
+        if req.canvas:
+            req.canvas.json_data = normalized_canvas
+        else:
+            db.add(CanvasData(requisition_id=req.id, json_data=normalized_canvas))
 
     if changes:
         log_action(db, entity="requisition", entity_id=req.id, action="UPDATE",

@@ -71,6 +71,7 @@ class RequisitionCreate(BaseModel):
     weight: float = 0.0
     obs: Optional[str] = None
     signature_png_b64: Optional[str] = None
+    canvas_json: Optional[str] = None
     items: List[RequisitionItemCreate] = []
 
     @field_validator("ped_number")
@@ -97,6 +98,7 @@ class RequisitionUpdate(BaseModel):
     weight: Optional[float] = None
     obs: Optional[str] = None
     signature_png_b64: Optional[str] = None
+    canvas_json: Optional[str] = None
     items: Optional[List[RequisitionItemCreate]] = None
 
     @field_validator("ped_number")

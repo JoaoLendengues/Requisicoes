@@ -2641,6 +2641,7 @@ class RequisitionForm(QWidget):
             "items":            self.item_table.get_items(),
             "obs":              self.input_obs.toPlainText().strip() or None,
             "signature_png_b64": signature_b64,
+            "canvas_json":      self._canvas_json or "{}",
         }
 
     def load_requisition(self, data: dict, read_only: bool = False):
