@@ -1297,7 +1297,13 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
     completed_deliveries = 0
 
     for req in reqs:
-        if not req.entrega or req.status == RequisitionStatus.CANCELADA:
+        # A tela de Entregas só deve listar pedidos marcados para entrega
+        # e já faturados (etapa após finalização de produção).
+        if (
+            not req.entrega
+            or req.status == RequisitionStatus.CANCELADA
+            or req.status != RequisitionStatus.FATURADO
+        ):
             continue
 
         deadline_changed_at = _delivery_deadline_changed_at(req)
