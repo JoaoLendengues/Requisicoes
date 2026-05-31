@@ -436,7 +436,8 @@ class DrawingScene(QGraphicsScene):
         self._ft_is_resizing: bool = False
         self._ft_resize_handle: str = ""
         self._ft_resize_start_rect_scene: QRectF = QRectF()
-        self._ft_resize_start_transforms: list[QTransform] = []
+        self._ft_resize_anchor_scene: QPointF = QPointF()
+        self._ft_resize_start_states: list[dict] = []
         self._ft_rotate_pivot: QPointF | None = None
         self._ft_rotate_start: float = 0.0
         self._ft_start_rotations: list = []
@@ -554,6 +555,24 @@ class DrawingScene(QGraphicsScene):
                 return name
         return ""
 
+    def _ft_anchor_for_handle_scene(self, handle: str, rect: QRectF) -> QPointF:
+        r = rect.normalized()
+        if handle == "e":
+            return QPointF(r.left(), r.center().y())
+        if handle == "w":
+            return QPointF(r.right(), r.center().y())
+        if handle == "n":
+            return QPointF(r.center().x(), r.bottom())
+        if handle == "s":
+            return QPointF(r.center().x(), r.top())
+        if handle == "nw":
+            return r.bottomRight()
+        if handle == "ne":
+            return r.bottomLeft()
+        if handle == "sw":
+            return r.topRight()
+        return r.topLeft()  # "se"
+
     def _apply_ft_resize_to_selected(self, current_scene_pos: QPointF):
         r0 = self._ft_resize_start_rect_scene.normalized()
         if r0.isNull() or r0.width() <= 1e-6 or r0.height() <= 1e-6:
@@ -562,40 +581,47 @@ class DrawingScene(QGraphicsScene):
         if not handle:
             return
 
-        # Mantém o centro fixo para o item crescer/reduzir sem "andar" no canvas.
-        cx, cy = r0.center().x(), r0.center().y()
-        half_w0 = max(1e-6, r0.width() * 0.5)
-        half_h0 = max(1e-6, r0.height() * 0.5)
-        min_half_w = max(6.0, half_w0 * 0.05)
-        min_half_h = max(6.0, half_h0 * 0.05)
-
+        min_w = max(12.0, r0.width() * 0.05)
+        min_h = max(12.0, r0.height() * 0.05)
         px, py = current_scene_pos.x(), current_scene_pos.y()
-        target_half_w = max(min_half_w, abs(px - cx))
-        target_half_h = max(min_half_h, abs(py - cy))
 
-        sx = target_half_w / half_w0
-        sy = target_half_h / half_h0
+        if "e" in handle:
+            target_w = max(min_w, px - r0.left())
+            sx = target_w / max(1e-6, r0.width())
+        elif "w" in handle:
+            target_w = max(min_w, r0.right() - px)
+            sx = target_w / max(1e-6, r0.width())
+        else:
+            sx = 1.0
+
+        if "s" in handle:
+            target_h = max(min_h, py - r0.top())
+            sy = target_h / max(1e-6, r0.height())
+        elif "n" in handle:
+            target_h = max(min_h, r0.bottom() - py)
+            sy = target_h / max(1e-6, r0.height())
+        else:
+            sy = 1.0
+
         if handle in ("n", "s"):
             sx = 1.0
         if handle in ("e", "w"):
             sy = 1.0
 
-        anchor = QPointF(cx, cy)
+        for state in self._ft_resize_start_states:
+            item = state["item"]
+            start_pos: QPointF = state["pos"]
+            start_transform: QTransform = state["transform"]
+            anchor_local: QPointF = state["anchor_local"]
 
-        g = QTransform()
-        g.translate(anchor.x(), anchor.y())
-        g.scale(sx, sy)
-        g.translate(-anchor.x(), -anchor.y())
+            item.setPos(start_pos)
+            item.setTransform(start_transform, False)
 
-        for item, start_scene in zip(self._ft_items, self._ft_resize_start_transforms):
-            composed = g * start_scene
-            item.setPos(QPointF(0.0, 0.0))
-            local = QTransform(
-                composed.m11(), composed.m12(), composed.m13(),
-                composed.m21(), composed.m22(), composed.m23(),
-                composed.m31(), composed.m32(), composed.m33(),
-            )
-            item.setTransform(local, False)
+            t = QTransform()
+            t.translate(anchor_local.x(), anchor_local.y())
+            t.scale(sx, sy)
+            t.translate(-anchor_local.x(), -anchor_local.y())
+            item.setTransform(t, True)
 
     def _in_rotation_zone_vp(self, vp_pos: QPointF) -> bool:
         """True se vp_pos está na zona de rotação (perto de um canto, fora do rect)."""
@@ -642,7 +668,8 @@ class DrawingScene(QGraphicsScene):
         self._ft_is_resizing = False
         self._ft_resize_handle = ""
         self._ft_resize_start_rect_scene = QRectF()
-        self._ft_resize_start_transforms = []
+        self._ft_resize_anchor_scene = QPointF()
+        self._ft_resize_start_states = []
         self._ft_rotate_pivot = None
         self.update()
         self.cw.changed.emit()
@@ -1801,7 +1828,19 @@ class DrawingScene(QGraphicsScene):
                     self._ft_is_resizing = True
                     self._ft_resize_handle = handle
                     self._ft_resize_start_rect_scene = self._ft_bounding_rect_scene()
-                    self._ft_resize_start_transforms = [item.sceneTransform() for item in self._ft_items]
+                    self._ft_resize_anchor_scene = self._ft_anchor_for_handle_scene(
+                        handle, self._ft_resize_start_rect_scene
+                    )
+                    self._ft_resize_start_states = []
+                    for item in self._ft_items:
+                        self._ft_resize_start_states.append(
+                            {
+                                "item": item,
+                                "pos": QPointF(item.pos().x(), item.pos().y()),
+                                "transform": QTransform(item.transform()),
+                                "anchor_local": item.mapFromScene(self._ft_resize_anchor_scene),
+                            }
+                        )
                     event.accept()
                     return
                 if self._in_rotation_zone_vp(vp_pos):
@@ -2123,7 +2162,8 @@ class DrawingScene(QGraphicsScene):
             self._ft_is_resizing = False
             self._ft_resize_handle = ""
             self._ft_resize_start_rect_scene = QRectF()
-            self._ft_resize_start_transforms = []
+            self._ft_resize_anchor_scene = QPointF()
+            self._ft_resize_start_states = []
             self.update()
             self.cw.changed.emit()
             event.accept()
