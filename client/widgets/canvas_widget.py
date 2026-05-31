@@ -1844,6 +1844,11 @@ class DrawingScene(QGraphicsScene):
                 if not outer.contains(vp_pos):
                     self._exit_ft()
                     # Não retorna: deixa a seleção normal acontecer
+                else:
+                    # Com FT ativo, só permite interação pelos 8 handles (e rotação nos cantos).
+                    # Evita mover o item arrastando o corpo.
+                    event.accept()
+                    return
 
         if tool == Tool.SELECT:
             super().mousePressEvent(event)
@@ -3424,6 +3429,8 @@ class DrawingCanvas(QWidget):
         return pen
 
     def _add_preset_item(self, item: QGraphicsItem):
+        if isinstance(item, QGraphicsPathItem):
+            item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
             QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
