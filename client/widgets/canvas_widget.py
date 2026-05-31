@@ -1953,6 +1953,19 @@ class DrawingScene(QGraphicsScene):
             view = self._view()
             if view:
                 vp_pos = QPointF(view.mapFromScene(pos))
+                if self._in_rotation_zone_vp(vp_pos):
+                    # Calcular pivot (centro do bounding box em scene coords)
+                    vp_rect = self._ft_bounding_rect_vp()
+                    pivot_vp = vp_rect.center()
+                    self._ft_rotate_pivot = view.mapToScene(pivot_vp.toPoint())
+                    self._ft_rotate_start = math.atan2(
+                        pos.y() - self._ft_rotate_pivot.y(),
+                        pos.x() - self._ft_rotate_pivot.x(),
+                    )
+                    self._ft_start_rotations = [item.rotation() for item in self._ft_items]
+                    self._ft_is_rotating = True
+                    event.accept()
+                    return
                 handle = self._ft_handle_at_vp(vp_pos)
                 if handle:
                     self._ft_is_resizing = True
@@ -1976,19 +1989,6 @@ class DrawingScene(QGraphicsScene):
                                 "anchor_scene": item.mapToScene(anchor_local),
                             }
                         )
-                    event.accept()
-                    return
-                if self._in_rotation_zone_vp(vp_pos):
-                    # Calcular pivot (centro do bounding box em scene coords)
-                    vp_rect = self._ft_bounding_rect_vp()
-                    pivot_vp = vp_rect.center()
-                    self._ft_rotate_pivot = view.mapToScene(pivot_vp.toPoint())
-                    self._ft_rotate_start = math.atan2(
-                        pos.y() - self._ft_rotate_pivot.y(),
-                        pos.x() - self._ft_rotate_pivot.x(),
-                    )
-                    self._ft_start_rotations = [item.rotation() for item in self._ft_items]
-                    self._ft_is_rotating = True
                     event.accept()
                     return
                 # Clique fora da área do bounding box -> sair do FT
@@ -2651,15 +2651,16 @@ class DrawingView(QGraphicsView):
             sc = self.scene()
             if hasattr(sc, "_ft_active") and sc._ft_active:
                 vp_pos = event.position()
-                handle = sc._ft_handle_at_vp(vp_pos)
-                if handle:
-                    self.viewport().setCursor(sc._ft_cursor_for_handle(handle))
-                elif sc._in_rotation_zone_vp(vp_pos):
+                if sc._in_rotation_zone_vp(vp_pos):
                     self.viewport().setCursor(Qt.CursorShape.SizeBDiagCursor)
-                elif sc._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20).contains(vp_pos):
-                    self.viewport().setCursor(Qt.CursorShape.SizeAllCursor)
                 else:
-                    self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+                    handle = sc._ft_handle_at_vp(vp_pos)
+                    if handle:
+                        self.viewport().setCursor(sc._ft_cursor_for_handle(handle))
+                    elif sc._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20).contains(vp_pos):
+                        self.viewport().setCursor(Qt.CursorShape.SizeAllCursor)
+                    else:
+                        self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
 
         return super().eventFilter(obj, event)
 
