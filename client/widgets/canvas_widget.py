@@ -433,6 +433,10 @@ class DrawingScene(QGraphicsScene):
         self._ft_active: bool = False
         self._ft_items: list = []
         self._ft_is_rotating: bool = False
+        self._ft_is_resizing: bool = False
+        self._ft_resize_handle: str = ""
+        self._ft_resize_start_rect_scene: QRectF = QRectF()
+        self._ft_resize_start_transforms: list[QTransform] = []
         self._ft_rotate_pivot: QPointF | None = None
         self._ft_rotate_start: float = 0.0
         self._ft_start_rotations: list = []
@@ -449,6 +453,7 @@ class DrawingScene(QGraphicsScene):
     GRID_MAJOR = 100
     # Tamanho dos handles do bounding box do Free Transform
     FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
+    FT_HANDLE_HIT = 12     # raio de clique dos handles (px viewport)
     FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
     # Snap to endpoints
     SNAP_RADIUS    = 16    # raio de detecção em px de tela (constante com zoom)
@@ -503,6 +508,117 @@ class DrawingScene(QGraphicsScene):
         br = view.mapFromScene(combined.bottomRight())
         return QRectF(tl, br).normalized()
 
+    def _ft_bounding_rect_scene(self) -> QRectF:
+        """Bounding rect combinado de _ft_items em coordenadas de cena."""
+        if not self._ft_items:
+            return QRectF()
+        combined = QRectF()
+        for item in self._ft_items:
+            sr = item.mapToScene(item.boundingRect()).boundingRect()
+            combined = sr if combined.isNull() else combined.united(sr)
+        return combined.normalized()
+
+    @staticmethod
+    def _ft_cursor_for_handle(handle: str) -> Qt.CursorShape:
+        if handle in ("n", "s"):
+            return Qt.CursorShape.SizeVerCursor
+        if handle in ("e", "w"):
+            return Qt.CursorShape.SizeHorCursor
+        if handle in ("nw", "se"):
+            return Qt.CursorShape.SizeFDiagCursor
+        if handle in ("ne", "sw"):
+            return Qt.CursorShape.SizeBDiagCursor
+        return Qt.CursorShape.ArrowCursor
+
+    def _ft_handle_points_vp(self, vp_rect: QRectF) -> dict[str, QPointF]:
+        c = vp_rect.center()
+        return {
+            "nw": vp_rect.topLeft(),
+            "n": QPointF(c.x(), vp_rect.top()),
+            "ne": vp_rect.topRight(),
+            "e": QPointF(vp_rect.right(), c.y()),
+            "se": vp_rect.bottomRight(),
+            "s": QPointF(c.x(), vp_rect.bottom()),
+            "sw": vp_rect.bottomLeft(),
+            "w": QPointF(vp_rect.left(), c.y()),
+        }
+
+    def _ft_handle_at_vp(self, vp_pos: QPointF) -> str:
+        vp_rect = self._ft_bounding_rect_vp()
+        if vp_rect.isNull():
+            return ""
+        handles = self._ft_handle_points_vp(vp_rect)
+        for name, pt in handles.items():
+            d = math.hypot(vp_pos.x() - pt.x(), vp_pos.y() - pt.y())
+            if d <= self.FT_HANDLE_HIT:
+                return name
+        return ""
+
+    def _apply_ft_resize_to_selected(self, current_scene_pos: QPointF):
+        r0 = self._ft_resize_start_rect_scene.normalized()
+        if r0.isNull() or r0.width() <= 1e-6 or r0.height() <= 1e-6:
+            return
+        handle = self._ft_resize_handle
+        if not handle:
+            return
+
+        min_w = max(12.0, r0.width() * 0.05)
+        min_h = max(12.0, r0.height() * 0.05)
+
+        x1, x2 = r0.left(), r0.right()
+        y1, y2 = r0.top(), r0.bottom()
+
+        px, py = current_scene_pos.x(), current_scene_pos.y()
+        if "e" in handle:
+            x2 = max(x1 + min_w, px)
+        if "w" in handle:
+            x1 = min(x2 - min_w, px)
+        if "s" in handle:
+            y2 = max(y1 + min_h, py)
+        if "n" in handle:
+            y1 = min(y2 - min_h, py)
+
+        new_w = max(min_w, x2 - x1)
+        new_h = max(min_h, y2 - y1)
+        sx = new_w / max(1e-6, r0.width())
+        sy = new_h / max(1e-6, r0.height())
+        if handle in ("n", "s"):
+            sx = 1.0
+        if handle in ("e", "w"):
+            sy = 1.0
+
+        if handle == "e":
+            anchor = QPointF(r0.left(), r0.center().y())
+        elif handle == "w":
+            anchor = QPointF(r0.right(), r0.center().y())
+        elif handle == "n":
+            anchor = QPointF(r0.center().x(), r0.bottom())
+        elif handle == "s":
+            anchor = QPointF(r0.center().x(), r0.top())
+        elif handle == "nw":
+            anchor = r0.bottomRight()
+        elif handle == "ne":
+            anchor = r0.bottomLeft()
+        elif handle == "sw":
+            anchor = r0.topRight()
+        else:  # "se"
+            anchor = r0.topLeft()
+
+        g = QTransform()
+        g.translate(anchor.x(), anchor.y())
+        g.scale(sx, sy)
+        g.translate(-anchor.x(), -anchor.y())
+
+        for item, start_scene in zip(self._ft_items, self._ft_resize_start_transforms):
+            composed = g * start_scene
+            item.setPos(QPointF(0.0, 0.0))
+            local = QTransform(
+                composed.m11(), composed.m12(), composed.m13(),
+                composed.m21(), composed.m22(), composed.m23(),
+                composed.m31(), composed.m32(), composed.m33(),
+            )
+            item.setTransform(local, False)
+
     def _in_rotation_zone_vp(self, vp_pos: QPointF) -> bool:
         """True se vp_pos está na zona de rotação (perto de um canto, fora do rect)."""
         vp_rect = self._ft_bounding_rect_vp()
@@ -536,6 +652,8 @@ class DrawingScene(QGraphicsScene):
             item.setTransformOriginPoint(item.boundingRect().center())
         self._ft_active = True
         self._ft_is_rotating = False
+        self._ft_is_resizing = False
+        self._ft_resize_handle = ""
         self.update()
 
     def _exit_ft(self):
@@ -543,6 +661,10 @@ class DrawingScene(QGraphicsScene):
         self._ft_active = False
         self._ft_items = []
         self._ft_is_rotating = False
+        self._ft_is_resizing = False
+        self._ft_resize_handle = ""
+        self._ft_resize_start_rect_scene = QRectF()
+        self._ft_resize_start_transforms = []
         self._ft_rotate_pivot = None
         self.update()
         self.cw.changed.emit()
@@ -634,7 +756,23 @@ class DrawingScene(QGraphicsScene):
                     self.cw.spin_font.blockSignals(True)
                     self.cw.spin_font.setValue(size)
                     self.cw.spin_font.blockSignals(False)
-                return
+                break
+
+        # Mostra alças de redimensionamento automaticamente ao selecionar no modo seleção.
+        if self.cw.tool == Tool.SELECT:
+            selected_items = self.selectedItems()
+            if selected_items:
+                self._ft_items = list(selected_items)
+                for item in self._ft_items:
+                    item.setTransformOriginPoint(item.boundingRect().center())
+                self._ft_active = True
+            else:
+                self._ft_active = False
+                self._ft_items = []
+                self._ft_is_rotating = False
+                self._ft_is_resizing = False
+                self._ft_resize_handle = ""
+            self.update()
 
     def _is_angle_marker(self, item: QGraphicsItem) -> bool:
         meta = item.data(0)
@@ -914,11 +1052,11 @@ class DrawingScene(QGraphicsScene):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(vr)
 
-        # Handles nos 4 cantos (quadradinhos brancos com borda azul)
+        # Handles (cantos + laterais)
         hs = self.FT_HANDLE_SIZE
         painter.setPen(QPen(QColor("#1A73E8"), 1.5))
         painter.setBrush(QBrush(QColor("#ffffff")))
-        for c in [vr.topLeft(), vr.topRight(), vr.bottomLeft(), vr.bottomRight()]:
+        for c in self._ft_handle_points_vp(vr).values():
             painter.drawRect(QRectF(c.x() - hs, c.y() - hs, hs * 2, hs * 2))
 
         # Cruz central
@@ -1680,6 +1818,14 @@ class DrawingScene(QGraphicsScene):
             view = self._view()
             if view:
                 vp_pos = QPointF(view.mapFromScene(pos))
+                handle = self._ft_handle_at_vp(vp_pos)
+                if handle:
+                    self._ft_is_resizing = True
+                    self._ft_resize_handle = handle
+                    self._ft_resize_start_rect_scene = self._ft_bounding_rect_scene()
+                    self._ft_resize_start_transforms = [item.sceneTransform() for item in self._ft_items]
+                    event.accept()
+                    return
                 if self._in_rotation_zone_vp(vp_pos):
                     # Calcular pivot (centro do bounding box em scene coords)
                     vp_rect = self._ft_bounding_rect_vp()
@@ -1848,6 +1994,13 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
+        # Free Transform: redimensionamento fluido
+        if self._ft_is_resizing:
+            self._apply_ft_resize_to_selected(pos)
+            self.update()
+            event.accept()
+            return
+
         # Free Transform: rotação fluida
         if self._ft_is_rotating and self._ft_rotate_pivot is not None:
             angle = math.atan2(
@@ -1979,6 +2132,17 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
         if self._angle_mode_active and event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            return
+
+        # Free Transform: fim do redimensionamento (mantém ft ativo para mais ajustes)
+        if self._ft_is_resizing:
+            self._ft_is_resizing = False
+            self._ft_resize_handle = ""
+            self._ft_resize_start_rect_scene = QRectF()
+            self._ft_resize_start_transforms = []
+            self.update()
+            self.cw.changed.emit()
             event.accept()
             return
 
@@ -2287,7 +2451,10 @@ class DrawingView(QGraphicsView):
             sc = self.scene()
             if hasattr(sc, "_ft_active") and sc._ft_active:
                 vp_pos = event.position()
-                if sc._in_rotation_zone_vp(vp_pos):
+                handle = sc._ft_handle_at_vp(vp_pos)
+                if handle:
+                    self.viewport().setCursor(sc._ft_cursor_for_handle(handle))
+                elif sc._in_rotation_zone_vp(vp_pos):
                     self.viewport().setCursor(Qt.CursorShape.SizeBDiagCursor)
                 elif sc._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20).contains(vp_pos):
                     self.viewport().setCursor(Qt.CursorShape.SizeAllCursor)
@@ -2889,6 +3056,12 @@ class DrawingCanvas(QWidget):
         if tool == Tool.SELECT:
             self.view.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             self.view.setCursor(Qt.CursorShape.ArrowCursor)
+            if hasattr(self, "scene") and self.scene.selectedItems():
+                self.scene._ft_items = list(self.scene.selectedItems())
+                for item in self.scene._ft_items:
+                    item.setTransformOriginPoint(item.boundingRect().center())
+                self.scene._ft_active = True
+                self.scene.update()
         elif tool == Tool.PEN:
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.view.setCursor(self._get_pen_dot_cursor())
@@ -2896,6 +3069,13 @@ class DrawingCanvas(QWidget):
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.view.setCursor(Qt.CursorShape.CrossCursor)
         else:
+            if hasattr(self, "scene"):
+                self.scene._ft_active = False
+                self.scene._ft_items = []
+                self.scene._ft_is_rotating = False
+                self.scene._ft_is_resizing = False
+                self.scene._ft_resize_handle = ""
+                self.scene.update()
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.view.setCursor(Qt.CursorShape.CrossCursor)
 
