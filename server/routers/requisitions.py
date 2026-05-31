@@ -1297,17 +1297,25 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
     completed_deliveries = 0
 
     for req in reqs:
-        # A tela de Entregas só deve listar pedidos marcados para entrega
-        # e já faturados (etapa após finalização de produção).
+        delivered_at = getattr(req, "delivered_at", None)
+        status_value = getattr(req.status, "value", req.status)
+
+        # A tela de Entregas só lista pedidos marcados para entrega e que já
+        # passaram pela etapa de faturamento (faturado/prazo alterado/entregue).
         if (
             not req.entrega
             or req.status == RequisitionStatus.CANCELADA
-            or req.status != RequisitionStatus.FATURADO
+            or (
+                delivered_at is None
+                and status_value not in (
+                    RequisitionStatus.FATURADO.value,
+                    RequisitionStatus.PRAZO_ALTERADO.value,
+                )
+            )
         ):
             continue
 
         deadline_changed_at = _delivery_deadline_changed_at(req)
-        delivered_at = getattr(req, "delivered_at", None)
         delivery_date = req.delivery_date
 
         if delivered_at is not None:
@@ -1322,6 +1330,16 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
         if delivered_at is None and deadline_changed_at is not None:
             changed_delivery_deadlines += 1
 
+        display_status = str(status_value or "")
+        if delivered_at is not None:
+            display_status = "entregue"
+        elif (
+            display_status != RequisitionStatus.PRAZO_ALTERADO.value
+            and delivered_at is None
+            and deadline_changed_at is not None
+        ):
+            display_status = RequisitionStatus.PRAZO_ALTERADO.value
+
         rows.append(
             DeliveryCenterItemResponse(
                 id=req.id,
@@ -1331,7 +1349,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
                 weight=float(req.weight or 0.0),
                 destination=_current_production_destination(req) or None,
                 delivery_date=delivery_date,
-                status=str(getattr(req.status, "value", req.status) or ""),
+                status=display_status,
                 delivered_at=delivered_at if isinstance(delivered_at, datetime) else None,
                 deadline_changed_at=deadline_changed_at,
                 deadline_change_reason=str(getattr(req, "delivery_deadline_change_reason", "") or ""),
@@ -2328,6 +2346,7 @@ def update_delivery_schedule(
     current_status = getattr(req.status, "value", req.status)
 
     req.delivery_date = data.delivery_date
+    req.status = RequisitionStatus.PRAZO_ALTERADO
     req.delivery_deadline_changed_at = datetime.utcnow()
     req.delivery_deadline_change_reason = data.reason
 
@@ -2335,7 +2354,7 @@ def update_delivery_schedule(
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=current_status,
-        new_status=current_status,
+        new_status=RequisitionStatus.PRAZO_ALTERADO,
         changed_by_id=current_user.id,
         note=note,
     ))
@@ -2376,10 +2395,10 @@ def mark_delivery_delivered(
             status_code=400,
             detail="Não é possível concluir a entrega de uma requisição cancelada",
         )
-    if req.status != RequisitionStatus.FATURADO:
+    if req.status not in (RequisitionStatus.FATURADO, RequisitionStatus.PRAZO_ALTERADO):
         raise HTTPException(
             status_code=400,
-            detail="Somente pedidos faturados podem ser marcados como entregues",
+            detail="Somente pedidos faturados ou com prazo alterado podem ser marcados como entregues",
         )
     if req.delivered_at is not None:
         raise HTTPException(

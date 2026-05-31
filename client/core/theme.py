@@ -57,6 +57,7 @@ _LIGHT: dict = {
     "STATUS_COLORS": {
         "em_andamento":           "#2D7FF9",
         "prazo_alterado":         "#7C3AED",
+        "entregue":               "#16A34A",
         "aguardando_recebimento": "#F3A01B",
         "aguardando_na_fila":     "#C7790A",
         "aguardando_faturamento": "#A16207",
@@ -132,6 +133,7 @@ _DARK: dict = {
     "STATUS_COLORS": {
         "em_andamento":           "#60A5FA",
         "prazo_alterado":         "#A78BFA",
+        "entregue":               "#22C55E",
         "aguardando_recebimento": "#FBBF24",
         "aguardando_na_fila":     "#F59E0B",
         "aguardando_faturamento": "#D97706",
@@ -168,6 +170,7 @@ _DARK: dict = {
 STATUS_LABELS: dict = {
     "em_andamento":           "Em Andamento",
     "prazo_alterado":         "Prazo Alterado",
+    "entregue":               "Entregue",
     "aguardando_recebimento": "Aguardando Recebimento",
     "aguardando_na_fila":     "Aguardando na Fila",
     "aguardando_faturamento": "Aguardando Faturamento",

@@ -109,6 +109,7 @@ def _status_badge_color(status: str) -> str:
     color_map = {
         "em_andamento": theme.PRIMARY_HOVER,
         "prazo_alterado": theme.STATUS_COLORS.get("prazo_alterado", theme.WARNING),
+        "entregue": theme.STATUS_COLORS.get("entregue", theme.SUCCESS),
         "aguardando_recebimento": theme.WARNING,
         "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
         "aguardando_faturamento": theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
@@ -168,7 +169,7 @@ class DeliveryCenterView(QWidget):
         title = QLabel("Entregas")
         title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
         subtitle = QLabel(
-            "Agenda operacional de entregas com acompanhamento de prazos, status e conclusÃ£o."
+            "Agenda operacional de entregas com acompanhamento de prazos, status e conclusao."
         )
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
@@ -238,7 +239,7 @@ class DeliveryCenterView(QWidget):
             ("deliveries_today", theme.PRIMARY, "ENTREGAS PARA HOJE", "Pedidos com entrega prevista para o dia atual."),
             ("delayed_deliveries", theme.DANGER, "ENTREGAS ATRASADAS", "Pedidos de entrega pendente com prazo vencido."),
             ("changed_delivery_deadlines", theme.WARNING, "PRAZO DE ENTREGA ALTERADO", "Entregas pendentes com prazo ajustado."),
-            ("completed_deliveries", theme.SUCCESS, "ENTREGAS REALIZADAS", "Pedidos de entrega concluÃ­dos."),
+            ("completed_deliveries", theme.SUCCESS, "ENTREGAS REALIZADAS", "Pedidos de entrega concluidos."),
         ]
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
             metrics.addWidget(
@@ -276,7 +277,7 @@ class DeliveryCenterView(QWidget):
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
         section_subtitle = QLabel(
-            "Selecione uma entrega para alterar o prazo ou registrar a conclusÃ£o."
+            "Selecione uma entrega para alterar o prazo ou registrar a conclusao."
         )
         section_subtitle.setWordWrap(True)
         section_subtitle.setProperty("muted", "1")
@@ -370,7 +371,7 @@ class DeliveryCenterView(QWidget):
             "CLIENTE",
             "VENDEDOR",
             "PESO",
-            "PRODUÃ‡ÃƒO",
+            "PRODUCAO",
             "DATA PREVISTA",
             "MOTIVO ALTERACAO PRAZO",
             "STATUS DO PEDIDO",
@@ -465,12 +466,12 @@ class DeliveryCenterView(QWidget):
             self.date_label.setText(_format_header_date())
 
     def _show_error(self, message: str):
-        self.error_label.setText(f"NÃ£o foi possÃ­vel carregar a tela de entregas.\n\n{message}")
+        self.error_label.setText(f"Nao foi possivel carregar a tela de entregas.\n\n{message}")
         self.error_label.show()
 
     def _populate(self, payload: object):
         if not isinstance(payload, dict):
-            self._show_error("Resposta invÃ¡lida do servidor.")
+            self._show_error("Resposta invalida do servidor.")
             return
 
         stats = payload.get("stats") or {}
@@ -603,7 +604,7 @@ class DeliveryCenterView(QWidget):
             QMessageBox.information(self, "Entregas", "Selecione um pedido primeiro.")
             return
         if row.get("delivered_at"):
-            QMessageBox.information(self, "Entregas", "Esta entrega jÃ¡ foi concluÃ­da.")
+            QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
             return
 
         result = self._ask_delivery_date(row)
@@ -625,7 +626,7 @@ class DeliveryCenterView(QWidget):
             QMessageBox.information(self, "Entregas", "Selecione um pedido primeiro.")
             return
         if row.get("delivered_at"):
-            QMessageBox.information(self, "Entregas", "Esta entrega jÃ¡ foi concluÃ­da.")
+            QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
             return
         if not QMessageBox.question(
             self,
@@ -700,11 +701,11 @@ class DeliveryCenterView(QWidget):
             date_edit.setDate(QDate(current.year, current.month, current.day))
         layout.addWidget(date_edit)
 
-        lbl_reason = QLabel("Motivo da alteraÃ§Ã£o:")
+        lbl_reason = QLabel("Motivo da alteracao:")
         layout.addWidget(lbl_reason)
 
         input_reason = QTextEdit()
-        input_reason.setPlaceholderText("Descreva o motivo da alteraÃ§Ã£o do prazo...")
+        input_reason.setPlaceholderText("Descreva o motivo da alteracao do prazo...")
         input_reason.setMinimumHeight(max(96, int(120 * self.scale)))
         input_reason.setStyleSheet(theme.input_style(self.scale))
         layout.addWidget(input_reason)
