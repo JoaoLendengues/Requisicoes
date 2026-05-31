@@ -363,6 +363,11 @@ class SettingsView(QWidget):
         self._tab_stack = QStackedWidget()
         outer.addWidget(self._tab_stack)
 
+        # Hooks de carregamento preguiçoso: { índice_da_aba: construtor }.
+        # O conteúdo pesado (telas embarcadas) só é criado na 1ª vez que a aba
+        # é aberta — evita travar ao abrir Configurações e ao reaplicar escala.
+        self._tab_first_show_hooks: dict[int, object] = {}
+
         # ── Botão global de salvar (fora do scroll, fixo no rodapé) ──────
         root_layout.addSpacing(max(8, int(10 * s)))
         save_row = QHBoxLayout()
@@ -408,6 +413,22 @@ class SettingsView(QWidget):
             tab_bar_layout.addWidget(btn)
             self._tab_btns.append(btn)
             self._tab_stack.addWidget(page)
+
+        def _add_lazy_tab(label: str, builder) -> int:
+            """Adiciona uma aba cujo conteúdo pesado é construído só na 1ª
+            abertura. `builder(container_layout)` recebe o layout do contêiner
+            vazio e adiciona o widget real nele. Retorna o índice da aba."""
+            idx = len(self._tab_btns)
+            page = QWidget()
+            page.setObjectName("settingsTabPage")
+            page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            page.setStyleSheet(f"QWidget#settingsTabPage {{ background:{page_bg}; }}")
+            lt = QVBoxLayout(page)
+            lt.setContentsMargins(0, 0, 0, 0)
+            lt.setSpacing(0)
+            self._tab_first_show_hooks[idx] = lambda _lt=lt: builder(_lt)
+            _add_tab(label, page)
+            return idx
 
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Aparência
@@ -864,11 +885,14 @@ class SettingsView(QWidget):
 
             # ── Painel Técnico embarcado (admin) ─────────────────────────────
             # Migrado da antiga tela "Painel Técnico" da sidebar para cá.
+            # Construído preguiçosamente na 1ª abertura da aba Sistema (é pesado).
             self._technical_panel = None
+            _tech_holder_lt = None
             if session.can_access_technical_panel:
-                from .technical_panel_view import TechnicalPanelView
-                self._technical_panel = TechnicalPanelView(s, embedded=True)
-                self._technical_panel.guide_requested.connect(self.show_guide_requested)
+                _tech_holder = QWidget()
+                _tech_holder_lt = QVBoxLayout(_tech_holder)
+                _tech_holder_lt.setContentsMargins(0, 0, 0, 0)
+                _tech_holder_lt.setSpacing(0)
 
             cancel_card = _new_card()
             cancel_card_layout = QVBoxLayout(cancel_card)
@@ -890,11 +914,19 @@ class SettingsView(QWidget):
             sis_lt.addWidget(card_sis)
             if session.settings_show_billing:
                 sis_lt.addWidget(cancel_card)
-            if self._technical_panel is not None:
-                sis_lt.addWidget(self._technical_panel)
+            if _tech_holder_lt is not None:
+                sis_lt.addWidget(_tech_holder)
             sis_lt.addStretch()
             self._system_tab_index = len(self._tab_btns)
             _add_tab("Sistema", sis_page)
+            # Painel Técnico construído só na 1ª abertura da aba Sistema.
+            if _tech_holder_lt is not None:
+                def _build_tech(_lt=_tech_holder_lt):
+                    from .technical_panel_view import TechnicalPanelView
+                    self._technical_panel = TechnicalPanelView(s, embedded=True)
+                    self._technical_panel.guide_requested.connect(self.show_guide_requested)
+                    _lt.addWidget(self._technical_panel)
+                self._tab_first_show_hooks[self._system_tab_index] = _build_tech
         else:
             self._technical_panel = None
             # Placeholders para roles sem acesso ao painel de sistema
@@ -1025,8 +1057,12 @@ class SettingsView(QWidget):
             bg_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
             lay_bg.addWidget(bg_hint)
 
-            self._refresh_bg_table()
+            # A listagem lê uma pasta de REDE (UNC) — deferir para a 1ª abertura
+            # da aba Login evita travar a construção de Configurações se o share
+            # estiver lento/indisponível.
+            _login_tab_index = len(self._tab_btns)
             _add_tab("Login", _wrap(card_bg))
+            self._tab_first_show_hooks[_login_tab_index] = self._refresh_bg_table
         else:
             self.input_bg_folder        = QLineEdit()
             self._btn_browse_bg_folder  = QPushButton()
@@ -1245,35 +1281,36 @@ class SettingsView(QWidget):
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Usuários (admin only) — Central de Usuários embarcada
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        self._user_center = None
         self._user_center_tab_index = -1
         if session.is_admin:
-            from .user_center_view import UserCenterView
-            self._user_center = UserCenterView(s, embedded=True)
-            self._user_center_tab_index = len(self._tab_btns)
-            _add_tab("Usuários", self._user_center)
-        else:
-            self._user_center = None
+            def _build_user_center(container):
+                from .user_center_view import UserCenterView
+                self._user_center = UserCenterView(s, embedded=True)
+                container.addWidget(self._user_center)
+            self._user_center_tab_index = _add_lazy_tab("Usuários", _build_user_center)
 
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Clientes (admin only) — Cadastro de clientes embarcado
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        self._client_center = None
         self._client_center_tab_index = -1
         if session.is_admin:
-            from .client_center_view import ClientCenterView
-            self._client_center = ClientCenterView(s, embedded=True)
-            self._client_center.guide_requested.connect(self.show_guide_requested)
-            self._client_center_tab_index = len(self._tab_btns)
-            _add_tab("Clientes", self._client_center)
-        else:
-            self._client_center = None
+            def _build_client_center(container):
+                from .client_center_view import ClientCenterView
+                self._client_center = ClientCenterView(s, embedded=True)
+                self._client_center.guide_requested.connect(self.show_guide_requested)
+                container.addWidget(self._client_center)
+            self._client_center_tab_index = _add_lazy_tab("Clientes", _build_client_center)
+
+        self._machine_center = None
         self._machine_center_tab_index = -1
         if session.is_admin:
-            from .machine_center_view import MachineCenterView
-            self._machine_center = MachineCenterView(s, embedded=True)
-            self._machine_center_tab_index = len(self._tab_btns)
-            _add_tab("Cadastro de Máquinas", self._machine_center)
-        else:
-            self._machine_center = None
+            def _build_machine_center(container):
+                from .machine_center_view import MachineCenterView
+                self._machine_center = MachineCenterView(s, embedded=True)
+                container.addWidget(self._machine_center)
+            self._machine_center_tab_index = _add_lazy_tab("Cadastro de Máquinas", _build_machine_center)
 
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Ajuda
@@ -1874,6 +1911,10 @@ class SettingsView(QWidget):
 
     def _switch_tab(self, idx: int) -> None:
         """Ativa a aba de índice idx e reseta o scroll ao topo."""
+        # Carregamento preguiçoso: constrói o conteúdo pesado da aba na 1ª vez.
+        hook = self._tab_first_show_hooks.pop(idx, None)
+        if hook is not None:
+            hook()
         self._tab_stack.setCurrentIndex(idx)
         for i, btn in enumerate(self._tab_btns):
             btn.setChecked(i == idx)
