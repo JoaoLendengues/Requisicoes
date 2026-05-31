@@ -947,6 +947,7 @@ class RequisitionForm(QWidget):
         self._threads: list = []
         self._canvas_json: str = "{}"   # armazena o JSON do desenho
         self._signature_png_bytes: bytes | None = None
+        self._loaded_updated_at = None  # versão carregada (trava otimista)
         self._setup_ui()
         self._setup_hidden_shortcuts()
         self._load_clients()
@@ -2642,12 +2643,15 @@ class RequisitionForm(QWidget):
             "obs":              self.input_obs.toPlainText().strip() or None,
             "signature_png_b64": signature_b64,
             "canvas_json":      self._canvas_json or "{}",
+            "expected_updated_at": self._loaded_updated_at,
         }
 
     def load_requisition(self, data: dict, read_only: bool = False):
         """Popula o formulário com dados de uma requisição existente."""
         self._set_form_locked(False)
         self.req_id = data.get("id")
+        # Versão carregada para a trava otimista de concorrência (P1.6)
+        self._loaded_updated_at = data.get("updated_at")
         # Guarda info do vendedor para uso em _find_saved_pdf_for_print
         self._req_vendor_code = str(data.get("vendor_code") or "")
         self._req_vendor_name = str(data.get("vendor_name") or "")
@@ -2700,6 +2704,7 @@ class RequisitionForm(QWidget):
         """Limpa o formulário para nova requisição."""
         self._set_form_locked(False)
         self.req_id = None
+        self._loaded_updated_at = None
         self.input_ped.clear()
         self.input_obra.clear()
         self.input_fone.clear()

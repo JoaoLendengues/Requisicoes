@@ -353,6 +353,33 @@ def _commit_or_ped_conflict(db: Session, ped_number: str) -> None:
         )
 
 
+def _as_naive_utc(dt: datetime) -> datetime:
+    """Normaliza para datetime naive em UTC (precisão total).
+
+    Mantém microssegundos: o round-trip via ISO preserva o valor exato, então
+    qualquer alteração do registro é detectada (truncar mascararia mudanças
+    ocorridas dentro do mesmo segundo)."""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def _ensure_not_stale(req: Requisition, expected_updated_at: datetime | None) -> None:
+    """Trava otimista de concorrência (P1.6): se a requisição foi alterada por
+    outra pessoa desde que o cliente a carregou, rejeita com 409 em vez de
+    sobrescrever silenciosamente. Comparação na granularidade de segundos."""
+    if expected_updated_at is None or req.updated_at is None:
+        return
+    if _as_naive_utc(req.updated_at) != _as_naive_utc(expected_updated_at):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Esta requisição foi alterada por outra pessoa enquanto você "
+                "editava. Recarregue a requisição e refaça suas alterações."
+            ),
+        )
+
+
 def _sum_item_weights(items: Optional[list]) -> float:
     return sum((item.weight or 0.0) for item in (items or []))
 
@@ -2106,11 +2133,15 @@ def update_requisition(
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
+    _ensure_not_stale(req, data.expected_updated_at)
     _ensure_editable(req)
     ped_number = data.ped_number if data.ped_number is not None else req.ped_number
     _ensure_unique_ped_number(db, ped_number, exclude_req_id=req.id)
 
-    scalar_update = data.model_dump(exclude_unset=True, exclude={"items", "weight", "canvas_json"})
+    scalar_update = data.model_dump(
+        exclude_unset=True,
+        exclude={"items", "weight", "canvas_json", "expected_updated_at"},
+    )
     if "delivery_date" in scalar_update:
         _ensure_delivery_within_min(scalar_update["delivery_date"], current_user)
     tracked = ["ped_number", "delivery_date", "os_number", "obra", "obs",

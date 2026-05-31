@@ -587,6 +587,9 @@ class MainWindow(QMainWindow):
         # (campo canvas_json no payload de create/update). Não há mais uma
         # segunda chamada que pudesse falhar em silêncio: vai direto ao PDF.
         self.form_view.req_id = req["id"]
+        # Atualiza a versão carregada (trava otimista) com o updated_at recém
+        # retornado, para que um próximo salvamento do mesmo usuário não conflite.
+        self.form_view._loaded_updated_at = req.get("updated_at")
         self._on_fully_saved(req, canvas_json, client, obs, signature_png_bytes)
 
     def _on_fully_saved(self, req: dict, canvas_json: str,

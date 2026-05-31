@@ -99,6 +99,7 @@ class RequisitionUpdate(BaseModel):
     obs: Optional[str] = None
     signature_png_b64: Optional[str] = None
     canvas_json: Optional[str] = None
+    expected_updated_at: Optional[datetime] = None  # trava otimista (P1.6)
     items: Optional[List[RequisitionItemCreate]] = None
 
     @field_validator("ped_number")
