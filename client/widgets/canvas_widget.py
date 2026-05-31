@@ -254,6 +254,12 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item = QGraphicsPathItem(path)
         item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         item.setPen(pen)
+        path_meta = {"type": "path"}
+        if "is_3d_preset" in d:
+            path_meta["is_3d_preset"] = bool(d.get("is_3d_preset"))
+        if "ft_resize_locked" in d:
+            path_meta["ft_resize_locked"] = bool(d.get("ft_resize_locked"))
+        item.setData(0, path_meta)
 
     elif t == "text":
         item = QGraphicsTextItem(normalize_upper_text(d.get("text", "")))
@@ -549,6 +555,8 @@ class DrawingScene(QGraphicsScene):
         }
 
     def _ft_handle_at_vp(self, vp_pos: QPointF) -> str:
+        if not self._ft_resize_allowed_for_current_selection():
+            return ""
         vp_rect = self._ft_bounding_rect_vp()
         if vp_rect.isNull():
             return ""
@@ -576,6 +584,44 @@ class DrawingScene(QGraphicsScene):
         if handle == "sw":
             return r.topRight()
         return r.topLeft()  # "se"
+
+    @staticmethod
+    def _item_meta_dict(item: QGraphicsItem) -> dict:
+        meta = item.data(0)
+        return meta if isinstance(meta, dict) else {}
+
+    def _is_3d_preset_item(self, item: QGraphicsItem) -> bool:
+        meta = self._item_meta_dict(item)
+        return bool(meta.get("is_3d_preset"))
+
+    def _is_3d_resize_locked(self, item: QGraphicsItem) -> bool:
+        if not self._is_3d_preset_item(item):
+            return False
+        meta = self._item_meta_dict(item)
+        return bool(meta.get("ft_resize_locked"))
+
+    def _set_3d_resize_locked(self, item: QGraphicsItem, locked: bool):
+        meta = self._item_meta_dict(item)
+        if not meta:
+            meta = {"type": "path"}
+        meta["is_3d_preset"] = True
+        meta["ft_resize_locked"] = bool(locked)
+        item.setData(0, meta)
+
+    def _ft_resize_allowed_for_current_selection(self) -> bool:
+        for item in self._ft_items:
+            if self._is_3d_resize_locked(item):
+                return False
+        return True
+
+    def _finalize_3d_resize_after_escape(self):
+        changed = False
+        for item in self._ft_items:
+            if self._is_3d_preset_item(item) and not self._is_3d_resize_locked(item):
+                self._set_3d_resize_locked(item, True)
+                changed = True
+        if changed:
+            self.cw.changed.emit()
 
     def _ft_release_item_lock(self):
         for item, was_movable in list(self._ft_locked_items.items()):
@@ -1106,12 +1152,13 @@ class DrawingScene(QGraphicsScene):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(vr)
 
-        # Handles (cantos + laterais)
-        hs = self.FT_HANDLE_SIZE
-        painter.setPen(QPen(QColor("#1A73E8"), 1.5))
-        painter.setBrush(QBrush(QColor("#ffffff")))
-        for c in self._ft_handle_points_vp(vr).values():
-            painter.drawRect(QRectF(c.x() - hs, c.y() - hs, hs * 2, hs * 2))
+        # Handles (cantos + laterais) — oculta quando o item 3D já teve resize finalizado.
+        if self._ft_resize_allowed_for_current_selection():
+            hs = self.FT_HANDLE_SIZE
+            painter.setPen(QPen(QColor("#1A73E8"), 1.5))
+            painter.setBrush(QBrush(QColor("#ffffff")))
+            for c in self._ft_handle_points_vp(vr).values():
+                painter.drawRect(QRectF(c.x() - hs, c.y() - hs, hs * 2, hs * 2))
 
         # Cruz central
         cx, cy = vr.center().x(), vr.center().y()
@@ -2335,6 +2382,8 @@ class DrawingScene(QGraphicsScene):
         # Enter ou Escape confirmam/saem do Free Transform
         if self._ft_active:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Escape):
+                if event.key() == Qt.Key.Key_Escape:
+                    self._finalize_3d_resize_after_escape()
                 self._exit_ft()
                 event.accept()
                 return
@@ -3631,6 +3680,7 @@ class DrawingCanvas(QWidget):
         item = QGraphicsPathItem(path)
         item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         item.setPen(pen)
+        item.setData(0, {"type": "path", "is_3d_preset": True, "ft_resize_locked": False})
         item.setPos(base)
         self.scene.clearSelection()
         self._add_preset_item(item)
@@ -4034,9 +4084,15 @@ class DrawingCanvas(QWidget):
             for i in range(path.elementCount()):
                 el = path.elementAt(i)
                 points.append([el.x, el.y])
-            return {"type": "path", "points": points, "segments": _serialize_path_segments(path),
-                    "pos_x": item.pos().x(), "pos_y": item.pos().y(),
-                    "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
+            payload = {"type": "path", "points": points, "segments": _serialize_path_segments(path),
+                       "pos_x": item.pos().x(), "pos_y": item.pos().y(),
+                       "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
+            if isinstance(meta, dict):
+                if "is_3d_preset" in meta:
+                    payload["is_3d_preset"] = bool(meta.get("is_3d_preset"))
+                if "ft_resize_locked" in meta:
+                    payload["ft_resize_locked"] = bool(meta.get("ft_resize_locked"))
+            return payload
 
         if isinstance(item, QGraphicsTextItem):
             if isinstance(meta, dict) and meta.get("type") == "ruler_measure_text":
