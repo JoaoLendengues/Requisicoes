@@ -2528,6 +2528,12 @@ class DrawingCanvas(QWidget):
         btn_attachments.clicked.connect(self._attach_dwg)
         btn_attachments.setStyleSheet(self._tool_btn_style())
 
+        btn_3d = QPushButton("3D")
+        btn_3d.setFixedHeight(fh)
+        btn_3d.setToolTip("Inserir desenho 3D pre-definido")
+        btn_3d.clicked.connect(self._open_3d_preset_popup)
+        btn_3d.setStyleSheet(self._tool_btn_style())
+
         btn_dim = QPushButton("📏 MM")
         btn_dim.setFixedHeight(fh)
         btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
@@ -2546,6 +2552,7 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_img)
         row2.addWidget(btn_pdf)
         row2.addWidget(btn_attachments)
+        row2.addWidget(btn_3d)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
@@ -3184,6 +3191,106 @@ class DrawingCanvas(QWidget):
     def _remove_dwg(self):
         self._attached_dwg = ""
         self.attachment_panel.setVisible(False)
+        self.changed.emit()
+
+    # 3D pre-definido
+    def _open_3d_preset_popup(self):
+        options = [
+            "circulo",
+            "quadrado",
+            "retangulo",
+            "triangulo",
+            "cilindro",
+        ]
+        selected, ok = QInputDialog.getItem(
+            self,
+            "Inserir 3D",
+            "Escolha um desenho pre-definido:",
+            options,
+            0,
+            False,
+        )
+        if not ok or not selected:
+            return
+        self._insert_3d_preset(str(selected).strip().lower())
+
+    def _base_insert_pos(self) -> QPointF:
+        if self._last_click_scene_pos is not None:
+            return QPointF(self._last_click_scene_pos.x(), self._last_click_scene_pos.y())
+        return self.view.mapToScene(self.view.viewport().rect().center())
+
+    def _new_current_pen(self) -> QPen:
+        pen = QPen(QColor(self.color), self.pen_width)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setStyle(self.pen_style)
+        return pen
+
+    def _add_preset_item(self, item: QGraphicsItem):
+        item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.scene.addItem(item)
+        item.setSelected(True)
+        self._undo_stack.append(item)
+
+    def _insert_3d_preset(self, preset: str):
+        base = self._base_insert_pos()
+        pen = self._new_current_pen()
+        created: list[QGraphicsItem] = []
+
+        if preset == "circulo":
+            r = 70.0
+            item = HollowEllipseItem(-r, -r, 2 * r, 2 * r)
+            item.setPen(pen)
+            item.setPos(base)
+            created.append(item)
+        elif preset == "quadrado":
+            side = 140.0
+            item = HollowRectItem(-side / 2, -side / 2, side, side)
+            item.setPen(pen)
+            item.setPos(base)
+            created.append(item)
+        elif preset == "retangulo":
+            w, h = 190.0, 120.0
+            item = HollowRectItem(-w / 2, -h / 2, w, h)
+            item.setPen(pen)
+            item.setPos(base)
+            created.append(item)
+        elif preset == "triangulo":
+            path = QPainterPath()
+            path.moveTo(QPointF(0.0, -85.0))
+            path.lineTo(QPointF(-85.0, 70.0))
+            path.lineTo(QPointF(85.0, 70.0))
+            path.closeSubpath()
+            item = QGraphicsPathItem(path)
+            item.setPen(pen)
+            item.setPos(base)
+            created.append(item)
+        elif preset == "cilindro":
+            w = 170.0
+            eh = 44.0
+            body_h = 130.0
+            top_y = -body_h / 2
+            bottom_y = body_h / 2
+
+            top_ellipse = HollowEllipseItem(-w / 2, top_y - eh / 2, w, eh)
+            bottom_ellipse = HollowEllipseItem(-w / 2, bottom_y - eh / 2, w, eh)
+            left_line = QGraphicsLineItem(-w / 2, top_y, -w / 2, bottom_y)
+            right_line = QGraphicsLineItem(w / 2, top_y, w / 2, bottom_y)
+
+            for item in (top_ellipse, bottom_ellipse, left_line, right_line):
+                item.setPen(pen)
+                item.setPos(base)
+                created.append(item)
+
+        if not created:
+            return
+
+        self.scene.clearSelection()
+        for item in created:
+            self._add_preset_item(item)
+        self._redo_stack.clear()
         self.changed.emit()
 
     # Limpar
