@@ -2,7 +2,7 @@
 import unicodedata
 
 from PySide6.QtCore import Qt, Signal, QSize, QPoint, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QCursor, QIcon, QPixmap
+from PySide6.QtGui import QCursor, QFont, QFontMetrics, QIcon, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from ..core import theme
@@ -338,7 +338,33 @@ class Sidebar(QWidget):
         self._active = "nova"
         self.setObjectName("SidebarColumn")
         self._setup_ui()
-        self.setFixedWidth(max(140, int(236 * scale)))
+        self.setFixedWidth(self._compute_width())
+
+    def _compute_width(self) -> int:
+        """Largura que comporta o MAIOR nome de tela na fonte atual — assim
+        nenhum rótulo é cortado, em qualquer tamanho de fonte/escala.
+
+        Considera: texto + ícone + paddings/margens do botão + barra de rolagem.
+        """
+        font_size = max(9, int(11 * self.scale))
+        fm = QFontMetrics(QFont(theme.FONT_PRIMARY, font_size, QFont.Weight.Bold))
+
+        labels = [lbl for group in NAV_GROUPS for _, lbl, _ in group]
+        labels += [lbl for _, lbl, _ in BOTTOM_NAV_ITEMS]
+        labels.append("NOTIFICAÇÕES")
+        # '&&' é o escape de '&' em QPushButton; medir o texto exibido ('A&R')
+        max_text = max(fm.horizontalAdvance(lbl.replace("&&", "&")) for lbl in labels)
+
+        icon_w   = max(18, int(20 * self.scale))
+        pad_left = 16                       # padding-left do botão
+        spacing  = max(6, int(8 * self.scale))   # espaço ícone↔texto
+        pad_right = max(14, int(16 * self.scale))
+        margins  = 12 * 2                   # margin:4px 12px (esq+dir)
+        scrollbar = 6
+        buffer    = max(8, int(10 * self.scale))
+
+        needed = max_text + icon_w + pad_left + spacing + pad_right + margins + scrollbar + buffer
+        return max(int(236 * self.scale), needed)
 
     def _setup_ui(self):
         self.setStyleSheet(
