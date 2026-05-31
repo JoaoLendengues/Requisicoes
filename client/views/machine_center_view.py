@@ -53,6 +53,23 @@ STATUS_LABELS = {
     "funcionando": "FUNCIONANDO",
     "manutencao": "MANUTENÇÃO",
 }
+MACHINE_OPERATOR_ROLE_OPTIONS = (
+    ("OPERADOR", "operador"),
+    ("AJUDANTE", "ajudante"),
+)
+
+
+def _normalize_operator_role(value: object) -> str:
+    normalized = str(value or "").strip().casefold()
+    if normalized == "ajudante":
+        return "ajudante"
+    return "operador"
+
+
+def _role_label(value: object) -> str:
+    if _normalize_operator_role(value) == "ajudante":
+        return "AJUDANTE"
+    return "OPERADOR"
 
 
 class MachineCenterView(QWidget):
@@ -64,8 +81,8 @@ class MachineCenterView(QWidget):
         self.embedded = embedded
         self._threads: list[tuple[QThread, QObject]] = []
         self._machines_all: list[dict] = []
-        self._operators_global: list[str] = []          # todos os nomes em operators
-        self._machine_operator_names: list[str] = []    # vinculados à máquina em edição
+        self._operators_global: list[dict] = []         # cadastro global com nome + função
+        self._machine_operator_rows: list[dict] = []    # vinculados à máquina em edição
         self._selected_machine_id: int | None = None
         self._pending_machine_id: int | None = None
         self._pending_refreshes = 0
@@ -166,8 +183,8 @@ class MachineCenterView(QWidget):
         header.addWidget(new_btn)
         layout.addLayout(header)
 
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["NOME", "PRODUÇÃO", "OPERADORES", "STATUS"])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["NOME", "PRODUÇÃO", "OPERADOR", "AJUDANTE", "STATUS"])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -183,7 +200,8 @@ class MachineCenterView(QWidget):
         head.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         head.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         head.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        head.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        head.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        head.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setMinimumHeight(max(360, int(420 * s)))
         self._apply_table_style()
         layout.addWidget(self.table, 1)
@@ -240,13 +258,14 @@ class MachineCenterView(QWidget):
 
         layout.addLayout(form)
 
-        # ── Seção de operadores ───────────────────────────────────────────
-        ops_title = QLabel("OPERADORES DA MÁQUINA")
+        # ── Seção de equipe ───────────────────────────────────────────────
+        ops_title = QLabel("EQUIPE DA MÁQUINA")
         ops_title.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:800;")
         layout.addWidget(ops_title)
 
         ops_hint = QLabel(
-            "Digite o nome e clique em Adicionar. Nomes novos são criados automaticamente."
+            "Digite o nome, defina se a pessoa é OPERADOR ou AJUDANTE e clique em Adicionar. "
+            "Nomes novos são criados automaticamente."
         )
         ops_hint.setWordWrap(True)
         ops_hint.setProperty("muted", "1")
@@ -258,10 +277,16 @@ class MachineCenterView(QWidget):
         self.input_operator = QLineEdit()
         self.input_operator.setFixedHeight(max(38, int(44 * s)))
         self.input_operator.setStyleSheet(_field_style(s))
-        self.input_operator.setPlaceholderText("Nome do operador...")
+        self.input_operator.setPlaceholderText("Nome da pessoa...")
         self.input_operator.returnPressed.connect(self._add_operator_from_input)
         bind_uppercase_line_edit(self.input_operator)
         ops_input_row.addWidget(self.input_operator, 1)
+        self.combo_operator_role = QComboBox()
+        self.combo_operator_role.setFixedHeight(max(38, int(44 * s)))
+        self.combo_operator_role.setStyleSheet(_field_style(s))
+        for label, value in MACHINE_OPERATOR_ROLE_OPTIONS:
+            self.combo_operator_role.addItem(label, value)
+        ops_input_row.addWidget(self.combo_operator_role)
         self.btn_add_operator = QPushButton("ADICIONAR")
         self.btn_add_operator.setFixedHeight(max(38, int(44 * s)))
         self.btn_add_operator.setStyleSheet(_flat_secondary_btn_style(s))
@@ -400,6 +425,7 @@ class MachineCenterView(QWidget):
         self.btn_refresh_list.setEnabled(not loading)
         self.btn_save.setEnabled(not loading)
         self.btn_add_operator.setEnabled(not loading)
+        self.combo_operator_role.setEnabled(not loading)
         if loading:
             self.result_hint.setText("Sincronizando...")
 
@@ -425,13 +451,51 @@ class MachineCenterView(QWidget):
         self._refresh_failed = True
         self._show_error(message)
 
+    def _operator_lookup(self) -> dict[str, dict]:
+        return {
+            str(operator.get("name") or "").strip(): operator
+            for operator in self._operators_global
+            if isinstance(operator, dict) and operator.get("name")
+        }
+
+    def _split_team_rows(self, operators: list[dict]) -> tuple[list[str], list[str]]:
+        operator_names: list[str] = []
+        helper_names: list[str] = []
+        for operator in operators:
+            if not isinstance(operator, dict):
+                continue
+            name = str(operator.get("name") or "").strip()
+            if not name:
+                continue
+            if _normalize_operator_role(operator.get("role")) == "ajudante":
+                helper_names.append(name)
+            else:
+                operator_names.append(name)
+        return operator_names, helper_names
+
+    def _team_payload(self) -> list[dict]:
+        return [
+            {
+                "name": str(operator.get("name") or "").strip(),
+                "role": _normalize_operator_role(operator.get("role")),
+            }
+            for operator in self._machine_operator_rows
+            if str(operator.get("name") or "").strip()
+        ]
+
     def _populate_operators_global(self, payload: object):
         self._operators_global = [
-            str(op.get("name") or "").strip()
+            {
+                "name": str(op.get("name") or "").strip(),
+                "role": _normalize_operator_role(op.get("role")),
+            }
             for op in (payload if isinstance(payload, list) else [])
             if isinstance(op, dict) and op.get("name")
         ]
-        completer = QCompleter(self._operators_global, self.input_operator)
+        completer = QCompleter(
+            [str(op.get("name") or "").strip() for op in self._operators_global],
+            self.input_operator,
+        )
         completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         completer.setFilterMode(Qt.MatchFlag.MatchContains)
         self.input_operator.setCompleter(completer)
@@ -446,24 +510,36 @@ class MachineCenterView(QWidget):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            operators = [str(op.get("name") or "").strip() for op in machine.get("operators") or [] if isinstance(op, dict)]
-            operator_text = self._format_operator_summary(operators)
+            team_rows = [
+                {
+                    "name": str(op.get("name") or "").strip(),
+                    "role": _normalize_operator_role(op.get("role")),
+                }
+                for op in (machine.get("operators") or [])
+                if isinstance(op, dict) and op.get("name")
+            ]
+            operator_names, helper_names = self._split_team_rows(team_rows)
+            operator_text = self._format_operator_summary(operator_names)
+            helper_text = self._format_operator_summary(helper_names)
             values = [
                 str(machine.get("name") or "-"),
                 str(machine.get("destination") or "-").upper(),
                 operator_text,
+                helper_text,
                 STATUS_LABELS.get(str(machine.get("status") or ""), str(machine.get("status") or "-").upper()),
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                if col in (0, 2):
+                if col in (0, 2, 3):
                     item.setTextAlignment(
                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
                     )
                 else:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if col == 2 and operators:
-                    item.setToolTip(", ".join(operators))
+                if col == 2 and operator_names:
+                    item.setToolTip(", ".join(operator_names))
+                if col == 3 and helper_names:
+                    item.setToolTip(", ".join(helper_names))
                 self.table.setItem(row, col, item)
 
         total = len(self._machines_all)
@@ -496,11 +572,12 @@ class MachineCenterView(QWidget):
 
     def _prepare_new_machine(self):
         self._selected_machine_id = None
-        self._machine_operator_names = []
+        self._machine_operator_rows = []
         self.form_status.setText("Nova máquina")
         self.save_status.setText("Preencha os dados para cadastrar uma nova máquina.")
         self.input_name.clear()
         self.input_operator.clear()
+        self.combo_operator_role.setCurrentIndex(0)
         self.combo_destination.setCurrentIndex(0)
         self._rebuild_operator_list()
         self.table.clearSelection()
@@ -521,6 +598,7 @@ class MachineCenterView(QWidget):
         self.save_status.setText("Máquina carregada para edição.")
         self.input_name.setText(str(machine.get("name") or ""))
         self.input_operator.clear()
+        self.combo_operator_role.setCurrentIndex(0)
 
         destination = str(machine.get("destination") or "A&R")
         idx = max(0, self.combo_destination.findData(destination))
@@ -528,8 +606,11 @@ class MachineCenterView(QWidget):
         self.combo_destination.setCurrentIndex(idx)
         self.combo_destination.blockSignals(False)
 
-        self._machine_operator_names = [
-            str(op.get("name") or "").strip()
+        self._machine_operator_rows = [
+            {
+                "name": str(op.get("name") or "").strip(),
+                "role": _normalize_operator_role(op.get("role")),
+            }
             for op in (machine.get("operators") or [])
             if isinstance(op, dict) and op.get("name")
         ]
@@ -540,17 +621,31 @@ class MachineCenterView(QWidget):
 
     def _add_operator_from_input(self):
         name = self.input_operator.text().strip().upper()
-        if not name or name in self._machine_operator_names:
+        role = _normalize_operator_role(self.combo_operator_role.currentData())
+        if not name:
             self.input_operator.clear()
             return
-        self._machine_operator_names.append(name)
+
+        for operator in self._machine_operator_rows:
+            if str(operator.get("name") or "").strip() == name:
+                operator["role"] = role
+                self._rebuild_operator_list()
+                self.input_operator.clear()
+                self.combo_operator_role.setCurrentIndex(0)
+                return
+
+        self._machine_operator_rows.append({"name": name, "role": role})
         self._rebuild_operator_list()
         self.input_operator.clear()
+        self.combo_operator_role.setCurrentIndex(0)
 
     def _remove_operator(self, name: str):
-        if name in self._machine_operator_names:
-            self._machine_operator_names.remove(name)
-            self._rebuild_operator_list()
+        self._machine_operator_rows = [
+            operator
+            for operator in self._machine_operator_rows
+            if str(operator.get("name") or "").strip() != name
+        ]
+        self._rebuild_operator_list()
 
     def _clear_operator_widgets(self):
         while self.operators_layout.count():
@@ -562,19 +657,21 @@ class MachineCenterView(QWidget):
     def _rebuild_operator_list(self):
         self._clear_operator_widgets()
         s = self.scale
-        if not self._machine_operator_names:
-            empty = QLabel("Nenhum operador vinculado.")
+        if not self._machine_operator_rows:
+            empty = QLabel("Nenhuma pessoa vinculada.")
             empty.setProperty("muted", "1")
             empty.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
             self.operators_layout.addWidget(empty)
             self.operators_layout.addStretch()
             return
-        for name in self._machine_operator_names:
+        for operator in self._machine_operator_rows:
+            name = str(operator.get("name") or "").strip()
+            role_text = _role_label(operator.get("role"))
             row_widget = QWidget()
             row_layout = QHBoxLayout(row_widget)
             row_layout.setContentsMargins(0, 0, 0, 0)
             row_layout.setSpacing(max(6, int(8 * s)))
-            lbl = QLabel(name)
+            lbl = QLabel(f"{name}  •  {role_text}")
             lbl.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK};")
             row_layout.addWidget(lbl, 1)
             btn_rm = QPushButton("×")
@@ -598,7 +695,7 @@ class MachineCenterView(QWidget):
         payload = {
             "name": name,
             "destination": self._current_destination(),
-            "operator_names": list(self._machine_operator_names),
+            "operators": self._team_payload(),
         }
         self.save_status.setText("Salvando cadastro da máquina...")
 
@@ -672,6 +769,7 @@ class MachineCenterView(QWidget):
         self._apply_table_style()
         self.input_name.setStyleSheet(_field_style(s))
         self.input_operator.setStyleSheet(_field_style(s))
+        self.combo_operator_role.setStyleSheet(_field_style(s))
         self.combo_destination.setStyleSheet(_field_style(s))
         self.btn_add_operator.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))

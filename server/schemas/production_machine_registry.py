@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ..models.operator import OperatorRole
 from ..models.production_machine import MachineOperationalStatus
@@ -14,6 +14,16 @@ class OperatorResponse(BaseModel):
     name: str
     role: OperatorRole
     model_config = {"from_attributes": True}
+
+
+class OperatorWrite(BaseModel):
+    name: str
+    role: OperatorRole = OperatorRole.OPERADOR
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: object) -> str:
+        return normalize_upper_required(value)
 
 
 # Alias para compatibilidade com código existente
@@ -35,6 +45,7 @@ class ProductionMachineRegistryCreate(BaseModel):
     name: str
     destination: str
     # Nomes livres — servidor faz upsert em `operators` e vincula à máquina
+    operators: list[OperatorWrite] = Field(default_factory=list)
     operator_names: list[str] = Field(default_factory=list)
 
     @field_validator("name", mode="before")
@@ -57,6 +68,26 @@ class ProductionMachineRegistryCreate(BaseModel):
                 seen.add(n)
                 result.append(n)
         return result
+
+    @model_validator(mode="after")
+    def sync_operator_payload(self):
+        if not self.operators and self.operator_names:
+            self.operators = [
+                OperatorWrite(name=name, role=OperatorRole.OPERADOR)
+                for name in self.operator_names
+            ]
+
+        seen: set[str] = set()
+        normalized_operators: list[OperatorWrite] = []
+        for operator in self.operators:
+            if operator.name in seen:
+                continue
+            seen.add(operator.name)
+            normalized_operators.append(operator)
+
+        self.operators = normalized_operators
+        self.operator_names = [operator.name for operator in normalized_operators]
+        return self
 
 
 class ProductionMachineRegistryUpdate(ProductionMachineRegistryCreate):

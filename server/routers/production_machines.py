@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..dependencies import require_admin
-from ..models.operator import Operator
+from ..models.operator import Operator, OperatorRole
 from ..models.production_machine import MachineOperationalStatus, ProductionMachine
 from ..models.user import User
 from ..schemas.production_machine_registry import (
+    OperatorWrite,
     ProductionMachineRegistryCreate,
     ProductionMachineRegistryResponse,
     ProductionMachineRegistryUpdate,
@@ -38,15 +39,17 @@ def _canonical_destination(value: object) -> str:
     )
 
 
-def _upsert_operators(db: Session, names: list[str]) -> list[Operator]:
+def _upsert_operators(db: Session, entries: list[OperatorWrite]) -> list[Operator]:
     """Para cada nome: devolve o Operator existente ou cria um novo."""
     result: list[Operator] = []
-    for name in names:
-        op = db.query(Operator).filter(Operator.name == name).first()
+    for entry in entries:
+        op = db.query(Operator).filter(Operator.name == entry.name).first()
         if op is None:
-            op = Operator(name=name)
+            op = Operator(name=entry.name, role=entry.role)
             db.add(op)
             db.flush()
+        elif getattr(op, "role", OperatorRole.OPERADOR) != entry.role:
+            op.role = entry.role
         result.append(op)
     return result
 
@@ -135,7 +138,7 @@ def create_production_machine_registry(
         raise HTTPException(status_code=400, detail="Informe o nome da máquina")
 
     _ensure_unique_machine_name(db, destination=destination, name=name)
-    operators = _upsert_operators(db, data.operator_names)
+    operators = _upsert_operators(db, data.operators)
 
     machine = ProductionMachine(
         destination=destination,
@@ -157,7 +160,10 @@ def create_production_machine_registry(
         changes={
             "destination": destination,
             "name": name,
-            "operators": [op.name for op in operators],
+            "operators": [
+                {"name": op.name, "role": getattr(op.role, "value", op.role)}
+                for op in operators
+            ],
         },
     )
     db.commit()
@@ -184,11 +190,14 @@ def update_production_machine_registry(
         name=name,
         ignore_machine_id=machine.id,
     )
-    operators = _upsert_operators(db, data.operator_names)
+    operators = _upsert_operators(db, data.operators)
 
     old_destination = machine.destination
     old_name = machine.name
-    old_operator_names = [op.name for op in machine.operators]
+    old_operators = [
+        {"name": op.name, "role": getattr(op.role, "value", op.role)}
+        for op in machine.operators
+    ]
 
     if destination != machine.destination:
         machine.destination = destination
@@ -205,9 +214,12 @@ def update_production_machine_registry(
     if old_name != machine.name:
         changes["name"] = {"old": old_name, "new": machine.name}
 
-    new_operator_names = [op.name for op in operators]
-    if old_operator_names != new_operator_names:
-        changes["operators"] = {"old": old_operator_names, "new": new_operator_names}
+    new_operators = [
+        {"name": op.name, "role": getattr(op.role, "value", op.role)}
+        for op in operators
+    ]
+    if old_operators != new_operators:
+        changes["operators"] = {"old": old_operators, "new": new_operators}
 
     if changes:
         log_action(
