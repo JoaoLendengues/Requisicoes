@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
     QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
-    QAbstractSpinBox,
+    QAbstractSpinBox, QToolButton, QDateTimeEdit,
 )
 from PySide6.QtCore import (
     Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression,
@@ -46,6 +46,7 @@ from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_sc
 
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
+ALL_DATES_SENTINEL = QDate(2000, 1, 1)
 
 
 # ── Worker genérico ───────────────────────────────────────────────────────────
@@ -135,6 +136,92 @@ def _format_phone_text(raw: str) -> str:
 
 def _emphasized_btn_style(base_style: str) -> str:
     return base_style + "QPushButton { font-weight:700; }"
+
+
+def _calendar_btn_style(scale: float) -> str:
+    fs = max(11, int(13 * scale))
+    return (
+        f"QToolButton {{"
+        f"  background:{theme.PRIMARY}; color:#FFFFFF; border:none; border-radius:12px;"
+        f"  font-size:{fs}pt; font-weight:700; padding:0px 2px;"
+        f"}}"
+        f"QToolButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
+        f"QToolButton:pressed {{ background:#152D49; }}"
+    )
+
+
+class PeriodDateEdit(QDateEdit):
+    def mousePressEvent(self, event) -> None:
+        super().mousePressEvent(event)
+        QTimer.singleShot(0, self._prioritize_day_section)
+        QTimer.singleShot(0, self._select_all_text)
+
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        QTimer.singleShot(0, self._prioritize_day_section)
+        QTimer.singleShot(0, self._select_all_text)
+
+    def stepBy(self, steps: int) -> None:
+        self._prioritize_day_section()
+        super().stepBy(steps)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            self.setDate(self.minimumDate())
+            self._prioritize_day_section()
+            self._select_all_text()
+            return
+        if event.modifiers() in (
+            Qt.KeyboardModifier.NoModifier,
+            Qt.KeyboardModifier.ShiftModifier,
+        ):
+            key_text = (event.text() or "").strip().lower()
+            if key_text == "h":
+                self._set_relative_date(0)
+                return
+            if key_text == "o":
+                self._set_relative_date(-1)
+                return
+            if key_text == "i":
+                self._set_today_anchor(day=1)
+                return
+            if key_text == "f":
+                self._set_end_of_current_month()
+                return
+            if key_text == "a":
+                self._set_today_anchor(month=1, day=1)
+                return
+        super().keyPressEvent(event)
+
+    def _set_relative_date(self, days: int) -> None:
+        today = local_now().date()
+        chosen = QDate(today.year, today.month, today.day).addDays(days)
+        self.setDate(chosen)
+        self._prioritize_day_section()
+        self._select_all_text()
+
+    def _set_today_anchor(self, *, month: int | None = None, day: int | None = None) -> None:
+        today = local_now().date()
+        chosen = QDate(today.year, month or today.month, day or today.day)
+        self.setDate(chosen)
+        self._prioritize_day_section()
+        self._select_all_text()
+
+    def _set_end_of_current_month(self) -> None:
+        today = local_now().date()
+        chosen = QDate(today.year, today.month, 1)
+        chosen = chosen.addMonths(1).addDays(-1)
+        self.setDate(chosen)
+        self._prioritize_day_section()
+        self._select_all_text()
+
+    def _select_all_text(self) -> None:
+        editor = self.lineEdit()
+        if editor is not None:
+            editor.selectAll()
+
+    def _prioritize_day_section(self) -> None:
+        self.setCurrentSection(QDateTimeEdit.Section.DaySection)
 
 
 # ── Card helper ───────────────────────────────────────────────────────────────
@@ -1337,7 +1424,7 @@ class RequisitionForm(QWidget):
             f" border:1px solid {theme.BORDER_COLOR}; border-radius:10px; }}"
             f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
         )
-        dialog.setMinimumWidth(max(440, int(540 * s)))
+        dialog.setMinimumWidth(max(520, int(620 * s)))
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(16, 14, 16, 14)
@@ -1353,12 +1440,93 @@ class RequisitionForm(QWidget):
         search.setMinimumHeight(max(30, int(36 * s)))
         layout.addWidget(search)
 
+        period_label = QLabel("Período de emissão")
+        period_label.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:700;")
+        layout.addWidget(period_label)
+
+        shortcuts = QLabel(
+            "Atalhos do período: h = hoje | o = ontem | i = início do mês | f = final do mês | a = início do ano"
+        )
+        shortcuts.setWordWrap(True)
+        shortcuts.setStyleSheet(
+            f"color:{theme.PRIMARY}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+        )
+        layout.addWidget(shortcuts)
+
+        period_hint = QLabel("Filtro opcional. Use Delete para limpar a data do campo selecionado.")
+        period_hint.setProperty("muted", "1")
+        period_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        layout.addWidget(period_hint)
+
+        today = local_now().date()
+        today_qdate = QDate(today.year, today.month, today.day)
+
+        def _focus_date_field(field: QDateEdit) -> None:
+            field.setFocus(Qt.FocusReason.MouseFocusReason)
+            if isinstance(field, PeriodDateEdit):
+                field._prioritize_day_section()
+            field.selectAll()
+
+        def _set_date_today(field: QDateEdit) -> None:
+            field.setDate(today_qdate)
+            _focus_date_field(field)
+
+        period_row = QHBoxLayout()
+        period_row.setSpacing(max(6, int(8 * s)))
+
+        date_from = PeriodDateEdit(ALL_DATES_SENTINEL)
+        date_from.setMinimumDate(ALL_DATES_SENTINEL)
+        date_from.setDate(ALL_DATES_SENTINEL)
+        date_from.setSpecialValueText("Data inicial")
+        date_from.setDisplayFormat("dd/MM/yyyy")
+        date_from.setCalendarPopup(False)
+        date_from.setMinimumHeight(max(30, int(36 * s)))
+        date_from.setStyleSheet(theme.input_style(s))
+
+        btn_date_from = QToolButton()
+        btn_date_from.setText("📅")
+        btn_date_from.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_date_from.setToolTip("Usar a data de hoje")
+        btn_date_from.setFixedSize(max(32, int(36 * s)), max(30, int(36 * s)))
+        btn_date_from.setStyleSheet(_calendar_btn_style(s))
+        btn_date_from.clicked.connect(lambda: _set_date_today(date_from))
+
+        until_label = QLabel("ATÉ")
+        until_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; color:{theme.TEXT_MEDIUM};"
+        )
+        until_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        date_to = PeriodDateEdit(ALL_DATES_SENTINEL)
+        date_to.setMinimumDate(ALL_DATES_SENTINEL)
+        date_to.setDate(ALL_DATES_SENTINEL)
+        date_to.setSpecialValueText("Data final")
+        date_to.setDisplayFormat("dd/MM/yyyy")
+        date_to.setCalendarPopup(False)
+        date_to.setMinimumHeight(max(30, int(36 * s)))
+        date_to.setStyleSheet(theme.input_style(s))
+
+        btn_date_to = QToolButton()
+        btn_date_to.setText("📅")
+        btn_date_to.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_date_to.setToolTip("Usar a data de hoje")
+        btn_date_to.setFixedSize(max(32, int(36 * s)), max(30, int(36 * s)))
+        btn_date_to.setStyleSheet(_calendar_btn_style(s))
+        btn_date_to.clicked.connect(lambda: _set_date_today(date_to))
+
+        period_row.addWidget(date_from, 1)
+        period_row.addWidget(btn_date_from)
+        period_row.addWidget(until_label)
+        period_row.addWidget(date_to, 1)
+        period_row.addWidget(btn_date_to)
+        layout.addLayout(period_row)
+
         results = QListWidget()
         results.setStyleSheet(theme.input_style(s))
         results.setMinimumHeight(max(220, int(280 * s)))
         layout.addWidget(results, 1)
 
-        hint = QLabel("Digite ao menos 2 caracteres para buscar.")
+        hint = QLabel("Digite ao menos 2 caracteres para buscar ou informe um período.")
         hint.setProperty("muted", "1")
         hint.setStyleSheet(f"font-size:{max(7, int(9 * s))}pt;")
         layout.addWidget(hint)
@@ -1378,6 +1546,18 @@ class RequisitionForm(QWidget):
         timer = QTimer(dialog)
         timer.setSingleShot(True)
         timer.setInterval(350)
+
+        def _selected_emission_period() -> tuple[str, str] | None:
+            start = date_from.date()
+            end = date_to.date()
+            has_start = start != ALL_DATES_SENTINEL
+            has_end = end != ALL_DATES_SENTINEL
+            if has_start and has_end and start > end:
+                return None
+            return (
+                start.toString("yyyy-MM-dd") if has_start else "",
+                end.toString("yyyy-MM-dd") if has_end else "",
+            )
 
         def _render(data):
             results.clear()
@@ -1406,9 +1586,17 @@ class RequisitionForm(QWidget):
 
         def _do_search():
             term = search.text().strip()
-            if len(term) < 2:
+            period = _selected_emission_period()
+            if period is None:
                 results.clear()
-                hint.setText("Digite ao menos 2 caracteres para buscar.")
+                hint.setText("A data inicial não pode ser maior que a data final.")
+                return
+            emission_date_start, emission_date_end = period
+            has_period = bool(emission_date_start or emission_date_end)
+            search_term = term if len(term) >= 2 else ""
+            if not search_term and not has_period:
+                results.clear()
+                hint.setText("Digite ao menos 2 caracteres para buscar ou informe um período.")
                 return
             state["counter"] += 1
             sid = state["counter"]
@@ -1421,8 +1609,10 @@ class RequisitionForm(QWidget):
 
             thread, worker = _run_in_thread(
                 api.list_requisitions,
-                search=term,
+                search=search_term,
                 limit=50,
+                emission_date_start=emission_date_start,
+                emission_date_end=emission_date_end,
                 on_result=_on_result,
                 on_error=lambda msg: hint.setText(f"Erro na busca: {msg}"),
             )
@@ -1441,6 +1631,8 @@ class RequisitionForm(QWidget):
 
         timer.timeout.connect(_do_search)
         search.textChanged.connect(lambda _t: timer.start())
+        date_from.dateChanged.connect(lambda _d: timer.start())
+        date_to.dateChanged.connect(lambda _d: timer.start())
         search.returnPressed.connect(_do_search)
         results.itemDoubleClicked.connect(lambda _it: _open_selected())
         btn_open.clicked.connect(_open_selected)
