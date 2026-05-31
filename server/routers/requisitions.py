@@ -1849,6 +1849,7 @@ def list_requisitions(
     req_status: Optional[RequisitionStatus] = Query(None, alias="status"),
     client_id: Optional[int] = None,
     vendor_id: Optional[int] = None,
+    vendor_search: Optional[str] = None,
     production_destination: Optional[str] = None,
     production_machine: Optional[str] = None,
     production_operator: Optional[str] = None,
@@ -1869,6 +1870,12 @@ def list_requisitions(
         q = q.filter(Requisition.client_id == client_id)
     if vendor_id:
         q = q.filter(Requisition.vendor_id == vendor_id)
+    if vendor_search and vendor_search.strip():
+        vendor_term = f"%{vendor_search.strip()}%"
+        q = q.join(Requisition.vendor).filter(or_(
+            User.name.ilike(vendor_term),
+            User.code.ilike(vendor_term),
+        ))
     if search:
         search_term = f"%{search.strip()}%"
         q = q.join(Requisition.client).filter(or_(

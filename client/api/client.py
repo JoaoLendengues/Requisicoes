@@ -173,6 +173,7 @@ def bulk_import_products(items: list) -> dict:
 def list_requisitions(
     status: str = "",
     search: str = "",
+    vendor_search: str = "",
     skip: int = 0,
     limit: int = 50,
     emission_date_start: str = "",
@@ -188,6 +189,8 @@ def list_requisitions(
             params["status"] = status
         if search:
             params["search"] = search
+        if vendor_search:
+            params["vendor_search"] = vendor_search
         if emission_date_start:
             params["emission_date_start"] = emission_date_start
         if emission_date_end:

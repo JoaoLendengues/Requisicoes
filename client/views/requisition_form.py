@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (
     QFrame, QSplitter, QTextEdit, QFileDialog, QMessageBox, QDialog,
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
     QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
-    QAbstractSpinBox, QToolButton, QDateTimeEdit,
+    QAbstractSpinBox, QToolButton, QDateTimeEdit, QTableWidget, QTableWidgetItem,
+    QHeaderView,
 )
 from PySide6.QtCore import (
     Qt, QDate, Signal, QThread, QObject, QEvent, QTimer, QRegularExpression,
@@ -33,7 +34,7 @@ except ImportError:
     HAS_QR = False
 
 from ..core import theme
-from ..widgets.smooth_scroll import SmoothScrollArea
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.datetime_utils import local_now
 from ..core.dialogs import apply_message_box_theme, ask_confirmation
 from ..core.resolution import res
@@ -147,6 +148,26 @@ def _calendar_btn_style(scale: float) -> str:
         f"}}"
         f"QToolButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
         f"QToolButton:pressed {{ background:#152D49; }}"
+    )
+
+
+def _dialog_table_style(scale: float) -> str:
+    body_fs = max(8, int(9 * scale))
+    head_fs = max(7, int(8 * scale))
+    return (
+        f"QTableWidget {{"
+        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
+        f"  font-size:{body_fs}pt; gridline-color:transparent;"
+        f"}}"
+        f"QTableWidget::item {{ padding:8px 10px; border:none; }}"
+        f"QTableWidget::item:selected {{ background:rgba(30, 64, 175, 0.14); color:{theme.TEXT_DARK}; }}"
+        f"QHeaderView::section {{"
+        f"  background:{theme.BORDER_COLOR}; color:{theme.TEXT_LIGHT};"
+        f"  border:none; padding:8px 10px; font-size:{head_fs}pt; font-weight:700;"
+        f"}}"
+        f"QTableCornerButton::section {{ background:{theme.BORDER_COLOR}; border:none; }}"
     )
 
 
@@ -1424,21 +1445,34 @@ class RequisitionForm(QWidget):
             f" border:1px solid {theme.BORDER_COLOR}; border-radius:10px; }}"
             f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
         )
-        dialog.setMinimumWidth(max(520, int(620 * s)))
+        dialog.setMinimumWidth(max(860, int(980 * s)))
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(8)
 
-        lbl = QLabel("Pesquise por cliente, obra ou número do pedido:")
-        lbl.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
-        layout.addWidget(lbl)
+        filters_grid = QGridLayout()
+        filters_grid.setHorizontalSpacing(max(10, int(12 * s)))
+        filters_grid.setVerticalSpacing(max(6, int(8 * s)))
 
+        lbl = QLabel("BUSCA POR PED, CLIENTE OU OBRA")
+        lbl.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:700;")
         search = QLineEdit()
         search.setPlaceholderText("Ex.: nome do cliente, obra ou 123456")
         search.setStyleSheet(theme.input_style(s))
         search.setMinimumHeight(max(30, int(36 * s)))
-        layout.addWidget(search)
+        filters_grid.addWidget(lbl, 0, 0)
+        filters_grid.addWidget(search, 1, 0)
+
+        vendor_label = QLabel("VENDEDOR")
+        vendor_label.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:700;")
+        vendor_search = QLineEdit()
+        vendor_search.setPlaceholderText("Nome ou código do vendedor")
+        vendor_search.setStyleSheet(theme.input_style(s))
+        vendor_search.setMinimumHeight(max(30, int(36 * s)))
+        filters_grid.addWidget(vendor_label, 0, 1)
+        filters_grid.addWidget(vendor_search, 1, 1)
+        layout.addLayout(filters_grid)
 
         period_label = QLabel("Período de emissão")
         period_label.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:700;")
@@ -1521,12 +1555,30 @@ class RequisitionForm(QWidget):
         period_row.addWidget(btn_date_to)
         layout.addLayout(period_row)
 
-        results = QListWidget()
-        results.setStyleSheet(theme.input_style(s))
-        results.setMinimumHeight(max(220, int(280 * s)))
+        results = QTableWidget(0, 6)
+        results.setHorizontalHeaderLabels(["PED", "CLIENTE", "OBRA", "VENDEDOR", "STATUS", "EMISSÃO"])
+        results.verticalHeader().setVisible(False)
+        results.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        results.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        results.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        results.setAlternatingRowColors(True)
+        results.setShowGrid(False)
+        results.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        results.setWordWrap(False)
+        results.setStyleSheet(_dialog_table_style(s))
+        results.setMinimumHeight(max(260, int(320 * s)))
+        apply_smooth_scroll(results)
+
+        head = results.horizontalHeader()
+        head.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        head.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        head.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        head.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        head.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        head.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(results, 1)
 
-        hint = QLabel("Digite ao menos 2 caracteres para buscar ou informe um período.")
+        hint = QLabel("Digite ao menos 2 caracteres na busca principal, filtre por vendedor e/ou informe um período.")
         hint.setProperty("muted", "1")
         hint.setStyleSheet(f"font-size:{max(7, int(9 * s))}pt;")
         layout.addWidget(hint)
@@ -1560,43 +1612,58 @@ class RequisitionForm(QWidget):
             )
 
         def _render(data):
-            results.clear()
+            results.setRowCount(0)
             items = data if isinstance(data, list) else []
             if not items:
                 hint.setText("Nenhuma requisição encontrada.")
                 return
             hint.setText(f"{len(items)} resultado(s). Dê duplo clique para abrir.")
             for r in items:
-                ped = str(r.get("ped_number") or "?")
+                row = results.rowCount()
+                results.insertRow(row)
+
+                ped = str(r.get("ped_number") or "?").strip()
                 cli = str(r.get("client_name") or r.get("client_id") or "")
                 obra = str(r.get("obra") or "").strip()
+                vendor = str(r.get("vendor_name") or r.get("vendor_code") or r.get("vendor_id") or "")
                 status = theme.STATUS_LABELS.get(str(r.get("status") or ""), "")
                 raw = str(r.get("emission_date") or r.get("created_at") or "")[:10]
                 dt = f"{raw[8:10]}/{raw[5:7]}/{raw[0:4]}" if len(raw) == 10 and raw[4] == "-" else ""
-                label = f"PED #{ped}  ·  {cli}"
-                if obra:
-                    label += f"  ·  {obra}"
-                if status:
-                    label += f"   [{status}]"
-                if dt:
-                    label += f"  ·  {dt}"
-                it = QListWidgetItem(label)
-                it.setData(Qt.ItemDataRole.UserRole, int(r.get("id") or 0))
-                results.addItem(it)
+                values = [
+                    f"#{ped.zfill(6)}" if ped.isdigit() else ped,
+                    cli or "-",
+                    obra or "-",
+                    vendor or "-",
+                    status or "-",
+                    dt or "-",
+                ]
+                for col, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    if col == 0:
+                        item.setData(Qt.ItemDataRole.UserRole, int(r.get("id") or 0))
+                    if col in (1, 2, 3):
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    else:
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    if value != "-":
+                        item.setToolTip(value)
+                    results.setItem(row, col, item)
 
         def _do_search():
             term = search.text().strip()
+            vendor_term = vendor_search.text().strip()
             period = _selected_emission_period()
             if period is None:
-                results.clear()
+                results.setRowCount(0)
                 hint.setText("A data inicial não pode ser maior que a data final.")
                 return
             emission_date_start, emission_date_end = period
             has_period = bool(emission_date_start or emission_date_end)
+            has_vendor = bool(vendor_term)
             search_term = term if len(term) >= 2 else ""
-            if not search_term and not has_period:
-                results.clear()
-                hint.setText("Digite ao menos 2 caracteres para buscar ou informe um período.")
+            if not search_term and not has_period and not has_vendor:
+                results.setRowCount(0)
+                hint.setText("Digite ao menos 2 caracteres na busca principal, filtre por vendedor e/ou informe um período.")
                 return
             state["counter"] += 1
             sid = state["counter"]
@@ -1610,6 +1677,7 @@ class RequisitionForm(QWidget):
             thread, worker = _run_in_thread(
                 api.list_requisitions,
                 search=search_term,
+                vendor_search=vendor_term,
                 limit=50,
                 emission_date_start=emission_date_start,
                 emission_date_end=emission_date_end,
@@ -1619,11 +1687,12 @@ class RequisitionForm(QWidget):
             self._threads.append((thread, worker))
 
         def _open_selected():
-            it = results.currentItem()
-            if it is None:
-                hint.setText("Selecione uma requisição na lista.")
+            row = results.currentRow()
+            if row < 0:
+                hint.setText("Selecione uma requisição na tabela.")
                 return
-            req_id = int(it.data(Qt.ItemDataRole.UserRole) or 0)
+            item = results.item(row, 0)
+            req_id = int(item.data(Qt.ItemDataRole.UserRole) or 0) if item is not None else 0
             if not req_id:
                 return
             dialog.accept()
@@ -1631,10 +1700,12 @@ class RequisitionForm(QWidget):
 
         timer.timeout.connect(_do_search)
         search.textChanged.connect(lambda _t: timer.start())
+        vendor_search.textChanged.connect(lambda _t: timer.start())
         date_from.dateChanged.connect(lambda _d: timer.start())
         date_to.dateChanged.connect(lambda _d: timer.start())
         search.returnPressed.connect(_do_search)
-        results.itemDoubleClicked.connect(lambda _it: _open_selected())
+        vendor_search.returnPressed.connect(_do_search)
+        results.cellDoubleClicked.connect(lambda _row, _col: _open_selected())
         btn_open.clicked.connect(_open_selected)
         btn_close.clicked.connect(dialog.reject)
 
