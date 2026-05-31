@@ -25,11 +25,41 @@ _DEFAULTS = {
         {"code": "C14", "reason": "Produção inviável"},
     ],
     "delivery_cancel_reasons": [
-        {"code": "E01", "reason": "Cliente solicitou reagendamento"},
-        {"code": "E02", "reason": "Endereco indisponivel no momento da entrega"},
-        {"code": "E03", "reason": "Cliente ausente no local"},
-        {"code": "E04", "reason": "Problema logistico na rota"},
-        {"code": "E05", "reason": "Erro de conferencia do pedido"},
+        {"code": "CE001", "reason": "Cliente alterou o pedido"},
+        {"code": "CE002", "reason": "Cliente nao estava disponivel para recebimento"},
+        {"code": "CE003", "reason": "Endereco informado incorretamente"},
+        {"code": "CE004", "reason": "Solicitacao de adiamento da entrega"},
+        {"code": "CE005", "reason": "Producao nao finalizada no prazo"},
+        {"code": "CE006", "reason": "Produto com defeito identificado antes da entrega"},
+        {"code": "CE007", "reason": "Material indisponivel para conclusao do pedido"},
+        {"code": "CE008", "reason": "Necessidade de retrabalho na producao"},
+        {"code": "CE009", "reason": "Divergencia entre pedido e produto fabricado"},
+        {"code": "CE010", "reason": "Falta de veiculo disponivel"},
+        {"code": "CE011", "reason": "Problema mecanico no transporte"},
+        {"code": "CE012", "reason": "Rota interrompida por condicoes externas"},
+        {"code": "CE013", "reason": "Erro no planejamento da entrega"},
+        {"code": "CE014", "reason": "Excesso de carga programada"},
+        {"code": "CE015", "reason": "Pedido duplicado"},
+        {"code": "CE016", "reason": "Falha de comunicacao com o cliente"},
+        {"code": "CE017", "reason": "Dados da entrega incompletos"},
+        {"code": "CE018", "reason": "Falta de aprovacao interna"},
+        {"code": "CE019", "reason": "Documento obrigatorio nao anexado"},
+        {"code": "CE020", "reason": "Cancelamento por decisao da gerencia"},
+        {"code": "CE021", "reason": "Requisicao aberta indevidamente"},
+        {"code": "CE022", "reason": "Mudanca de prioridade da producao"},
+        {"code": "CE023", "reason": "Erro de integracao do sistema"},
+        {"code": "CE024", "reason": "Cliente solicitou retirada no local"},
+        {"code": "CE025", "reason": "Cliente reagendou a entrega"},
+        {"code": "CE026", "reason": "Falta de contato com o cliente"},
+        {"code": "CE027", "reason": "Horario de recebimento indisponivel"},
+        {"code": "CE028", "reason": "Equipe de entrega indisponivel"},
+        {"code": "CE029", "reason": "Endereco fora da rota de entrega"},
+        {"code": "CE030", "reason": "Veiculo em manutencao"},
+        {"code": "CE031", "reason": "Aguardando liberacao de acesso no local"},
+        {"code": "CE032", "reason": "Aguardando confirmacao do cliente"},
+        {"code": "CE033", "reason": "Produto indisponivel em estoque"},
+        {"code": "CE034", "reason": "Divergencia de informacoes do pedido"},
+        {"code": "CE035", "reason": "Entrega unificada com outro pedido"},
     ],
 }
 
@@ -75,22 +105,25 @@ def _sanitize_delivery_cancel_reasons(value: object) -> list[dict[str, str]]:
     raw_items = (
         value if isinstance(value, list) else _DEFAULTS["delivery_cancel_reasons"]
     )
-    cleaned: list[dict[str, str]] = []
-    seen_codes: set[str] = set()
-
+    custom_by_code: dict[str, str] = {}
     for item in raw_items:
         if not isinstance(item, dict):
             continue
         code = " ".join(str(item.get("code") or "").upper().split())
         reason = " ".join(str(item.get("reason") or "").split())
-        if not code or not reason or code in seen_codes:
-            continue
-        seen_codes.add(code)
-        cleaned.append({"code": code, "reason": reason})
+        if code and reason:
+            custom_by_code[code] = reason
 
-    if cleaned:
-        return cleaned
-    return [dict(entry) for entry in _DEFAULTS["delivery_cancel_reasons"]]
+    ordered: list[dict[str, str]] = []
+    for default_item in _DEFAULTS["delivery_cancel_reasons"]:
+        code = str(default_item.get("code") or "").strip().upper()
+        if not code:
+            continue
+        reason = custom_by_code.get(code) or str(default_item.get("reason") or "").strip()
+        if not reason:
+            continue
+        ordered.append({"code": code, "reason": reason})
+    return ordered
 
 
 def load_operational_settings() -> dict:
