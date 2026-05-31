@@ -247,12 +247,14 @@ class DashWorker(QObject):
         industria_period: str,
         vendor_period: str,
         people_period: str,
+        people_destination: str,
     ):
         super().__init__()
         self.ar_period = ar_period
         self.industria_period = industria_period
         self.vendor_period = vendor_period
         self.people_period = people_period
+        self.people_destination = people_destination
 
     def run(self):
         try:
@@ -262,6 +264,7 @@ class DashWorker(QObject):
                     industria_period=self.industria_period,
                     vendor_period=self.vendor_period,
                     people_period=self.people_period,
+                    people_destination=self.people_destination,
                 )
             )
         except api.APIError as exc:
@@ -286,10 +289,16 @@ class DashboardView(QWidget):
             ("Hoje", "today"),
             ("Mês passado", "last_month"),
         ]
+        self._production_filter_options = [
+            ("Todas as produções", ""),
+            ("A&R", "A&R"),
+            ("Pinheiro Indústria", "Pinheiro Indústria"),
+        ]
         self.ar_period_combo: QComboBox | None = None
         self.industria_period_combo: QComboBox | None = None
         self.vendor_period_combo: QComboBox | None = None
         self.people_period_combo: QComboBox | None = None
+        self.people_destination_combo: QComboBox | None = None
         self._setup_ui()
         self.refresh()
 
@@ -445,6 +454,9 @@ class DashboardView(QWidget):
             theme.PRIMARY_HOVER,
             "people_period_combo",
             "30d",
+            "people_destination_combo",
+            self._production_filter_options,
+            "",
         )
         self.alerts_card = self._build_section_card(
             "Pedidos sem Confirmação",
@@ -617,6 +629,9 @@ class DashboardView(QWidget):
         accent_color: str,
         combo_attr: str,
         default_period: str,
+        extra_combo_attr: str | None = None,
+        extra_combo_options: list[tuple[str, str]] | None = None,
+        extra_combo_default: str = "",
     ) -> QFrame:
         s = self.scale
         card = _make_shadow_card(
@@ -663,12 +678,28 @@ class DashboardView(QWidget):
         period_combo.currentIndexChanged.connect(lambda _=None: self._on_machine_period_changed())
         setattr(self, combo_attr, period_combo)
 
+        extra_combo: QComboBox | None = None
+        if extra_combo_attr:
+            extra_combo = QComboBox()
+            extra_combo.setFixedHeight(max(34, int(38 * s)))
+            extra_combo.setMinimumWidth(max(150, int(180 * s)))
+            extra_combo.setStyleSheet(_field_style(s))
+            for label, value in (extra_combo_options or []):
+                extra_combo.addItem(label, value)
+            selected_extra_index = extra_combo.findData(extra_combo_default)
+            if selected_extra_index >= 0:
+                extra_combo.setCurrentIndex(selected_extra_index)
+            extra_combo.currentIndexChanged.connect(lambda _=None: self._on_machine_period_changed())
+            setattr(self, extra_combo_attr, extra_combo)
+
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
         subtitle_label.setProperty("muted", "1")
         subtitle_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
 
         title_row.addWidget(title_label, 1)
+        if extra_combo is not None:
+            title_row.addWidget(extra_combo, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         title_row.addWidget(period_combo, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         layout.addWidget(accent)
@@ -864,8 +895,13 @@ class DashboardView(QWidget):
             if self.people_period_combo
             else "30d"
         )
+        people_destination = (
+            str(self.people_destination_combo.currentData() or "")
+            if self.people_destination_combo
+            else ""
+        )
 
-        worker = DashWorker(ar_period, industria_period, vendor_period, people_period)
+        worker = DashWorker(ar_period, industria_period, vendor_period, people_period, people_destination)
         thread = QThread()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -892,6 +928,8 @@ class DashboardView(QWidget):
             self.vendor_period_combo.setEnabled(not loading)
         if self.people_period_combo:
             self.people_period_combo.setEnabled(not loading)
+        if self.people_destination_combo:
+            self.people_destination_combo.setEnabled(not loading)
         if loading:
             self.updated_label.setText("Atualizando dados...")
             self.date_label.setText(_format_header_date())
@@ -1261,6 +1299,7 @@ class DashboardView(QWidget):
         for combo in [
             getattr(self, "vendor_period_combo", None),
             getattr(self, "people_period_combo", None),
+            getattr(self, "people_destination_combo", None),
             getattr(self, "ar_period_combo", None),
             getattr(self, "industria_period_combo", None),
         ]:

@@ -297,6 +297,19 @@ def _canonical_destination(value: object) -> str:
     return str(value or "").strip()
 
 
+def _normalize_dashboard_destination(value: str | None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    canonical = _canonical_destination(text)
+    if canonical not in {_DESTINATION_AR, _DESTINATION_PINHEIRO}:
+        raise HTTPException(
+            status_code=400,
+            detail="Produção do dashboard inválida. Use A&R ou Pinheiro Indústria.",
+        )
+    return canonical
+
+
 def _role_key(role: Role | str) -> str:
     return getattr(role, "value", role)
 
@@ -1626,6 +1639,7 @@ def _build_top_vendor_rows(
 def _build_top_production_people_rows(
     reqs: list[Requisition],
     period_key: str,
+    destination: str = "",
     now: datetime | None = None,
 ) -> tuple[list[DashboardProductionPersonItem], list[DashboardProductionPersonItem]]:
     operators_stats: dict[str, dict[str, object]] = {}
@@ -1648,6 +1662,8 @@ def _build_top_production_people_rows(
         weight = float(req.weight or 0.0)
         for cycle in _all_finished_cycles(req):
             if not _datetime_in_dashboard_period(cycle.get("finished_at"), period_key, now):
+                continue
+            if destination and _canonical_destination(cycle.get("target")) != destination:
                 continue
             _accumulate(operators_stats, list(cycle.get("operators") or []), weight)
             _accumulate(helpers_stats, list(cycle.get("helpers") or []), weight)
@@ -1681,6 +1697,7 @@ def _build_management_dashboard(
     industria_period: str = "30d",
     vendor_period: str = "30d",
     people_period: str = "30d",
+    people_destination: str = "",
 ) -> ManagementDashboardResponse:
     now = datetime.utcnow()
     generated_at = _to_local_datetime(now) or datetime.now(_LOCAL_TIMEZONE)
@@ -1769,7 +1786,12 @@ def _build_management_dashboard(
         )
 
     top_vendors = _build_top_vendor_rows(reqs, vendor_period, now)
-    top_operators, top_helpers = _build_top_production_people_rows(reqs, people_period, now)
+    top_operators, top_helpers = _build_top_production_people_rows(
+        reqs,
+        people_period,
+        people_destination,
+        now,
+    )
 
     receipt_alerts.sort(key=lambda item: item.waiting_minutes, reverse=True)
     recent_requisitions.sort(key=lambda item: item.emission_date, reverse=True)
@@ -2078,6 +2100,7 @@ def get_management_dashboard(
     industria_period: str = Query("30d"),
     vendor_period: str = Query("30d"),
     people_period: str = Query("30d"),
+    people_destination: str = Query(""),
     db: Session = Depends(get_db),
     _: User = Depends(require_manager_or_admin),
 ):
@@ -2086,6 +2109,7 @@ def get_management_dashboard(
     normalized_industria_period = _normalize_dashboard_period(industria_period)
     normalized_vendor_period = _normalize_dashboard_period(vendor_period)
     normalized_people_period = _normalize_dashboard_period(people_period)
+    normalized_people_destination = _normalize_dashboard_destination(people_destination)
 
     reqs = (
         db.query(Requisition)
@@ -2109,6 +2133,7 @@ def get_management_dashboard(
         industria_period=normalized_industria_period,
         vendor_period=normalized_vendor_period,
         people_period=normalized_people_period,
+        people_destination=normalized_people_destination,
     )
 
 

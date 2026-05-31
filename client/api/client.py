@@ -211,6 +211,7 @@ def get_management_dashboard(
     industria_period: str = "30d",
     vendor_period: str = "30d",
     people_period: str = "30d",
+    people_destination: str = "",
 ) -> dict:
     with _cli() as client:
         return _check(
@@ -221,6 +222,7 @@ def get_management_dashboard(
                     "industria_period": industria_period,
                     "vendor_period": vendor_period,
                     "people_period": people_period,
+                    "people_destination": people_destination,
                 },
             )
         )
