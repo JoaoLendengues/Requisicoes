@@ -24,6 +24,13 @@ _DEFAULTS = {
         {"code": "C13", "reason": "Problema logístico"},
         {"code": "C14", "reason": "Produção inviável"},
     ],
+    "delivery_cancel_reasons": [
+        {"code": "E01", "reason": "Cliente solicitou reagendamento"},
+        {"code": "E02", "reason": "Endereco indisponivel no momento da entrega"},
+        {"code": "E03", "reason": "Cliente ausente no local"},
+        {"code": "E04", "reason": "Problema logistico na rota"},
+        {"code": "E05", "reason": "Erro de conferencia do pedido"},
+    ],
 }
 
 
@@ -64,6 +71,28 @@ def _sanitize_cancel_reasons(value: object) -> list[dict[str, str]]:
     return [dict(entry) for entry in _DEFAULTS["cancel_reasons"]]
 
 
+def _sanitize_delivery_cancel_reasons(value: object) -> list[dict[str, str]]:
+    raw_items = (
+        value if isinstance(value, list) else _DEFAULTS["delivery_cancel_reasons"]
+    )
+    cleaned: list[dict[str, str]] = []
+    seen_codes: set[str] = set()
+
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        code = " ".join(str(item.get("code") or "").upper().split())
+        reason = " ".join(str(item.get("reason") or "").split())
+        if not code or not reason or code in seen_codes:
+            continue
+        seen_codes.add(code)
+        cleaned.append({"code": code, "reason": reason})
+
+    if cleaned:
+        return cleaned
+    return [dict(entry) for entry in _DEFAULTS["delivery_cancel_reasons"]]
+
+
 def load_operational_settings() -> dict:
     data = dict(_DEFAULTS)
     try:
@@ -80,6 +109,9 @@ def load_operational_settings() -> dict:
     data["cancel_reasons"] = _sanitize_cancel_reasons(
         raw.get("cancel_reasons", data["cancel_reasons"])
     )
+    data["delivery_cancel_reasons"] = _sanitize_delivery_cancel_reasons(
+        raw.get("delivery_cancel_reasons", data["delivery_cancel_reasons"])
+    )
     return data
 
 
@@ -88,6 +120,7 @@ def save_operational_settings(
     pending_invoice_alert_days: int | None = None,
     min_delivery_business_days: int | None = None,
     cancel_reasons: list[dict[str, str]] | None = None,
+    delivery_cancel_reasons: list[dict[str, str]] | None = None,
 ) -> dict:
     """Atualiza apenas os campos informados, preservando os demais."""
     data = load_operational_settings()
@@ -101,6 +134,10 @@ def save_operational_settings(
         )
     if cancel_reasons is not None:
         data["cancel_reasons"] = _sanitize_cancel_reasons(cancel_reasons)
+    if delivery_cancel_reasons is not None:
+        data["delivery_cancel_reasons"] = _sanitize_delivery_cancel_reasons(
+            delivery_cancel_reasons
+        )
     _SETTINGS_FILE.write_text(
         json.dumps(data, indent=2, ensure_ascii=False),
         encoding="utf-8",

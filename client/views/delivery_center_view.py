@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QDateEdit,
     QFrame,
     QGraphicsDropShadowEffect,
@@ -127,7 +128,15 @@ class DeliveryCenterWorker(QObject):
 
     def run(self):
         try:
-            self.result.emit(api.get_delivery_center())
+            payload = api.get_delivery_center()
+            settings = api.get_operational_settings()
+            if isinstance(payload, dict):
+                payload["delivery_cancel_reasons"] = (
+                    settings.get("delivery_cancel_reasons")
+                    if isinstance(settings, dict)
+                    else []
+                )
+            self.result.emit(payload)
         except api.APIError as exc:
             self.error.emit(exc.detail)
         except Exception as exc:  # noqa: BLE001
@@ -146,6 +155,7 @@ class DeliveryCenterView(QWidget):
         self._threads: list[tuple[QThread, QObject]] = []
         self._pending_rows: list[dict] = []
         self._completed_rows: list[dict] = []
+        self._delivery_cancel_reason_rows: list[dict[str, str]] = []
         self._row_by_id: dict[int, dict] = {}
         self._completed_row_by_id: dict[int, dict] = {}
         self._metric_labels: dict[str, QLabel] = {}
@@ -240,7 +250,7 @@ class DeliveryCenterView(QWidget):
         card_defs = [
             ("deliveries_today", theme.PRIMARY, "ENTREGAS PARA HOJE", "Pedidos com entrega prevista para o dia atual."),
             ("delayed_deliveries", theme.DANGER, "ENTREGAS ATRASADAS", "Pedidos de entrega pendente com prazo vencido."),
-            ("changed_delivery_deadlines", theme.WARNING, "PRAZO DE ENTREGA ALTERADO", "Entregas pendentes com prazo ajustado."),
+            ("changed_delivery_deadlines", theme.STATUS_COLORS.get("prazo_alterado", theme.WARNING), "PRAZO DE ENTREGA ALTERADO", "Entregas pendentes com prazo ajustado."),
             ("completed_deliveries", theme.SUCCESS, "ENTREGAS REALIZADAS", "Pedidos de entrega concluidos."),
         ]
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
@@ -341,6 +351,17 @@ class DeliveryCenterView(QWidget):
         )
         completed_layout.addWidget(completed_title)
         completed_layout.addWidget(completed_subtitle)
+
+        completed_actions_row = QHBoxLayout()
+        completed_actions_row.setContentsMargins(0, 0, 0, 0)
+        completed_actions_row.setSpacing(max(8, int(10 * s)))
+        completed_actions_row.addStretch()
+        self.btn_cancel_delivered = QPushButton("CANCELAR ENTREGA")
+        self.btn_cancel_delivered.setFixedHeight(max(34, int(38 * s)))
+        self.btn_cancel_delivered.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_cancel_delivered.clicked.connect(self._cancel_selected_delivered)
+        completed_actions_row.addWidget(self.btn_cancel_delivered)
+        completed_layout.addLayout(completed_actions_row)
 
         self.completed_table = self._create_table(self._open_completed_row)
         completed_layout.addWidget(self.completed_table, 1)
@@ -502,6 +523,8 @@ class DeliveryCenterView(QWidget):
         self.refresh_btn.setEnabled(not loading)
         self.btn_change_deadline.setEnabled(not loading)
         self.btn_mark_delivered.setEnabled(not loading)
+        if hasattr(self, "btn_cancel_delivered"):
+            self.btn_cancel_delivered.setEnabled(not loading)
         if loading:
             self.updated_label.setText("Atualizando dados...")
             self.date_label.setText(_format_header_date())
@@ -525,6 +548,18 @@ class DeliveryCenterView(QWidget):
         current = _parse_datetime(payload.get("generated_at")) or local_now()
         self.date_label.setText(_format_header_date(current))
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
+
+        raw_reasons = payload.get("delivery_cancel_reasons") or []
+        self._delivery_cancel_reason_rows = [
+            {
+                "code": " ".join(str(item.get("code") or "").upper().split()),
+                "reason": " ".join(str(item.get("reason") or "").split()),
+            }
+            for item in raw_reasons
+            if isinstance(item, dict)
+            and str(item.get("code") or "").strip()
+            and str(item.get("reason") or "").strip()
+        ]
 
         raw_rows = payload.get("rows") or []
         rows = raw_rows if isinstance(raw_rows, list) else []
@@ -657,6 +692,18 @@ class DeliveryCenterView(QWidget):
             return None
         return self._row_by_id.get(int(req_id))
 
+    def _selected_completed_row(self) -> dict | None:
+        row_index = self.completed_table.currentRow()
+        if row_index < 0:
+            return None
+        item = self.completed_table.item(row_index, 0)
+        if item is None:
+            return None
+        req_id = item.data(Qt.ItemDataRole.UserRole)
+        if not req_id:
+            return None
+        return self._completed_row_by_id.get(int(req_id))
+
     def _open_row(self, row_index: int):
         item = self.table.item(row_index, 0)
         if item is None:
@@ -716,6 +763,27 @@ class DeliveryCenterView(QWidget):
             api.mark_delivery_delivered,
             int(row["id"]),
             success_message="Entrega registrada com sucesso.",
+        )
+
+    def _cancel_selected_delivered(self):
+        row = self._selected_completed_row()
+        if not row:
+            QMessageBox.information(self, "Entregas", "Selecione uma entrega realizada primeiro.")
+            return
+
+        if not row.get("delivered_at"):
+            QMessageBox.information(self, "Entregas", "Esta entrega ainda nao foi concluida.")
+            return
+
+        reason = self._ask_delivery_cancel_reason(row)
+        if not reason:
+            return
+
+        self._run_action(
+            api.cancel_delivery_delivered,
+            int(row["id"]),
+            reason,
+            success_message="Entrega cancelada e retornada para a agenda.",
         )
 
     def _run_action(self, fn, *args, success_message: str):
@@ -822,6 +890,84 @@ class DeliveryCenterView(QWidget):
             return None
         return new_date, reason
 
+    def _ask_delivery_cancel_reason(self, req: dict) -> str | None:
+        reasons = self._delivery_cancel_reason_rows
+        if not reasons:
+            QMessageBox.warning(
+                self,
+                "Entregas",
+                "Nao ha motivos de cancelamento de entrega configurados.\n"
+                "Cadastre em Configuracoes > Sistema.",
+            )
+            return None
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Cancelar Entrega")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(max(8, int(10 * self.scale)))
+
+        ped = str(req.get("ped_number") or "")
+        header = QLabel(f"Pedido PED #{ped}")
+        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        layout.addWidget(header)
+
+        info = QLabel("Selecione o motivo para cancelar a entrega e retornar para a agenda.")
+        info.setWordWrap(True)
+        info.setProperty("muted", "1")
+        info.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        layout.addWidget(info)
+
+        combo = QComboBox()
+        combo.setFixedHeight(max(34, int(38 * self.scale)))
+        combo.setStyleSheet(theme.input_style(self.scale))
+        for row in reasons:
+            code = str(row.get("code") or "").strip()
+            reason = str(row.get("reason") or "").strip()
+            combo.addItem(f"{code} - {reason}", reason)
+        layout.addWidget(combo)
+
+        error_lbl = QLabel("")
+        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setVisible(False)
+        layout.addWidget(error_lbl)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Fechar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok = QPushButton("Confirmar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_ok)
+        layout.addLayout(buttons)
+
+        def _confirm():
+            reason = str(combo.currentData() or "").strip()
+            if not reason:
+                error_lbl.setText("Selecione um motivo valido.")
+                error_lbl.setVisible(True)
+                return
+            dlg.setProperty("_reason", reason)
+            dlg.accept()
+
+        btn_ok.clicked.connect(_confirm)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        reason = str(dlg.property("_reason") or "").strip()
+        return reason or None
+
     def apply_theme(self) -> None:
         s = self.scale
         bg = theme.CONTENT_BG
@@ -834,6 +980,8 @@ class DeliveryCenterView(QWidget):
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_change_deadline.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_mark_delivered.setStyleSheet(_primary_action_btn_style(s))
+        if hasattr(self, "btn_cancel_delivered"):
+            self.btn_cancel_delivered.setStyleSheet(_flat_secondary_btn_style(s))
         self.error_label.setStyleSheet(
             f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
             f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"

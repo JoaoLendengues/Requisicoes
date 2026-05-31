@@ -342,6 +342,16 @@ def mark_delivery_delivered(req_id: int) -> dict:
         return _check(client.patch(f"/requisitions/{req_id}/mark-delivered"))
 
 
+def cancel_delivery_delivered(req_id: int, reason: str) -> dict:
+    with _cli() as client:
+        return _check(
+            client.patch(
+                f"/requisitions/{req_id}/cancel-delivered",
+                json={"reason": reason},
+            )
+        )
+
+
 def update_production_machine_status(machine_id: int, status: str) -> dict:
     with _cli() as client:
         return _check(

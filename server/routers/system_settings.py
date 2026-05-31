@@ -33,5 +33,10 @@ def update_operational_settings(
             if data.cancel_reasons is not None
             else None
         ),
+        delivery_cancel_reasons=(
+            [item.model_dump() for item in data.delivery_cancel_reasons]
+            if data.delivery_cancel_reasons is not None
+            else None
+        ),
     )
     return OperationalSettingsResponse(**saved)

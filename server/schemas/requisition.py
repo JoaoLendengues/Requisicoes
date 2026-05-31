@@ -135,6 +135,22 @@ class DeliveryDateUpdate(BaseModel):
         return value
 
 
+class DeliveryCancellationUpdate(BaseModel):
+    reason: str
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: object) -> str:
+        return normalize_upper_required(value)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        if len(value.strip()) < 3:
+            raise ValueError("Informe um motivo com pelo menos 3 caracteres")
+        return value
+
+
 class CanvasUpdate(BaseModel):
     json_data: str
 

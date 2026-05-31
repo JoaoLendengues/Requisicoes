@@ -47,7 +47,7 @@ from ..schemas.production import (
 )
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse, RequisitionListItem,
-    StatusUpdate, CanvasUpdate, DeliveryDateUpdate,
+    StatusUpdate, CanvasUpdate, DeliveryDateUpdate, DeliveryCancellationUpdate,
 )
 from ..dependencies import (
     get_current_user,
@@ -2462,6 +2462,72 @@ def mark_delivery_delivered(
         changed_by=current_user,
         changes={
             "delivered_at": delivered_at.isoformat(),
+        },
+    )
+
+    db.commit()
+    return _get_or_404(db, req_id)
+
+
+@router.patch("/{req_id}/cancel-delivered", response_model=RequisitionResponse)
+def cancel_delivery_delivered(
+    req_id: int,
+    data: DeliveryCancellationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_creator),
+):
+    req = _get_or_404(db, req_id)
+    if not req.entrega:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta requisição não está marcada como entrega",
+        )
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
+    if req.status == RequisitionStatus.CANCELADA:
+        raise HTTPException(
+            status_code=400,
+            detail="Não é possível reabrir a entrega de uma requisição cancelada",
+        )
+    if req.delivered_at is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta requisição não está com entrega concluída",
+        )
+
+    current_status = getattr(req.status, "value", req.status)
+    old_delivered_at = req.delivered_at
+    req.delivered_at = None
+    req.status = (
+        RequisitionStatus.PRAZO_ALTERADO
+        if req.delivery_deadline_changed_at is not None
+        else RequisitionStatus.FATURADO
+    )
+
+    note = f"Entrega cancelada e retornada para agenda. Motivo: {data.reason}"
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        old_status=current_status,
+        new_status=req.status,
+        changed_by_id=current_user.id,
+        note=note,
+    ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "delivered_at": {
+                "old": old_delivered_at.isoformat() if old_delivered_at else "",
+                "new": "",
+            },
+            "delivery_reopen_reason": data.reason,
+            "status": {
+                "old": current_status,
+                "new": getattr(req.status, "value", req.status),
+            },
         },
     )
 

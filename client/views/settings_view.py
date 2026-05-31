@@ -237,6 +237,7 @@ class SettingsView(QWidget):
         self._threads: list[tuple[QThread, QObject]] = []
         self._pending_save_context: dict | None = None
         self._cancel_reason_rows: list[dict[str, str]] = []
+        self._delivery_cancel_reason_rows: list[dict[str, str]] = []
         self._setup_ui()
         if session.settings_show_billing:
             self.refresh_operational_settings(silent=True)
@@ -724,6 +725,74 @@ class SettingsView(QWidget):
             cancel_vl.addWidget(cancel_hint)
             self._cancel_reasons_section.setVisible(session.settings_show_billing)
 
+            self._delivery_cancel_reasons_section = QWidget()
+            delivery_cancel_vl = QVBoxLayout(self._delivery_cancel_reasons_section)
+            delivery_cancel_vl.setContentsMargins(0, 0, 0, 0)
+            delivery_cancel_vl.setSpacing(max(8, int(10 * s)))
+            delivery_cancel_vl.addWidget(_section("Motivos de Cancelamento da Entrega", s))
+            delivery_cancel_vl.addWidget(_separator())
+
+            delivery_cancel_form_row = QHBoxLayout()
+            delivery_cancel_form_row.setSpacing(max(8, int(10 * s)))
+            delivery_cancel_form_row.addWidget(self._lbl("Codigo:", s))
+            self.input_delivery_cancel_reason_code = QLineEdit()
+            self.input_delivery_cancel_reason_code.setFixedHeight(max(38, int(44 * s)))
+            self.input_delivery_cancel_reason_code.setFixedWidth(max(110, int(130 * s)))
+            self.input_delivery_cancel_reason_code.setStyleSheet(_field_style(s))
+            self.input_delivery_cancel_reason_code.setPlaceholderText("E01")
+            delivery_cancel_form_row.addWidget(self.input_delivery_cancel_reason_code)
+            delivery_cancel_form_row.addWidget(self._lbl("Motivo:", s))
+            self.input_delivery_cancel_reason_text = QLineEdit()
+            self.input_delivery_cancel_reason_text.setFixedHeight(max(38, int(44 * s)))
+            self.input_delivery_cancel_reason_text.setStyleSheet(_field_style(s))
+            self.input_delivery_cancel_reason_text.setPlaceholderText("Descreva o motivo do cancelamento da entrega")
+            delivery_cancel_form_row.addWidget(self.input_delivery_cancel_reason_text, 1)
+            self._btn_add_delivery_cancel_reason = QPushButton("Adicionar / Atualizar")
+            self._btn_add_delivery_cancel_reason.setFixedHeight(max(38, int(44 * s)))
+            self._btn_add_delivery_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
+            self._btn_add_delivery_cancel_reason.clicked.connect(self._add_or_update_delivery_cancel_reason)
+            delivery_cancel_form_row.addWidget(self._btn_add_delivery_cancel_reason)
+            delivery_cancel_vl.addLayout(delivery_cancel_form_row)
+
+            delivery_cancel_actions_row = QHBoxLayout()
+            delivery_cancel_actions_row.setSpacing(max(8, int(10 * s)))
+            self._btn_remove_delivery_cancel_reason = QPushButton("Remover Selecionado")
+            self._btn_remove_delivery_cancel_reason.setFixedHeight(max(36, int(42 * s)))
+            self._btn_remove_delivery_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
+            self._btn_remove_delivery_cancel_reason.clicked.connect(self._remove_selected_delivery_cancel_reason)
+            delivery_cancel_actions_row.addWidget(self._btn_remove_delivery_cancel_reason)
+            self.delivery_cancel_reason_status = QLabel("Sincronizando motivos com o servidor...")
+            self.delivery_cancel_reason_status.setProperty("muted", "1")
+            self.delivery_cancel_reason_status.setStyleSheet(
+                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+            )
+            delivery_cancel_actions_row.addWidget(self.delivery_cancel_reason_status, 1)
+            delivery_cancel_vl.addLayout(delivery_cancel_actions_row)
+
+            self.delivery_cancel_reason_table = QTableWidget(0, 2)
+            apply_smooth_scroll(self.delivery_cancel_reason_table)
+            self.delivery_cancel_reason_table.setHorizontalHeaderLabels(["Codigo", "Motivo"])
+            self.delivery_cancel_reason_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            self.delivery_cancel_reason_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            self.delivery_cancel_reason_table.verticalHeader().setVisible(False)
+            self.delivery_cancel_reason_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+            self.delivery_cancel_reason_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+            self.delivery_cancel_reason_table.setAlternatingRowColors(True)
+            self.delivery_cancel_reason_table.setMinimumHeight(max(220, int(260 * s)))
+            self.delivery_cancel_reason_table.setStyleSheet(_table_style())
+            self.delivery_cancel_reason_table.itemSelectionChanged.connect(self._load_selected_delivery_cancel_reason)
+            delivery_cancel_vl.addWidget(self.delivery_cancel_reason_table)
+
+            delivery_cancel_hint = QLabel(
+                "Os motivos cadastrados aqui aparecem ao cancelar uma entrega concluida "
+                "na tela de Entregas."
+            )
+            delivery_cancel_hint.setWordWrap(True)
+            delivery_cancel_hint.setProperty("muted", "1")
+            delivery_cancel_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            delivery_cancel_vl.addWidget(delivery_cancel_hint)
+            self._delivery_cancel_reasons_section.setVisible(session.settings_show_billing)
+
             # ── Painel Técnico embarcado (admin) ─────────────────────────────
             # Migrado da antiga tela "Painel Técnico" da sidebar para cá.
             self._technical_panel = None
@@ -737,6 +806,7 @@ class SettingsView(QWidget):
             cancel_card_layout.setContentsMargins(*_cm)
             cancel_card_layout.setSpacing(_cs)
             cancel_card_layout.addWidget(self._cancel_reasons_section)
+            cancel_card_layout.addWidget(self._delivery_cancel_reasons_section)
 
             sis_page = QWidget()
             sis_page.setObjectName("settingsTabPage")
@@ -761,6 +831,7 @@ class SettingsView(QWidget):
             self._conn_section        = QWidget()
             self._billing_section     = QWidget()
             self._cancel_reasons_section = QWidget()
+            self._delivery_cancel_reasons_section = QWidget()
             self.input_url            = QLineEdit()
             self.btn_test             = QPushButton()
             self.lbl_conn_status      = QLabel()
@@ -773,6 +844,12 @@ class SettingsView(QWidget):
             self._btn_remove_cancel_reason = QPushButton()
             self.cancel_reason_status = QLabel()
             self.cancel_reason_table = QTableWidget(0, 2)
+            self.input_delivery_cancel_reason_code = QLineEdit()
+            self.input_delivery_cancel_reason_text = QLineEdit()
+            self._btn_add_delivery_cancel_reason = QPushButton()
+            self._btn_remove_delivery_cancel_reason = QPushButton()
+            self.delivery_cancel_reason_status = QLabel()
+            self.delivery_cancel_reason_table = QTableWidget(0, 2)
             # Atualizações do Sistema só aparece na aba Sistema (admin/gerente);
             # placeholders mantêm apply_theme e handlers seguros nos demais perfis.
             self._version_label       = QLabel()
@@ -1287,6 +1364,94 @@ class SettingsView(QWidget):
             f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
         )
 
+    def _populate_delivery_cancel_reason_table(self, rows: list[dict[str, str]]) -> None:
+        self._delivery_cancel_reason_rows = [dict(row) for row in rows]
+        self.delivery_cancel_reason_table.setRowCount(0)
+        for row_data in self._delivery_cancel_reason_rows:
+            row = self.delivery_cancel_reason_table.rowCount()
+            self.delivery_cancel_reason_table.insertRow(row)
+            self.delivery_cancel_reason_table.setItem(row, 0, QTableWidgetItem(str(row_data.get("code") or "")))
+            self.delivery_cancel_reason_table.setItem(row, 1, QTableWidgetItem(str(row_data.get("reason") or "")))
+        self.delivery_cancel_reason_status.setText(
+            f"{len(self._delivery_cancel_reason_rows)} motivo(s) de entrega carregado(s)."
+        )
+
+    def _collect_delivery_cancel_reasons(self) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        seen_codes: set[str] = set()
+        for row in range(self.delivery_cancel_reason_table.rowCount()):
+            code_item = self.delivery_cancel_reason_table.item(row, 0)
+            reason_item = self.delivery_cancel_reason_table.item(row, 1)
+            code = " ".join(str(code_item.text() if code_item else "").upper().split())
+            reason = " ".join(str(reason_item.text() if reason_item else "").split())
+            if not code or not reason:
+                continue
+            if code in seen_codes:
+                raise ValueError(f"O codigo {code} esta duplicado na lista de motivos de entrega.")
+            seen_codes.add(code)
+            rows.append({"code": code, "reason": reason})
+        return rows
+
+    def _load_selected_delivery_cancel_reason(self) -> None:
+        row = self.delivery_cancel_reason_table.currentRow()
+        if row < 0:
+            return
+        code_item = self.delivery_cancel_reason_table.item(row, 0)
+        reason_item = self.delivery_cancel_reason_table.item(row, 1)
+        self.input_delivery_cancel_reason_code.setText(str(code_item.text() if code_item else ""))
+        self.input_delivery_cancel_reason_text.setText(str(reason_item.text() if reason_item else ""))
+
+    def _add_or_update_delivery_cancel_reason(self) -> None:
+        code = " ".join(self.input_delivery_cancel_reason_code.text().upper().split())
+        reason = " ".join(self.input_delivery_cancel_reason_text.text().split())
+        if not code or not reason:
+            self.delivery_cancel_reason_status.setText("Informe codigo e motivo para salvar.")
+            self.delivery_cancel_reason_status.setStyleSheet(
+                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+            )
+            return
+
+        target_row = -1
+        for row in range(self.delivery_cancel_reason_table.rowCount()):
+            code_item = self.delivery_cancel_reason_table.item(row, 0)
+            if str(code_item.text() if code_item else "").upper() == code:
+                target_row = row
+                break
+
+        if target_row < 0:
+            target_row = self.delivery_cancel_reason_table.rowCount()
+            self.delivery_cancel_reason_table.insertRow(target_row)
+
+        self.delivery_cancel_reason_table.setItem(target_row, 0, QTableWidgetItem(code))
+        self.delivery_cancel_reason_table.setItem(target_row, 1, QTableWidgetItem(reason))
+        self.delivery_cancel_reason_table.selectRow(target_row)
+        self.input_delivery_cancel_reason_code.clear()
+        self.input_delivery_cancel_reason_text.clear()
+        self.delivery_cancel_reason_status.setText(
+            "Motivo de entrega pronto para salvar nas configuracoes."
+        )
+        self.delivery_cancel_reason_status.setStyleSheet(
+            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+        )
+
+    def _remove_selected_delivery_cancel_reason(self) -> None:
+        row = self.delivery_cancel_reason_table.currentRow()
+        if row < 0:
+            self.delivery_cancel_reason_status.setText("Selecione um motivo de entrega para remover.")
+            self.delivery_cancel_reason_status.setStyleSheet(
+                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+            )
+            return
+        self.delivery_cancel_reason_table.removeRow(row)
+        self.input_delivery_cancel_reason_code.clear()
+        self.input_delivery_cancel_reason_text.clear()
+        self.delivery_cancel_reason_status.setText(
+            "Motivo de entrega removido da lista local. Salve para confirmar."
+        )
+        self.delivery_cancel_reason_status.setStyleSheet(
+            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+        )
+
     def refresh_operational_settings(self, silent: bool = False):
         if not session.settings_show_billing:
             return
@@ -1328,6 +1493,16 @@ class SettingsView(QWidget):
                 if isinstance(item, dict)
             ]
             self._populate_cancel_reason_table(normalized_reasons)
+            delivery_cancel_reasons = data.get("delivery_cancel_reasons") or []
+            normalized_delivery_reasons = [
+                {
+                    "code": " ".join(str(item.get("code") or "").upper().split()),
+                    "reason": " ".join(str(item.get("reason") or "").split()),
+                }
+                for item in delivery_cancel_reasons
+                if isinstance(item, dict)
+            ]
+            self._populate_delivery_cancel_reason_table(normalized_delivery_reasons)
             self.operational_status.setText(
                 f"Prazo sincronizado com o servidor: {days} dia(s)."
             )
@@ -1643,6 +1818,7 @@ class SettingsView(QWidget):
             min_delivery_business_days = int(self.input_min_delivery_days.value())
             try:
                 cancel_reasons = self._collect_cancel_reasons()
+                delivery_cancel_reasons = self._collect_delivery_cancel_reasons()
             except ValueError as exc:
                 QMessageBox.warning(self, "Configurações", str(exc))
                 self.cancel_reason_status.setText(str(exc))
@@ -1667,6 +1843,7 @@ class SettingsView(QWidget):
                     "pending_invoice_alert_days": pending_invoice_alert_days,
                     "min_delivery_business_days": min_delivery_business_days,
                     "cancel_reasons": cancel_reasons,
+                    "delivery_cancel_reasons": delivery_cancel_reasons,
                 },
             )
         else:
@@ -1941,6 +2118,11 @@ class SettingsView(QWidget):
             self._btn_add_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
             self._btn_remove_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
             self.cancel_reason_table.setStyleSheet(_table_style())
+            self.input_delivery_cancel_reason_code.setStyleSheet(_field_style(s))
+            self.input_delivery_cancel_reason_text.setStyleSheet(_field_style(s))
+            self._btn_add_delivery_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
+            self._btn_remove_delivery_cancel_reason.setStyleSheet(_flat_secondary_btn_style(s))
+            self.delivery_cancel_reason_table.setStyleSheet(_table_style())
         self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
         self._input_pwd_current.setStyleSheet(_field_style(s))
         self._input_pwd_new.setStyleSheet(_field_style(s))
