@@ -1510,7 +1510,7 @@ class RequisitionForm(QWidget):
 
         date_from = PeriodDateEdit(ALL_DATES_SENTINEL)
         date_from.setMinimumDate(ALL_DATES_SENTINEL)
-        date_from.setDate(ALL_DATES_SENTINEL)
+        date_from.setDate(today_qdate)
         date_from.setSpecialValueText("Data inicial")
         date_from.setDisplayFormat("dd/MM/yyyy")
         date_from.setCalendarPopup(False)
@@ -1533,7 +1533,7 @@ class RequisitionForm(QWidget):
 
         date_to = PeriodDateEdit(ALL_DATES_SENTINEL)
         date_to.setMinimumDate(ALL_DATES_SENTINEL)
-        date_to.setDate(ALL_DATES_SENTINEL)
+        date_to.setDate(today_qdate)
         date_to.setSpecialValueText("Data final")
         date_to.setDisplayFormat("dd/MM/yyyy")
         date_to.setCalendarPopup(False)
