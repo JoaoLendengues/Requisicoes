@@ -335,7 +335,7 @@ def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False
     try:
         obj = json.loads(data)
     except (json.JSONDecodeError, TypeError):
-        return {"items": 0, "pdf": ""}
+        return {"items": 0, "pdf": "", "dwg": ""}
 
     count = 0
     for item_data in obj.get("items", []):
@@ -349,7 +349,9 @@ def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False
             scene.addItem(item)
             count += 1
 
-    return {"items": count, "pdf": obj.get("pdf", "")}
+    attachments = obj.get("attachments", {}) if isinstance(obj.get("attachments"), dict) else {}
+    dwg_path = str(obj.get("dwg") or attachments.get("dwg") or "")
+    return {"items": count, "pdf": obj.get("pdf", ""), "dwg": dwg_path}
 
 
 # ---------------------------------------------------------------------------
@@ -2337,6 +2339,7 @@ class DrawingCanvas(QWidget):
         self._undo_stack: list[QGraphicsItem] = []
         self._redo_stack: list[QGraphicsItem] = []
         self._attached_pdf: str = ""
+        self._attached_dwg: str = ""
         self._clipboard_signature = ""
         self._paste_serial = 0
         self._last_click_scene_pos: QPointF | None = None
@@ -2519,6 +2522,12 @@ class DrawingCanvas(QWidget):
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
 
+        btn_attachments = QPushButton("Anexos")
+        btn_attachments.setFixedHeight(fh)
+        btn_attachments.setToolTip("Anexar arquivo DWG")
+        btn_attachments.clicked.connect(self._attach_dwg)
+        btn_attachments.setStyleSheet(self._tool_btn_style())
+
         btn_dim = QPushButton("📏 MM")
         btn_dim.setFixedHeight(fh)
         btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
@@ -2536,6 +2545,7 @@ class DrawingCanvas(QWidget):
         )
         row2.addWidget(btn_img)
         row2.addWidget(btn_pdf)
+        row2.addWidget(btn_attachments)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
@@ -2601,6 +2611,29 @@ class DrawingCanvas(QWidget):
         pdf_layout.addWidget(btn_rm_pdf)
         self.pdf_panel.setVisible(False)
         layout.addWidget(self.pdf_panel)
+
+        # Painel de anexos (DWG)
+        self.attachment_panel = QFrame()
+        self.attachment_panel.setStyleSheet(
+            f"background:{theme.SELECTION_BG}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        attachment_layout = QHBoxLayout(self.attachment_panel)
+        attachment_layout.setContentsMargins(10, 6, 10, 6)
+        self.attachment_label = QLabel("Nenhum anexo DWG")
+        self.attachment_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
+        btn_open_attachment = QPushButton("Abrir")
+        btn_open_attachment.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_open_attachment.clicked.connect(self._open_dwg)
+        btn_rm_attachment = QPushButton("X")
+        btn_rm_attachment.setFixedWidth(28)
+        btn_rm_attachment.setStyleSheet(theme.danger_btn_style(self.scale))
+        btn_rm_attachment.clicked.connect(self._remove_dwg)
+        attachment_layout.addWidget(QLabel("Anexos"))
+        attachment_layout.addWidget(self.attachment_label, 1)
+        attachment_layout.addWidget(btn_open_attachment)
+        attachment_layout.addWidget(btn_rm_attachment)
+        self.attachment_panel.setVisible(False)
+        layout.addWidget(self.attachment_panel)
 
         self._set_tool(Tool.SELECT)
         self._setup_shortcuts()
@@ -3128,6 +3161,31 @@ class DrawingCanvas(QWidget):
         self.pdf_panel.setVisible(False)
         self.changed.emit()
 
+    # Anexos (DWG)
+    def _attach_dwg(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Selecionar anexo DWG",
+            "",
+            "Desenho CAD (*.dwg)",
+            options=QFileDialog.Option.DontUseNativeDialog,
+        )
+        if path:
+            self._attached_dwg = path
+            self.attachment_label.setText(os.path.basename(path))
+            self.attachment_panel.setVisible(True)
+            self.changed.emit()
+
+    def _open_dwg(self):
+        if self._attached_dwg and os.path.exists(self._attached_dwg):
+            import subprocess
+            subprocess.Popen(["start", "", self._attached_dwg], shell=True)
+
+    def _remove_dwg(self):
+        self._attached_dwg = ""
+        self.attachment_panel.setVisible(False)
+        self.changed.emit()
+
     # Limpar
     def _clear(self):
         self.scene.cancel_angle_mode()
@@ -3426,6 +3484,10 @@ class DrawingCanvas(QWidget):
             "version": 1,
             "items": items,
             "pdf": self._attached_pdf,
+            "dwg": self._attached_dwg,
+            "attachments": {
+                "dwg": self._attached_dwg,
+            },
         }, ensure_ascii=False)
 
     def from_json(self, data: str):
@@ -3435,9 +3497,16 @@ class DrawingCanvas(QWidget):
         except (json.JSONDecodeError, TypeError):
             return
         self._attached_pdf = obj.get("pdf", "")
+        attachments = obj.get("attachments", {}) if isinstance(obj.get("attachments"), dict) else {}
+        self._attached_dwg = str(obj.get("dwg") or attachments.get("dwg") or "")
+        self.pdf_panel.setVisible(False)
+        self.attachment_panel.setVisible(False)
         if self._attached_pdf:
             self.pdf_label.setText(os.path.basename(self._attached_pdf))
             self.pdf_panel.setVisible(True)
+        if self._attached_dwg:
+            self.attachment_label.setText(os.path.basename(self._attached_dwg))
+            self.attachment_panel.setVisible(True)
         load_canvas_scene(self.scene, data, selectable=True)
 
     def _item_to_dict(self, item: QGraphicsItem) -> dict | None:
@@ -3571,7 +3640,7 @@ class CanvasPreview(QGraphicsView):
         super().__init__(scene, parent)
         self.scale_factor = scale
         self._scene = scene
-        self._last_result = {"items": 0, "pdf": ""}
+        self._last_result = {"items": 0, "pdf": "", "dwg": ""}
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setStyleSheet(
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
@@ -3604,4 +3673,3 @@ class CanvasPreview(QGraphicsView):
         if rect.isNull():
             rect = QRectF(0, 0, 100, 80)
         self.fitInView(rect.adjusted(-10, -10, 10, 10), Qt.AspectRatioMode.KeepAspectRatio)
-

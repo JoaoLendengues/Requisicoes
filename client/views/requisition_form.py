@@ -2975,6 +2975,7 @@ class RequisitionForm(QWidget):
         self.canvas_preview.set_json(self._canvas_json)
         result = self.canvas_preview.last_result
         pdf_path = result.get("pdf") or ""
+        dwg_path = result.get("dwg") or ""
 
         if result.get("items"):
             self.lbl_canvas_info.setText("Prévia atual do desenho técnico.")
@@ -2995,9 +2996,17 @@ class RequisitionForm(QWidget):
 
         if result.get("items"):
             self.lbl_canvas_info.setText("🎨 Prévia atual do desenho técnico.")
+        elif pdf_path and dwg_path:
+            self.lbl_canvas_info.setText(
+                f"📎 Referências anexadas: PDF ({os.path.basename(pdf_path)}) | DWG ({os.path.basename(dwg_path)})"
+            )
         elif pdf_path:
             self.lbl_canvas_info.setText(
                 f"📎 Referência em PDF anexada: {os.path.basename(pdf_path)}"
+            )
+        elif dwg_path:
+            self.lbl_canvas_info.setText(
+                f"📎 Anexo DWG: {os.path.basename(dwg_path)}"
             )
         else:
             self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
