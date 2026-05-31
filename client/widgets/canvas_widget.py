@@ -884,29 +884,20 @@ class DrawingScene(QGraphicsScene):
                     self.cw.spin_font.blockSignals(False)
                 break
 
-        # Mostra alças de redimensionamento automaticamente ao selecionar no modo seleção.
-        if self.cw.tool == Tool.SELECT:
+        # Free Transform NÃO ativa automaticamente na seleção.
+        # Só deve aparecer quando o usuário acionar Ctrl+T.
+        if self._ft_active:
             selected_items = self.selectedItems()
             if selected_items:
                 self._ft_items = list(selected_items)
                 for item in self._ft_items:
                     item.setTransformOriginPoint(item.boundingRect().center())
-                self._ft_active = True
-                self._ft_is_rotating = False
-                self._ft_is_resizing = False
-                self._ft_resize_handle = ""
-                self._ft_lock_items()
             else:
-                self._ft_release_item_lock()
-                view = self._view()
-                if view and self._ft_prev_drag_mode is not None:
-                    view.setDragMode(self._ft_prev_drag_mode)
-                self._ft_prev_drag_mode = None
-                self._ft_active = False
-                self._ft_items = []
-                self._ft_is_rotating = False
-                self._ft_is_resizing = False
-                self._ft_resize_handle = ""
+                self._exit_ft()
+                return
+            self._ft_is_rotating = False
+            self._ft_is_resizing = False
+            self._ft_resize_handle = ""
             self.update()
 
     def _is_angle_marker(self, item: QGraphicsItem) -> bool:
@@ -3286,16 +3277,8 @@ class DrawingCanvas(QWidget):
         if tool == Tool.SELECT:
             self.view.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             self.view.setCursor(Qt.CursorShape.ArrowCursor)
-            if hasattr(self, "scene") and self.scene.selectedItems():
-                self.scene._ft_items = list(self.scene.selectedItems())
-                for item in self.scene._ft_items:
-                    item.setTransformOriginPoint(item.boundingRect().center())
-                self.scene._ft_active = True
-                self.scene._ft_is_rotating = False
-                self.scene._ft_is_resizing = False
-                self.scene._ft_resize_handle = ""
-                self.scene._ft_lock_items()
-                self.scene.update()
+            if hasattr(self, "scene") and self.scene._ft_active:
+                self.scene._exit_ft()
         elif tool == Tool.PEN:
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.view.setCursor(self._get_pen_dot_cursor())
