@@ -202,6 +202,16 @@ def _deserialize_path(path_data: dict) -> QPainterPath:
     return path
 
 
+def _to_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "sim"}
+    return False
+
+
 def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
     t = d.get("type")
     pen_d = d.get("pen", {})
@@ -257,9 +267,9 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setPen(pen)
         path_meta = {"type": "path"}
         if "is_3d_preset" in d:
-            path_meta["is_3d_preset"] = bool(d.get("is_3d_preset"))
+            path_meta["is_3d_preset"] = _to_bool(d.get("is_3d_preset"))
         if "ft_resize_locked" in d:
-            path_meta["ft_resize_locked"] = bool(d.get("ft_resize_locked"))
+            path_meta["ft_resize_locked"] = _to_bool(d.get("ft_resize_locked"))
         item.setData(0, path_meta)
 
     elif t == "text":
@@ -593,13 +603,13 @@ class DrawingScene(QGraphicsScene):
 
     def _is_3d_preset_item(self, item: QGraphicsItem) -> bool:
         meta = self._item_meta_dict(item)
-        return bool(meta.get("is_3d_preset"))
+        return meta.get("is_3d_preset") is True
 
     def _is_3d_resize_locked(self, item: QGraphicsItem) -> bool:
         if not self._is_3d_preset_item(item):
             return False
         meta = self._item_meta_dict(item)
-        return bool(meta.get("ft_resize_locked"))
+        return meta.get("ft_resize_locked") is True
 
     def _set_3d_resize_locked(self, item: QGraphicsItem, locked: bool):
         meta = self._item_meta_dict(item)
@@ -610,12 +620,23 @@ class DrawingScene(QGraphicsScene):
         item.setData(0, meta)
 
     def _ft_resize_allowed_for_current_selection(self) -> bool:
+        if not self._ft_items:
+            return True
+        # Regra especial apenas para presets 3D:
+        # se houver qualquer item NÃO-3D na seleção, mantém resize normal.
+        if any(not self._is_3d_preset_item(item) for item in self._ft_items):
+            return True
         for item in self._ft_items:
             if self._is_3d_resize_locked(item):
                 return False
         return True
 
     def _finalize_3d_resize_after_escape(self):
+        if not self._ft_items:
+            return
+        # Só finaliza/trava resize quando a seleção atual for 100% 3D preset.
+        if any(not self._is_3d_preset_item(item) for item in self._ft_items):
+            return
         changed = False
         for item in self._ft_items:
             if self._is_3d_preset_item(item) and not self._is_3d_resize_locked(item):
