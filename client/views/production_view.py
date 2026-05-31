@@ -1262,7 +1262,7 @@ class ProductionView(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(max(8, int(10 * self.scale)))
 
-        header = QLabel(f"MÃ¡quina: {str(machine.get('name') or '').strip() or '-'}")
+        header = QLabel(f"Máquina: {str(machine.get('name') or '').strip() or '-'}")
         header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
         header.setText(f"Maquina: {str(machine.get('name') or '').strip() or '-'}")
@@ -1354,7 +1354,7 @@ class ProductionView(QWidget):
 
         card = self._machine_cards.get(machine_id)
         if not card:
-            self._show_error("NÃ£o foi possÃ­vel localizar o card da mÃ¡quina selecionada.")
+            self._show_error("Não foi possível localizar o card da máquina selecionada.")
             return
 
         self._start_production(req, machine=dict(card.get("machine") or {}))
