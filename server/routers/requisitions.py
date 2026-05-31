@@ -2177,6 +2177,11 @@ def update_requisition(
         log_action(db, entity="requisition", entity_id=req.id, action="UPDATE",
                    changed_by=current_user, changes=changes)
 
+    # Avança a versão SEMPRE (mesmo quando só itens/canvas mudaram, que ficam em
+    # outras tabelas e não disparam o onupdate da linha). Garante que a trava
+    # otimista (P1.6) detecte qualquer gravação concorrente.
+    req.updated_at = datetime.utcnow()
+
     _commit_or_ped_conflict(db, ped_number)
     return _get_or_404(db, req_id)
 
