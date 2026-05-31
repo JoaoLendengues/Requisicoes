@@ -266,10 +266,16 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         item.setPen(pen)
         path_meta = {"type": "path"}
+        preset_name = str(d.get("preset_3d_name") or "").strip().lower()
+        if preset_name in {"quadrado", "retangulo", "triangulo", "prisma", "cilindro"}:
+            path_meta["preset_3d_name"] = preset_name
+            path_meta["is_3d_preset"] = True
         if "is_3d_preset" in d:
             path_meta["is_3d_preset"] = _to_bool(d.get("is_3d_preset"))
         if "ft_resize_locked" in d:
             path_meta["ft_resize_locked"] = _to_bool(d.get("ft_resize_locked"))
+        if path_meta.get("preset_3d_name") in {"quadrado", "retangulo", "triangulo", "prisma", "cilindro"}:
+            path_meta["is_3d_preset"] = True
         item.setData(0, path_meta)
 
     elif t == "text":
@@ -401,6 +407,8 @@ class HollowEllipseItem(QGraphicsEllipseItem):
 
 # Cena personalizada
 class DrawingScene(QGraphicsScene):
+    _PRESET_3D_NAMES = {"quadrado", "retangulo", "triangulo", "prisma", "cilindro"}
+
     def __init__(self, canvas_widget):
         super().__init__()
         self.cw = canvas_widget
@@ -603,7 +611,8 @@ class DrawingScene(QGraphicsScene):
 
     def _is_3d_preset_item(self, item: QGraphicsItem) -> bool:
         meta = self._item_meta_dict(item)
-        return meta.get("is_3d_preset") is True
+        preset_name = str(meta.get("preset_3d_name") or "").strip().lower()
+        return preset_name in self._PRESET_3D_NAMES
 
     def _is_3d_resize_locked(self, item: QGraphicsItem) -> bool:
         if not self._is_3d_preset_item(item):
@@ -613,9 +622,13 @@ class DrawingScene(QGraphicsScene):
 
     def _set_3d_resize_locked(self, item: QGraphicsItem, locked: bool):
         meta = self._item_meta_dict(item)
+        preset_name = str(meta.get("preset_3d_name") or "").strip().lower()
+        if preset_name not in self._PRESET_3D_NAMES:
+            return
         if not meta:
             meta = {"type": "path"}
         meta["is_3d_preset"] = True
+        meta["preset_3d_name"] = preset_name
         meta["ft_resize_locked"] = bool(locked)
         item.setData(0, meta)
 
@@ -3766,7 +3779,15 @@ class DrawingCanvas(QWidget):
         item = QGraphicsPathItem(path)
         item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         item.setPen(pen)
-        item.setData(0, {"type": "path", "is_3d_preset": True, "ft_resize_locked": False})
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "is_3d_preset": True,
+                "preset_3d_name": preset,
+                "ft_resize_locked": False,
+            },
+        )
         item.setPos(base)
         self.scene.clearSelection()
         self._add_preset_item(item)
@@ -4174,6 +4195,9 @@ class DrawingCanvas(QWidget):
                        "pos_x": item.pos().x(), "pos_y": item.pos().y(),
                        "pen": pen_data(item.pen()), "rotation": rot, "transform": transform_data}
             if isinstance(meta, dict):
+                preset_name = str(meta.get("preset_3d_name") or "").strip().lower()
+                if preset_name in {"quadrado", "retangulo", "triangulo", "prisma", "cilindro"}:
+                    payload["preset_3d_name"] = preset_name
                 if "is_3d_preset" in meta:
                     payload["is_3d_preset"] = bool(meta.get("is_3d_preset"))
                 if "ft_resize_locked" in meta:
