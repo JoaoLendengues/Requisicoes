@@ -456,6 +456,28 @@ class ClientSearchBox(QWidget):
                 return it
         return None
 
+    def _first_selectable_row(self) -> int:
+        for i in range(self._drop.count()):
+            it = self._drop.item(i)
+            if it and it.data(Qt.ItemDataRole.UserRole) is not None:
+                return i
+        return -1
+
+    def _next_selectable_row(self, start_row: int, step: int) -> int:
+        if self._drop.count() <= 0:
+            return -1
+        row = start_row
+        for _ in range(self._drop.count()):
+            row += step
+            if row < 0:
+                row = self._drop.count() - 1
+            elif row >= self._drop.count():
+                row = 0
+            it = self._drop.item(row)
+            if it and it.data(Qt.ItemDataRole.UserRole) is not None:
+                return row
+        return -1
+
     # ── Navegação por teclado ─────────────────────────────────────────────────
 
     def eventFilter(self, obj, event):
@@ -466,17 +488,25 @@ class ClientSearchBox(QWidget):
                 if key == Qt.Key.Key_Escape:
                     self._drop.hide()
                     return True
-                if key == Qt.Key.Key_Down and self._drop.isVisible():
-                    first = self._first_selectable()
-                    if first:
-                        self._drop.setFocus()
-                        self._drop.setCurrentItem(first)
+                if key in (Qt.Key.Key_Down, Qt.Key.Key_Up) and self._drop.isVisible():
+                    step = 1 if key == Qt.Key.Key_Down else -1
+                    current_row = self._drop.currentRow()
+                    if current_row < 0:
+                        target_row = self._first_selectable_row()
+                    else:
+                        target_row = self._next_selectable_row(current_row, step)
+                    if target_row >= 0:
+                        self._drop.setCurrentRow(target_row)
                     return True
                 if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     if self._drop.isVisible() and self._drop.count():
-                        first = self._first_selectable()
-                        if first:
-                            self._pick(first)
+                        cur = self._drop.currentItem()
+                        if cur and cur.data(Qt.ItemDataRole.UserRole) is not None:
+                            self._pick(cur)
+                        else:
+                            first = self._first_selectable()
+                            if first:
+                                self._pick(first)
                     return True
 
             elif obj is self._drop:
