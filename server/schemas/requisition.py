@@ -202,6 +202,8 @@ class RequisitionResponse(BaseModel):
     production_status: Optional[str] = None
     production_operator_names: List[str] = []
     production_operator_display: Optional[str] = None
+    production_helper_names: List[str] = []
+    production_helper_display: Optional[str] = None
     production_sent_at: Optional[datetime] = None
     production_finished_at: Optional[datetime] = None
     cancel_reason: Optional[str] = None
@@ -251,6 +253,8 @@ class RequisitionListItem(BaseModel):
     production_status: Optional[str] = None
     production_operator_names: List[str] = []
     production_operator_display: Optional[str] = None
+    production_helper_names: List[str] = []
+    production_helper_display: Optional[str] = None
     production_sent_at: Optional[datetime] = None
     production_finished_at: Optional[datetime] = None
     cancel_reason: Optional[str] = None

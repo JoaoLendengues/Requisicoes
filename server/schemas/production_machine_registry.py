@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from ..models.operator import OperatorRole
 from ..models.production_machine import MachineOperationalStatus
 from ..services.text_normalizer import normalize_upper_required
 
@@ -11,6 +12,7 @@ from ..services.text_normalizer import normalize_upper_required
 class OperatorResponse(BaseModel):
     id: int
     name: str
+    role: OperatorRole
     model_config = {"from_attributes": True}
 
 

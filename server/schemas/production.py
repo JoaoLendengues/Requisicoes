@@ -5,6 +5,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from ..models.operator import OperatorRole
 from ..models.production_machine import MachineOperationalStatus
 
 
@@ -25,10 +26,16 @@ class ProductionItemResponse(BaseModel):
     delivery_date: Optional[date] = None
     destination: Optional[str] = None
     machine_name: Optional[str] = None
-    operator_names: list[str] = []
+    operator_names: list[str] = Field(default_factory=list)
+    helper_names: list[str] = Field(default_factory=list)
     waiting_since: Optional[datetime] = None
     production_started_at: Optional[datetime] = None
-    operator_names: list[str] = Field(default_factory=list)
+
+
+class ProductionTeamMemberResponse(BaseModel):
+    id: int
+    name: str
+    role: OperatorRole
 
 
 class ProductionMachineCardResponse(BaseModel):
@@ -38,6 +45,7 @@ class ProductionMachineCardResponse(BaseModel):
     sort_order: int
     status: MachineOperationalStatus
     operators: list[str] = Field(default_factory=list)
+    team_members: list[ProductionTeamMemberResponse] = Field(default_factory=list)
     quantity_in_production: int
     finalized_count: int
     average_seconds: Optional[int] = None

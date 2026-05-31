@@ -46,6 +46,7 @@ COLS = [
     "PRODUÇÃO",
     "MÁQUINA",
     "OPERADOR",
+    "AJUDANTE",
     "MOTIVO DE CANCELAMENTO",
 ]
 
@@ -558,7 +559,7 @@ class HistoryView(QWidget):
 
         operator_col = QVBoxLayout()
         operator_col.setSpacing(max(6, int(8 * s)))
-        operator_label = QLabel("OPERADOR")
+        operator_label = QLabel("OPERADOR / AJUDANTE")
         operator_label.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
@@ -740,6 +741,7 @@ class HistoryView(QWidget):
         header_widget.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(10, QHeaderView.ResizeMode.Interactive)
         header_widget.setSectionResizeMode(11, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(12, QHeaderView.ResizeMode.Interactive)
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
@@ -751,7 +753,8 @@ class HistoryView(QWidget):
         self.table.setColumnWidth(8, max(150, int(170 * s)))
         self.table.setColumnWidth(9, max(180, int(210 * s)))
         self.table.setColumnWidth(10, max(170, int(210 * s)))
-        self.table.setColumnWidth(11, max(180, int(220 * s)))
+        self.table.setColumnWidth(11, max(170, int(210 * s)))
+        self.table.setColumnWidth(12, max(180, int(220 * s)))
         self.table.setSortingEnabled(True)
         self.table.setStyleSheet(
             f"QTableWidget {{"
@@ -852,7 +855,7 @@ class HistoryView(QWidget):
         self.combo_machine.blockSignals(False)
         self.combo_machine.setEnabled(False)
 
-    def _reset_operator_filter(self, placeholder: str = "Todos os operadores"):
+    def _reset_operator_filter(self, placeholder: str = "Todos os operadores e ajudantes"):
         self.combo_operator.blockSignals(True)
         self.combo_operator.clear()
         self.combo_operator.addItem(placeholder, "")
@@ -938,7 +941,7 @@ class HistoryView(QWidget):
     def _populate_operator_options(self, operators: object):
         self.combo_operator.blockSignals(True)
         self.combo_operator.clear()
-        self.combo_operator.addItem("Todos os operadores", "")
+        self.combo_operator.addItem("Todos os operadores e ajudantes", "")
         for operator in operators if isinstance(operators, list) else []:
             if not isinstance(operator, dict):
                 continue
@@ -1012,6 +1015,11 @@ class HistoryView(QWidget):
                 or ", ".join(req.get("production_operator_names") or [])
                 or "-"
             ),
+            str(
+                req.get("production_helper_display")
+                or ", ".join(req.get("production_helper_names") or [])
+                or "-"
+            ),
             str(req.get("cancel_reason") or "-"),
         ]
 
@@ -1047,7 +1055,7 @@ class HistoryView(QWidget):
                 cell.alignment = Alignment(horizontal="center", vertical="center")
             for req in self._reqs:
                 ws.append(self._row_values(req))
-            widths = [12, 32, 24, 12, 22, 22, 22, 18, 18, 18, 24, 30]
+            widths = [12, 32, 24, 12, 22, 22, 22, 18, 18, 18, 24, 24, 30]
             for i, width in enumerate(widths, start=1):
                 ws.column_dimensions[get_column_letter(i)].width = width
             ws.freeze_panes = "A2"

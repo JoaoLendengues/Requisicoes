@@ -52,6 +52,7 @@ def _prod_note(
     *,
     machine: str | None = None,
     operators: list[str] | None = None,
+    helpers: list[str] | None = None,
     reason: str | None = None,
 ) -> str:
     parts = ["PRODUCAO", action, destination]
@@ -59,6 +60,8 @@ def _prod_note(
         parts.append(f"machine={machine}")
     if operators:
         parts.append(f"operators={';'.join(operators)}")
+    if helpers:
+        parts.append(f"helpers={';'.join(helpers)}")
     if reason:
         parts.append(f"reason={reason}")
     return "|".join(parts)
@@ -183,6 +186,7 @@ def test_order_center_summary_includes_new_operational_columns():
                     _DESTINATION_AR,
                     machine="LASER 01",
                     operators=["ALICE", "BRUNO"],
+                    helpers=["CARLA"],
                 ),
                 3,
             ),
@@ -217,6 +221,7 @@ def test_order_center_summary_includes_new_operational_columns():
                     _DESTINATION_PINHEIRO,
                     machine="PRENSA 02",
                     operators=["JOAO"],
+                    helpers=["PEDRO"],
                 ),
                 5,
             ),
@@ -297,6 +302,7 @@ def test_order_center_summary_includes_new_operational_columns():
                     _DESTINATION_AR,
                     machine="DOBRA 03",
                     operators=["MARIA"],
+                    helpers=["LUCAS"],
                 ),
                 10,
             ),
@@ -324,6 +330,7 @@ def test_order_center_summary_includes_new_operational_columns():
     assert production_row.destination == _DESTINATION_AR
     assert production_row.machine_name == "LASER 01"
     assert production_row.operator_names == ["ALICE", "BRUNO"]
+    assert production_row.helper_names == ["CARLA"]
 
     finished_row = summary.faturados[0]
     assert finished_row.vendor_name == "RONNY"
@@ -332,6 +339,7 @@ def test_order_center_summary_includes_new_operational_columns():
     assert finished_row.finished_at == finished_at
     assert finished_row.machine_name == "PRENSA 02"
     assert finished_row.operator_names == ["JOAO"]
+    assert finished_row.helper_names == ["PEDRO"]
     assert finished_row.deadline_met is True
 
     canceled_row = summary.cancelados[0]
@@ -346,3 +354,4 @@ def test_order_center_summary_includes_new_operational_columns():
     assert delayed_row.destination == _DESTINATION_AR
     assert delayed_row.machine_name == "DOBRA 03"
     assert delayed_row.operator_names == ["MARIA"]
+    assert delayed_row.helper_names == ["LUCAS"]

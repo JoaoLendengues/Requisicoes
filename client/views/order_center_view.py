@@ -783,18 +783,18 @@ class OrderCenterView(QWidget):
     def _create_table_for_section(self, key: str) -> QTableWidget:
         headers_by_section = {
             "aguardando_recebimento": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "DATA ENVIO PARA PRODUÇÃO", "PRAZO", "AGUARDANDO RECEBIMENTO"],
-            "em_producao": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "RECEBIDO EM", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "PRAZO"],
-            "faturados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "FATURADO EM", "FINALIZADO EM", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "ATENDEU AO PRAZO"],
+            "em_producao": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "RECEBIDO EM", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "AJUDANTE", "PRAZO"],
+            "faturados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "FATURADO EM", "FINALIZADO EM", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "AJUDANTE", "ATENDEU AO PRAZO"],
             "cancelados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "CANCELADO EM", "MOTIVO DE CANCELAMENTO"],
-            "atrasados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "PRAZO ENTREGA", "ATRASO", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "STATUS"],
+            "atrasados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "PRAZO ENTREGA", "ATRASO", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "AJUDANTE", "STATUS"],
         }
 
         stretch_columns = {
             "aguardando_recebimento": {1, 2},
-            "em_producao": {1, 2, 7},
-            "faturados": {1, 2, 8},
+            "em_producao": {1, 2, 7, 8},
+            "faturados": {1, 2, 8, 9},
             "cancelados": {1, 2, 5},
-            "atrasados": {1, 2, 8},
+            "atrasados": {1, 2, 8, 9},
         }
 
         headers = headers_by_section[key]
@@ -822,8 +822,8 @@ class OrderCenterView(QWidget):
         header.setMinimumHeight(max(34, int(40 * s)))
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         if key == "atrasados":
-            header.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
-            table.setColumnWidth(9, max(180, int(210 * s)))
+            header.setSectionResizeMode(10, QHeaderView.ResizeMode.Interactive)
+            table.setColumnWidth(10, max(180, int(210 * s)))
             table.verticalHeader().setDefaultSectionSize(max(36, int(42 * s)))
 
         table.setSortingEnabled(True)
@@ -952,6 +952,11 @@ class OrderCenterView(QWidget):
                 for name in (row_data.get("operator_names") or [])
                 if str(name).strip()
             ) or "-"
+            helper_display = ", ".join(
+                str(name).strip()
+                for name in (row_data.get("helper_names") or [])
+                if str(name).strip()
+            ) or "-"
 
             if key == "aguardando_recebimento":
                 values = [
@@ -982,6 +987,7 @@ class OrderCenterView(QWidget):
                     str(row_data.get("destination") or "-"),
                     str(row_data.get("machine_name") or "-"),
                     operator_display,
+                    helper_display,
                     _format_date(row_data.get("delivery_date")),
                 ]
                 sort_keys = [
@@ -990,6 +996,7 @@ class OrderCenterView(QWidget):
                     None,
                     weight_sort,
                     str(row_data.get("received_at") or ""),
+                    None,
                     None,
                     None,
                     None,
@@ -1006,6 +1013,7 @@ class OrderCenterView(QWidget):
                     str(row_data.get("destination") or "-"),
                     str(row_data.get("machine_name") or "-"),
                     operator_display,
+                    helper_display,
                     _format_deadline_met(row_data.get("deadline_met")),
                 ]
                 sort_keys = [
@@ -1015,6 +1023,7 @@ class OrderCenterView(QWidget):
                     weight_sort,
                     str(row_data.get("invoiced_at") or ""),
                     str(row_data.get("finished_at") or ""),
+                    None,
                     None,
                     None,
                     None,
@@ -1048,6 +1057,7 @@ class OrderCenterView(QWidget):
                     str(row_data.get("destination") or "-"),
                     str(row_data.get("machine_name") or "-"),
                     operator_display,
+                    helper_display,
                     str(row_data.get("status") or "-"),
                 ]
                 sort_keys = [
@@ -1061,10 +1071,11 @@ class OrderCenterView(QWidget):
                     None,
                     None,
                     None,
+                    None,
                 ]
 
             for col, value in enumerate(values):
-                if key == "atrasados" and col == 9:
+                if key == "atrasados" and col == 10:
                     status = str(row_data.get("status") or "")
                     badge = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)

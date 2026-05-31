@@ -44,10 +44,12 @@ def _migrate():
         "ALTER TABLE requisitions ADD COLUMN delivered_at TIMESTAMP",
         "ALTER TABLE requisitions ADD COLUMN delivery_deadline_changed_at TIMESTAMP",
         "ALTER TABLE requisitions ADD COLUMN delivery_deadline_change_reason TEXT",
+        "ALTER TABLE operators ADD COLUMN role TEXT DEFAULT 'operador'",
         "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",
         "UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL",
         "UPDATE users SET role = 'industria' WHERE role = 'entrega'",
+        "UPDATE operators SET role = 'operador' WHERE role IS NULL OR TRIM(role) = ''",
         "UPDATE requisitions SET status = 'em_andamento' WHERE UPPER(status) IN "
         "('RASCUNHO','EMITIDA','RECEBIDA_PRODUCAO','PRONTA','EM_ROTA','AGUARDANDO_RETIRADA','CONCLUIDA')",
         "UPDATE requisitions SET status = 'em_producao' WHERE UPPER(status) = 'EM_FABRICACAO'",

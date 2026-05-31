@@ -11,6 +11,7 @@ import unicodedata
 from ..config import settings
 from ..database import get_db
 from ..models.client import Client
+from ..models.operator import OperatorRole
 from ..models.production_machine import ProductionMachine
 from ..models.requisition import (
     Requisition, RequisitionItem, CanvasData, StatusHistory, RequisitionStatus,
@@ -388,19 +389,22 @@ def _normalize_operator_name(value: object) -> str:
     return normalize_upper_required(value).replace("|", " ").replace(";", " ").strip()
 
 
-def _parse_operator_names(raw: object) -> list[str]:
-    if raw is None:
-        return []
-
+def _clean_operator_names(values: object) -> list[str]:
     names: list[str] = []
     seen: set[str] = set()
-    for part in str(raw).split(";"):
-        normalized = _normalize_operator_name(part)
+    for raw_name in values or []:
+        normalized = _normalize_operator_name(raw_name)
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
         names.append(normalized)
     return names
+
+
+def _parse_operator_names(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    return _clean_operator_names(str(raw).split(";"))
 
 
 def _parse_production_note(note: Optional[str]) -> dict | None:
@@ -417,6 +421,7 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
         "machine": "",
         "reason": "",
         "operators": [],
+        "helpers": [],
     }
 
     for raw_segment in parts[3:]:
@@ -436,6 +441,9 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
                 continue
             if normalized_key == "operators":
                 data["operators"] = _parse_operator_names(normalized_value)
+                continue
+            if normalized_key == "helpers":
+                data["helpers"] = _parse_operator_names(normalized_value)
                 continue
 
         if not data["machine"] and data["action"] in (
@@ -675,6 +683,7 @@ def _production_events(req: Requisition) -> list[dict]:
                 "machine": _normalize_machine_name(parsed.get("machine", "")),
                 "reason": parsed["reason"],
                 "operators": list(parsed.get("operators") or []),
+                "helpers": list(parsed.get("helpers") or []),
                 "changed_at": entry.changed_at,
             }
         )
@@ -734,33 +743,29 @@ def _history_production_machine(req: Requisition) -> str:
     return ""
 
 
-def _history_production_operator_names(req: Requisition) -> list[str]:
+def _history_production_names(req: Requisition, people_key: str) -> list[str]:
     if req.status == RequisitionStatus.EM_PRODUCAO:
         started_event = _latest_production_event(req, _PROD_STARTED, _PROD_RECEIVED)
-        operator_names = [
-            str(name).strip()
-            for name in ((started_event or {}).get("operators") or [])
-            if str(name).strip()
-        ]
-        if operator_names:
-            return operator_names
+        people_names = _clean_operator_names((started_event or {}).get(people_key) or [])
+        if people_names:
+            return people_names
 
     latest_cycle = _latest_finished_cycle(req)
     if latest_cycle:
-        operator_names = [
-            str(name).strip()
-            for name in (latest_cycle.get("operators") or [])
-            if str(name).strip()
-        ]
-        if operator_names:
-            return operator_names
+        people_names = _clean_operator_names(latest_cycle.get(people_key) or [])
+        if people_names:
+            return people_names
 
     started_event = _latest_production_event(req, _PROD_STARTED, _PROD_RECEIVED)
-    return [
-        str(name).strip()
-        for name in ((started_event or {}).get("operators") or [])
-        if str(name).strip()
-    ]
+    return _clean_operator_names((started_event or {}).get(people_key) or [])
+
+
+def _history_production_operator_names(req: Requisition) -> list[str]:
+    return _history_production_names(req, "operators")
+
+
+def _history_production_helper_names(req: Requisition) -> list[str]:
+    return _history_production_names(req, "helpers")
 
 
 def _history_production_sent_at(req: Requisition) -> datetime | None:
@@ -876,6 +881,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
     started_target: str | None = None
     started_machine: str | None = None
     started_operators: list[str] = []
+    started_helpers: list[str] = []
 
     for event in _production_events(req):
         changed_at = event["changed_at"]
@@ -891,6 +897,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
             started_target = target
             started_machine = machine
             started_operators = list(event.get("operators") or [])
+            started_helpers = list(event.get("helpers") or [])
             continue
 
         if action == _PROD_FINISHED:
@@ -902,6 +909,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
                         "target": started_target,
                         "machine": started_machine,
                         "operators": list(started_operators),
+                        "helpers": list(started_helpers),
                         "production_time_seconds": max(
                             0,
                             int((changed_at - started_at).total_seconds()),
@@ -912,6 +920,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
             started_target = None
             started_machine = None
             started_operators = []
+            started_helpers = []
             continue
 
         if action in (
@@ -924,6 +933,7 @@ def _all_finished_cycles(req: Requisition) -> list[dict]:
             started_target = None
             started_machine = None
             started_operators = []
+            started_helpers = []
 
     return cycles
 
@@ -998,6 +1008,7 @@ def _production_item(
     production_started_at: datetime | None = None,
     machine_name: str | None = None,
     operator_names: list[str] | None = None,
+    helper_names: list[str] | None = None,
 ) -> ProductionItemResponse:
     status_value = getattr(req.status, "value", req.status)
     return ProductionItemResponse(
@@ -1013,7 +1024,8 @@ def _production_item(
         delivery_date=req.delivery_date,
         destination=_current_production_destination(req) or None,
         machine_name=_normalize_machine_name(machine_name) or None,
-        operator_names=[str(name).strip() for name in (operator_names or []) if str(name).strip()],
+        operator_names=_clean_operator_names(operator_names or []),
+        helper_names=_clean_operator_names(helper_names or []),
         waiting_since=waiting_since,
         production_started_at=production_started_at,
     )
@@ -1074,6 +1086,7 @@ def _build_production_summary(
                     req,
                     machine_name=current_machine,
                     operator_names=(started_event or {}).get("operators") or [],
+                    helper_names=(started_event or {}).get("helpers") or [],
                     production_started_at=started_event["changed_at"] if started_event else None,
                 )
             )
@@ -1109,6 +1122,16 @@ def _build_production_summary(
                 status=machine.status,
                 operators=[
                     _normalize_operator_name(operator.name)
+                    for operator in (getattr(machine, "operators", None) or [])
+                    if _normalize_operator_name(operator.name)
+                ],
+                team_members=[
+                    {
+                        "id": int(operator.id),
+                        "name": _normalize_operator_name(operator.name),
+                        "role": getattr(getattr(operator, "role", None), "value", None)
+                        or OperatorRole.OPERADOR.value,
+                    }
                     for operator in (getattr(machine, "operators", None) or [])
                     if _normalize_operator_name(operator.name)
                 ],
@@ -1149,6 +1172,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         destination = _current_production_destination(req) or None
         machine_name = _history_production_machine(req) or None
         operator_names = _history_production_operator_names(req)
+        helper_names = _history_production_helper_names(req)
         weight_value = float(req.weight or 0.0)
         sent_event = _latest_production_event(req, _PROD_SEND)
         sent_to_production_at = sent_event["changed_at"] if sent_event else None
@@ -1203,6 +1227,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     received_at=received_event["changed_at"] if received_event else None,
                     machine_name=machine_name,
                     operator_names=operator_names,
+                    helper_names=helper_names,
                 )
             )
 
@@ -1222,6 +1247,11 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                 for name in (latest_finished.get("operators") or operator_names)
                 if str(name).strip()
             ]
+            cycle_helper_names = [
+                str(name).strip()
+                for name in (latest_finished.get("helpers") or helper_names)
+                if str(name).strip()
+            ]
             billed_rows.append(
                 OrderCenterItemResponse(
                     id=req.id,
@@ -1239,6 +1269,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     invoiced_at=invoiced_at,
                     machine_name=cycle_machine_name,
                     operator_names=cycle_operator_names,
+                    helper_names=cycle_helper_names,
                     production_time_seconds=latest_finished["production_time_seconds"],
                     deadline_met=_did_finish_on_time(latest_finished["finished_at"], req.delivery_date),
                 )
@@ -1278,6 +1309,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     destination=destination,
                     machine_name=machine_name,
                     operator_names=operator_names,
+                    helper_names=helper_names,
                     delay_days=max(0, (today - req.delivery_date).days),
                 )
             )
@@ -1876,7 +1908,10 @@ def list_requisitions(
             req for req in visible
             if any(
                 _normalize_text(name) == operator_key
-                for name in _history_production_operator_names(req)
+                for name in (
+                    _history_production_operator_names(req)
+                    + _history_production_helper_names(req)
+                )
             )
         ]
 
@@ -1899,8 +1934,11 @@ def list_requisitions(
             _history_production_machine(req) or None,
         )
         operator_names = _history_production_operator_names(req)
+        helper_names = _history_production_helper_names(req)
         setattr(req, "production_operator_names", operator_names)
         setattr(req, "production_operator_display", ", ".join(operator_names) or None)
+        setattr(req, "production_helper_names", helper_names)
+        setattr(req, "production_helper_display", ", ".join(helper_names) or None)
         setattr(req, "production_sent_at", _history_production_sent_at(req))
         setattr(req, "production_finished_at", _history_production_finished_at(req))
         setattr(req, "production_status", _history_production_status(req))
@@ -2119,6 +2157,18 @@ def get_requisition(
     req = _get_or_404(db, req_id)
     if not _can_view_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissão para visualizar esta requisição")
+    setattr(req, "production_destination_display", _current_production_destination(req) or None)
+    setattr(req, "production_machine_display", _history_production_machine(req) or None)
+    operator_names = _history_production_operator_names(req)
+    helper_names = _history_production_helper_names(req)
+    setattr(req, "production_operator_names", operator_names)
+    setattr(req, "production_operator_display", ", ".join(operator_names) or None)
+    setattr(req, "production_helper_names", helper_names)
+    setattr(req, "production_helper_display", ", ".join(helper_names) or None)
+    setattr(req, "production_sent_at", _history_production_sent_at(req))
+    setattr(req, "production_finished_at", _history_production_finished_at(req))
+    setattr(req, "production_status", _history_production_status(req))
+    setattr(req, "invoiced", req.status == RequisitionStatus.FATURADO)
     setattr(req, "cancel_reason", _cancel_reason_for(req))
     return req
 

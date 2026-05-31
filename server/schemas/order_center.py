@@ -33,6 +33,7 @@ class OrderCenterItemResponse(BaseModel):
     cancel_reason: Optional[str] = None
     machine_name: Optional[str] = None
     operator_names: list[str] = Field(default_factory=list)
+    helper_names: list[str] = Field(default_factory=list)
     delay_days: Optional[int] = None
     production_time_seconds: Optional[int] = None
     deadline_met: Optional[bool] = None

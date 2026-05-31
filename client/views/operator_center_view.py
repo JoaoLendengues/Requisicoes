@@ -4,6 +4,7 @@ from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -33,6 +34,19 @@ from .user_center_view import (
     _primary_action_btn_style,
     _rgba,
 )
+
+
+ROLE_OPTIONS = (
+    ("OPERADOR", "operador"),
+    ("AJUDANTE", "ajudante"),
+)
+
+
+def _role_label(value: object) -> str:
+    normalized = str(value or "").strip().casefold()
+    if normalized == "ajudante":
+        return "AJUDANTE"
+    return "OPERADOR"
 
 
 class OperatorCenterView(QWidget):
@@ -124,8 +138,8 @@ class OperatorCenterView(QWidget):
         hdr.addWidget(new_btn)
         lay.addLayout(hdr)
 
-        self.table = QTableWidget(0, 1)
-        self.table.setHorizontalHeaderLabels(["NOME"])
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["NOME", "FUNÇÃO"])
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -138,6 +152,7 @@ class OperatorCenterView(QWidget):
         self.table.itemSelectionChanged.connect(self._load_current_selection)
         head = self.table.horizontalHeader()
         head.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        head.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         head.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         self._apply_table_style()
@@ -152,11 +167,13 @@ class OperatorCenterView(QWidget):
                                max(16, int(20 * s)), max(14, int(18 * s)))
         lay.setSpacing(max(10, int(12 * s)))
 
-        title = QLabel("CADASTRO DE OPERADOR")
+        title = QLabel("CADASTRO DE OPERADOR / AJUDANTE")
         title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
         )
-        helper = QLabel("Nome único por operador. Use para controle de quem está operando cada máquina.")
+        helper = QLabel(
+            "Cadastre o nome e defina a função da pessoa na produção."
+        )
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
         helper.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
@@ -179,6 +196,17 @@ class OperatorCenterView(QWidget):
         bind_uppercase_line_edit(self.input_name)
         lay.addWidget(name_lbl)
         lay.addWidget(self.input_name)
+
+        role_lbl = QLabel("FUNÇÃO")
+        role_lbl.setProperty("muted", "1")
+        role_lbl.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        self.combo_role = QComboBox()
+        self.combo_role.setFixedHeight(max(38, int(44 * s)))
+        self.combo_role.setStyleSheet(_field_style(s))
+        for label, value in ROLE_OPTIONS:
+            self.combo_role.addItem(label, value)
+        lay.addWidget(role_lbl)
+        lay.addWidget(self.combo_role)
 
         actions = QHBoxLayout()
         actions.setSpacing(max(8, int(10 * s)))
@@ -216,16 +244,20 @@ class OperatorCenterView(QWidget):
         for op in self._operators:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            item = QTableWidgetItem(str(op.get("name") or "-"))
-            item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-            self.table.setItem(row, 0, item)
+            name_item = QTableWidgetItem(str(op.get("name") or "-"))
+            name_item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            self.table.setItem(row, 0, name_item)
+            role_item = QTableWidgetItem(_role_label(op.get("role")))
+            role_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row, 1, role_item)
         n = len(self._operators)
-        self.result_hint.setText(f"{n} operador(es).")
+        self.result_hint.setText(f"{n} cadastro(s).")
 
     def _prepare_new(self):
         self._selected_id = None
         self.form_status.setText("Novo operador")
         self.input_name.clear()
+        self.combo_role.setCurrentIndex(0)
         self.btn_delete.setEnabled(False)
         self.table.clearSelection()
 
@@ -243,6 +275,9 @@ class OperatorCenterView(QWidget):
         self._selected_id = int(op["id"])
         self.form_status.setText("Cadastro carregado")
         self.input_name.setText(str(op.get("name") or ""))
+        role_value = str(op.get("role") or "operador")
+        role_index = max(0, self.combo_role.findData(role_value))
+        self.combo_role.setCurrentIndex(role_index)
         self.btn_delete.setEnabled(True)
 
     def _save(self):
@@ -250,15 +285,16 @@ class OperatorCenterView(QWidget):
         if not name:
             QMessageBox.warning(self, "Operadores", "Informe o nome do operador.")
             return
+        role = str(self.combo_role.currentData() or "operador")
         if self._selected_id is None:
             self._run_action(
-                api.create_operator, {"name": name},
+                api.create_operator, {"name": name, "role": role},
                 on_result=lambda _: (self.refresh(), self._prepare_new()),
                 success_message="Operador cadastrado com sucesso.",
             )
         else:
             self._run_action(
-                api.update_operator, self._selected_id, {"name": name},
+                api.update_operator, self._selected_id, {"name": name, "role": role},
                 on_result=lambda _: (self.refresh(), self._prepare_new()),
                 success_message="Operador atualizado com sucesso.",
             )
@@ -347,6 +383,7 @@ class OperatorCenterView(QWidget):
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         self.input_name.setStyleSheet(_field_style(s))
+        self.combo_role.setStyleSheet(_field_style(s))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_delete.setStyleSheet(_danger_action_btn_style(s))
         self._apply_table_style()

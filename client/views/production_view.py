@@ -50,6 +50,12 @@ PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
 AR_DOBRA_SOURCE_MACHINE_NUMBERS = {1, 2, 3, 16}
+WORKER_ROLE_OPERADOR = "operador"
+WORKER_ROLE_AJUDANTE = "ajudante"
+WORKER_ROLE_LABELS = {
+    WORKER_ROLE_OPERADOR: "OPERADOR",
+    WORKER_ROLE_AJUDANTE: "AJUDANTE",
+}
 
 MACHINE_STATUS_OPTIONS = (
     ("funcionando", "Funcionando"),
@@ -243,6 +249,54 @@ def _sanitize_note_value(value: object) -> str:
     return " ".join(str(value or "").replace("|", " ").replace(";", " ").split()).strip()
 
 
+def _normalize_worker_role(value: object) -> str:
+    normalized = str(value or "").strip().casefold()
+    if normalized == WORKER_ROLE_AJUDANTE:
+        return WORKER_ROLE_AJUDANTE
+    return WORKER_ROLE_OPERADOR
+
+
+def _machine_team_members(machine: dict) -> list[dict[str, str]]:
+    members: list[dict[str, str]] = []
+    seen: set[str] = set()
+    raw_members = machine.get("team_members") or []
+    if isinstance(raw_members, list):
+        for raw_member in raw_members:
+            if not isinstance(raw_member, dict):
+                continue
+            name = _sanitize_note_value(raw_member.get("name"))
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            members.append(
+                {
+                    "name": name,
+                    "role": _normalize_worker_role(raw_member.get("role")),
+                }
+            )
+    if members:
+        return members
+
+    for raw_name in machine.get("operators") or []:
+        name = _sanitize_note_value(raw_name)
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        members.append({"name": name, "role": WORKER_ROLE_OPERADOR})
+    return members
+
+
+def _split_team_members(machine: dict) -> tuple[list[str], list[str]]:
+    operators: list[str] = []
+    helpers: list[str] = []
+    for member in _machine_team_members(machine):
+        if member["role"] == WORKER_ROLE_AJUDANTE:
+            helpers.append(member["name"])
+        else:
+            operators.append(member["name"])
+    return operators, helpers
+
+
 def _format_weight_kg(value: object) -> str:
     try:
         weight = float(value or 0)
@@ -256,6 +310,7 @@ def _build_production_note(
     machine: str = "",
     reason: str = "",
     operators: list[str] | None = None,
+    helpers: list[str] | None = None,
 ) -> str:
     parts = [PROD_NOTE_PREFIX, action, destination]
     if machine:
@@ -272,6 +327,16 @@ def _build_production_note(
         operator_names.append(normalized)
     if operator_names:
         parts.append(f"operators={';'.join(operator_names)}")
+    helper_names = []
+    seen_helpers: set[str] = set()
+    for raw_name in helpers or []:
+        normalized = _sanitize_note_value(raw_name)
+        if not normalized or normalized in seen_helpers:
+            continue
+        seen_helpers.add(normalized)
+        helper_names.append(normalized)
+    if helper_names:
+        parts.append(f"helpers={';'.join(helper_names)}")
     return "|".join(parts)
 
 
@@ -846,20 +911,23 @@ class ProductionView(QWidget):
         title.setStyleSheet(f"font-size:{max(9, int(11 * s))}pt; font-weight:800;")
         layout.addWidget(title)
 
-        operator_names = [
-            str(name or "").strip()
-            for name in (machine.get("operators") or [])
-            if str(name or "").strip()
-        ]
+        operator_names, helper_names = _split_team_members(machine)
         operator_summary = QLabel(
             "Operadores cadastrados: "
             + (", ".join(operator_names) if operator_names else "nenhum")
+            + "\nAjudantes cadastrados: "
+            + (", ".join(helper_names) if helper_names else "nenhum")
         )
         operator_summary.setWordWrap(True)
         operator_summary.setProperty("muted", "1")
         operator_summary.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
-        if operator_names:
-            operator_summary.setToolTip(", ".join(operator_names))
+        if operator_names or helper_names:
+            operator_summary.setToolTip(
+                "Operadores: "
+                + (", ".join(operator_names) if operator_names else "nenhum")
+                + "\nAjudantes: "
+                + (", ".join(helper_names) if helper_names else "nenhum")
+            )
         layout.addWidget(operator_summary)
 
         stats_grid = QGridLayout()
@@ -921,7 +989,10 @@ class ProductionView(QWidget):
         actions.addWidget(btn_cancel)
         layout.addLayout(actions)
 
-        table = self._build_table(["PED", "CLIENTE", "OPERADOR", "INICIADO EM", "PESO(kg)"], stretch_columns={1, 2})
+        table = self._build_table(
+            ["PED", "CLIENTE", "OPERADOR", "AJUDANTE", "INICIADO EM", "PESO(kg)"],
+            stretch_columns={1, 2, 3},
+        )
         table.setMinimumHeight(max(180, int(210 * s)))
         rows = [row for row in (machine.get("rows") or []) if isinstance(row, dict)]
         self._fill_machine_table(table, rows)
@@ -965,13 +1036,22 @@ class ProductionView(QWidget):
                 for name in (req.get("operator_names") or [])
                 if str(name or "").strip()
             ]
-            tooltip = ""
+            helper_names = [
+                str(name or "").strip()
+                for name in (req.get("helper_names") or [])
+                if str(name or "").strip()
+            ]
+            tooltip_lines: list[str] = []
             if operator_names:
-                tooltip = "Operadores: " + ", ".join(operator_names)
+                tooltip_lines.append("Operadores: " + ", ".join(operator_names))
+            if helper_names:
+                tooltip_lines.append("Ajudantes: " + ", ".join(helper_names))
+            tooltip = "\n".join(tooltip_lines)
             values = [
                 str(req.get("ped_number") or ""),
                 str(req.get("client_name") or "-"),
                 ", ".join(operator_names) if operator_names else "-",
+                ", ".join(helper_names) if helper_names else "-",
                 _format_elapsed(req.get("production_started_at")),
                 _format_weight_kg(req.get("weight")),
             ]
@@ -1389,8 +1469,8 @@ class ProductionView(QWidget):
             self._show_error("A máquina selecionada não possui um nome válido.")
             return
 
-        selected_operators = self._pick_machine_operators(machine)
-        if not selected_operators:
+        selected_team = self._pick_machine_operators(machine)
+        if not selected_team:
             return
 
         self._run_action(
@@ -1401,7 +1481,8 @@ class ProductionView(QWidget):
                 PROD_STARTED,
                 self.destination,
                 machine=machine_name,
-                operators=selected_operators,
+                operators=selected_team["operators"],
+                helpers=selected_team["helpers"],
             ),
             success_message=f"Requisição enviada para {machine_name}.",
         )
@@ -1470,17 +1551,15 @@ class ProductionView(QWidget):
         )
         for machine in machines:
             machine_name = str(machine.get("name") or "").strip()
-            operator_names = [
-                str(name or "").strip()
-                for name in (machine.get("operators") or [])
-                if str(name or "").strip()
-            ]
+            operator_names, helper_names = _split_team_members(machine)
             status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
-            operator_summary = ", ".join(operator_names) if operator_names else "Sem operadores cadastrados"
+            operator_summary = ", ".join(operator_names) if operator_names else "Nenhum operador cadastrado"
+            helper_summary = ", ".join(helper_names) if helper_names else "Nenhum ajudante cadastrado"
             btn = QPushButton(
                 f"{machine_name}\n"
                 f"Status: {status_label}\n"
-                f"Operadores: {operator_summary}"
+                f"Operadores: {operator_summary}\n"
+                f"Ajudantes: {helper_summary}"
             )
             btn.setMinimumHeight(max(78, int(92 * self.scale)))
             btn.setStyleSheet(btn_style)
@@ -1491,7 +1570,7 @@ class ProductionView(QWidget):
             if operator_names:
                 btn.setToolTip(f"Selecionar {machine_name}")
             else:
-                btn.setToolTip("Cadastre operadores para liberar esta maquina.")
+                btn.setToolTip("Cadastre pelo menos um operador para liberar esta maquina.")
             content_layout.addWidget(btn)
         content_layout.addStretch()
         layout.addWidget(scroll)
@@ -1514,21 +1593,18 @@ class ProductionView(QWidget):
         self._show_error("Nao foi possivel localizar a maquina selecionada.")
         return None
 
-    def _pick_machine_operators(self, machine: dict) -> list[str] | None:
-        operator_names = [
-            str(name or "").strip()
-            for name in (machine.get("operators") or [])
-            if str(name or "").strip()
-        ]
+    def _pick_machine_operators(self, machine: dict) -> dict[str, list[str]] | None:
+        team_members = _machine_team_members(machine)
+        operator_names = [member["name"] for member in team_members if member["role"] == WORKER_ROLE_OPERADOR]
         if not operator_names:
             self._show_error(
                 "Esta maquina nao possui operadores cadastrados.\n\n"
-                "Cadastre os operadores em Configuracoes > Cadastro de Maquinas."
+                "Cadastre a equipe em Configuracoes > Cadastro de Maquinas."
             )
             return None
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Selecionar operadores")
+        dlg.setWindowTitle("Selecionar equipe")
         dlg.setModal(True)
         dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         dlg.setStyleSheet(
@@ -1546,7 +1622,9 @@ class ProductionView(QWidget):
         header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
-        helper = QLabel("Marque quais operadores cadastrados nesta maquina irao trabalhar nesta requisicao.")
+        helper = QLabel(
+            "Marque quem vai trabalhar nesta requisicao. E obrigatorio selecionar pelo menos um operador."
+        )
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
         helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
@@ -1575,13 +1653,14 @@ class ProductionView(QWidget):
         content_layout.setContentsMargins(12, 10, 12, 10)
         content_layout.setSpacing(max(6, int(8 * self.scale)))
 
-        checkboxes: list[QCheckBox] = []
-        for name in operator_names:
-            checkbox = QCheckBox(name)
+        checkboxes: list[tuple[QCheckBox, str, str]] = []
+        for member in team_members:
+            role_label = WORKER_ROLE_LABELS.get(member["role"], "OPERADOR")
+            checkbox = QCheckBox(f"{member['name']} ({role_label})")
             checkbox.setChecked(True)
             checkbox.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
             content_layout.addWidget(checkbox)
-            checkboxes.append(checkbox)
+            checkboxes.append((checkbox, member["name"], member["role"]))
         content_layout.addStretch()
         layout.addWidget(scroll)
 
@@ -1601,23 +1680,50 @@ class ProductionView(QWidget):
         buttons.addWidget(btn_ok)
         layout.addLayout(buttons)
 
-        btn_all.clicked.connect(lambda: [checkbox.setChecked(True) for checkbox in checkboxes])
-        btn_none.clicked.connect(lambda: [checkbox.setChecked(False) for checkbox in checkboxes])
+        btn_all.clicked.connect(lambda: [checkbox.setChecked(True) for checkbox, _name, _role in checkboxes])
+        btn_none.clicked.connect(lambda: [checkbox.setChecked(False) for checkbox, _name, _role in checkboxes])
 
         def _confirm():
-            selected = [checkbox.text().strip() for checkbox in checkboxes if checkbox.isChecked()]
-            if not selected:
+            selected_operators = [
+                name
+                for checkbox, name, role in checkboxes
+                if checkbox.isChecked() and role == WORKER_ROLE_OPERADOR
+            ]
+            selected_helpers = [
+                name
+                for checkbox, name, role in checkboxes
+                if checkbox.isChecked() and role == WORKER_ROLE_AJUDANTE
+            ]
+            if not selected_operators:
                 error_lbl.setText("Selecione pelo menos um operador.")
                 error_lbl.setVisible(True)
                 return
-            dlg.setProperty("_operators", selected)
+            dlg.setProperty(
+                "_team_selection",
+                {
+                    "operators": selected_operators,
+                    "helpers": selected_helpers,
+                },
+            )
             dlg.accept()
 
         btn_ok.clicked.connect(_confirm)
 
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
-        return [str(name).strip() for name in (dlg.property("_operators") or []) if str(name).strip()]
+        selected_team = dlg.property("_team_selection") or {}
+        return {
+            "operators": [
+                str(name).strip()
+                for name in (selected_team.get("operators") or [])
+                if str(name).strip()
+            ],
+            "helpers": [
+                str(name).strip()
+                for name in (selected_team.get("helpers") or [])
+                if str(name).strip()
+            ],
+        }
 
     def _send_queue_selected_to_machine(self):
         req = self._selected_stage_row(WAITING_QUEUE_STAGE)
@@ -1695,8 +1801,8 @@ class ProductionView(QWidget):
             self._show_error("Nao foi possivel localizar a maquina de dobra selecionada.")
             return
 
-        selected_operators = self._pick_machine_operators(target_machine_data)
-        if not selected_operators:
+        selected_team = self._pick_machine_operators(target_machine_data)
+        if not selected_team:
             return
 
         self._run_action(
@@ -1704,11 +1810,11 @@ class ProductionView(QWidget):
             int(req["id"]),
             source_machine,
             target_machine,
-            selected_operators,
+            selected_team,
             success_message=f"Requisição enviada para dobra na máquina {target_machine}.",
         )
 
-    def _transfer_machine_requisition(self, req_id: int, source_machine: str, target_machine: str, selected_operators: list[str]):
+    def _transfer_machine_requisition(self, req_id: int, source_machine: str, target_machine: str, selected_team: dict[str, list[str]]):
         api.update_status(
             req_id,
             "aguardando_na_fila",
@@ -1721,7 +1827,8 @@ class ProductionView(QWidget):
                 PROD_STARTED,
                 self.destination,
                 machine=target_machine,
-                operators=selected_operators,
+                operators=selected_team.get("operators") or [],
+                helpers=selected_team.get("helpers") or [],
             ),
         )
 
