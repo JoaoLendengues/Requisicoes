@@ -40,6 +40,7 @@ class Tool(Enum):
     PEN      = "pen"
     ERASER   = "eraser"
     LINE     = "line"
+    ESQUADRO = "esquadro"
     ANGLE    = "angle"
     RULER    = "ruler"
     ARROW    = "arrow"
@@ -1202,11 +1203,17 @@ class DrawingScene(QGraphicsScene):
                 self.cw.changed.emit()
 
     def _constrain(self, start: QPointF, end: QPointF) -> QPointF:
+        return self._constrain_step(start, end, 45.0)
+
+    def _constrain_step(self, start: QPointF, end: QPointF, snap_step_degrees: float) -> QPointF:
         dx = end.x() - start.x()
         dy = end.y() - start.y()
+        if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+            return QPointF(end.x(), end.y())
+        step = max(0.1, float(snap_step_degrees))
         angle = math.degrees(math.atan2(dy, dx))
         dist  = math.hypot(dx, dy)
-        snap  = round(angle / 45) * 45
+        snap  = round(angle / step) * step
         rad   = math.radians(snap)
         return QPointF(start.x() + dist * math.cos(rad),
                        start.y() + dist * math.sin(rad))
@@ -2034,6 +2041,14 @@ class DrawingScene(QGraphicsScene):
                 self._start.x() + 0.01, self._start.y(), self._pen()
             )
 
+        elif tool == Tool.ESQUADRO:
+            self._start = QPointF(pos.x(), pos.y())
+            self._snap_points_cache = self._collect_snap_points()
+            self._preview_item = self.addLine(
+                self._start.x(), self._start.y(),
+                self._start.x() + 0.01, self._start.y(), self._pen()
+            )
+
         elif tool == Tool.RULER:
             self._update_ruler(self._start, self._start)
 
@@ -2203,6 +2218,19 @@ class DrawingScene(QGraphicsScene):
             if old_snap != self._snap_point:
                 self.update()
 
+        elif tool == Tool.ESQUADRO and self._preview_item:
+            snap = self._find_snap(pos, candidates=self._snap_points_cache)
+            old_snap = self._snap_point
+            if snap is not None:
+                end = snap
+                self._snap_point = snap
+            else:
+                end = self._constrain_step(self._start, pos, self.cw.esquadro_snap_degrees)
+                self._snap_point = None
+            self._preview_item.setLine(self._start.x(), self._start.y(), end.x(), end.y())
+            if old_snap != self._snap_point:
+                self.update()
+
         elif tool == Tool.RULER:
             end = self._constrain(self._start, pos) if shift else pos
             self._update_ruler(self._start, end)
@@ -2309,7 +2337,7 @@ class DrawingScene(QGraphicsScene):
             self._pen_shift_anchor = None
             self._pen_shift_base_path = None
 
-        elif tool in (Tool.LINE, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
+        elif tool in (Tool.LINE, Tool.ESQUADRO, Tool.RECT, Tool.ELLIPSE, Tool.ARROW) and self._preview_item:
             if tool == Tool.LINE:
                 snap = self._find_snap(pos, candidates=self._snap_points_cache)
                 if snap is not None:
@@ -2320,6 +2348,15 @@ class DrawingScene(QGraphicsScene):
                     end = pos
                 self._preview_item.setLine(self._start.x(), self._start.y(),
                                            end.x(), end.y())
+                self._snap_point = None
+                self.update()
+            elif tool == Tool.ESQUADRO:
+                snap = self._find_snap(pos, candidates=self._snap_points_cache)
+                if snap is not None:
+                    end = snap
+                else:
+                    end = self._constrain_step(self._start, pos, self.cw.esquadro_snap_degrees)
+                self._preview_item.setLine(self._start.x(), self._start.y(), end.x(), end.y())
                 self._snap_point = None
                 self.update()
             elif tool == Tool.ARROW:
@@ -2640,6 +2677,7 @@ class DrawingCanvas(QWidget):
         self.color      = "#000000"
         self.pen_width  = 2
         self.pen_style  = Qt.PenStyle.SolidLine
+        self.esquadro_snap_degrees = 45.0
         self.font_size  = 12
         self._undo_stack: list[QGraphicsItem] = []
         self._redo_stack: list[QGraphicsItem] = []
@@ -2683,6 +2721,7 @@ class DrawingCanvas(QWidget):
             (Tool.PEN,      "✏️ Caneta",   "P"),
             (Tool.ERASER,   "🧹 Borracha", "X"),
             (Tool.LINE,     "📏 Linha",    "L"),
+            (Tool.ESQUADRO, "📐 Esquadro", "Q"),
             (Tool.ANGLE,    "∠ Ângulo",    "U"),
             (Tool.ARROW,    "➡ Seta",      "A"),
             (Tool.CURVE,    "〰 Curva",    "C"),
@@ -2749,6 +2788,22 @@ class DrawingCanvas(QWidget):
         self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
         self.combo_style.currentIndexChanged.connect(self._on_pen_style_changed)
         row_props.addWidget(self.combo_style)
+
+        row_props.addSpacing(8)
+
+        row_props.addWidget(_lbl("Esq.:"))
+        self.combo_esquadro = QComboBox()
+        self.combo_esquadro.setFixedHeight(fh)
+        self.combo_esquadro.setFixedWidth(max(116, int(136 * s)))
+        self.combo_esquadro.addItem("90°", 90.0)
+        self.combo_esquadro.addItem("45°", 45.0)
+        self.combo_esquadro.addItem("30°/60°", 30.0)
+        self.combo_esquadro.addItem("15°", 15.0)
+        self.combo_esquadro.setCurrentIndex(1)
+        self.combo_esquadro.currentIndexChanged.connect(self._on_esquadro_snap_changed)
+        self.combo_esquadro.setToolTip("Passo angular da ferramenta Esquadro")
+        self.combo_esquadro.setEnabled(False)
+        row_props.addWidget(self.combo_esquadro)
 
         row_props.addSpacing(8)
 
@@ -2865,7 +2920,7 @@ class DrawingCanvas(QWidget):
 
         # Dica de teclado
         hint = QLabel(
-            "✨ Shift = traço reto  |  U = ângulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
+            "✨ Shift = traço reto  |  Q = esquadro (ângulo guiado)  |  U = ângulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
@@ -2965,6 +3020,7 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_P: Tool.PEN,
             Qt.Key.Key_X: Tool.ERASER,
             Qt.Key.Key_L: Tool.LINE,
+            Qt.Key.Key_Q: Tool.ESQUADRO,
             Qt.Key.Key_U: Tool.ANGLE,
             Qt.Key.Key_A: Tool.ARROW,
             Qt.Key.Key_C: Tool.CURVE,
@@ -3191,6 +3247,8 @@ class DrawingCanvas(QWidget):
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
+        if hasattr(self, "combo_esquadro"):
+            self.combo_esquadro.setEnabled(tool == Tool.ESQUADRO)
         if tool == Tool.SELECT:
             self.view.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             self.view.setCursor(Qt.CursorShape.ArrowCursor)
@@ -3431,6 +3489,13 @@ class DrawingCanvas(QWidget):
             item.setPen(pen)
 
         self.changed.emit()
+
+    def _on_esquadro_snap_changed(self, index: int):
+        value = self.combo_esquadro.itemData(index)
+        try:
+            self.esquadro_snap_degrees = max(0.1, float(value))
+        except (TypeError, ValueError):
+            self.esquadro_snap_degrees = 45.0
 
     def _pick_color(self):
         color = QColorDialog.getColor(
