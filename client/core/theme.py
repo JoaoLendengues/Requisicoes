@@ -168,7 +168,7 @@ _DARK: dict = {
 # ── STATUS_LABELS (igual em ambos os modos) ───────────────────────────────────
 
 STATUS_LABELS: dict = {
-    "em_andamento":           "Em Andamento",
+    "em_andamento":           "Rascunho",
     "prazo_alterado":         "Prazo Alterado",
     "entregue":               "Entregue",
     "aguardando_recebimento": "Aguardando Recebimento",

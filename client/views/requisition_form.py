@@ -1299,17 +1299,155 @@ class RequisitionForm(QWidget):
         if not req_id:
             QMessageBox.warning(self, "PED", "PED não encontrado.")
             return
+        self._load_requisition_by_id(req_id)
 
-        # A listagem é enxuta (sem itens/desenho/assinatura); busca o registro
-        # completo antes de popular o formulário.
+    def _load_requisition_by_id(self, req_id: int) -> None:
+        """Busca o registro COMPLETO (a listagem é enxuta) e popula o formulário."""
         read_only = session.should_open_requisition_read_only("history")
         thread, worker = _run_in_thread(
             api.get_requisition,
             req_id,
             on_result=lambda full, ro=read_only: self.load_requisition(full, read_only=ro),
-            on_error=lambda msg: QMessageBox.critical(self, "PED", msg),
+            on_error=lambda msg: QMessageBox.critical(self, "Requisição", msg),
         )
         self._threads.append((thread, worker))
+
+    def _open_requisition_search(self) -> None:
+        """Abre uma janela de busca de requisições (cliente, obra ou nº do
+        pedido). O vendedor vê as próprias; admin/gerente veem todas. Clicar em
+        um resultado reabre a requisição no formulário."""
+        if self.has_unsaved_data():
+            if not ask_confirmation(
+                self,
+                "Buscar requisição",
+                "Há dados no formulário atual que serão substituídos ao abrir "
+                "outra requisição.\n\nDeseja continuar?",
+                yes_text="Sim",
+                no_text="Não",
+            ):
+                return
+
+        s = self.scale
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Buscar requisição")
+        dialog.setModal(True)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dialog.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.BORDER_COLOR}; border-radius:10px; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+        dialog.setMinimumWidth(max(440, int(540 * s)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(8)
+
+        lbl = QLabel("Pesquise por cliente, obra ou número do pedido:")
+        lbl.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
+        layout.addWidget(lbl)
+
+        search = QLineEdit()
+        search.setPlaceholderText("Ex.: nome do cliente, obra ou 123456")
+        search.setStyleSheet(theme.input_style(s))
+        search.setMinimumHeight(max(30, int(36 * s)))
+        layout.addWidget(search)
+
+        results = QListWidget()
+        results.setStyleSheet(theme.input_style(s))
+        results.setMinimumHeight(max(220, int(280 * s)))
+        layout.addWidget(results, 1)
+
+        hint = QLabel("Digite ao menos 2 caracteres para buscar.")
+        hint.setProperty("muted", "1")
+        hint.setStyleSheet(f"font-size:{max(7, int(9 * s))}pt;")
+        layout.addWidget(hint)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
+        buttons.addStretch()
+        btn_open = QPushButton("Abrir")
+        btn_open.setStyleSheet(theme.primary_btn_style(s))
+        btn_close = QPushButton("Fechar")
+        btn_close.setStyleSheet(theme.secondary_btn_style(s))
+        buttons.addWidget(btn_open)
+        buttons.addWidget(btn_close)
+        layout.addLayout(buttons)
+
+        state = {"counter": 0}
+        timer = QTimer(dialog)
+        timer.setSingleShot(True)
+        timer.setInterval(350)
+
+        def _render(data):
+            results.clear()
+            items = data if isinstance(data, list) else []
+            if not items:
+                hint.setText("Nenhuma requisição encontrada.")
+                return
+            hint.setText(f"{len(items)} resultado(s). Dê duplo clique para abrir.")
+            for r in items:
+                ped = str(r.get("ped_number") or "?")
+                cli = str(r.get("client_name") or r.get("client_id") or "")
+                obra = str(r.get("obra") or "").strip()
+                status = theme.STATUS_LABELS.get(str(r.get("status") or ""), "")
+                raw = str(r.get("emission_date") or r.get("created_at") or "")[:10]
+                dt = f"{raw[8:10]}/{raw[5:7]}/{raw[0:4]}" if len(raw) == 10 and raw[4] == "-" else ""
+                label = f"PED #{ped}  ·  {cli}"
+                if obra:
+                    label += f"  ·  {obra}"
+                if status:
+                    label += f"   [{status}]"
+                if dt:
+                    label += f"  ·  {dt}"
+                it = QListWidgetItem(label)
+                it.setData(Qt.ItemDataRole.UserRole, int(r.get("id") or 0))
+                results.addItem(it)
+
+        def _do_search():
+            term = search.text().strip()
+            if len(term) < 2:
+                results.clear()
+                hint.setText("Digite ao menos 2 caracteres para buscar.")
+                return
+            state["counter"] += 1
+            sid = state["counter"]
+            hint.setText("Buscando...")
+
+            def _on_result(data, _sid=sid):
+                if _sid != state["counter"]:
+                    return  # resultado obsoleto — ignora
+                _render(data)
+
+            thread, worker = _run_in_thread(
+                api.list_requisitions,
+                search=term,
+                limit=50,
+                on_result=_on_result,
+                on_error=lambda msg: hint.setText(f"Erro na busca: {msg}"),
+            )
+            self._threads.append((thread, worker))
+
+        def _open_selected():
+            it = results.currentItem()
+            if it is None:
+                hint.setText("Selecione uma requisição na lista.")
+                return
+            req_id = int(it.data(Qt.ItemDataRole.UserRole) or 0)
+            if not req_id:
+                return
+            dialog.accept()
+            self._load_requisition_by_id(req_id)
+
+        timer.timeout.connect(_do_search)
+        search.textChanged.connect(lambda _t: timer.start())
+        search.returnPressed.connect(_do_search)
+        results.itemDoubleClicked.connect(lambda _it: _open_selected())
+        btn_open.clicked.connect(_open_selected)
+        btn_close.clicked.connect(dialog.reject)
+
+        search.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        dialog.exec()
 
     def _shortcut_set_delivery(self) -> None:
         if hasattr(self, "chk_entrega") and self.chk_entrega.isEnabled():
@@ -1406,20 +1544,38 @@ class RequisitionForm(QWidget):
         ped_col.addWidget(self.input_ped)
         layout.addLayout(ped_col)
 
-        # Botão ? — abre o guia rápido desta tela
+        # Coluna de ações redondas: "?" (guia) em cima, lupa (buscar) embaixo
         sz_g = max(24, int(28 * s))
+        _round_btn_style = (
+            f"QPushButton {{"
+            f"  font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"  color:{theme.TEXT_MEDIUM}; background:transparent;"
+            f"  border:1px solid {theme.BORDER_COLOR};"
+            f"  border-radius:{sz_g // 2}px; padding:0;"
+            f"}}"
+            f"QPushButton:hover {{ color:{theme.PRIMARY}; border-color:{theme.PRIMARY}; }}"
+        )
+
         self.btn_guide = QPushButton("?")
         self.btn_guide.setToolTip("Abrir guia rápido")
         self.btn_guide.setFixedSize(sz_g, sz_g)
-        self.btn_guide.setStyleSheet(
-            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
-            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
-            f"border:1px solid {theme.BORDER_COLOR};"
-            f"border-radius:{sz_g // 2}px; padding:0;"
-            f"QPushButton:hover {{ color:{theme.PRIMARY}; border-color:{theme.PRIMARY}; }}"
-        )
+        self.btn_guide.setStyleSheet(_round_btn_style)
         self.btn_guide.clicked.connect(self.guide_requested)
-        layout.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
+
+        # Lupa — busca de requisições (por cliente, obra ou nº do pedido)
+        self.btn_search_req = QPushButton("🔍")
+        self.btn_search_req.setToolTip("Buscar requisição (cliente, obra ou nº do pedido)")
+        self.btn_search_req.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_search_req.setFixedSize(sz_g, sz_g)
+        self.btn_search_req.setStyleSheet(_round_btn_style)
+        self.btn_search_req.clicked.connect(self._open_requisition_search)
+
+        actions_col = QVBoxLayout()
+        actions_col.setSpacing(max(4, int(6 * s)))
+        actions_col.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignHCenter)
+        actions_col.addWidget(self.btn_search_req, 0, Qt.AlignmentFlag.AlignHCenter)
+        actions_col.addStretch()
+        layout.addLayout(actions_col)
 
         return card
 
