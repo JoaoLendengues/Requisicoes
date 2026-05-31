@@ -61,6 +61,43 @@ _DEFAULTS = {
         {"code": "CE034", "reason": "Divergencia de informacoes do pedido"},
         {"code": "CE035", "reason": "Entrega unificada com outro pedido"},
     ],
+    "delivery_deadline_change_reasons": [
+        {"code": "AP001", "reason": "Cliente solicitou alteracao da data"},
+        {"code": "AP002", "reason": "Cliente nao disponivel na data programada"},
+        {"code": "AP003", "reason": "Alteracao no pedido pelo cliente"},
+        {"code": "AP004", "reason": "Inclusao de itens no pedido"},
+        {"code": "AP005", "reason": "Mudanca de endereco de entrega"},
+        {"code": "AP006", "reason": "Aguardando confirmacao do cliente"},
+        {"code": "AP007", "reason": "Producao em atraso"},
+        {"code": "AP008", "reason": "Necessidade de retrabalho na producao"},
+        {"code": "AP009", "reason": "Material em falta"},
+        {"code": "AP010", "reason": "Aguardando materia-prima"},
+        {"code": "AP011", "reason": "Equipamento de producao em manutencao"},
+        {"code": "AP012", "reason": "Capacidade produtiva comprometida"},
+        {"code": "AP013", "reason": "Priorizacao de pedidos urgentes"},
+        {"code": "AP014", "reason": "Ajustes tecnicos no produto"},
+        {"code": "AP015", "reason": "Necessidade de aprovacao interna"},
+        {"code": "AP016", "reason": "Veiculo indisponivel"},
+        {"code": "AP017", "reason": "Problema mecanico no transporte"},
+        {"code": "AP018", "reason": "Reorganizacao da rota de entrega"},
+        {"code": "AP019", "reason": "Excesso de entregas programadas"},
+        {"code": "AP020", "reason": "Falta de motorista"},
+        {"code": "AP021", "reason": "Condicoes climaticas adversas"},
+        {"code": "AP022", "reason": "Bloqueios ou interdicoes na rota"},
+        {"code": "AP023", "reason": "Problemas operacionais na logistica"},
+        {"code": "AP024", "reason": "Aguardando documentacao"},
+        {"code": "AP025", "reason": "Divergencia de informacoes do pedido"},
+        {"code": "AP026", "reason": "Erro de programacao da entrega"},
+        {"code": "AP027", "reason": "Necessidade de conferencia adicional"},
+        {"code": "AP028", "reason": "Falha no sistema"},
+        {"code": "AP029", "reason": "Solicitacao da gerencia"},
+        {"code": "AP030", "reason": "Replanejamento operacional"},
+        {"code": "AP031", "reason": "Aguardando liberacao financeira"},
+        {"code": "AP032", "reason": "Integracao com outro pedido"},
+        {"code": "AP033", "reason": "Necessidade de carga complementar"},
+        {"code": "AP034", "reason": "Ajuste de cronograma da obra"},
+        {"code": "AP035", "reason": "Solicitacao do responsavel pela obra"},
+    ],
 }
 
 
@@ -126,6 +163,31 @@ def _sanitize_delivery_cancel_reasons(value: object) -> list[dict[str, str]]:
     return ordered
 
 
+def _sanitize_delivery_deadline_change_reasons(value: object) -> list[dict[str, str]]:
+    raw_items = (
+        value if isinstance(value, list) else _DEFAULTS["delivery_deadline_change_reasons"]
+    )
+    custom_by_code: dict[str, str] = {}
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        code = " ".join(str(item.get("code") or "").upper().split())
+        reason = " ".join(str(item.get("reason") or "").split())
+        if code and reason:
+            custom_by_code[code] = reason
+
+    ordered: list[dict[str, str]] = []
+    for default_item in _DEFAULTS["delivery_deadline_change_reasons"]:
+        code = str(default_item.get("code") or "").strip().upper()
+        if not code:
+            continue
+        reason = custom_by_code.get(code) or str(default_item.get("reason") or "").strip()
+        if not reason:
+            continue
+        ordered.append({"code": code, "reason": reason})
+    return ordered
+
+
 def load_operational_settings() -> dict:
     data = dict(_DEFAULTS)
     try:
@@ -145,6 +207,12 @@ def load_operational_settings() -> dict:
     data["delivery_cancel_reasons"] = _sanitize_delivery_cancel_reasons(
         raw.get("delivery_cancel_reasons", data["delivery_cancel_reasons"])
     )
+    data["delivery_deadline_change_reasons"] = _sanitize_delivery_deadline_change_reasons(
+        raw.get(
+            "delivery_deadline_change_reasons",
+            data["delivery_deadline_change_reasons"],
+        )
+    )
     return data
 
 
@@ -154,6 +222,7 @@ def save_operational_settings(
     min_delivery_business_days: int | None = None,
     cancel_reasons: list[dict[str, str]] | None = None,
     delivery_cancel_reasons: list[dict[str, str]] | None = None,
+    delivery_deadline_change_reasons: list[dict[str, str]] | None = None,
 ) -> dict:
     """Atualiza apenas os campos informados, preservando os demais."""
     data = load_operational_settings()
@@ -170,6 +239,10 @@ def save_operational_settings(
     if delivery_cancel_reasons is not None:
         data["delivery_cancel_reasons"] = _sanitize_delivery_cancel_reasons(
             delivery_cancel_reasons
+        )
+    if delivery_deadline_change_reasons is not None:
+        data["delivery_deadline_change_reasons"] = _sanitize_delivery_deadline_change_reasons(
+            delivery_deadline_change_reasons
         )
     _SETTINGS_FILE.write_text(
         json.dumps(data, indent=2, ensure_ascii=False),

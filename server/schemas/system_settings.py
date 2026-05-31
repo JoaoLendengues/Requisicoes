@@ -21,6 +21,7 @@ class OperationalSettingsResponse(BaseModel):
     min_delivery_business_days: int = Field(default=0, ge=0, le=365)
     cancel_reasons: list[CancelReasonItem] = Field(default_factory=list)
     delivery_cancel_reasons: list[CancelReasonItem] = Field(default_factory=list)
+    delivery_deadline_change_reasons: list[CancelReasonItem] = Field(default_factory=list)
 
 
 class OperationalSettingsUpdate(BaseModel):
@@ -28,3 +29,4 @@ class OperationalSettingsUpdate(BaseModel):
     min_delivery_business_days: int | None = Field(default=None, ge=0, le=365)
     cancel_reasons: list[CancelReasonItem] | None = None
     delivery_cancel_reasons: list[CancelReasonItem] | None = None
+    delivery_deadline_change_reasons: list[CancelReasonItem] | None = None

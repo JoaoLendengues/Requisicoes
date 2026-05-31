@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QTableWidget,
     QTableWidgetItem,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
     QDialog,
@@ -136,6 +135,11 @@ class DeliveryCenterWorker(QObject):
                     if isinstance(settings, dict)
                     else []
                 )
+                payload["delivery_deadline_change_reasons"] = (
+                    settings.get("delivery_deadline_change_reasons")
+                    if isinstance(settings, dict)
+                    else []
+                )
             self.result.emit(payload)
         except api.APIError as exc:
             self.error.emit(exc.detail)
@@ -156,6 +160,7 @@ class DeliveryCenterView(QWidget):
         self._pending_rows: list[dict] = []
         self._completed_rows: list[dict] = []
         self._delivery_cancel_reason_rows: list[dict[str, str]] = []
+        self._delivery_deadline_reason_rows: list[dict[str, str]] = []
         self._row_by_id: dict[int, dict] = {}
         self._completed_row_by_id: dict[int, dict] = {}
         self._metric_labels: dict[str, QLabel] = {}
@@ -560,6 +565,17 @@ class DeliveryCenterView(QWidget):
             and str(item.get("code") or "").strip()
             and str(item.get("reason") or "").strip()
         ]
+        raw_deadline_reasons = payload.get("delivery_deadline_change_reasons") or []
+        self._delivery_deadline_reason_rows = [
+            {
+                "code": " ".join(str(item.get("code") or "").upper().split()),
+                "reason": " ".join(str(item.get("reason") or "").split()),
+            }
+            for item in raw_deadline_reasons
+            if isinstance(item, dict)
+            and str(item.get("code") or "").strip()
+            and str(item.get("reason") or "").strip()
+        ]
 
         raw_rows = payload.get("rows") or []
         rows = raw_rows if isinstance(raw_rows, list) else []
@@ -844,14 +860,27 @@ class DeliveryCenterView(QWidget):
             date_edit.setDate(QDate(current.year, current.month, current.day))
         layout.addWidget(date_edit)
 
+        reasons = self._delivery_deadline_reason_rows
+        if not reasons:
+            QMessageBox.warning(
+                self,
+                "Entregas",
+                "Nao ha motivos de alteracao de prazo configurados.\n"
+                "Cadastre em Configuracoes > Sistema.",
+            )
+            return None
+
         lbl_reason = QLabel("Motivo da alteracao:")
         layout.addWidget(lbl_reason)
 
-        input_reason = QTextEdit()
-        input_reason.setPlaceholderText("Descreva o motivo da alteracao do prazo...")
-        input_reason.setMinimumHeight(max(96, int(120 * self.scale)))
-        input_reason.setStyleSheet(theme.input_style(self.scale))
-        layout.addWidget(input_reason)
+        reason_combo = QComboBox()
+        reason_combo.setFixedHeight(max(34, int(38 * self.scale)))
+        reason_combo.setStyleSheet(theme.input_style(self.scale))
+        for row in reasons:
+            code = str(row.get("code") or "").strip()
+            reason = str(row.get("reason") or "").strip()
+            reason_combo.addItem(f"{code} - {reason}", reason)
+        layout.addWidget(reason_combo)
 
         error_lbl = QLabel("")
         error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
@@ -870,9 +899,9 @@ class DeliveryCenterView(QWidget):
         layout.addLayout(buttons)
 
         def _confirm():
-            normalized = " ".join(input_reason.toPlainText().split())
-            if len(normalized) < 5:
-                error_lbl.setText("Informe um motivo com pelo menos 5 caracteres.")
+            normalized = " ".join(str(reason_combo.currentData() or "").split())
+            if len(normalized) < 3:
+                error_lbl.setText("Selecione um motivo valido.")
                 error_lbl.setVisible(True)
                 return
             dlg.setProperty("_new_date", date_edit.date().toString("yyyy-MM-dd"))
