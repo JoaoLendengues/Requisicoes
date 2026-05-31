@@ -144,8 +144,10 @@ class DeliveryCenterView(QWidget):
         super().__init__(parent)
         self.scale = scale
         self._threads: list[tuple[QThread, QObject]] = []
-        self._rows: list[dict] = []
+        self._pending_rows: list[dict] = []
+        self._completed_rows: list[dict] = []
         self._row_by_id: dict[int, dict] = {}
+        self._completed_row_by_id: dict[int, dict] = {}
         self._metric_labels: dict[str, QLabel] = {}
         self._setup_ui()
 
@@ -302,9 +304,47 @@ class DeliveryCenterView(QWidget):
 
         card_layout.addLayout(title_row)
 
-        self.table = self._create_table()
+        self.table = self._create_table(self._open_row)
         card_layout.addWidget(self.table, 1)
         content_layout.addWidget(table_card, 1)
+
+        completed_card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
+        completed_layout = QVBoxLayout(completed_card)
+        completed_layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                            max(16, int(20 * s)), max(14, int(18 * s)))
+        completed_layout.setSpacing(max(10, int(12 * s)))
+
+        completed_accent = QFrame()
+        completed_accent.setFixedHeight(max(4, int(5 * s)))
+        completed_accent.setStyleSheet(
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(theme.SUCCESS, 235)}, stop:0.5 {_rgba(theme.SUCCESS, 155)}, stop:1 {_rgba(theme.SUCCESS, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+        completed_layout.addWidget(completed_accent)
+
+        completed_title = QLabel("Entregas Realizadas")
+        completed_title.setStyleSheet(
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
+        )
+        completed_subtitle = QLabel("Pedidos com entrega concluida.")
+        completed_subtitle.setWordWrap(True)
+        completed_subtitle.setProperty("muted", "1")
+        completed_subtitle.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
+        )
+        completed_layout.addWidget(completed_title)
+        completed_layout.addWidget(completed_subtitle)
+
+        self.completed_table = self._create_table(self._open_completed_row)
+        completed_layout.addWidget(self.completed_table, 1)
+        content_layout.addWidget(completed_card, 1)
         content_layout.addStretch()
 
     def _build_metric_card(
@@ -365,7 +405,7 @@ class DeliveryCenterView(QWidget):
         self._metric_labels[key] = value
         return card
 
-    def _create_table(self) -> QTableWidget:
+    def _create_table(self, open_handler=None) -> QTableWidget:
         headers = [
             "PEDIDO",
             "CLIENTE",
@@ -386,7 +426,8 @@ class DeliveryCenterView(QWidget):
         table.setFrameShape(QFrame.Shape.NoFrame)
         table.setShowGrid(False)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.doubleClicked.connect(lambda index: self._open_row(index.row()))
+        if open_handler is not None:
+            table.doubleClicked.connect(lambda index, handler=open_handler: handler(index.row()))
 
         header = table.horizontalHeader()
         stretch_columns = {1, 2, 6}
@@ -485,30 +526,56 @@ class DeliveryCenterView(QWidget):
         self.date_label.setText(_format_header_date(current))
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
-        rows = payload.get("rows") or []
-        self._rows = rows if isinstance(rows, list) else []
+        raw_rows = payload.get("rows") or []
+        rows = raw_rows if isinstance(raw_rows, list) else []
+        self._pending_rows = [row for row in rows if isinstance(row, dict) and not row.get("delivered_at")]
+        self._completed_rows = [row for row in rows if isinstance(row, dict) and row.get("delivered_at")]
         self._row_by_id = {}
-        self._fill_table()
+        self._completed_row_by_id = {}
+        self._fill_table(
+            self.table,
+            self._pending_rows,
+            self._row_by_id,
+            "Nenhuma entrega pendente na agenda.",
+            sort_column=5,
+            sort_order=Qt.SortOrder.AscendingOrder,
+        )
+        self._fill_table(
+            self.completed_table,
+            self._completed_rows,
+            self._completed_row_by_id,
+            "Nenhuma entrega realizada ainda.",
+            sort_column=8,
+            sort_order=Qt.SortOrder.DescendingOrder,
+        )
 
-    def _fill_table(self):
-        self.table.clearSpans()
-        self.table.setRowCount(0)
+    def _fill_table(
+        self,
+        table: QTableWidget,
+        rows: list[dict],
+        row_map: dict[int, dict],
+        empty_message: str,
+        sort_column: int,
+        sort_order: Qt.SortOrder,
+    ):
+        table.clearSpans()
+        table.setRowCount(0)
 
-        if not self._rows:
-            self._set_empty_message("Nenhuma entrega encontrada.")
+        if not rows:
+            self._set_empty_message(table, empty_message)
             return
 
-        self.table.setSortingEnabled(False)
-        for row_data in self._rows:
+        table.setSortingEnabled(False)
+        for row_data in rows:
             if not isinstance(row_data, dict):
                 continue
 
-            row = self.table.rowCount()
-            self.table.insertRow(row)
+            row = table.rowCount()
+            table.insertRow(row)
 
             req_id = int(row_data.get("id") or 0)
             if req_id:
-                self._row_by_id[req_id] = row_data
+                row_map[req_id] = row_data
 
             ped_raw = row_data.get("ped_number")
             try:
@@ -548,7 +615,7 @@ class DeliveryCenterView(QWidget):
                 if col == 7:
                     hidden_item = SortableItem(value, sort_key=status)
                     hidden_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.table.setItem(row, col, hidden_item)
+                    table.setItem(row, col, hidden_item)
 
                     badge = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -557,7 +624,7 @@ class DeliveryCenterView(QWidget):
                         f"background:{_rgba(color, 30)}; color:{color}; border-radius:999px;"
                         f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
-                    self.table.setCellWidget(row, col, badge)
+                    table.setCellWidget(row, col, badge)
                     continue
 
                 sk = sort_keys[col] if col < len(sort_keys) else None
@@ -565,18 +632,18 @@ class DeliveryCenterView(QWidget):
                 if col == 0 and req_id:
                     item.setData(Qt.ItemDataRole.UserRole, req_id)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(row, col, item)
+                table.setItem(row, col, item)
 
-        self.table.setSortingEnabled(True)
-        self.table.sortByColumn(5, Qt.SortOrder.AscendingOrder)
+        table.setSortingEnabled(True)
+        table.sortByColumn(sort_column, sort_order)
 
-    def _set_empty_message(self, message: str):
-        self.table.setRowCount(1)
-        self.table.setSpan(0, 0, 1, self.table.columnCount())
+    def _set_empty_message(self, table: QTableWidget, message: str):
+        table.setRowCount(1)
+        table.setSpan(0, 0, 1, table.columnCount())
         item = QTableWidgetItem(message)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         item.setForeground(QColor(theme.TEXT_MEDIUM))
-        self.table.setItem(0, 0, item)
+        table.setItem(0, 0, item)
 
     def _selected_row(self) -> dict | None:
         row_index = self.table.currentRow()
@@ -592,6 +659,14 @@ class DeliveryCenterView(QWidget):
 
     def _open_row(self, row_index: int):
         item = self.table.item(row_index, 0)
+        if item is None:
+            return
+        req_id = item.data(Qt.ItemDataRole.UserRole)
+        if req_id:
+            self.open_requisition.emit(int(req_id))
+
+    def _open_completed_row(self, row_index: int):
+        item = self.completed_table.item(row_index, 0)
         if item is None:
             return
         req_id = item.data(Qt.ItemDataRole.UserRole)
@@ -765,4 +840,5 @@ class DeliveryCenterView(QWidget):
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         self._apply_table_style(self.table)
+        self._apply_table_style(self.completed_table)
 
