@@ -2722,6 +2722,24 @@ class DrawingCanvas(QWidget):
         manual_dimension_action.triggered.connect(self._trigger_manual_dimension_shortcut)
         self.addAction(manual_dimension_action)
 
+        scale_up_action = QAction(self)
+        scale_up_action.setShortcut(QKeySequence("Ctrl++"))
+        scale_up_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        scale_up_action.triggered.connect(lambda: self._scale_selected_items(1.10))
+        self.addAction(scale_up_action)
+
+        scale_up_alt_action = QAction(self)
+        scale_up_alt_action.setShortcut(QKeySequence("Ctrl+="))
+        scale_up_alt_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        scale_up_alt_action.triggered.connect(lambda: self._scale_selected_items(1.10))
+        self.addAction(scale_up_alt_action)
+
+        scale_down_action = QAction(self)
+        scale_down_action.setShortcut(QKeySequence("Ctrl+-"))
+        scale_down_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        scale_down_action.triggered.connect(lambda: self._scale_selected_items(1.0 / 1.10))
+        self.addAction(scale_down_action)
+
     def _trigger_manual_dimension_shortcut(self):
         if not self.isVisible():
             return
@@ -3196,10 +3214,10 @@ class DrawingCanvas(QWidget):
     # 3D pre-definido
     def _open_3d_preset_popup(self):
         options = [
-            "circulo",
             "quadrado",
             "retangulo",
             "triangulo",
+            "prisma",
             "cilindro",
         ]
         selected, ok = QInputDialog.getItem(
@@ -3234,6 +3252,17 @@ class DrawingCanvas(QWidget):
         item.setSelected(True)
         self._undo_stack.append(item)
 
+    def _scale_selected_items(self, factor: float):
+        selected = self.scene.selectedItems()
+        if not selected:
+            return
+        for item in selected:
+            current_scale = float(item.scale())
+            new_scale = max(0.10, min(20.0, current_scale * factor))
+            item.setTransformOriginPoint(item.boundingRect().center())
+            item.setScale(new_scale)
+        self.changed.emit()
+
     def _insert_3d_preset(self, preset: str):
         base = self._base_insert_pos()
         pen = self._new_current_pen()
@@ -3250,14 +3279,8 @@ class DrawingCanvas(QWidget):
         def _offset(points: list[QPointF], dx: float, dy: float) -> list[QPointF]:
             return [QPointF(pt.x() + dx, pt.y() + dy) for pt in points]
 
-        if preset == "circulo":
-            # Esfera estilizada (contorno + paralelos/meridiano)
-            r = 72.0
-            path.addEllipse(QRectF(-r, -r, 2 * r, 2 * r))
-            path.addEllipse(QRectF(-r, -r * 0.30, 2 * r, r * 0.60))
-            path.addEllipse(QRectF(-r * 0.35, -r, r * 0.70, 2 * r))
-        elif preset == "quadrado":
-            # Cubo isométrico
+        if preset == "quadrado":
+            # Cubo isometrico
             side = 130.0
             dx, dy = 48.0, -38.0
             front = [
@@ -3273,7 +3296,7 @@ class DrawingCanvas(QWidget):
                 path.moveTo(front[i])
                 path.lineTo(back[i])
         elif preset == "retangulo":
-            # Paralelepípedo
+            # Paralelepipedo
             w, h = 190.0, 110.0
             dx, dy = 56.0, -40.0
             front = [
@@ -3301,8 +3324,23 @@ class DrawingCanvas(QWidget):
             for i in range(3):
                 path.moveTo(front[i])
                 path.lineTo(back[i])
+        elif preset == "prisma":
+            # Prisma pentagonal
+            front = [
+                QPointF(0.0, -96.0),
+                QPointF(88.0, -30.0),
+                QPointF(56.0, 74.0),
+                QPointF(-56.0, 74.0),
+                QPointF(-88.0, -30.0),
+            ]
+            back = _offset(front, 48.0, -34.0)
+            _draw_polygon(front)
+            _draw_polygon(back)
+            for i in range(5):
+                path.moveTo(front[i])
+                path.lineTo(back[i])
         elif preset == "cilindro":
-            # Cilindro completo em um único item
+            # Cilindro completo em um unico item
             w = 176.0
             ellipse_h = 46.0
             body_h = 132.0
@@ -3314,8 +3352,6 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(-w / 2, bottom_y))
             path.moveTo(QPointF(w / 2, top_y))
             path.lineTo(QPointF(w / 2, bottom_y))
-            # Elipse interna no topo para reforçar leitura 3D
-            path.addEllipse(QRectF(-w * 0.43, top_y - ellipse_h * 0.22, w * 0.86, ellipse_h * 0.44))
         else:
             return
 
