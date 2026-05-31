@@ -1,4 +1,4 @@
-﻿"""Tela de entregas com indicadores, agenda e aÃ§Ãµes operacionais."""
+"""Tela de entregas com indicadores, agenda e ações operacionais."""
 
 from __future__ import annotations
 

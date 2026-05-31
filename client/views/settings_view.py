@@ -1,4 +1,4 @@
-﻿import os
+import os
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QScrollArea,
@@ -58,7 +58,7 @@ def _make_card(
 
 
 def _section(title: str, scale: float) -> QLabel:
-    cleaned = title.lstrip("âš™ï¸ðŸŒðŸŽ¨ðŸ“¥ðŸ“¦ ").strip()
+    cleaned = title.lstrip("⚙️🌐🎨📥📦 ").strip()
     lbl = QLabel(cleaned)
     lbl.setStyleSheet(
         f"font-size:{max(10,int(12*scale))}pt; font-weight:800; padding-top:4px;"
@@ -116,9 +116,9 @@ def _field_style(scale: float) -> str:
 
 
 def _spinbox_style(scale: float) -> str:
-    """Estilo completo para QSpinBox: campo + botÃµes arredondados + setas finas."""
+    """Estilo completo para QSpinBox: campo + botões arredondados + setas finas."""
     fs   = max(9, int(10 * scale))
-    bw   = max(20, int(24 * scale))   # largura dos botÃµes up/down
+    bw   = max(20, int(24 * scale))   # largura dos botões up/down
     aw   = max(7,  int(9  * scale))   # tamanho das setas
     return (
         f"QSpinBox {{"
@@ -255,15 +255,15 @@ class SettingsView(QWidget):
                                        max(18, int(24 * s)), 0)
         root_layout.setSpacing(0)
 
-        # â”€â”€ CabeÃ§alho â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Cabeçalho ─────────────────────────────────────────────────────
         header = QHBoxLayout()
         header.setSpacing(max(12, int(16 * s)))
         title_col = QVBoxLayout()
         title_col.setSpacing(max(4, int(5 * s)))
 
-        title = QLabel("ConfiguraÃ§Ãµes")
+        title = QLabel("Configurações")
         title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
-        subtitle = QLabel("PreferÃªncias e configuraÃ§Ãµes do sistema.")
+        subtitle = QLabel("Preferências e configurações do sistema.")
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
@@ -286,7 +286,7 @@ class SettingsView(QWidget):
         self.date_label.setStyleSheet(
             f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
         )
-        self.updated_label = QLabel("PreferÃªncias do sistema")
+        self.updated_label = QLabel("Preferências do sistema")
         self.updated_label.setProperty("muted", "1")
         self.updated_label.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
@@ -296,10 +296,10 @@ class SettingsView(QWidget):
         info_layout.addWidget(self.updated_label)
         header.addWidget(info_card, 0, Qt.AlignmentFlag.AlignTop)
 
-        # BotÃ£o ? â€” abre o guia rÃ¡pido desta tela
+        # Botão ? — abre o guia rápido desta tela
         sz_g = max(24, int(28 * s))
         self.btn_guide = QPushButton("?")
-        self.btn_guide.setToolTip("Abrir guia rÃ¡pido")
+        self.btn_guide.setToolTip("Abrir guia rápido")
         self.btn_guide.setFixedSize(sz_g, sz_g)
         self.btn_guide.setStyleSheet(
             f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
@@ -313,7 +313,7 @@ class SettingsView(QWidget):
         root_layout.addLayout(header)
         root_layout.addSpacing(max(12, int(16 * s)))
 
-        # â”€â”€ Barra de abas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Barra de abas ──────────────────────────────────────────────────
         self._tab_btns: list[QPushButton] = []
         self._system_tab_index = -1
         tab_bar = QWidget()
@@ -336,7 +336,7 @@ class SettingsView(QWidget):
         root_layout.addWidget(self._tab_sep)
         root_layout.addSpacing(max(10, int(12 * s)))
 
-        # â”€â”€ Ãrea de scroll (conteÃºdo das abas) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # Area de scroll (conteudo das abas)
         self._page_scroll = SmoothScrollArea(self)
         self._page_scroll.setWidgetResizable(True)
         self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -363,11 +363,11 @@ class SettingsView(QWidget):
         self._tab_stack = QStackedWidget()
         outer.addWidget(self._tab_stack)
 
-        # â”€â”€ BotÃ£o global de salvar (fora do scroll, fixo no rodapÃ©) â”€â”€â”€â”€â”€â”€
+        # ── Botão global de salvar (fora do scroll, fixo no rodapé) ──────
         root_layout.addSpacing(max(8, int(10 * s)))
         save_row = QHBoxLayout()
         save_row.setContentsMargins(0, 0, 0, max(16, int(20 * s)))
-        self.btn_save = QPushButton("SALVAR CONFIGURAÃ‡Ã•ES")
+        self.btn_save = QPushButton("SALVAR CONFIGURAÇÕES")
         self.btn_save.setFixedHeight(max(38, int(44 * s)))
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_save.clicked.connect(self._save)
@@ -375,7 +375,7 @@ class SettingsView(QWidget):
         save_row.addStretch()
         root_layout.addLayout(save_row)
 
-        # â•â•â•â• Helpers para construÃ§Ã£o das abas â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        # Helpers para construção das abas
 
         _cm = (max(16, int(20 * s)), max(14, int(18 * s)),
                max(16, int(20 * s)), max(14, int(18 * s)))
@@ -386,7 +386,7 @@ class SettingsView(QWidget):
                               radius=max(18, int(20 * s)))
 
         def _wrap(card: QFrame) -> QWidget:
-            """Envolve um card numa pÃ¡gina com padding superior e stretch."""
+            """Envolve um card numa página com padding superior e stretch."""
             pg = QWidget()
             pg.setObjectName("settingsTabPage")
             pg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -410,14 +410,14 @@ class SettingsView(QWidget):
             self._tab_stack.addWidget(page)
 
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        # ABA: AparÃªncia
+        # ABA: Aparência
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         card_ap = _new_card()
         lay_ap = QVBoxLayout(card_ap)
         lay_ap.setContentsMargins(*_cm)
         lay_ap.setSpacing(_cs)
 
-        lay_ap.addWidget(_section("AparÃªncia", s))
+        lay_ap.addWidget(_section("Aparência", s))
         lay_ap.addWidget(_separator())
 
         scale_row = QHBoxLayout()
@@ -439,7 +439,7 @@ class SettingsView(QWidget):
         lay_ap.addLayout(scale_row)
 
         self.screen_info = QLabel(
-            f"ResoluÃ§Ã£o detectada: {res.screen_width}x{res.screen_height}  |  "
+            f"Resolução detectada: {res.screen_width}x{res.screen_height}  |  "
             f"DPI: {res.dpi:.0f}  |  Recomendado: {res.recommended_label}"
         )
         self.screen_info.setProperty("muted", "1")
@@ -474,7 +474,7 @@ class SettingsView(QWidget):
         font_size_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
         lay_ap.addWidget(font_size_hint)
 
-        _add_tab("AparÃªncia", _wrap(card_ap))
+        _add_tab("Aparência", _wrap(card_ap))
 
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Conta
@@ -501,7 +501,7 @@ class SettingsView(QWidget):
         pwd_grid.addWidget(self._lbl("Nova senha:", s), 1, 0)
         self._input_pwd_new = QLineEdit()
         self._input_pwd_new.setEchoMode(QLineEdit.EchoMode.Password)
-        self._input_pwd_new.setPlaceholderText("MÃ­nimo 6 caracteres")
+        self._input_pwd_new.setPlaceholderText("Mínimo 6 caracteres")
         self._input_pwd_new.setFixedHeight(max(38, int(44 * s)))
         self._input_pwd_new.setStyleSheet(_field_style(s))
         pwd_grid.addWidget(self._input_pwd_new, 1, 1)
@@ -540,18 +540,18 @@ class SettingsView(QWidget):
             lay_sis.setContentsMargins(*_cm)
             lay_sis.setSpacing(_cs)
 
-            # AtualizaÃ§Ãµes do Sistema (primeiro tÃ³pico)
+            # Atualizações do Sistema (primeiro tópico)
             from ..version import CURRENT_VERSION as _CURRENT_VERSION
-            lay_sis.addWidget(_section("AtualizaÃ§Ãµes do Sistema", s))
+            lay_sis.addWidget(_section("Atualizações do Sistema", s))
             lay_sis.addWidget(_separator())
             update_row = QHBoxLayout()
             update_row.setSpacing(max(8, int(10 * s)))
-            self._version_label = QLabel(f"VersÃ£o atual: v{_CURRENT_VERSION}")
+            self._version_label = QLabel(f"Versão atual: v{_CURRENT_VERSION}")
             self._version_label.setProperty("muted", "1")
             self._version_label.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
             update_row.addWidget(self._version_label)
             update_row.addStretch()
-            self.btn_check_update = QPushButton("Verificar atualizaÃ§Ãµes")
+            self.btn_check_update = QPushButton("Verificar atualizações")
             self.btn_check_update.setFixedHeight(max(38, int(44 * s)))
             self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
             self.btn_check_update.clicked.connect(self._check_updates)
@@ -564,12 +564,12 @@ class SettingsView(QWidget):
             )
             lay_sis.addWidget(self._update_status_label)
 
-            # ConexÃ£o com o Servidor (admin only)
+            # Conexão com o Servidor (admin only)
             self._conn_section = QWidget()
             conn_vl = QVBoxLayout(self._conn_section)
             conn_vl.setContentsMargins(0, 0, 0, 0)
             conn_vl.setSpacing(max(8, int(10 * s)))
-            conn_vl.addWidget(_section("ConexÃ£o com o Servidor", s))
+            conn_vl.addWidget(_section("Conexão com o Servidor", s))
             conn_vl.addWidget(_separator())
             conn_grid = QGridLayout()
             conn_grid.setSpacing(max(8, int(10 * s)))
@@ -580,10 +580,10 @@ class SettingsView(QWidget):
             self.input_url.setPlaceholderText("http://192.168.1.100:5000")
             self.input_url.setReadOnly(True)
             self.input_url.setToolTip(
-                "A URL do servidor Ã© fixa e nÃ£o pode ser alterada nesta tela."
+                "A URL do servidor é fixa e não pode ser alterada nesta tela."
             )
             conn_grid.addWidget(self.input_url, 0, 1)
-            self.btn_test = QPushButton("Testar conexÃ£o")
+            self.btn_test = QPushButton("Testar conexão")
             self.btn_test.setFixedHeight(max(38, int(44 * s)))
             self.btn_test.setStyleSheet(_flat_secondary_btn_style(s))
             self.btn_test.clicked.connect(self._test_connection)
@@ -628,13 +628,13 @@ class SettingsView(QWidget):
             )
             billing_vl.addWidget(self.operational_status)
 
-            # Prazo mÃ­nimo de entrega (dias Ãºteis)
+            # Prazo mínimo de entrega (dias úteis)
             billing_vl.addSpacing(max(6, int(8 * s)))
-            billing_vl.addWidget(_section("Prazo MÃ­nimo de Entrega", s))
+            billing_vl.addWidget(_section("Prazo Mínimo de Entrega", s))
             billing_vl.addWidget(_separator())
             min_deliv_row = QHBoxLayout()
             min_deliv_row.setSpacing(max(8, int(10 * s)))
-            min_deliv_row.addWidget(self._lbl("MÃ­nimo de dias Ãºteis:", s))
+            min_deliv_row.addWidget(self._lbl("Mínimo de dias úteis:", s))
             self.input_min_delivery_days = QSpinBox()
             self.input_min_delivery_days.setRange(0, 365)
             self.input_min_delivery_days.setValue(
@@ -647,8 +647,8 @@ class SettingsView(QWidget):
             min_deliv_row.addStretch()
             billing_vl.addLayout(min_deliv_row)
             min_deliv_hint = QLabel(
-                "0 = sem restriÃ§Ã£o. Define quantos dias Ãºteis (seg-sex) Ã  frente o "
-                "vendedor deve agendar a entrega. Admin e gerente podem salvar abaixo do mÃ­nimo."
+                "0 = sem restrição. Define quantos dias úteis (seg-sex) à frente o "
+                "vendedor deve agendar a entrega. Admin e gerente podem salvar abaixo do mínimo."
             )
             min_deliv_hint.setWordWrap(True)
             min_deliv_hint.setProperty("muted", "1")
@@ -667,7 +667,7 @@ class SettingsView(QWidget):
 
             cancel_form_row = QHBoxLayout()
             cancel_form_row.setSpacing(max(8, int(10 * s)))
-            cancel_form_row.addWidget(self._lbl("CÃ³digo:", s))
+            cancel_form_row.addWidget(self._lbl("Código:", s))
             self.input_cancel_reason_code = QLineEdit()
             self.input_cancel_reason_code.setFixedHeight(max(38, int(44 * s)))
             self.input_cancel_reason_code.setFixedWidth(max(110, int(130 * s)))
@@ -704,7 +704,7 @@ class SettingsView(QWidget):
 
             self.cancel_reason_table = QTableWidget(0, 2)
             apply_smooth_scroll(self.cancel_reason_table)
-            self.cancel_reason_table.setHorizontalHeaderLabels(["CÃ³digo", "Motivo"])
+            self.cancel_reason_table.setHorizontalHeaderLabels(["Código", "Motivo"])
             self.cancel_reason_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
             self.cancel_reason_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             self.cancel_reason_table.verticalHeader().setVisible(False)
@@ -717,7 +717,7 @@ class SettingsView(QWidget):
             cancel_vl.addWidget(self.cancel_reason_table)
 
             cancel_hint = QLabel(
-                "Os motivos cadastrados aqui aparecem no cancelamento de requisiÃ§Ãµes pela ProduÃ§Ã£o. "
+                "Os motivos cadastrados aqui aparecem no cancelamento de requisições pela Produção. "
                 "Selecione uma linha para editar ou remover."
             )
             cancel_hint.setWordWrap(True)
@@ -862,8 +862,8 @@ class SettingsView(QWidget):
             deadline_vl.addWidget(deadline_hint)
             self._delivery_deadline_reasons_section.setVisible(session.settings_show_billing)
 
-            # â”€â”€ Painel TÃ©cnico embarcado (admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            # Migrado da antiga tela "Painel TÃ©cnico" da sidebar para cÃ¡.
+            # ── Painel Técnico embarcado (admin) ─────────────────────────────
+            # Migrado da antiga tela "Painel Técnico" da sidebar para cá.
             self._technical_panel = None
             if session.can_access_technical_panel:
                 from .technical_panel_view import TechnicalPanelView
@@ -927,8 +927,8 @@ class SettingsView(QWidget):
             self._btn_remove_delivery_deadline_reason = QPushButton()
             self.delivery_deadline_reason_status = QLabel()
             self.delivery_deadline_reason_table = QTableWidget(0, 2)
-            # AtualizaÃ§Ãµes do Sistema sÃ³ aparece na aba Sistema (admin/gerente);
-            # placeholders mantÃªm apply_theme e handlers seguros nos demais perfis.
+            # Atualizações do Sistema só aparece na aba Sistema (admin/gerente);
+            # placeholders mantêm apply_theme e handlers seguros nos demais perfis.
             self._version_label       = QLabel()
             self.btn_check_update     = QPushButton()
             self._update_status_label = QLabel()
@@ -952,7 +952,7 @@ class SettingsView(QWidget):
             self.input_bg_folder.setFixedHeight(max(38, int(44 * s)))
             self.input_bg_folder.setStyleSheet(_field_style(s))
             self.input_bg_folder.setPlaceholderText(
-                r"Z:\REQUISIÃ‡Ã•ES (VENDAS)\login_backgrounds"
+                r"Z:\REQUISIÇÕES (VENDAS)\login_backgrounds"
             )
             bg_folder_row.addWidget(self.input_bg_folder, 1)
             self._btn_browse_bg_folder = QPushButton("Procurar")
@@ -976,7 +976,7 @@ class SettingsView(QWidget):
 
             bg_folder_hint = QLabel(
                 "Pasta compartilhada (ex.: rede Z:\\) onde ficam as imagens de fundo. "
-                "Todos que apontarem para o mesmo caminho verÃ£o as mesmas imagens."
+                "Todos que apontarem para o mesmo caminho verão as mesmas imagens."
             )
             bg_folder_hint.setWordWrap(True)
             bg_folder_hint.setProperty("muted", "1")
@@ -1017,7 +1017,7 @@ class SettingsView(QWidget):
 
             bg_hint = QLabel(
                 "Coloque as imagens diretamente na pasta acima (PNG, JPG, BMP, WEBP). "
-                "Clique em 'Abrir Pasta' para acessÃ¡-la pelo Explorador de Arquivos "
+                "Clique em 'Abrir Pasta' para acessá-la pelo Explorador de Arquivos "
                 "e 'Atualizar' para recarregar a lista."
             )
             bg_hint.setWordWrap(True)
@@ -1055,8 +1055,8 @@ class SettingsView(QWidget):
             _bfd.setReadOnly(True)
             _bfd.setFixedHeight(max(38, int(44 * s)))
             _bfd.setStyleSheet(_field_style(s))
-            _bfd.setToolTip("O destino do backup Ã© configurado no servidor (.env / config.py).")
-            _bfd.setText(r"\\10.1.1.140\ti\REQUISIÃ‡Ã•ES (VENDAS)\backup_bd")
+            _bfd.setToolTip("O destino do backup é configurado no servidor (.env / config.py).")
+            _bfd.setText(r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\backup_bd")
             backup_folder_row.addWidget(_bfd, 1)
             lay_bk.addLayout(backup_folder_row)
 
@@ -1073,14 +1073,14 @@ class SettingsView(QWidget):
             chk_style = _checkbox_style(s)
             spn_style = _spinbox_style(s)
 
-            self._chk_daily = QCheckBox("DiÃ¡rio")
+            self._chk_daily = QCheckBox("Diário")
             self._chk_daily.setChecked(True)
             self._chk_daily.setStyleSheet(chk_style)
             sched_grid.addWidget(self._chk_daily, 0, 0)
 
             hour_row = QHBoxLayout()
             hour_row.setSpacing(max(4, int(6 * s)))
-            hour_row.addWidget(self._lbl("HorÃ¡rio:", s))
+            hour_row.addWidget(self._lbl("Horário:", s))
             self._spin_daily_hour = QSpinBox()
             self._spin_daily_hour.setRange(0, 23)
             self._spin_daily_hour.setValue(2)
@@ -1094,7 +1094,7 @@ class SettingsView(QWidget):
 
             ret_d_row = QHBoxLayout()
             ret_d_row.setSpacing(max(4, int(6 * s)))
-            ret_d_row.addWidget(self._lbl("RetenÃ§Ã£o:", s))
+            ret_d_row.addWidget(self._lbl("Retenção:", s))
             self._spin_ret_daily = QSpinBox()
             self._spin_ret_daily.setRange(1, 365)
             self._spin_ret_daily.setValue(15)
@@ -1114,7 +1114,7 @@ class SettingsView(QWidget):
 
             ret_w_row = QHBoxLayout()
             ret_w_row.setSpacing(max(4, int(6 * s)))
-            ret_w_row.addWidget(self._lbl("RetenÃ§Ã£o:", s))
+            ret_w_row.addWidget(self._lbl("Retenção:", s))
             self._spin_ret_weekly = QSpinBox()
             self._spin_ret_weekly.setRange(1, 52)
             self._spin_ret_weekly.setValue(8)
@@ -1130,11 +1130,11 @@ class SettingsView(QWidget):
             self._chk_monthly.setChecked(False)
             self._chk_monthly.setStyleSheet(chk_style)
             sched_grid.addWidget(self._chk_monthly, 2, 0)
-            sched_grid.addWidget(self._lbl("dia 1 de cada mÃªs", s, italic=True), 2, 1)
+            sched_grid.addWidget(self._lbl("dia 1 de cada mês", s, italic=True), 2, 1)
 
             ret_m_row = QHBoxLayout()
             ret_m_row.setSpacing(max(4, int(6 * s)))
-            ret_m_row.addWidget(self._lbl("RetenÃ§Ã£o:", s))
+            ret_m_row.addWidget(self._lbl("Retenção:", s))
             self._spin_ret_monthly = QSpinBox()
             self._spin_ret_monthly.setRange(1, 24)
             self._spin_ret_monthly.setValue(6)
@@ -1215,9 +1215,9 @@ class SettingsView(QWidget):
             lay_bk.addWidget(self._backup_table)
 
             backup_hint = QLabel(
-                "Os backups automÃ¡ticos sÃ£o executados no horÃ¡rio configurado acima. "
-                "RetenÃ§Ã£o: nÃºmero mÃ¡ximo de arquivos mantidos por tipo â€” os mais antigos "
-                "sÃ£o excluÃ­dos automaticamente."
+                "Os backups automáticos são executados no horário configurado acima. "
+                "Retenção: número máximo de arquivos mantidos por tipo — os mais antigos "
+                "são excluídos automaticamente."
             )
             backup_hint.setWordWrap(True)
             backup_hint.setProperty("muted", "1")
@@ -1243,19 +1243,19 @@ class SettingsView(QWidget):
             self._backup_table            = QTableWidget(0, 3)
 
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        # ABA: UsuÃ¡rios (admin only) â€” Central de UsuÃ¡rios embarcada
+        # ABA: Usuários (admin only) — Central de Usuários embarcada
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         self._user_center_tab_index = -1
         if session.is_admin:
             from .user_center_view import UserCenterView
             self._user_center = UserCenterView(s, embedded=True)
             self._user_center_tab_index = len(self._tab_btns)
-            _add_tab("UsuÃ¡rios", self._user_center)
+            _add_tab("Usuários", self._user_center)
         else:
             self._user_center = None
 
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        # ABA: Clientes (admin only) â€” Cadastro de clientes embarcado
+        # ABA: Clientes (admin only) — Cadastro de clientes embarcado
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         self._client_center_tab_index = -1
         if session.is_admin:
@@ -1271,7 +1271,7 @@ class SettingsView(QWidget):
             from .machine_center_view import MachineCenterView
             self._machine_center = MachineCenterView(s, embedded=True)
             self._machine_center_tab_index = len(self._tab_btns)
-            _add_tab("Cadastro de MÃ¡quinas", self._machine_center)
+            _add_tab("Cadastro de Máquinas", self._machine_center)
         else:
             self._machine_center = None
 
@@ -1283,7 +1283,7 @@ class SettingsView(QWidget):
         lay_help.setContentsMargins(*_cm)
         lay_help.setSpacing(_cs)
 
-        lay_help.addWidget(_section("Guia RÃ¡pido", s))
+        lay_help.addWidget(_section("Guia Rápido", s))
         lay_help.addWidget(_separator())
 
         guide_row = QHBoxLayout()
@@ -1293,15 +1293,15 @@ class SettingsView(QWidget):
         guide_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
         guide_row.addWidget(guide_hint)
         guide_row.addStretch()
-        self.btn_show_guide = QPushButton("ðŸ“–  Ver Guia RÃ¡pido")
+        self.btn_show_guide = QPushButton("📖  Ver Guia Rápido")
         self.btn_show_guide.setFixedHeight(max(38, int(44 * s)))
         self.btn_show_guide.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_show_guide.clicked.connect(self.show_guide_requested)
         guide_row.addWidget(self.btn_show_guide)
         lay_help.addLayout(guide_row)
 
-        # â”€â”€ Acessibilidade: tamanho dos pop-ups de notificaÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        lay_help.addWidget(_section("Tamanho das NotificaÃ§Ãµes", s))
+        # ── Acessibilidade: tamanho dos pop-ups de notificação ────────────
+        lay_help.addWidget(_section("Tamanho das Notificações", s))
         lay_help.addWidget(_separator())
 
         notif_size_row = QHBoxLayout()
@@ -1326,15 +1326,15 @@ class SettingsView(QWidget):
         notif_test_row = QHBoxLayout()
         notif_test_row.setSpacing(max(8, int(10 * s)))
         notif_size_hint = QLabel(
-            "PrÃ©-visualize cada tamanho com â€œTestarâ€ e clique em "
-            "SALVAR CONFIGURAÃ‡Ã•ES para aplicar. Vale para os pop-ups e para o "
+            'Pré-visualize cada tamanho com "Testar" e clique em '
+            "SALVAR CONFIGURAÇÕES para aplicar. Vale para os pop-ups e para o "
             "painel do sininho."
         )
         notif_size_hint.setWordWrap(True)
         notif_size_hint.setProperty("muted", "1")
         notif_size_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
         notif_test_row.addWidget(notif_size_hint, 1)
-        self._btn_test_notification = QPushButton("ðŸ””  Testar")
+        self._btn_test_notification = QPushButton("🔔  Testar")
         self._btn_test_notification.setFixedHeight(max(38, int(44 * s)))
         self._btn_test_notification.setStyleSheet(_flat_secondary_btn_style(s))
         self._btn_test_notification.clicked.connect(self._preview_notification)
@@ -1343,7 +1343,7 @@ class SettingsView(QWidget):
 
         _add_tab("Ajuda e Acessibilidade", _wrap(card_help))
 
-        # Fecha a barra de abas com um stretch Ã  direita
+        # Fecha a barra de abas com um stretch à direita
         tab_bar_layout.addStretch()
 
     def _lbl(self, text: str, scale: float, color: str = None,
@@ -1380,7 +1380,7 @@ class SettingsView(QWidget):
             if not code or not reason:
                 continue
             if code in seen_codes:
-                raise ValueError(f"O cÃ³digo {code} estÃ¡ duplicado na lista de motivos.")
+                raise ValueError(f"O código {code} está duplicado na lista de motivos.")
             seen_codes.add(code)
             rows.append({"code": code, "reason": reason})
         return rows
@@ -1398,7 +1398,7 @@ class SettingsView(QWidget):
         code = " ".join(self.input_cancel_reason_code.text().upper().split())
         reason = " ".join(self.input_cancel_reason_text.text().split())
         if not code or not reason:
-            self.cancel_reason_status.setText("Informe cÃ³digo e motivo para salvar.")
+            self.cancel_reason_status.setText("Informe código e motivo para salvar.")
             self.cancel_reason_status.setStyleSheet(
                 f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
             )
@@ -1420,7 +1420,7 @@ class SettingsView(QWidget):
         self.cancel_reason_table.selectRow(target_row)
         self.input_cancel_reason_code.clear()
         self.input_cancel_reason_text.clear()
-        self.cancel_reason_status.setText("Motivo pronto para salvar nas configuraÃ§Ãµes.")
+        self.cancel_reason_status.setText("Motivo pronto para salvar nas configurações.")
         self.cancel_reason_status.setStyleSheet(
             f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
         )
@@ -1697,12 +1697,12 @@ class SettingsView(QWidget):
                 filename = data.get("filename", "")
                 size_kb  = int(data.get("size_bytes", 0)) // 1024
                 self._lbl_backup_status.setText(
-                    f"Backup concluÃ­do: {filename}  ({size_kb} KB)"
+                    f"Backup concluído: {filename}  ({size_kb} KB)"
                 )
                 self._lbl_backup_status.setStyleSheet(
                     f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
                 )
-                # Refresca a tabela automaticamente apÃ³s backup bem-sucedido
+                # Refresca a tabela automaticamente após backup bem-sucedido
                 self._on_refresh_backup_table()
             else:
                 error = data.get("error", "Erro desconhecido")
@@ -1751,10 +1751,10 @@ class SettingsView(QWidget):
     def _on_api_error(self, action: str, message: str):
         if action == "load_operational":
             self.operational_status.setText(
-                "NÃ£o foi possÃ­vel sincronizar com o servidor. Usando valor local."
+                "Não foi possível sincronizar com o servidor. Usando valor local."
             )
             self.cancel_reason_status.setText(
-                "NÃ£o foi possÃ­vel sincronizar os motivos com o servidor."
+                "Não foi possível sincronizar os motivos com o servidor."
             )
             return
 
@@ -1784,7 +1784,7 @@ class SettingsView(QWidget):
             )
 
         if action == "get_backup_settings":
-            pass  # mantÃ©m os valores padrÃ£o jÃ¡ exibidos nos controles
+            pass  # mantém os valores padrão já exibidos nos controles
 
         if action == "save_backup_settings":
             self._btn_save_backup_settings.setEnabled(True)
@@ -1797,7 +1797,7 @@ class SettingsView(QWidget):
 
     def _set_save_busy(self, busy: bool):
         self.btn_save.setEnabled(not busy)
-        self.btn_save.setText("SALVANDO..." if busy else "SALVAR CONFIGURAÃ‡Ã•ES")
+        self.btn_save.setText("SALVANDO..." if busy else "SALVAR CONFIGURAÇÕES")
 
     def _finish_save(self, remote_ok: bool, error_message: str = ""):
         context = self._pending_save_context or {}
@@ -1815,23 +1815,23 @@ class SettingsView(QWidget):
             self.cancel_reason_status.setText(
                 f"{self.cancel_reason_table.rowCount()} motivo(s) sincronizado(s) com o servidor."
             )
-            QMessageBox.information(self, "ConfiguraÃ§Ãµes", "ConfiguraÃ§Ãµes aplicadas com sucesso.")
+            QMessageBox.information(self, "Configurações", "Configurações aplicadas com sucesso.")
             if scale_changed:
                 self.scale_changed.emit(res.scale)
             elif font_size_changed:
                 self.font_size_changed.emit()
         else:
             self.operational_status.setText(
-                "NÃ£o foi possÃ­vel salvar o prazo no servidor. O valor local foi mantido."
+                "Não foi possível salvar o prazo no servidor. O valor local foi mantido."
             )
             self.cancel_reason_status.setText(
-                "NÃ£o foi possÃ­vel salvar os motivos de cancelamento no servidor."
+                "Não foi possível salvar os motivos de cancelamento no servidor."
             )
             QMessageBox.warning(
                 self,
-                "AtenÃ§Ã£o",
-                "As configuraÃ§Ãµes locais foram salvas, mas as configuraÃ§Ãµes do sistema "
-                f"nÃ£o foram salvas no servidor.\n\n{error_message}",
+                "Atenção",
+                "As configurações locais foram salvas, mas as configurações do sistema "
+                f"não foram salvas no servidor.\n\n{error_message}",
             )
             if scale_changed:
                 self.scale_changed.emit(res.scale)
@@ -1873,14 +1873,14 @@ class SettingsView(QWidget):
         )
 
     def _switch_tab(self, idx: int) -> None:
-        """Ativa a aba de Ã­ndice idx e reseta o scroll ao topo."""
+        """Ativa a aba de índice idx e reseta o scroll ao topo."""
         self._tab_stack.setCurrentIndex(idx)
         for i, btn in enumerate(self._tab_btns):
             btn.setChecked(i == idx)
         self._page_scroll.verticalScrollBar().setValue(0)
 
-        # As abas de UsuÃ¡rios e Clientes tÃªm seus prÃ³prios botÃµes de salvar; o
-        # botÃ£o global "SALVAR CONFIGURAÃ‡Ã•ES" nÃ£o se aplica a elas.
+        # As abas de Usuários e Clientes têm seus próprios botões de salvar; o
+        # botão global "SALVAR CONFIGURAÇÕES" não se aplica a elas.
         on_users_tab = (idx == self._user_center_tab_index)
         on_clients_tab = (idx == self._client_center_tab_index)
         on_machines_tab = (idx == self._machine_center_tab_index)
@@ -1892,7 +1892,7 @@ class SettingsView(QWidget):
         if on_machines_tab and self._machine_center is not None:
             self._machine_center.refresh()
 
-        # Ao abrir a aba Sistema, atualiza as mÃ©tricas do Painel TÃ©cnico.
+        # Ao abrir a aba Sistema, atualiza as métricas do Painel Técnico.
         if idx == self._system_tab_index and self._technical_panel is not None:
             self._technical_panel.refresh()
 
@@ -1920,7 +1920,7 @@ class SettingsView(QWidget):
 
         factor = NOTIFICATION_SIZE_FACTOR.get(self._selected_notification_size(), 1.0)
 
-        # Encerra um preview anterior, se ainda visÃ­vel
+        # Encerra um preview anterior, se ainda visível
         prev = getattr(self, "_preview_toast", None)
         if prev is not None:
             try:
@@ -1930,8 +1930,8 @@ class SettingsView(QWidget):
 
         data = {
             "type": "nova_requisicao",
-            "title": "Exemplo de NotificaÃ§Ã£o",
-            "message": "Assim ficarÃ¡ o tamanho dos seus pop-ups de notificaÃ§Ã£o.",
+            "title": "Exemplo de Notificação",
+            "message": "Assim ficará o tamanho dos seus pop-ups de notificação.",
             "requisition_id": None,
         }
         toast = NotificationToast(data, parent=None, factor=factor)
@@ -1955,12 +1955,12 @@ class SettingsView(QWidget):
                 f"color:{theme.SUCCESS}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
         else:
-            self.lbl_conn_status.setText("NÃ£o foi possÃ­vel conectar ao servidor")
+            self.lbl_conn_status.setText("Não foi possível conectar ao servidor")
             self.lbl_conn_status.setStyleSheet(
                 f"color:{theme.DANGER}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
         self.btn_test.setEnabled(True)
-        self.btn_test.setText("Testar conexÃ£o")
+        self.btn_test.setText("Testar conexão")
 
     def _save(self):
         selected_scale = next(
@@ -1976,7 +1976,7 @@ class SettingsView(QWidget):
 
         selected_notification_size = self._selected_notification_size()
 
-        # Coleta kwargs comuns (aparÃªncia + pasta de bg se visÃ­vel)
+        # Coleta kwargs comuns (aparência + pasta de bg se visível)
         save_kwargs: dict = dict(
             font_scale=selected_scale,
             font_size=selected_font_size,
@@ -1988,7 +1988,7 @@ class SettingsView(QWidget):
                 save_kwargs["bg_folder"] = bg_folder_val
 
         if session.settings_show_billing:
-            # Admin / Gerente: salva aparÃªncia + prazo de faturamento no servidor
+            # Admin / Gerente: salva aparência + prazo de faturamento no servidor
             pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
             min_delivery_business_days = int(self.input_min_delivery_days.value())
             try:
@@ -1996,7 +1996,7 @@ class SettingsView(QWidget):
                 delivery_cancel_reasons = self._collect_delivery_cancel_reasons()
                 delivery_deadline_change_reasons = self._collect_delivery_deadline_reasons()
             except ValueError as exc:
-                QMessageBox.warning(self, "ConfiguraÃ§Ãµes", str(exc))
+                QMessageBox.warning(self, "Configurações", str(exc))
                 self.cancel_reason_status.setText(str(exc))
                 self.cancel_reason_status.setStyleSheet(
                     f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
@@ -2012,7 +2012,7 @@ class SettingsView(QWidget):
                 "font_size_changed": font_size_changed,
             }
             self._set_save_busy(True)
-            self.operational_status.setText("Salvando configuraÃ§Ãµes no servidor...")
+            self.operational_status.setText("Salvando configurações no servidor...")
             self._start_api_worker(
                 "save_operational",
                 {
@@ -2024,20 +2024,20 @@ class SettingsView(QWidget):
                 },
             )
         else:
-            # Demais roles: salva apenas aparÃªncia localmente
+            # Demais roles: salva apenas aparência localmente
             res.save(**save_kwargs)
             if session.settings_show_login_backgrounds:
                 self._refresh_bg_table()
             current = local_now()
             self.date_label.setText(_format_header_date(current))
             self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
-            QMessageBox.information(self, "ConfiguraÃ§Ãµes", "ConfiguraÃ§Ãµes aplicadas com sucesso.")
+            QMessageBox.information(self, "Configurações", "Configurações aplicadas com sucesso.")
             if scale_changed:
                 self.scale_changed.emit(res.scale)
             elif font_size_changed:
                 self.font_size_changed.emit()
 
-    # â”€â”€ Fundo da Tela de Login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Fundo da Tela de Login ────────────────────────────────────────────────
 
     def _open_bg_folder(self) -> None:
         """Abre a pasta de backgrounds no Explorador de Arquivos."""
@@ -2047,8 +2047,8 @@ class SettingsView(QWidget):
                 os.makedirs(path, exist_ok=True)
             except Exception:
                 QMessageBox.warning(
-                    self, "Pasta nÃ£o encontrada",
-                    f"NÃ£o foi possÃ­vel acessar ou criar a pasta:\n{path}",
+                    self, "Pasta não encontrada",
+                    f"Não foi possível acessar ou criar a pasta:\n{path}",
                 )
                 return
         os.startfile(path)
@@ -2070,7 +2070,7 @@ class SettingsView(QWidget):
             self.input_bg_folder.setText(os.path.normpath(path))
 
     def _verify_bg_folder(self) -> None:
-        """Verifica se a pasta de backgrounds estÃ¡ acessÃ­vel e conta as imagens."""
+        """Verifica se a pasta de backgrounds está acessível e conta as imagens."""
         path = self.input_bg_folder.text().strip()
 
         if not path:
@@ -2079,7 +2079,7 @@ class SettingsView(QWidget):
 
         if not os.path.isdir(path):
             self._set_bg_folder_status(
-                f"Pasta nÃ£o encontrada ou inacessÃ­vel: {path}", theme.DANGER
+                f"Pasta não encontrada ou inacessível: {path}", theme.DANGER
             )
             return
 
@@ -2096,12 +2096,12 @@ class SettingsView(QWidget):
         total = len(images)
         if total == 0:
             self._set_bg_folder_status(
-                "Pasta acessÃ­vel, mas nenhuma imagem encontrada ainda.",
+                "Pasta acessível, mas nenhuma imagem encontrada ainda.",
                 theme.TEXT_MEDIUM,
             )
         else:
             self._set_bg_folder_status(
-                f"Pasta OK â€” {total} imagem(ns) encontrada(s).",
+                f"Pasta OK — {total} imagem(ns) encontrada(s).",
                 theme.SUCCESS,
             )
 
@@ -2121,7 +2121,7 @@ class SettingsView(QWidget):
             self._bg_table.setItem(row, 0, QTableWidgetItem(filename))
 
     def _notify_login_view_bg_changed(self) -> None:
-        """Avisa o LoginView para recarregar o fundo, se acessÃ­vel."""
+        """Avisa o LoginView para recarregar o fundo, se acessível."""
         try:
             from PySide6.QtWidgets import QApplication
             app = QApplication.instance()
@@ -2135,9 +2135,9 @@ class SettingsView(QWidget):
         except Exception:
             pass
 
-    # â”€â”€ Backup do Banco de Dados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Backup do Banco de Dados ─────────────────────────────────────────────
 
-    # â”€â”€ Alterar Senha â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Alterar Senha ────────────────────────────────────────────────────────
 
     def _on_change_password(self) -> None:
         current = self._input_pwd_current.text()
@@ -2158,7 +2158,7 @@ class SettingsView(QWidget):
             _set_status("A nova senha precisa ter pelo menos 6 caracteres.", theme.DANGER)
             return
         if new != confirm:
-            _set_status("As senhas nÃ£o coincidem.", theme.DANGER)
+            _set_status("As senhas não coincidem.", theme.DANGER)
             return
 
         self._btn_change_pwd.setEnabled(False)
@@ -2170,7 +2170,7 @@ class SettingsView(QWidget):
         })
 
     def _on_save_backup_settings(self) -> None:
-        """Envia as configuraÃ§Ãµes de agendamento ao servidor."""
+        """Envia as configurações de agendamento ao servidor."""
         self._btn_save_backup_settings.setEnabled(False)
         self._btn_save_backup_settings.setText("Salvando...")
         self._lbl_sched_status.setText("")
@@ -2245,9 +2245,9 @@ class SettingsView(QWidget):
     def _on_update_found(self, update_info: dict) -> None:
         from ..widgets.update_dialog import UpdateAvailableDialog
         self.btn_check_update.setEnabled(True)
-        self.btn_check_update.setText("Verificar atualizaÃ§Ãµes")
+        self.btn_check_update.setText("Verificar atualizações")
         self._update_status_label.setText(
-            f"Nova versÃ£o disponÃ­vel: v{update_info['version']}"
+            f"Nova versão disponível: v{update_info['version']}"
         )
         self._update_status_label.setStyleSheet(
             f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600;"
@@ -2257,8 +2257,8 @@ class SettingsView(QWidget):
 
     def _on_no_update(self) -> None:
         self.btn_check_update.setEnabled(True)
-        self.btn_check_update.setText("Verificar atualizaÃ§Ãµes")
-        self._update_status_label.setText("VocÃª jÃ¡ tem a versÃ£o mais recente.")
+        self.btn_check_update.setText("Verificar atualizações")
+        self._update_status_label.setText("Você já tem a versão mais recente.")
         self._update_status_label.setStyleSheet(
             f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600;"
             f"color:{theme.SUCCESS};"
@@ -2266,7 +2266,7 @@ class SettingsView(QWidget):
 
     def _on_update_check_error(self, error_msg: str) -> None:
         self.btn_check_update.setEnabled(True)
-        self.btn_check_update.setText("Verificar atualizaÃ§Ãµes")
+        self.btn_check_update.setText("Verificar atualizações")
         self._update_status_label.setText(f"Erro ao verificar: {error_msg}")
         self._update_status_label.setStyleSheet(
             f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600;"
@@ -2351,4 +2351,3 @@ class SettingsView(QWidget):
             self._machine_center.apply_theme()
         if getattr(self, "_technical_panel", None) is not None:
             self._technical_panel.apply_theme()
-
