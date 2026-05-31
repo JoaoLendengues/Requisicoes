@@ -1334,6 +1334,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
                 status=str(getattr(req.status, "value", req.status) or ""),
                 delivered_at=delivered_at if isinstance(delivered_at, datetime) else None,
                 deadline_changed_at=deadline_changed_at,
+                deadline_change_reason=str(getattr(req, "delivery_deadline_change_reason", "") or ""),
             )
         )
 
