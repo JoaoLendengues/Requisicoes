@@ -3237,59 +3237,93 @@ class DrawingCanvas(QWidget):
     def _insert_3d_preset(self, preset: str):
         base = self._base_insert_pos()
         pen = self._new_current_pen()
-        created: list[QGraphicsItem] = []
+        path = QPainterPath()
+
+        def _draw_polygon(points: list[QPointF]) -> None:
+            if not points:
+                return
+            path.moveTo(points[0])
+            for pt in points[1:]:
+                path.lineTo(pt)
+            path.lineTo(points[0])
+
+        def _offset(points: list[QPointF], dx: float, dy: float) -> list[QPointF]:
+            return [QPointF(pt.x() + dx, pt.y() + dy) for pt in points]
 
         if preset == "circulo":
-            r = 70.0
-            item = HollowEllipseItem(-r, -r, 2 * r, 2 * r)
-            item.setPen(pen)
-            item.setPos(base)
-            created.append(item)
+            # Esfera estilizada (contorno + paralelos/meridiano)
+            r = 72.0
+            path.addEllipse(QRectF(-r, -r, 2 * r, 2 * r))
+            path.addEllipse(QRectF(-r, -r * 0.30, 2 * r, r * 0.60))
+            path.addEllipse(QRectF(-r * 0.35, -r, r * 0.70, 2 * r))
         elif preset == "quadrado":
-            side = 140.0
-            item = HollowRectItem(-side / 2, -side / 2, side, side)
-            item.setPen(pen)
-            item.setPos(base)
-            created.append(item)
+            # Cubo isométrico
+            side = 130.0
+            dx, dy = 48.0, -38.0
+            front = [
+                QPointF(-side / 2, -side / 2),
+                QPointF(side / 2, -side / 2),
+                QPointF(side / 2, side / 2),
+                QPointF(-side / 2, side / 2),
+            ]
+            back = _offset(front, dx, dy)
+            _draw_polygon(front)
+            _draw_polygon(back)
+            for i in range(4):
+                path.moveTo(front[i])
+                path.lineTo(back[i])
         elif preset == "retangulo":
-            w, h = 190.0, 120.0
-            item = HollowRectItem(-w / 2, -h / 2, w, h)
-            item.setPen(pen)
-            item.setPos(base)
-            created.append(item)
+            # Paralelepípedo
+            w, h = 190.0, 110.0
+            dx, dy = 56.0, -40.0
+            front = [
+                QPointF(-w / 2, -h / 2),
+                QPointF(w / 2, -h / 2),
+                QPointF(w / 2, h / 2),
+                QPointF(-w / 2, h / 2),
+            ]
+            back = _offset(front, dx, dy)
+            _draw_polygon(front)
+            _draw_polygon(back)
+            for i in range(4):
+                path.moveTo(front[i])
+                path.lineTo(back[i])
         elif preset == "triangulo":
-            path = QPainterPath()
-            path.moveTo(QPointF(0.0, -85.0))
-            path.lineTo(QPointF(-85.0, 70.0))
-            path.lineTo(QPointF(85.0, 70.0))
-            path.closeSubpath()
-            item = QGraphicsPathItem(path)
-            item.setPen(pen)
-            item.setPos(base)
-            created.append(item)
+            # Prisma triangular
+            front = [
+                QPointF(0.0, -90.0),
+                QPointF(-88.0, 70.0),
+                QPointF(88.0, 70.0),
+            ]
+            back = _offset(front, 52.0, -38.0)
+            _draw_polygon(front)
+            _draw_polygon(back)
+            for i in range(3):
+                path.moveTo(front[i])
+                path.lineTo(back[i])
         elif preset == "cilindro":
-            w = 170.0
-            eh = 44.0
-            body_h = 130.0
+            # Cilindro completo em um único item
+            w = 176.0
+            ellipse_h = 46.0
+            body_h = 132.0
             top_y = -body_h / 2
             bottom_y = body_h / 2
-
-            top_ellipse = HollowEllipseItem(-w / 2, top_y - eh / 2, w, eh)
-            bottom_ellipse = HollowEllipseItem(-w / 2, bottom_y - eh / 2, w, eh)
-            left_line = QGraphicsLineItem(-w / 2, top_y, -w / 2, bottom_y)
-            right_line = QGraphicsLineItem(w / 2, top_y, w / 2, bottom_y)
-
-            for item in (top_ellipse, bottom_ellipse, left_line, right_line):
-                item.setPen(pen)
-                item.setPos(base)
-                created.append(item)
-
-        if not created:
+            path.addEllipse(QRectF(-w / 2, top_y - ellipse_h / 2, w, ellipse_h))
+            path.addEllipse(QRectF(-w / 2, bottom_y - ellipse_h / 2, w, ellipse_h))
+            path.moveTo(QPointF(-w / 2, top_y))
+            path.lineTo(QPointF(-w / 2, bottom_y))
+            path.moveTo(QPointF(w / 2, top_y))
+            path.lineTo(QPointF(w / 2, bottom_y))
+            # Elipse interna no topo para reforçar leitura 3D
+            path.addEllipse(QRectF(-w * 0.43, top_y - ellipse_h * 0.22, w * 0.86, ellipse_h * 0.44))
+        else:
             return
 
+        item = QGraphicsPathItem(path)
+        item.setPen(pen)
+        item.setPos(base)
         self.scene.clearSelection()
-        for item in created:
-            self._add_preset_item(item)
+        self._add_preset_item(item)
         self._redo_stack.clear()
         self.changed.emit()
 
