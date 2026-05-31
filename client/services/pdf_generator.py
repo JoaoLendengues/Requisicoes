@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import shutil
 import tempfile
 import unicodedata
 from datetime import datetime
@@ -1329,6 +1330,37 @@ def _draw_second_page(
 
 # ── Ponto de entrada público ─────────────────────────────────────────────────
 
+class PdfPublishError(Exception):
+    """O PDF foi gerado localmente, mas não pôde ser publicado na pasta de rede.
+
+    Carrega o caminho da cópia local preservada, para o usuário poder recuperá-la.
+    """
+    def __init__(self, message: str, local_path: str):
+        super().__init__(message)
+        self.local_path = local_path
+
+
+def _publish_pdf_atomic(local_path: str, dest_dir: str, filename: str) -> str:
+    """Publica o PDF do ``local_path`` em ``dest_dir`` (pasta de rede) de forma
+    atômica: copia para um nome temporário no destino e renomeia. Assim nunca
+    aparece um PDF pela metade no diretório, mesmo se a rede cair no meio.
+    Retorna o caminho final publicado."""
+    _safe_makedirs(dest_dir)
+    final_path = os.path.join(dest_dir, filename)
+    tmp_dest = os.path.join(dest_dir, f".{filename}.part")
+    try:
+        shutil.copyfile(local_path, tmp_dest)
+        os.replace(tmp_dest, final_path)  # rename no mesmo volume = atômico
+    except Exception:
+        try:
+            if os.path.exists(tmp_dest):
+                os.remove(tmp_dest)
+        except Exception:
+            pass
+        raise
+    return final_path
+
+
 def _safe_makedirs(path: str) -> None:
     """Cria o diretório ``path`` com tratamento específico de erros de rede Windows.
 
@@ -1432,14 +1464,19 @@ def generate_pdf(
         raise ImportError("reportlab não instalado. Execute: pip install reportlab>=4.0.0")
 
     _register_pdf_fonts()
-    _safe_makedirs(folder)
 
     ped_raw      = str(req.get("ped_number") or "0")
     ped_file     = ped_raw.zfill(6)
     client_name  = (client or {}).get("name", "") or f"ID{req.get('client_id', '')}"
     date_str     = local_now().strftime("%Y%m%d")
     filename     = _clean_filename(f"REQ-{ped_file}-{date_str}-{client_name}") + ".pdf"
-    filepath     = os.path.join(folder, filename)
+
+    # Renderiza primeiro num arquivo LOCAL (sem depender da rede durante o
+    # desenho); só depois publica no diretório configurado. Garante que sempre
+    # existe uma cópia local mesmo se o share estiver fora.
+    local_dir = os.path.join(tempfile.gettempdir(), "requisicoes_pdf")
+    os.makedirs(local_dir, exist_ok=True)
+    filepath = os.path.join(local_dir, filename)
 
     from ..core.session import session as _session
 
@@ -1520,4 +1557,21 @@ def generate_pdf(
         _draw_second_page(pdf, _safe(ped_raw, "0"), canvas_result)
 
     pdf.save()
-    return filepath
+
+    # Publica no diretório configurado (share) de forma atômica. Se falhar,
+    # mantém a cópia local e sinaliza onde ela está.
+    try:
+        final_path = _publish_pdf_atomic(filepath, folder, filename)
+    except Exception as exc:
+        raise PdfPublishError(
+            f"O PDF foi gerado, mas não pôde ser salvo na pasta de rede "
+            f"({folder}).\nUma cópia local foi mantida em:\n{filepath}\n\nDetalhe: {exc}",
+            local_path=filepath,
+        ) from exc
+
+    # Publicado com sucesso — remove a cópia local temporária.
+    try:
+        os.remove(filepath)
+    except Exception:
+        pass
+    return final_path

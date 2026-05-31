@@ -605,7 +605,7 @@ class MainWindow(QMainWindow):
                            obs: str, canvas_json: str = "{}",
                            signature_png_bytes: bytes | None = None) -> str:
         try:
-            from ..services.pdf_generator import generate_pdf, HAS_REPORTLAB
+            from ..services.pdf_generator import generate_pdf, HAS_REPORTLAB, PdfPublishError
         except ImportError:
             return ""
         if not HAS_REPORTLAB:
@@ -636,11 +636,19 @@ class MainWindow(QMainWindow):
                 canvas_json,
                 signature_png_bytes=signature_png_bytes,
             )
+        except PdfPublishError as exc:
+            # O PDF foi gerado localmente, mas não publicou na pasta de rede.
+            QMessageBox.warning(
+                self,
+                "PDF não salvo na rede",
+                f"A requisição foi salva normalmente.\n\n{exc}",
+            )
+            return ""
         except Exception as exc:
             QMessageBox.warning(
                 self,
                 "Aviso",
-                f"Requisição salva, mas o PDF não pôde ser gerado:\n{exc}",
+                f"Requisição salva, mas houve um problema ao gerar o PDF:\n{exc}",
             )
             return ""
 
