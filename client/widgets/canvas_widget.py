@@ -233,6 +233,7 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
     elif t == "angle_dimension_marker":
         path = _deserialize_path(d)
         item = QGraphicsPathItem(path)
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         item.setPen(pen)
         marker_meta = {"type": "angle_dimension_marker"}
         angle_link_id = str(d.get("angle_link_id", "")).strip()
@@ -251,6 +252,7 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
     elif t == "path":
         path = _deserialize_path(d)
         item = QGraphicsPathItem(path)
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         item.setPen(pen)
 
     elif t == "text":
@@ -438,6 +440,8 @@ class DrawingScene(QGraphicsScene):
         self._ft_resize_start_rect_scene: QRectF = QRectF()
         self._ft_resize_anchor_scene: QPointF = QPointF()
         self._ft_resize_start_states: list[dict] = []
+        self._ft_locked_items: dict[QGraphicsItem, bool] = {}
+        self._ft_prev_drag_mode: QGraphicsView.DragMode | None = None
         self._ft_rotate_pivot: QPointF | None = None
         self._ft_rotate_start: float = 0.0
         self._ft_start_rotations: list = []
@@ -573,6 +577,24 @@ class DrawingScene(QGraphicsScene):
             return r.topRight()
         return r.topLeft()  # "se"
 
+    def _ft_release_item_lock(self):
+        for item, was_movable in list(self._ft_locked_items.items()):
+            if item is None:
+                continue
+            try:
+                item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, was_movable)
+            except RuntimeError:
+                # Item pode ter sido removido da cena durante a sessão.
+                pass
+        self._ft_locked_items = {}
+
+    def _ft_lock_items(self):
+        self._ft_release_item_lock()
+        for item in self._ft_items:
+            was_movable = bool(item.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
+            self._ft_locked_items[item] = was_movable
+            item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
+
     def _apply_ft_resize_to_selected(self, current_scene_pos: QPointF):
         r0 = self._ft_resize_start_rect_scene.normalized()
         if r0.isNull() or r0.width() <= 1e-6 or r0.height() <= 1e-6:
@@ -613,6 +635,7 @@ class DrawingScene(QGraphicsScene):
             start_pos: QPointF = state["pos"]
             start_transform: QTransform = state["transform"]
             anchor_local: QPointF = state["anchor_local"]
+            anchor_scene: QPointF = state["anchor_scene"]
 
             item.setPos(start_pos)
             item.setTransform(start_transform, False)
@@ -622,6 +645,17 @@ class DrawingScene(QGraphicsScene):
             t.scale(sx, sy)
             t.translate(-anchor_local.x(), -anchor_local.y())
             item.setTransform(t, True)
+
+            # Garante que a âncora oposta permaneça fixa na cena (sem "andar").
+            current_anchor_scene = item.mapToScene(anchor_local)
+            dx = anchor_scene.x() - current_anchor_scene.x()
+            dy = anchor_scene.y() - current_anchor_scene.y()
+            if abs(dx) > 1e-6 or abs(dy) > 1e-6:
+                if item.parentItem() is not None:
+                    next_scene_pos = item.scenePos() + QPointF(dx, dy)
+                    item.setPos(item.parentItem().mapFromScene(next_scene_pos))
+                else:
+                    item.setPos(item.pos() + QPointF(dx, dy))
 
     def _in_rotation_zone_vp(self, vp_pos: QPointF) -> bool:
         """True se vp_pos está na zona de rotação (perto de um canto, fora do rect)."""
@@ -654,6 +688,7 @@ class DrawingScene(QGraphicsScene):
         # Pivot de rotação = centro do bounding rect de cada item
         for item in self._ft_items:
             item.setTransformOriginPoint(item.boundingRect().center())
+        self._ft_lock_items()
         self._ft_active = True
         self._ft_is_rotating = False
         self._ft_is_resizing = False
@@ -662,6 +697,11 @@ class DrawingScene(QGraphicsScene):
 
     def _exit_ft(self):
         """Sai do Free Transform."""
+        view = self._view()
+        if view and self._ft_prev_drag_mode is not None:
+            view.setDragMode(self._ft_prev_drag_mode)
+        self._ft_prev_drag_mode = None
+        self._ft_release_item_lock()
         self._ft_active = False
         self._ft_items = []
         self._ft_is_rotating = False
@@ -771,7 +811,16 @@ class DrawingScene(QGraphicsScene):
                 for item in self._ft_items:
                     item.setTransformOriginPoint(item.boundingRect().center())
                 self._ft_active = True
+                self._ft_is_rotating = False
+                self._ft_is_resizing = False
+                self._ft_resize_handle = ""
+                self._ft_lock_items()
             else:
+                self._ft_release_item_lock()
+                view = self._view()
+                if view and self._ft_prev_drag_mode is not None:
+                    view.setDragMode(self._ft_prev_drag_mode)
+                self._ft_prev_drag_mode = None
                 self._ft_active = False
                 self._ft_items = []
                 self._ft_is_rotating = False
@@ -1601,6 +1650,7 @@ class DrawingScene(QGraphicsScene):
         marker_path = self._build_angle_marker_path(start, end, self._angle_mode_degrees, resolved_style)
         if self._angle_marker_preview_item is None:
             self._angle_marker_preview_item = QGraphicsPathItem(marker_path)
+            self._angle_marker_preview_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self._angle_marker_preview_item.setPen(self._pen())
             self._angle_marker_preview_item.setZValue(10000)
             self._angle_marker_preview_item.setData(0, {"type": "angle_dimension_overlay"})
@@ -1629,6 +1679,7 @@ class DrawingScene(QGraphicsScene):
         link_id = self._new_angle_link_id()
 
         marker_item = QGraphicsPathItem(marker_path)
+        marker_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         marker_item.setPen(self._pen())
         marker_item.setZValue(9000)
         marker_item.setData(0, {"type": "angle_dimension_marker", "angle_link_id": link_id})
@@ -1831,14 +1882,19 @@ class DrawingScene(QGraphicsScene):
                     self._ft_resize_anchor_scene = self._ft_anchor_for_handle_scene(
                         handle, self._ft_resize_start_rect_scene
                     )
+                    if self._ft_prev_drag_mode is None:
+                        self._ft_prev_drag_mode = view.dragMode()
+                    view.setDragMode(QGraphicsView.DragMode.NoDrag)
                     self._ft_resize_start_states = []
                     for item in self._ft_items:
+                        anchor_local = item.mapFromScene(self._ft_resize_anchor_scene)
                         self._ft_resize_start_states.append(
                             {
                                 "item": item,
                                 "pos": QPointF(item.pos().x(), item.pos().y()),
                                 "transform": QTransform(item.transform()),
-                                "anchor_local": item.mapFromScene(self._ft_resize_anchor_scene),
+                                "anchor_local": anchor_local,
+                                "anchor_scene": item.mapToScene(anchor_local),
                             }
                         )
                     event.accept()
@@ -1916,6 +1972,7 @@ class DrawingScene(QGraphicsScene):
         if tool == Tool.PEN:
             self._painter_path = QPainterPath(pos)
             self._path_item = QGraphicsPathItem()
+            self._path_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self._path_item.setPen(self._pen())
             self.addItem(self._path_item)
             self._pen_last_point = QPointF(pos.x(), pos.y())
@@ -1936,6 +1993,7 @@ class DrawingScene(QGraphicsScene):
         elif tool == Tool.ARROW:
             self._start = QPointF(pos.x(), pos.y())
             self._preview_item = QGraphicsPathItem(self._arrow_path(self._start, self._start))
+            self._preview_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self._preview_item.setPen(self._pen())
             self.addItem(self._preview_item)
 
@@ -1950,21 +2008,25 @@ class DrawingScene(QGraphicsScene):
             p = QPainterPath(self._curve_draw_start)
             p.lineTo(self._curve_draw_start)
             self._preview_item = QGraphicsPathItem(p)
+            self._preview_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self._preview_item.setPen(self._pen())
             self.addItem(self._preview_item)
 
         elif tool == Tool.TRIANGLE:
             self._preview_item = QGraphicsPathItem(self._triangle_path(self._start, pos))
+            self._preview_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self._preview_item.setPen(self._pen())
             self.addItem(self._preview_item)
 
         elif tool == Tool.PENTAGON:
             self._preview_item = QGraphicsPathItem(self._regular_polygon_path(self._start, pos, 5))
+            self._preview_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self._preview_item.setPen(self._pen())
             self.addItem(self._preview_item)
 
         elif tool == Tool.HEXAGON:
             self._preview_item = QGraphicsPathItem(self._regular_polygon_path(self._start, pos, 6))
+            self._preview_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             self._preview_item.setPen(self._pen())
             self.addItem(self._preview_item)
 
@@ -2164,6 +2226,10 @@ class DrawingScene(QGraphicsScene):
             self._ft_resize_start_rect_scene = QRectF()
             self._ft_resize_anchor_scene = QPointF()
             self._ft_resize_start_states = []
+            view = self._view()
+            if view and self._ft_prev_drag_mode is not None:
+                view.setDragMode(self._ft_prev_drag_mode)
+            self._ft_prev_drag_mode = None
             self.update()
             self.cw.changed.emit()
             event.accept()
@@ -3084,6 +3150,10 @@ class DrawingCanvas(QWidget):
                 for item in self.scene._ft_items:
                     item.setTransformOriginPoint(item.boundingRect().center())
                 self.scene._ft_active = True
+                self.scene._ft_is_rotating = False
+                self.scene._ft_is_resizing = False
+                self.scene._ft_resize_handle = ""
+                self.scene._ft_lock_items()
                 self.scene.update()
         elif tool == Tool.PEN:
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -3093,12 +3163,10 @@ class DrawingCanvas(QWidget):
             self.view.setCursor(Qt.CursorShape.CrossCursor)
         else:
             if hasattr(self, "scene"):
-                self.scene._ft_active = False
-                self.scene._ft_items = []
-                self.scene._ft_is_rotating = False
-                self.scene._ft_is_resizing = False
-                self.scene._ft_resize_handle = ""
-                self.scene.update()
+                if self.scene._ft_active:
+                    self.scene._exit_ft()
+                else:
+                    self.scene._ft_release_item_lock()
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.view.setCursor(Qt.CursorShape.CrossCursor)
 
@@ -3561,6 +3629,7 @@ class DrawingCanvas(QWidget):
             return
 
         item = QGraphicsPathItem(path)
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         item.setPen(pen)
         item.setPos(base)
         self.scene.clearSelection()
