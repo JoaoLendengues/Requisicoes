@@ -241,10 +241,18 @@ class DashWorker(QObject):
     error = Signal(str)
     finished = Signal()
 
-    def __init__(self, ar_period: str, industria_period: str):
+    def __init__(
+        self,
+        ar_period: str,
+        industria_period: str,
+        vendor_period: str,
+        people_period: str,
+    ):
         super().__init__()
         self.ar_period = ar_period
         self.industria_period = industria_period
+        self.vendor_period = vendor_period
+        self.people_period = people_period
 
     def run(self):
         try:
@@ -252,6 +260,8 @@ class DashWorker(QObject):
                 api.get_management_dashboard(
                     ar_period=self.ar_period,
                     industria_period=self.industria_period,
+                    vendor_period=self.vendor_period,
+                    people_period=self.people_period,
                 )
             )
         except api.APIError as exc:
@@ -278,6 +288,8 @@ class DashboardView(QWidget):
         ]
         self.ar_period_combo: QComboBox | None = None
         self.industria_period_combo: QComboBox | None = None
+        self.vendor_period_combo: QComboBox | None = None
+        self.people_period_combo: QComboBox | None = None
         self._setup_ui()
         self.refresh()
 
@@ -418,11 +430,21 @@ class DashboardView(QWidget):
 
         secondary_row = QHBoxLayout()
         secondary_row.setSpacing(max(12, int(16 * s)))
-        self.vendors_card = self._build_section_card(
-            "Vendedores com Mais Requisições",
-            "Ranking geral por volume de requisições emitidas.",
+        self.vendors_card = self._build_machine_section_card(
+            "VENDEDORES COM MAIS REQUISIÇÕES",
+            "Ranking por volume de requisições emitidas e peso requerido no período.",
             self._build_top_vendors_table(),
             theme.PRIMARY,
+            "vendor_period_combo",
+            "30d",
+        )
+        self.people_card = self._build_machine_section_card(
+            "OPERADORES E AJUDANTES COM MAIS PRODUÇÕES",
+            "Ranking por produções finalizadas e peso processado no período.",
+            self._build_top_people_body(),
+            theme.PRIMARY_HOVER,
+            "people_period_combo",
+            "30d",
         )
         self.alerts_card = self._build_section_card(
             "Pedidos sem Confirmação",
@@ -433,6 +455,7 @@ class DashboardView(QWidget):
         secondary_row.addWidget(self.vendors_card, 1)
         secondary_row.addWidget(self.alerts_card, 1)
         layout.addLayout(secondary_row)
+        layout.addWidget(self.people_card)
 
         self.machines_ar_card = self._build_machine_section_card(
             "MÁQUINAS QUE MAIS OPERAM - A&R",
@@ -712,11 +735,51 @@ class DashboardView(QWidget):
 
     def _build_top_vendors_table(self) -> QTableWidget:
         self.top_vendors_table = self._create_table(
-            ["#", "VENDEDOR", "REQUISIÇÕES"],
+            ["#", "VENDEDOR", "REQUISIÇÕES", "PESO(KG)"],
             {1},
         )
         self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_vendors_table
+
+    def _build_top_people_body(self) -> QWidget:
+        container = QWidget()
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(max(12, int(16 * self.scale)))
+        layout.addWidget(self._build_people_column("OPERADORES COM MAIS PRODUÇÕES", self._build_top_operators_table()), 1)
+        layout.addWidget(self._build_people_column("AJUDANTES COM MAIS PRODUÇÕES", self._build_top_helpers_table()), 1)
+        return container
+
+    def _build_people_column(self, title: str, table: QTableWidget) -> QWidget:
+        wrapper = QWidget()
+        wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        layout = QVBoxLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(max(6, int(8 * self.scale)))
+        label = QLabel(title)
+        label.setStyleSheet(
+            f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
+        )
+        layout.addWidget(label)
+        layout.addWidget(table, 1)
+        return wrapper
+
+    def _build_top_operators_table(self) -> QTableWidget:
+        self.top_operators_table = self._create_table(
+            ["#", "OPERADOR", "PRODUÇÕES", "PESO(KG)"],
+            {1},
+        )
+        self.top_operators_table.setMinimumHeight(max(220, int(250 * self.scale)))
+        return self.top_operators_table
+
+    def _build_top_helpers_table(self) -> QTableWidget:
+        self.top_helpers_table = self._create_table(
+            ["#", "AJUDANTE", "PRODUÇÕES", "PESO(KG)"],
+            {1},
+        )
+        self.top_helpers_table.setMinimumHeight(max(220, int(250 * self.scale)))
+        return self.top_helpers_table
 
     def _build_alerts_table(self) -> QTableWidget:
         self.alerts_table = self._create_table(
@@ -791,8 +854,18 @@ class DashboardView(QWidget):
             if self.industria_period_combo
             else "30d"
         )
+        vendor_period = (
+            str(self.vendor_period_combo.currentData() or "30d")
+            if self.vendor_period_combo
+            else "30d"
+        )
+        people_period = (
+            str(self.people_period_combo.currentData() or "30d")
+            if self.people_period_combo
+            else "30d"
+        )
 
-        worker = DashWorker(ar_period, industria_period)
+        worker = DashWorker(ar_period, industria_period, vendor_period, people_period)
         thread = QThread()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -815,6 +888,10 @@ class DashboardView(QWidget):
             self.ar_period_combo.setEnabled(not loading)
         if self.industria_period_combo:
             self.industria_period_combo.setEnabled(not loading)
+        if self.vendor_period_combo:
+            self.vendor_period_combo.setEnabled(not loading)
+        if self.people_period_combo:
+            self.people_period_combo.setEnabled(not loading)
         if loading:
             self.updated_label.setText("Atualizando dados...")
             self.date_label.setText(_format_header_date())
@@ -844,6 +921,16 @@ class DashboardView(QWidget):
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
         self._fill_top_vendors_table(payload.get("top_vendors") or [])
+        self._fill_top_people_table(
+            self.top_operators_table,
+            payload.get("top_operators") or [],
+            "Nenhum operador encontrado no período.",
+        )
+        self._fill_top_people_table(
+            self.top_helpers_table,
+            payload.get("top_helpers") or [],
+            "Nenhum ajudante encontrado no período.",
+        )
         self._fill_alerts_table(payload.get("receipt_alerts") or [])
         self._fill_top_machines_table(
             self.top_machines_ar_table,
@@ -878,11 +965,47 @@ class DashboardView(QWidget):
                 str(index),
                 str(row.get("vendor_name") or "-"),
                 str(row.get("requisition_count") or 0),
+                _format_weight_kg(row.get("total_weight_kg")),
             ]
             sort_values = [
                 index,
                 str(row.get("vendor_name") or "-"),
                 int(row.get("requisition_count") or 0),
+                float(row.get("total_weight_kg") or 0.0),
+            ]
+            for col, value in enumerate(values):
+                item = _SortableTableWidgetItem(value, sort_values[col])
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(line, col, item)
+        table.setSortingEnabled(True)
+
+    def _fill_top_people_table(self, table: QTableWidget, rows: object, empty_message: str):
+        table.setSortingEnabled(False)
+        table.clearSpans()
+        table.setRowCount(0)
+        items = rows if isinstance(rows, list) else []
+
+        if not items:
+            self._set_empty_message(table, empty_message)
+            table.setSortingEnabled(True)
+            return
+
+        for index, row in enumerate(items, start=1):
+            if not isinstance(row, dict):
+                continue
+            line = table.rowCount()
+            table.insertRow(line)
+            values = [
+                str(index),
+                str(row.get("person_name") or "-"),
+                str(row.get("production_count") or 0),
+                _format_weight_kg(row.get("total_weight_kg")),
+            ]
+            sort_values = [
+                index,
+                str(row.get("person_name") or "-"),
+                int(row.get("production_count") or 0),
+                float(row.get("total_weight_kg") or 0.0),
             ]
             for col, value in enumerate(values):
                 item = _SortableTableWidgetItem(value, sort_values[col])
@@ -1126,6 +1249,8 @@ class DashboardView(QWidget):
         )
         for tbl in [
             getattr(self, "top_vendors_table", None),
+            getattr(self, "top_operators_table", None),
+            getattr(self, "top_helpers_table", None),
             getattr(self, "alerts_table", None),
             getattr(self, "top_machines_ar_table", None),
             getattr(self, "top_machines_industria_table", None),
@@ -1133,6 +1258,14 @@ class DashboardView(QWidget):
         ]:
             if tbl is not None:
                 self._apply_table_style(tbl)
+        for combo in [
+            getattr(self, "vendor_period_combo", None),
+            getattr(self, "people_period_combo", None),
+            getattr(self, "ar_period_combo", None),
+            getattr(self, "industria_period_combo", None),
+        ]:
+            if combo is not None:
+                combo.setStyleSheet(_field_style(s))
         for tbl in [
             getattr(self, "top_machines_ar_table", None),
             getattr(self, "top_machines_industria_table", None),

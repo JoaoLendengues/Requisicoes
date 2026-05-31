@@ -20,6 +20,13 @@ class DashboardStatsResponse(BaseModel):
 class DashboardVendorItem(BaseModel):
     vendor_name: str
     requisition_count: int
+    total_weight_kg: float = 0.0
+
+
+class DashboardProductionPersonItem(BaseModel):
+    person_name: str
+    production_count: int
+    total_weight_kg: float = 0.0
 
 
 class DashboardReceiptAlertItem(BaseModel):
@@ -58,6 +65,8 @@ class ManagementDashboardResponse(BaseModel):
     generated_at: datetime
     stats: DashboardStatsResponse
     top_vendors: list[DashboardVendorItem]
+    top_operators: list[DashboardProductionPersonItem]
+    top_helpers: list[DashboardProductionPersonItem]
     receipt_alerts: list[DashboardReceiptAlertItem]
     recent_requisitions: list[DashboardRecentRequisitionItem]
     top_machines_ar: list[DashboardMachineUsageItem]

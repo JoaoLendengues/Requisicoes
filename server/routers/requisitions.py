@@ -3,7 +3,6 @@ from sqlalchemy import or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
-from collections import Counter
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 import shutil
@@ -19,6 +18,7 @@ from ..models.requisition import (
 from ..models.user import User, Role
 from ..schemas.dashboard import (
     DashboardMachineUsageItem,
+    DashboardProductionPersonItem,
     DashboardReceiptAlertItem,
     DashboardRecentRequisitionItem,
     DashboardStatsResponse,
@@ -177,9 +177,13 @@ def _normalize_machine_dashboard_period(value: str) -> str:
     if key not in _MACHINE_DASHBOARD_PERIODS:
         raise HTTPException(
             status_code=400,
-            detail="Período de máquinas inválido. Use 30d, 7d, today ou last_month.",
+            detail="Período do dashboard inválido. Use 30d, 7d, today ou last_month.",
         )
     return key
+
+
+def _normalize_dashboard_period(value: str) -> str:
+    return _normalize_machine_dashboard_period(value)
 
 
 def _month_start(value: datetime) -> datetime:
@@ -206,6 +210,22 @@ def _machine_dashboard_period_bounds(period_key: str, now: datetime | None = Non
         )
         return previous_month_start, current_month_start
     return today_start - timedelta(days=29), local_now
+
+
+def _dashboard_period_bounds(period_key: str, now: datetime | None = None) -> tuple[datetime, datetime]:
+    return _machine_dashboard_period_bounds(period_key, now)
+
+
+def _datetime_in_dashboard_period(
+    value: object,
+    period_key: str,
+    now: datetime | None = None,
+) -> bool:
+    current = _to_local_datetime(value)
+    if current is None:
+        return False
+    period_start, period_end = _dashboard_period_bounds(period_key, now)
+    return period_start <= current < period_end
 
 
 def _iter_shift_overlap_segments(start_at: datetime, end_at: datetime) -> list[tuple[datetime, datetime]]:
@@ -1562,19 +1582,111 @@ def _build_machine_usage_rows(
     return rows
 
 
+def _build_top_vendor_rows(
+    reqs: list[Requisition],
+    period_key: str,
+    now: datetime | None = None,
+) -> list[DashboardVendorItem]:
+    stats: dict[tuple[int, str], dict[str, object]] = {}
+    for req in reqs:
+        emission_at = _parse_local_emission_datetime(req.emission_date) or _to_local_datetime(req.created_at)
+        if not _datetime_in_dashboard_period(emission_at, period_key, now):
+            continue
+        vendor_name = (req.vendor_name or "").strip() or "Sem vendedor"
+        vendor_key = (int(req.vendor_id or 0), vendor_name)
+        entry = stats.setdefault(
+            vendor_key,
+            {
+                "vendor_name": vendor_name,
+                "requisition_count": 0,
+                "total_weight_kg": 0.0,
+            },
+        )
+        entry["requisition_count"] = int(entry["requisition_count"] or 0) + 1
+        entry["total_weight_kg"] = float(entry["total_weight_kg"] or 0.0) + float(req.weight or 0.0)
+
+    rows = [
+        DashboardVendorItem(
+            vendor_name=str(data["vendor_name"] or "Sem vendedor"),
+            requisition_count=int(data["requisition_count"] or 0),
+            total_weight_kg=round(float(data["total_weight_kg"] or 0.0), 2),
+        )
+        for data in stats.values()
+    ]
+    rows.sort(
+        key=lambda item: (
+            -item.requisition_count,
+            -item.total_weight_kg,
+            _normalize_text(item.vendor_name),
+        )
+    )
+    return rows[:8]
+
+
+def _build_top_production_people_rows(
+    reqs: list[Requisition],
+    period_key: str,
+    now: datetime | None = None,
+) -> tuple[list[DashboardProductionPersonItem], list[DashboardProductionPersonItem]]:
+    operators_stats: dict[str, dict[str, object]] = {}
+    helpers_stats: dict[str, dict[str, object]] = {}
+
+    def _accumulate(target: dict[str, dict[str, object]], names: list[str], weight: float) -> None:
+        for name in _clean_operator_names(names):
+            entry = target.setdefault(
+                name,
+                {
+                    "person_name": name,
+                    "production_count": 0,
+                    "total_weight_kg": 0.0,
+                },
+            )
+            entry["production_count"] = int(entry["production_count"] or 0) + 1
+            entry["total_weight_kg"] = float(entry["total_weight_kg"] or 0.0) + weight
+
+    for req in reqs:
+        weight = float(req.weight or 0.0)
+        for cycle in _all_finished_cycles(req):
+            if not _datetime_in_dashboard_period(cycle.get("finished_at"), period_key, now):
+                continue
+            _accumulate(operators_stats, list(cycle.get("operators") or []), weight)
+            _accumulate(helpers_stats, list(cycle.get("helpers") or []), weight)
+
+    def _build_rows(source: dict[str, dict[str, object]]) -> list[DashboardProductionPersonItem]:
+        rows = [
+            DashboardProductionPersonItem(
+                person_name=str(data["person_name"] or "-"),
+                production_count=int(data["production_count"] or 0),
+                total_weight_kg=round(float(data["total_weight_kg"] or 0.0), 2),
+            )
+            for data in source.values()
+        ]
+        rows.sort(
+            key=lambda item: (
+                -item.production_count,
+                -item.total_weight_kg,
+                _normalize_text(item.person_name),
+            )
+        )
+        return rows[:8]
+
+    return _build_rows(operators_stats), _build_rows(helpers_stats)
+
+
 def _build_management_dashboard(
     reqs: list[Requisition],
     machines: list[ProductionMachine],
     *,
     ar_period: str = "30d",
     industria_period: str = "30d",
+    vendor_period: str = "30d",
+    people_period: str = "30d",
 ) -> ManagementDashboardResponse:
     now = datetime.utcnow()
     generated_at = _to_local_datetime(now) or datetime.now(_LOCAL_TIMEZONE)
     today = now.date()
     one_hour_ago = now - timedelta(hours=1)
 
-    top_vendors_counter: Counter[str] = Counter()
     receipt_alerts: list[DashboardReceiptAlertItem] = []
     recent_requisitions: list[DashboardRecentRequisitionItem] = []
     completion_durations: list[int] = []
@@ -1587,9 +1699,6 @@ def _build_management_dashboard(
     requisicoes_feitas_no_dia = 0
 
     for req in reqs:
-        vendor_name = (req.vendor_name or "").strip() or "Sem vendedor"
-        top_vendors_counter[vendor_name] += 1
-
         destination = _current_production_destination(req)
         is_active_production = req.status in (
             RequisitionStatus.AGUARDANDO_RECEBIMENTO,
@@ -1659,10 +1768,8 @@ def _build_management_dashboard(
             )
         )
 
-    top_vendors = [
-        DashboardVendorItem(vendor_name=name, requisition_count=count)
-        for name, count in top_vendors_counter.most_common(8)
-    ]
+    top_vendors = _build_top_vendor_rows(reqs, vendor_period, now)
+    top_operators, top_helpers = _build_top_production_people_rows(reqs, people_period, now)
 
     receipt_alerts.sort(key=lambda item: item.waiting_minutes, reverse=True)
     recent_requisitions.sort(key=lambda item: item.emission_date, reverse=True)
@@ -1699,6 +1806,8 @@ def _build_management_dashboard(
             tempo_medio_finalizacao_segundos=average_seconds,
         ),
         top_vendors=top_vendors,
+        top_operators=top_operators,
+        top_helpers=top_helpers,
         receipt_alerts=receipt_alerts[:10],
         recent_requisitions=recent_requisitions[:12],
         top_machines_ar=top_machines_ar,
@@ -1967,12 +2076,16 @@ def _check_invoice_alerts(db: Session) -> None:
 def get_management_dashboard(
     ar_period: str = Query("30d"),
     industria_period: str = Query("30d"),
+    vendor_period: str = Query("30d"),
+    people_period: str = Query("30d"),
     db: Session = Depends(get_db),
     _: User = Depends(require_manager_or_admin),
 ):
     _check_invoice_alerts(db)
-    normalized_ar_period = _normalize_machine_dashboard_period(ar_period)
-    normalized_industria_period = _normalize_machine_dashboard_period(industria_period)
+    normalized_ar_period = _normalize_dashboard_period(ar_period)
+    normalized_industria_period = _normalize_dashboard_period(industria_period)
+    normalized_vendor_period = _normalize_dashboard_period(vendor_period)
+    normalized_people_period = _normalize_dashboard_period(people_period)
 
     reqs = (
         db.query(Requisition)
@@ -1994,6 +2107,8 @@ def get_management_dashboard(
         machines,
         ar_period=normalized_ar_period,
         industria_period=normalized_industria_period,
+        vendor_period=normalized_vendor_period,
+        people_period=normalized_people_period,
     )
 
 
