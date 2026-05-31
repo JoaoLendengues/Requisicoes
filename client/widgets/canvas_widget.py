@@ -562,47 +562,25 @@ class DrawingScene(QGraphicsScene):
         if not handle:
             return
 
-        min_w = max(12.0, r0.width() * 0.05)
-        min_h = max(12.0, r0.height() * 0.05)
-
-        x1, x2 = r0.left(), r0.right()
-        y1, y2 = r0.top(), r0.bottom()
+        # Mantém o centro fixo para o item crescer/reduzir sem "andar" no canvas.
+        cx, cy = r0.center().x(), r0.center().y()
+        half_w0 = max(1e-6, r0.width() * 0.5)
+        half_h0 = max(1e-6, r0.height() * 0.5)
+        min_half_w = max(6.0, half_w0 * 0.05)
+        min_half_h = max(6.0, half_h0 * 0.05)
 
         px, py = current_scene_pos.x(), current_scene_pos.y()
-        if "e" in handle:
-            x2 = max(x1 + min_w, px)
-        if "w" in handle:
-            x1 = min(x2 - min_w, px)
-        if "s" in handle:
-            y2 = max(y1 + min_h, py)
-        if "n" in handle:
-            y1 = min(y2 - min_h, py)
+        target_half_w = max(min_half_w, abs(px - cx))
+        target_half_h = max(min_half_h, abs(py - cy))
 
-        new_w = max(min_w, x2 - x1)
-        new_h = max(min_h, y2 - y1)
-        sx = new_w / max(1e-6, r0.width())
-        sy = new_h / max(1e-6, r0.height())
+        sx = target_half_w / half_w0
+        sy = target_half_h / half_h0
         if handle in ("n", "s"):
             sx = 1.0
         if handle in ("e", "w"):
             sy = 1.0
 
-        if handle == "e":
-            anchor = QPointF(r0.left(), r0.center().y())
-        elif handle == "w":
-            anchor = QPointF(r0.right(), r0.center().y())
-        elif handle == "n":
-            anchor = QPointF(r0.center().x(), r0.bottom())
-        elif handle == "s":
-            anchor = QPointF(r0.center().x(), r0.top())
-        elif handle == "nw":
-            anchor = r0.bottomRight()
-        elif handle == "ne":
-            anchor = r0.bottomLeft()
-        elif handle == "sw":
-            anchor = r0.topRight()
-        else:  # "se"
-            anchor = r0.topLeft()
+        anchor = QPointF(cx, cy)
 
         g = QTransform()
         g.translate(anchor.x(), anchor.y())
