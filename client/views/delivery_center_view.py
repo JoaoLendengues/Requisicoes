@@ -664,7 +664,7 @@ class DeliveryCenterView(QWidget):
 
             for col, value in enumerate(values):
                 if col == 7:
-                    hidden_item = SortableItem(value, sort_key=status)
+                    hidden_item = SortableItem("", sort_key=status)
                     hidden_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(row, col, hidden_item)
 
@@ -1018,4 +1018,3 @@ class DeliveryCenterView(QWidget):
         )
         self._apply_table_style(self.table)
         self._apply_table_style(self.completed_table)
-

@@ -1099,7 +1099,7 @@ class HistoryView(QWidget):
                 values = self._row_values(req)
                 for col, value in enumerate(values):
                     if col == 7:
-                        item = SortableItem(value, sort_key=status)
+                        item = SortableItem("", sort_key=status)
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(row, col, item)
                         badge = QLabel(STATUS_LABELS.get(status, status or "-"))

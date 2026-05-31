@@ -1134,7 +1134,7 @@ class DashboardView(QWidget):
             for col, value in enumerate(values):
                 if col == 8:
                     machine_status = str(row.get("machine_status") or "")
-                    item = _SortableTableWidgetItem(value, sort_values[col])
+                    item = _SortableTableWidgetItem("", sort_values[col])
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(line, col, item)
                     color = _machine_status_color(machine_status)
@@ -1190,7 +1190,7 @@ class DashboardView(QWidget):
             for col, value in enumerate(values):
                 if col == 4:
                     status = str(row.get("status") or "")
-                    item = _SortableTableWidgetItem(value, sort_values[col])
+                    item = _SortableTableWidgetItem("", sort_values[col])
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(line, col, item)
                     color_map = {
