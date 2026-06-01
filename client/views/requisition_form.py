@@ -171,15 +171,6 @@ def _req_secondary_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-<<<<<<< HEAD
-            f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
-            f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; outline:none; border-radius:14px;"
-            f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
-        f"}}"
-        f"QPushButton:hover {{ background:{_REQ_SURFACE_ALT}; border-color:{_REQ_NEON_PRIMARY}; }}"
-        f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 26)}; }}"
-        f"QPushButton:disabled {{ background:{_rgba(_REQ_BORDER_SOFT, 36)}; color:{_REQ_TEXT_MUTED}; border-color:{_REQ_BORDER_SOFT}; }}"
-=======
         f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
         f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)}; outline:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
@@ -187,7 +178,6 @@ def _req_secondary_btn_style(scale: float) -> str:
         f"QPushButton:hover {{ background:{theme.PANEL_SURFACE_ALT}; border-color:{theme.PANEL_NEON_SECONDARY}; }}"
         f"QPushButton:pressed {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 26)}; }}"
         f"QPushButton:disabled {{ background:{_rgba(theme.PANEL_BORDER_SOFT, 36)}; color:{theme.PANEL_TEXT_MUTED}; border-color:{theme.PANEL_BORDER_SOFT}; }}"
->>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
 
 
@@ -203,13 +193,8 @@ def _req_input_style(scale: float, *, bold: bool = False, accent: str | None = N
         f"  padding:7px 10px; font-size:{fs}pt; font-weight:{weight};"
         f"  selection-background-color:{_rgba(theme.PANEL_NEON_PRIMARY, 64)}; selection-color:{theme.PANEL_TEXT_PRIMARY};"
         f"}}"
-<<<<<<< HEAD
-        f"QLineEdit:hover, QDateEdit:hover, QComboBox:hover {{ border-color:{_REQ_NEON_PRIMARY}; }}"
-        f"QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border-color:{_REQ_NEON_PRIMARY}; }}"
-=======
         f"QLineEdit:hover, QDateEdit:hover, QComboBox:hover {{ border-color:{theme.PANEL_NEON_PRIMARY}; }}"
         f"QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border-color:{theme.PANEL_NEON_SECONDARY}; }}"
->>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
 
 
@@ -222,13 +207,8 @@ def _req_text_edit_style(scale: float) -> str:
         f"  padding:6px 8px; font-size:{fs}pt;"
         f"  selection-background-color:{_rgba(theme.PANEL_NEON_PRIMARY, 64)}; selection-color:{theme.PANEL_TEXT_PRIMARY};"
         f"}}"
-<<<<<<< HEAD
-        f"QTextEdit:hover, QPlainTextEdit:hover {{ border-color:{_REQ_NEON_PRIMARY}; }}"
-        f"QTextEdit:focus, QPlainTextEdit:focus {{ border-color:{_REQ_NEON_PRIMARY}; }}"
-=======
         f"QTextEdit:hover, QPlainTextEdit:hover {{ border-color:{theme.PANEL_NEON_PRIMARY}; }}"
         f"QTextEdit:focus, QPlainTextEdit:focus {{ border-color:{theme.PANEL_NEON_SECONDARY}; }}"
->>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
 
 
@@ -268,13 +248,8 @@ def _req_round_icon_btn_style(scale: float, diameter: int) -> str:
         f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 102)};"
         f"  border-radius:{diameter // 2}px; padding:0;"
         f"}}"
-<<<<<<< HEAD
-        f"QPushButton:hover {{ color:{_REQ_TEXT_PRIMARY}; border-color:{_REQ_NEON_PRIMARY}; background:{_REQ_SURFACE_ALT}; }}"
-        f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 24)}; }}"
-=======
         f"QPushButton:hover {{ color:{theme.PANEL_TEXT_PRIMARY}; border-color:{theme.PANEL_NEON_SECONDARY}; background:{theme.PANEL_SURFACE_ALT}; }}"
         f"QPushButton:pressed {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 24)}; }}"
->>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
 
 
@@ -397,19 +372,11 @@ def _make_card(parent=None) -> QFrame:
     card.setStyleSheet(
         f"QFrame#reqCard {{"
         f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
-<<<<<<< HEAD
-        f"    stop:0 {_REQ_CARD_BG_START}, stop:0.55 {_REQ_CARD_BG_MID}, stop:1 {_REQ_CARD_BG_END});"
-        f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 82)};"
-        f"  border-radius:22px;"
-        f"}}"
-        f"QFrame#reqCard:hover {{ border-color:{_rgba(_REQ_NEON_PRIMARY, 140)}; }}"
-=======
         f"    stop:0 {theme.PANEL_CARD_BG_START}, stop:0.55 {theme.PANEL_CARD_BG_MID}, stop:1 {theme.PANEL_CARD_BG_END});"
         f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 82)};"
         f"  border-radius:18px;"
         f"}}"
         f"QFrame#reqCard:hover {{ border-color:{_rgba(theme.PANEL_NEON_SECONDARY, 180)}; }}"
->>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(28)
@@ -427,11 +394,7 @@ def _field_label(text: str, scale: float) -> QLabel:
     lbl.setFrameStyle(QFrame.Shape.NoFrame)
     lbl.setStyleSheet(
         f"font-size:{max(7, int(8*scale))}pt; "
-<<<<<<< HEAD
-        f"font-weight:700; text-transform:uppercase; border:none; background:transparent; color:{_REQ_TEXT_MUTED};"
-=======
         f"font-weight:700; text-transform:uppercase; border:none; color:{theme.PANEL_TEXT_MUTED};"
->>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
     return lbl
 
@@ -440,11 +403,7 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     lbl = QLabel(text)
     lbl.setFrameStyle(QFrame.Shape.NoFrame)
     lbl.setStyleSheet(
-<<<<<<< HEAD
-        f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none; background:transparent; color:{_REQ_TEXT_PRIMARY};"
-=======
         f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none; color:{theme.PANEL_TEXT_PRIMARY};"
->>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
     return lbl
 

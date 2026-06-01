@@ -24,15 +24,9 @@ def _secondary_btn_style(scale: float) -> str:
         f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)}; border-radius:12px;"
         f"  padding:8px 14px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-<<<<<<< HEAD
-        f"QPushButton:hover {{ background:{_REQ_SURFACE_ALT}; border-color:{_REQ_NEON_PRIMARY}; }}"
-        f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 26)}; }}"
-        f"QPushButton:disabled {{ background:{_rgba(_REQ_BORDER_SOFT, 36)}; color:{_REQ_TEXT_MUTED}; border-color:{_REQ_BORDER_SOFT}; }}"
-=======
         f"QPushButton:hover {{ background:{theme.PANEL_SURFACE_ALT}; border-color:{theme.PANEL_NEON_SECONDARY}; }}"
         f"QPushButton:pressed {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 26)}; }}"
         f"QPushButton:disabled {{ background:{_rgba(theme.PANEL_BORDER_SOFT, 36)}; color:{theme.PANEL_TEXT_MUTED}; border-color:{theme.PANEL_BORDER_SOFT}; }}"
->>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
 
 
