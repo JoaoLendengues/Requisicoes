@@ -492,6 +492,9 @@ class DrawingScene(QGraphicsScene):
         self._vp_corner_dragging: bool = False
         self._vp_corner_drag_item: QGraphicsPathItem | None = None
         self._vp_corner_drag_index: int = -1
+        self._vp_segment_dragging: bool = False
+        self._vp_segment_drag_item: QGraphicsPathItem | None = None
+        self._vp_segment_drag_index: int = -1
         self._vp_active_node_index: int = -1
         self._vp_corner_label_text: str = ""
         self._vp_corner_label_pos: QPointF | None = None
@@ -539,6 +542,7 @@ class DrawingScene(QGraphicsScene):
     ANGLE_MARKER_MAX_SIZE = 4000.0
     VP_CLOSE_RADIUS = 16
     VP_CORNER_HANDLE_RADIUS = 6
+    VP_SEGMENT_HIT_RADIUS = 10
 
     def drawBackground(self, painter: QPainter, rect: QRectF):
         super().drawBackground(painter, rect)
@@ -950,6 +954,13 @@ class DrawingScene(QGraphicsScene):
             self._vp_corner_dragging = False
             self._vp_corner_drag_index = -1
             self._vp_active_node_index = -1
+            self._vp_corner_label_text = ""
+            self._vp_corner_label_pos = None
+            self.update()
+        if self._vp_segment_drag_item is not None and self._vp_segment_drag_item not in selected:
+            self._vp_segment_drag_item = None
+            self._vp_segment_dragging = False
+            self._vp_segment_drag_index = -1
             self._vp_corner_label_text = ""
             self._vp_corner_label_pos = None
             self.update()
@@ -1573,6 +1584,12 @@ class DrawingScene(QGraphicsScene):
         self._vp_nodes = []
         self._vp_radii = []
         self._vp_closed = False
+        self._vp_corner_dragging = False
+        self._vp_corner_drag_item = None
+        self._vp_corner_drag_index = -1
+        self._vp_segment_dragging = False
+        self._vp_segment_drag_item = None
+        self._vp_segment_drag_index = -1
         self._vp_active_node_index = -1
         self._vp_hover_scene_pos = None
         self._vp_snap_candidates = []
@@ -1655,6 +1672,8 @@ class DrawingScene(QGraphicsScene):
     def _current_vector_item(self) -> QGraphicsPathItem | None:
         if self._vp_corner_drag_item is not None:
             return self._vp_corner_drag_item
+        if self._vp_segment_drag_item is not None:
+            return self._vp_segment_drag_item
         for item in self.selectedItems():
             if self._is_vector_pen_item(item):
                 return item
@@ -1689,6 +1708,113 @@ class DrawingScene(QGraphicsScene):
                 return item, index
         return None
 
+    @staticmethod
+    def _distance_point_to_segment_2d(
+        px: float,
+        py: float,
+        ax: float,
+        ay: float,
+        bx: float,
+        by: float,
+    ) -> float:
+        abx = bx - ax
+        aby = by - ay
+        apx = px - ax
+        apy = py - ay
+        ab_len2 = (abx * abx) + (aby * aby)
+        if ab_len2 <= 1e-9:
+            return math.hypot(apx, apy)
+        t = ((apx * abx) + (apy * aby)) / ab_len2
+        t = max(0.0, min(1.0, t))
+        cx = ax + (abx * t)
+        cy = ay + (aby * t)
+        return math.hypot(px - cx, py - cy)
+
+    def _vector_segment_hit(self, scene_pos: QPointF) -> tuple[QGraphicsPathItem, int] | None:
+        item = self._current_vector_item()
+        if item is None:
+            return None
+        view = self._view()
+        if view is None:
+            return None
+        nodes, _radii, closed, handles_data = self._vector_item_data(item)
+        n = len(nodes)
+        if n < 2:
+            return None
+        vp_pos = QPointF(view.mapFromScene(scene_pos))
+        best_idx = -1
+        best_dist = float(self.VP_SEGMENT_HIT_RADIUS)
+        seg_total = n if closed else (n - 1)
+        for i in range(seg_total):
+            j = (i + 1) % n
+            p0 = nodes[i]
+            p3 = nodes[j]
+            out_v = handles_data[i][1] if i < len(handles_data) else QPointF(0.0, 0.0)
+            in_v = handles_data[j][0] if j < len(handles_data) else QPointF(0.0, 0.0)
+            p1 = QPointF(p0.x() + out_v.x(), p0.y() + out_v.y())
+            p2 = QPointF(p3.x() + in_v.x(), p3.y() + in_v.y())
+
+            if (
+                abs(out_v.x()) <= 1e-6
+                and abs(out_v.y()) <= 1e-6
+                and abs(in_v.x()) <= 1e-6
+                and abs(in_v.y()) <= 1e-6
+            ):
+                a_scene = item.mapToScene(p0)
+                b_scene = item.mapToScene(p3)
+                a_vp = QPointF(view.mapFromScene(a_scene))
+                b_vp = QPointF(view.mapFromScene(b_scene))
+                d = self._distance_point_to_segment_2d(
+                    vp_pos.x(),
+                    vp_pos.y(),
+                    a_vp.x(),
+                    a_vp.y(),
+                    b_vp.x(),
+                    b_vp.y(),
+                )
+            else:
+                # Aproxima distância da curva cúbica por segmentos curtos.
+                d = float("inf")
+                prev = p0
+                steps = 18
+                for step in range(1, steps + 1):
+                    t = step / steps
+                    omt = 1.0 - t
+                    x = (
+                        (omt ** 3) * p0.x()
+                        + (3.0 * (omt ** 2) * t * p1.x())
+                        + (3.0 * omt * (t ** 2) * p2.x())
+                        + ((t ** 3) * p3.x())
+                    )
+                    y = (
+                        (omt ** 3) * p0.y()
+                        + (3.0 * (omt ** 2) * t * p1.y())
+                        + (3.0 * omt * (t ** 2) * p2.y())
+                        + ((t ** 3) * p3.y())
+                    )
+                    curr = QPointF(x, y)
+                    a_scene = item.mapToScene(prev)
+                    b_scene = item.mapToScene(curr)
+                    a_vp = QPointF(view.mapFromScene(a_scene))
+                    b_vp = QPointF(view.mapFromScene(b_scene))
+                    seg_d = self._distance_point_to_segment_2d(
+                        vp_pos.x(),
+                        vp_pos.y(),
+                        a_vp.x(),
+                        a_vp.y(),
+                        b_vp.x(),
+                        b_vp.y(),
+                    )
+                    if seg_d < d:
+                        d = seg_d
+                    prev = curr
+            if d <= best_dist:
+                best_dist = d
+                best_idx = i
+        if best_idx >= 0:
+            return item, best_idx
+        return None
+
     def _set_vector_corner_handles(
         self,
         item: QGraphicsPathItem,
@@ -1710,6 +1836,43 @@ class DrawingScene(QGraphicsScene):
                 QPointF(-out_v.x(), -out_v.y()),
                 QPointF(out_v.x(), out_v.y()),
             )
+        item.setPath(self._build_vector_pen_path(nodes, radii, closed, handles_data))
+        self._set_vector_item_data(item, nodes, radii, closed, handles_data)
+
+    def _set_vector_segment_curve(
+        self,
+        item: QGraphicsPathItem,
+        segment_index: int,
+        control_local: QPointF,
+    ) -> None:
+        nodes, radii, closed, handles_data = self._vector_item_data(item)
+        n = len(nodes)
+        if n < 2:
+            return
+        seg_total = n if closed else (n - 1)
+        if not (0 <= segment_index < seg_total):
+            return
+        if len(handles_data) < n:
+            handles_data.extend([(QPointF(0.0, 0.0), QPointF(0.0, 0.0))] * (n - len(handles_data)))
+
+        i = segment_index
+        j = (segment_index + 1) % n
+        p0 = nodes[i]
+        p3 = nodes[j]
+        # Curvatura estilo Illustrator: dobra o segmento em torno de um controle "q".
+        out_v = QPointF(
+            (2.0 / 3.0) * (control_local.x() - p0.x()),
+            (2.0 / 3.0) * (control_local.y() - p0.y()),
+        )
+        in_v = QPointF(
+            (2.0 / 3.0) * (control_local.x() - p3.x()),
+            (2.0 / 3.0) * (control_local.y() - p3.y()),
+        )
+
+        curr_in_i, _curr_out_i = handles_data[i]
+        _curr_in_j, curr_out_j = handles_data[j]
+        handles_data[i] = (QPointF(curr_in_i.x(), curr_in_i.y()), out_v)
+        handles_data[j] = (in_v, QPointF(curr_out_j.x(), curr_out_j.y()))
         item.setPath(self._build_vector_pen_path(nodes, radii, closed, handles_data))
         self._set_vector_item_data(item, nodes, radii, closed, handles_data)
 
@@ -2473,10 +2636,27 @@ class DrawingScene(QGraphicsScene):
                 hit = self._vector_corner_hit(pos)
                 if hit is not None:
                     item, index = hit
+                    self._vp_segment_dragging = False
+                    self._vp_segment_drag_item = None
+                    self._vp_segment_drag_index = -1
                     self._vp_corner_dragging = True
                     self._vp_corner_drag_item = item
                     self._vp_corner_drag_index = index
                     self._vp_active_node_index = index
+                    self._vp_corner_label_pos = QPointF(pos.x(), pos.y())
+                    self._vp_corner_label_text = ""
+                    event.accept()
+                    return
+                seg_hit = self._vector_segment_hit(pos)
+                if seg_hit is not None:
+                    item, seg_index = seg_hit
+                    self._vp_corner_dragging = False
+                    self._vp_corner_drag_item = None
+                    self._vp_corner_drag_index = -1
+                    self._vp_segment_dragging = True
+                    self._vp_segment_drag_item = item
+                    self._vp_segment_drag_index = seg_index
+                    self._vp_active_node_index = -1
                     self._vp_corner_label_pos = QPointF(pos.x(), pos.y())
                     self._vp_corner_label_text = ""
                     event.accept()
@@ -2488,6 +2668,9 @@ class DrawingScene(QGraphicsScene):
                         and bool(target_item.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
                     ):
                         self._vp_active_node_index = -1
+                        self._vp_segment_dragging = False
+                        self._vp_segment_drag_item = None
+                        self._vp_segment_drag_index = -1
                         super().mousePressEvent(event)
                         event.accept()
                         return
@@ -2512,6 +2695,9 @@ class DrawingScene(QGraphicsScene):
                     self._update_vector_pen_preview()
             else:
                 self._vp_drawing = True
+                self._vp_segment_dragging = False
+                self._vp_segment_drag_item = None
+                self._vp_segment_drag_index = -1
                 self._vp_nodes = [click_pos]
                 self._vp_radii = [0.0]
                 self._vp_closed = False
@@ -2729,6 +2915,18 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
+        if self._vp_segment_dragging and self._vp_segment_drag_item is not None:
+            item = self._vp_segment_drag_item
+            seg_index = self._vp_segment_drag_index
+            control_local = item.mapFromScene(pos)
+            self._set_vector_segment_curve(item, seg_index, control_local)
+            self._vp_corner_label_text = "Curvatura"
+            self._vp_corner_label_pos = QPointF(pos.x(), pos.y())
+            self.cw.changed.emit()
+            self.update()
+            event.accept()
+            return
+
         if tool == Tool.VECTOR_PEN and self._vp_drawing:
             snap = self._find_snap(pos, candidates=self._vp_snap_candidates)
             hover = QPointF(snap.x(), snap.y()) if snap is not None else QPointF(pos.x(), pos.y())
@@ -2907,6 +3105,14 @@ class DrawingScene(QGraphicsScene):
             if self._vp_corner_dragging:
                 self._vp_corner_dragging = False
                 self._vp_corner_drag_index = -1
+                self._vp_corner_label_text = ""
+                self._vp_corner_label_pos = None
+                self.update()
+                event.accept()
+                return
+            if self._vp_segment_dragging:
+                self._vp_segment_dragging = False
+                self._vp_segment_drag_index = -1
                 self._vp_corner_label_text = ""
                 self._vp_corner_label_pos = None
                 self.update()
@@ -4711,6 +4917,9 @@ class DrawingCanvas(QWidget):
         self.scene._vp_corner_dragging = False
         self.scene._vp_corner_drag_item = None
         self.scene._vp_corner_drag_index = -1
+        self.scene._vp_segment_dragging = False
+        self.scene._vp_segment_drag_item = None
+        self.scene._vp_segment_drag_index = -1
         self.scene._vp_active_node_index = -1
         self.scene._vp_corner_label_text = ""
         self.scene._vp_corner_label_pos = None
