@@ -23,6 +23,9 @@ def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
+def _table_header_fg() -> str:
+    return theme.TEXT_WHITE if not theme.is_dark else _REQ_TEXT_PRIMARY
+
 
 def _secondary_btn_style(scale: float) -> str:
     fs = max(8, int(9 * scale))
@@ -148,6 +151,7 @@ class ItemTable(QWidget):
 
     def _apply_table_stylesheet(self) -> None:
         s = self.scale
+        header_fg = _table_header_fg()
         self.table.setStyleSheet(
             f"QTableWidget {{"
             f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 82)}; border-radius:14px;"
@@ -158,7 +162,7 @@ class ItemTable(QWidget):
             f"QHeaderView::section {{"
             f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
             f"    stop:0 {_REQ_TABLE_HEADER_START}, stop:1 {_REQ_TABLE_HEADER_END});"
-            f"  color:{_REQ_TEXT_PRIMARY};"
+            f"  color:{header_fg};"
             f"  padding:7px 8px; font-weight:800; font-size:{max(8, int(9 * s))}pt;"
             f"  border:none;"
             f"}}"

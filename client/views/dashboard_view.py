@@ -154,15 +154,16 @@ def _field_style(scale: float) -> str:
 def _neon_period_chip_style(scale: float) -> str:
     fs = max(8, int(9 * scale))
     radius = max(12, int(14 * scale))
+    chip_text = "#000000" if not theme.is_dark else _DASH_TEXT_PRIMARY
     return (
         f"QPushButton {{"
-        f"  background:{_DASH_SURFACE_BG}; color:{_DASH_TEXT_MUTED};"
+        f"  background:{_DASH_SURFACE_BG}; color:{chip_text};"
         f"  border:1px solid rgba(148, 163, 184, 0.32); border-radius:{radius}px;"
         f"  padding:7px 14px; font-size:{fs}pt; font-weight:800;"
         f"}}"
-        f"QPushButton:hover {{ border-color:{_NEON_PERIOD_COLORS['monthly']}; color:{_DASH_TEXT_PRIMARY}; }}"
+        f"QPushButton:hover {{ border-color:{_NEON_PERIOD_COLORS['monthly']}; color:{chip_text}; }}"
         f"QPushButton:checked {{"
-        f"  background:{_DASH_SURFACE_ALT}; color:{_DASH_TEXT_PRIMARY}; border:1px solid {_NEON_PERIOD_COLORS['monthly']};"
+        f"  background:{_DASH_SURFACE_ALT}; color:{chip_text}; border:1px solid {_NEON_PERIOD_COLORS['monthly']};"
         f"}}"
         f"QPushButton:checked:hover {{ border-color:{_NEON_PERIOD_COLORS['weekly']}; }}"
     )
@@ -405,6 +406,8 @@ class NeonComparisonWidget(QWidget):
         painter.setBrush(badge_color)
         painter.drawRoundedRect(badge_rect, badge_height / 2, badge_height / 2)
         painter.setPen(QColor(active_color).lighter(150))
+        if not theme.is_dark:
+            painter.setPen(QColor("#000000"))
         badge_font = painter.font()
         badge_font.setPointSize(max(7, int(8 * self._scale)))
         badge_font.setBold(True)
@@ -1183,7 +1186,7 @@ class DashboardView(QWidget):
             f"QHeaderView::section {{"
             f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
             f"    stop:0 {_DASH_TABLE_HEADER_START}, stop:1 {_DASH_TABLE_HEADER_END});"
-            f"  color:{_DASH_TEXT_PRIMARY}; padding:9px 10px;"
+            f"  color:{theme.TEXT_WHITE if not theme.is_dark else _DASH_TEXT_PRIMARY}; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
             f"QHeaderView::section:hover {{ background:{_DASH_TABLE_HEADER_END}; }}"
@@ -1701,7 +1704,7 @@ class DashboardView(QWidget):
             f"QHeaderView::section {{"
             f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
             f"    stop:0 {_DASH_TABLE_HEADER_START}, stop:1 {_DASH_TABLE_HEADER_END});"
-            f"  color:{_DASH_TEXT_PRIMARY}; padding:9px 10px;"
+            f"  color:{theme.TEXT_WHITE if not theme.is_dark else _DASH_TEXT_PRIMARY}; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
             f"QTableWidget::item {{"

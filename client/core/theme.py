@@ -387,6 +387,7 @@ def danger_btn_style(scale: float = 1.0) -> str:
 
 
 def global_style() -> str:
+    table_header_fg = TEXT_WHITE if not is_dark else PANEL_TEXT_PRIMARY  # noqa: F821
     return (
         f"QMainWindow {{"
         f"  background:{CONTENT_BG}; color:{TEXT_DARK};"  # noqa: F821
@@ -415,7 +416,7 @@ def global_style() -> str:
         f"}}"
         f"QHeaderView::section {{"
         f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {PANEL_TABLE_HEADER_START}, stop:1 {PANEL_TABLE_HEADER_END});"
-        f"  color:{PANEL_TEXT_PRIMARY}; padding:8px 10px;"  # noqa: F821
+        f"  color:{table_header_fg}; padding:8px 10px;"
         f"  border:none; font-weight:700;"
         f"}}"
         f"QTableCornerButton::section {{"

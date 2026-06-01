@@ -283,6 +283,7 @@ def _calendar_btn_style(scale: float) -> str:
 def _dialog_table_style(scale: float) -> str:
     body_fs = max(8, int(9 * scale))
     head_fs = max(7, int(8 * scale))
+    header_fg = theme.TEXT_WHITE if not theme.is_dark else _REQ_TEXT_PRIMARY
     return (
         f"QTableWidget {{"
         f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
@@ -295,7 +296,7 @@ def _dialog_table_style(scale: float) -> str:
         f"QHeaderView::section {{"
         f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
         f"    stop:0 {_REQ_TABLE_HEADER_START}, stop:1 {_REQ_TABLE_HEADER_END});"
-        f"  color:{_REQ_TEXT_PRIMARY};"
+        f"  color:{header_fg};"
         f"  border:none; padding:8px 10px; font-size:{head_fs}pt; font-weight:700;"
         f"}}"
         f"QTableCornerButton::section {{ background:{_REQ_TABLE_HEADER_START}; border:none; }}"
@@ -1886,13 +1887,13 @@ class RequisitionForm(QWidget):
         lbl_req = QLabel("REQUISIÇÃO")
         lbl_req.setProperty("accent", "1")
         lbl_req.setStyleSheet(
-            f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; color:{_REQ_TEXT_MUTED};"
+            f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; background:transparent; color:{_REQ_TEXT_MUTED};"
         )
         self.lbl_req_title = lbl_req
         self.lbl_ped_num = QLabel("#000000")
         self.lbl_ped_num.setProperty("accent", "1")
         self.lbl_ped_num.setStyleSheet(
-            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; color:{_REQ_NEON_PRIMARY};"
+            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; background:transparent; color:{_REQ_NEON_PRIMARY};"
         )
         title_col.addWidget(lbl_req)
         title_col.addWidget(self.lbl_ped_num)
@@ -3316,10 +3317,10 @@ class RequisitionForm(QWidget):
             self.btn_search_req.setStyleSheet(_req_round_icon_btn_style(s, self.btn_search_req.width()))
         if hasattr(self, "lbl_req_title"):
             self.lbl_req_title.setStyleSheet(
-                f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; color:{_REQ_TEXT_MUTED};"
+                f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; background:transparent; color:{_REQ_TEXT_MUTED};"
             )
         self.lbl_ped_num.setStyleSheet(
-            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; color:{_REQ_NEON_PRIMARY};"
+            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; background:transparent; color:{_REQ_NEON_PRIMARY};"
         )
         self.lock_label.setStyleSheet(
             f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
