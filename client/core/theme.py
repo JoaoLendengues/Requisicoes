@@ -386,6 +386,56 @@ def danger_btn_style(scale: float = 1.0) -> str:
     )
 
 
+def neon_table_qss(scale: float = 1.0) -> str:
+    """QSS unificado para tabelas com identidade neon (Painel Gerencial /
+    Nova Requisição / Central de Pedidos). Lê PANEL_* em runtime para
+    refletir tema claro/escuro corrente."""
+    header_fg = TEXT_WHITE if not is_dark else PANEL_TEXT_PRIMARY  # noqa: F821
+    fs_item = max(8, int(9 * scale))
+    fs_head = max(7, int(8 * scale))
+    return (
+        f"QTableWidget {{"
+        f"  border:none; outline:none; background:{PANEL_SURFACE_BG};"  # noqa: F821
+        f"  alternate-background-color:{PANEL_SURFACE_ALT};"  # noqa: F821
+        f"  color:{PANEL_TEXT_PRIMARY}; border-radius:14px;"  # noqa: F821
+        f"  gridline-color:transparent; font-size:{fs_item}pt;"
+        f"}}"
+        f"QHeaderView::section {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        f"    stop:0 {PANEL_TABLE_HEADER_START},"  # noqa: F821
+        f"    stop:1 {PANEL_TABLE_HEADER_END});"  # noqa: F821
+        f"  color:{header_fg}; padding:9px 10px;"
+        f"  font-weight:800; font-size:{fs_head}pt; border:none;"
+        f"}}"
+        f"QHeaderView::section:hover {{ background:{PANEL_NEON_SECONDARY}; }}"  # noqa: F821
+        f"QTableWidget::item {{"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
+        f"  padding:7px 6px; border-bottom:1px solid {rgba(PANEL_NEON_PRIMARY, 26)};"  # noqa: F821
+        f"}}"
+        f"QTableWidget::item:alternate {{"
+        f"  background:{PANEL_SURFACE_ALT}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
+        f"}}"
+        f"QTableWidget::item:selected {{"
+        f"  background:{rgba(PANEL_NEON_PRIMARY, 56)};"  # noqa: F821
+        f"  color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
+        f"}}"
+    )
+
+
+def apply_neon_table_palette(table) -> None:
+    """Aplica QPalette neon — necessário no Windows pois o Qt ignora QSS
+    em algumas regiões do QTableView (especialmente alternate-row)."""
+    from PySide6.QtGui import QColor, QPalette
+    pal = table.palette()
+    pal.setColor(QPalette.ColorRole.Base, QColor(PANEL_SURFACE_BG))  # noqa: F821
+    pal.setColor(QPalette.ColorRole.AlternateBase, QColor(PANEL_SURFACE_ALT))  # noqa: F821
+    pal.setColor(QPalette.ColorRole.Text, QColor(PANEL_TEXT_PRIMARY))  # noqa: F821
+    pal.setColor(QPalette.ColorRole.HighlightedText, QColor(PANEL_TEXT_PRIMARY))  # noqa: F821
+    pal.setColor(QPalette.ColorRole.Highlight, QColor(rgba(PANEL_NEON_PRIMARY, 60)))  # noqa: F821
+    table.setPalette(pal)
+    table.viewport().setAutoFillBackground(True)
+
+
 def global_style() -> str:
     table_header_fg = TEXT_WHITE if not is_dark else PANEL_TEXT_PRIMARY  # noqa: F821
     return (

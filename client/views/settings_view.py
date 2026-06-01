@@ -147,23 +147,8 @@ def _checkbox_style(scale: float) -> str:
 
 
 def _table_style() -> str:
-    return (
-        f"QTableWidget {{"
-        f"  background:{theme.CARD_BG}; gridline-color:{theme.BORDER_COLOR};"
-        f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
-        f"  font-size:9pt;"
-        f"}}"
-        f"QTableWidget::item {{ padding:6px 10px; color:{theme.TEXT_DARK}; }}"
-        f"QTableWidget::item:selected {{"
-        f"  background:{theme.SELECTION_BG}; color:{theme.TEXT_DARK};"
-        f"}}"
-        f"QHeaderView::section {{"
-        f"  background:{theme.TABLE_HEADER_BG}; color:#fff;"
-        f"  padding:6px 10px; border:none; font-weight:700; font-size:9pt;"
-        f"}}"
-        f"QHeaderView::section:first {{ border-top-left-radius:10px; }}"
-        f"QHeaderView::section:last  {{ border-top-right-radius:10px; }}"
-    )
+    """Mantido por compatibilidade — agora delega ao helper neon central."""
+    return theme.neon_table_qss(1.0)
 
 
 

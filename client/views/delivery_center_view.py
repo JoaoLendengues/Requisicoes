@@ -458,32 +458,8 @@ class DeliveryCenterView(QWidget):
 
     def _apply_table_style(self, table: QTableWidget) -> None:
         s = self.scale
-        table.setStyleSheet(
-            f"QTableWidget {{"
-            f"  border:none; outline:none; background:{theme.CARD_BG};"
-            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
-            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
-            f"}}"
-            f"QHeaderView::section {{"
-            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
-            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
-            f"}}"
-            f"QHeaderView::section:hover {{ background:{theme.PRIMARY_HOVER}; }}"
-            f"QTableWidget::item {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
-            f"}}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
-        )
-        pal = table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
-        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
-        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
-        table.setPalette(pal)
-        table.viewport().setAutoFillBackground(True)
+        table.setStyleSheet(theme.neon_table_qss(self.scale))
+        theme.apply_neon_table_palette(table)
 
     def refresh(self):
         self._set_loading(True)
