@@ -1842,7 +1842,7 @@ def _build_production_machine_comparison(
     reqs: list[Requisition],
     now: datetime | None = None,
     *,
-    limit: int = 8,
+    limit: int | None = None,
 ) -> list[DashboardKgComparisonItem]:
     periods = _comparison_period_windows(now)
     stats: dict[tuple[str, str], dict[str, object]] = {}
@@ -1868,7 +1868,7 @@ def _build_vendor_comparison(
     reqs: list[Requisition],
     now: datetime | None = None,
     *,
-    limit: int = 8,
+    limit: int | None = None,
 ) -> list[DashboardCountKgComparisonItem]:
     periods = _comparison_period_windows(now)
     stats: dict[tuple[int, str], dict[str, object]] = {}
@@ -1888,7 +1888,7 @@ def _build_people_comparison(
     people_key: str,
     now: datetime | None = None,
     *,
-    limit: int = 8,
+    limit: int | None = None,
 ) -> list[DashboardCountKgComparisonItem]:
     periods = _comparison_period_windows(now)
     stats: dict[str, dict[str, object]] = {}
