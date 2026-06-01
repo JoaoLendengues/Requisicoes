@@ -249,24 +249,55 @@ def react_feedback(
         .first()
     )
     new_value = data.reaction
+    old_value = existing.reaction if existing else None
+    final_value: str | None = None  # estado final após a alteração
 
     if new_value is None:
         if existing:
             db.delete(existing)
+        final_value = None
     elif existing:
         if existing.reaction == new_value:
             # Clicou no mesmo botão de novo → remove (toggle off)
             db.delete(existing)
+            final_value = None
         else:
             existing.reaction = new_value
+            final_value = new_value
     else:
         db.add(FeedbackReaction(
             feedback_id=feedback_id,
             user_id=current_user.id,
             reaction=new_value,
         ))
+        final_value = new_value
+
+    # Notifica o autor se houve uma reação NOVA ou TROCA (não notifica em toggle-off)
+    notifications: list[Notification] = []
+    if final_value is not None and final_value != old_value and fb.user_id:
+        reactor_name = current_user.name or f"Usuário #{current_user.id}"
+        if final_value == "like":
+            title = "👍 Curtiram seu feedback"
+            verb = "curtiu"
+        else:
+            title = "👎 Não curtiram seu feedback"
+            verb = "não curtiu"
+        preview = fb.message if len(fb.message) <= 60 else fb.message[:57] + "..."
+        notif = Notification(
+            user_id=fb.user_id,
+            type="feedback_reaction",
+            title=title,
+            message=f"{reactor_name} {verb}: \"{preview}\"",
+            requisition_id=None,
+        )
+        db.add(notif)
+        notifications.append(notif)
 
     db.commit()
+    for notif in notifications:
+        db.refresh(notif)
+    push_all(notifications)
+
     db.refresh(fb)
     return _serialize_list(db, [fb], current_user)[0]
 
