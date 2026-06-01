@@ -88,9 +88,7 @@ _CALHA_PRESET_LABELS = {
     "calha_2_aba": "Calha com 2 Aba",
     "calha_abas_dobrada": "Calha com Abas Dobrada",
     "calha_modulada": "Calha Modulada",
-    "calha_foto": "Calha da Foto",
     "calha_3d": "Calha 3D",
-    "calha_1_aba_3d": "Calha com 1 Aba 3D",
 }
 _BANDEJA_PRESET_LABELS = {
     "bandeja_1": "Bandeja 1",
@@ -5038,8 +5036,6 @@ class DrawingCanvas(QWidget):
             "calha_2_aba",
             "calha_abas_dobrada",
             "calha_modulada",
-            "calha_foto",
-            "calha_1_aba_3d",
         ):
             item = QListWidgetItem(_CALHA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
