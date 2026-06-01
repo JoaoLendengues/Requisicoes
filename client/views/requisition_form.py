@@ -3340,4 +3340,34 @@ class RequisitionForm(QWidget):
             self.qr_label.setStyleSheet(
                 f"border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 96)}; border-radius:10px; background:#fff;"
             )
+
+        # Reaplica o gradiente em todos os cards do formulário. O QSS é gravado
+        # no momento da criação (em _make_card) com os valores correntes da
+        # paleta — sem isso, ao trocar tema os cards ficam com o gradiente
+        # antigo (visível principalmente onde sobra background entre os filhos,
+        # como nos cards de Itens da Requisição e Observação).
+        card_qss = (
+            f"QFrame#reqCard {{"
+            f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            f"    stop:0 {theme.PANEL_CARD_BG_START},"
+            f"    stop:0.55 {theme.PANEL_CARD_BG_MID},"
+            f"    stop:1 {theme.PANEL_CARD_BG_END});"
+            f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 82)};"
+            f"  border-radius:18px;"
+            f"}}"
+            f"QFrame#reqCard:hover {{ border-color:{_rgba(theme.PANEL_NEON_SECONDARY, 180)}; }}"
+        )
+        for card in self.findChildren(QFrame, "reqCard"):
+            card.setStyleSheet(card_qss)
+
+        # Reaplica labels de campo (têm property "accent" = "1") com a cor
+        # PANEL_TEXT_MUTED do tema atual. Sem isso eles ficam com a cor antiga.
+        for lbl in self.findChildren(QLabel):
+            if lbl.property("accent") == "1":
+                lbl.setStyleSheet(
+                    f"font-size:{max(7, int(8*s))}pt; font-weight:700;"
+                    f" text-transform:uppercase; border:none;"
+                    f" color:{theme.PANEL_TEXT_MUTED};"
+                )
+
         self._refresh_signature_preview()
