@@ -56,6 +56,17 @@ def _rgba(color: str, alpha: int) -> str:
     return f"rgba({c.red()}, {c.green()}, {c.blue()}, {alpha})"
 
 
+def _blend_color(base_hex: str, tint_hex: str, tint_alpha: int) -> str:
+    """Mistura tint_hex sobre base_hex com alpha (0-255) e retorna #RRGGBB."""
+    base = QColor(base_hex)
+    tint = QColor(tint_hex)
+    a = max(0.0, min(1.0, float(tint_alpha) / 255.0))
+    r = int(round(base.red() * (1.0 - a) + tint.red() * a))
+    g = int(round(base.green() * (1.0 - a) + tint.green() * a))
+    b = int(round(base.blue() * (1.0 - a) + tint.blue() * a))
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+
 def _status_color(status_value: str) -> str:
     return {
         "nova":       theme.PRIMARY_HOVER,
@@ -209,14 +220,14 @@ class _FeedbackCard(QFrame):
         if show_author:
             author = QLabel(str(self.data.get("user_name") or "—"))
             author.setStyleSheet(
-                f"color:{theme.TEXT_DARK}; font-weight:700;"
+                f"color:{theme.DRAWER_TITLE}; font-weight:700;"
                 f"font-size:{max(10, int(11 * s))}pt; background:transparent;"
             )
             top_row.addWidget(author)
 
             sep = QLabel("•")
             sep.setStyleSheet(
-                f"color:{theme.TEXT_LIGHT}; background:transparent;"
+                f"color:{theme.DRAWER_MUTED}; background:transparent;"
                 f"font-size:{max(8, int(10 * s))}pt;"
             )
             top_row.addWidget(sep)
@@ -232,7 +243,7 @@ class _FeedbackCard(QFrame):
 
         date_label = QLabel(_fmt_datetime(self.data.get("created_at")))
         date_label.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; background:transparent;"
+            f"color:{theme.DRAWER_MUTED}; background:transparent;"
             f"font-size:{max(8, int(9 * s))}pt;"
         )
         top_row.addWidget(date_label)
@@ -242,7 +253,7 @@ class _FeedbackCard(QFrame):
         msg = QLabel(str(self.data.get("message") or "").strip())
         msg.setWordWrap(True)
         msg.setStyleSheet(
-            f"color:{theme.TEXT_DARK}; background:transparent;"
+            f"color:{theme.DRAWER_BODY}; background:transparent;"
             f"font-size:{max(9, int(10 * s))}pt; line-height:1.4;"
         )
         center.addWidget(msg)
@@ -334,20 +345,45 @@ class _FeedbackCard(QFrame):
         )
 
     def _refresh_style(self, accent_color: str):
-        # Selected vs idle vs hover são gerenciados por QSS via property
+        led_bg_top = _blend_color(theme.DRAWER_CARD, accent_color, 58)
+        led_bg_bottom = _blend_color(theme.DRAWER_CARD, accent_color, 20)
+        led_hover_top = _blend_color(theme.DRAWER_CARD, accent_color, 74)
+        led_hover_bottom = _blend_color(theme.DRAWER_CARD, accent_color, 28)
+        led_selected_top = _blend_color(theme.DRAWER_CARD, accent_color, 92)
+        led_selected_bottom = _blend_color(theme.DRAWER_CARD, accent_color, 38)
+
         self.setStyleSheet(
             f"QFrame#feedbackCard {{"
-            f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
-            f"  border-left:4px solid {accent_color}; border-radius:12px;"
+            f"  background:qlineargradient("
+            f"    x1:0, y1:0, x2:1, y2:1,"
+            f"    stop:0 {led_bg_top},"
+            f"    stop:0.52 {theme.DRAWER_CARD},"
+            f"    stop:1 {led_bg_bottom}"
+            f"  );"
+            f"  border:1px solid {theme.DRAWER_BORDER};"
+            f"  border-left:4px solid {accent_color};"
+            f"  border-radius:10px;"
             f"}}"
             f"QFrame#feedbackCard[selected=\"true\"] {{"
-            f"  background:{_rgba(theme.PRIMARY, 14)};"
-            f"  border:1px solid {_rgba(theme.PRIMARY, 80)};"
+            f"  background:qlineargradient("
+            f"    x1:0, y1:0, x2:1, y2:1,"
+            f"    stop:0 {led_selected_top},"
+            f"    stop:0.52 {theme.DRAWER_CARD},"
+            f"    stop:1 {led_selected_bottom}"
+            f"  );"
+            f"  border:2px solid {accent_color};"
             f"  border-left:4px solid {accent_color};"
             f"}}"
             f"QFrame#feedbackCard:hover {{"
-            f"  background:{theme.SURFACE_SOFT};"
+            f"  background:qlineargradient("
+            f"    x1:0, y1:0, x2:1, y2:1,"
+            f"    stop:0 {led_hover_top},"
+            f"    stop:0.52 {theme.DRAWER_CARD},"
+            f"    stop:1 {led_hover_bottom}"
+            f"  );"
+            f"  border:1px solid {accent_color};"
             f"}}"
+            f"QLabel {{ background:transparent; border:none; }}"
         )
 
     def set_selected(self, selected: bool):
