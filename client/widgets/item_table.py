@@ -8,36 +8,25 @@ from PySide6.QtGui import QColor, QPalette
 from ..core import theme
 from ..core.text_case import normalize_upper_text
 
-_REQ_SURFACE_BG = theme.PANEL_SURFACE_BG
-_REQ_SURFACE_ALT = theme.PANEL_SURFACE_ALT
-_REQ_BORDER_SOFT = theme.PANEL_BORDER_SOFT
-_REQ_TEXT_PRIMARY = theme.PANEL_TEXT_PRIMARY
-_REQ_TEXT_MUTED = theme.PANEL_TEXT_MUTED
-_REQ_NEON_PRIMARY = theme.PANEL_NEON_PRIMARY
-_REQ_NEON_SECONDARY = theme.PANEL_NEON_SECONDARY
-_REQ_TABLE_HEADER_START = theme.PANEL_TABLE_HEADER_START
-_REQ_TABLE_HEADER_END = theme.PANEL_TABLE_HEADER_END
-
-
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 def _table_header_fg() -> str:
-    return theme.TEXT_WHITE if not theme.is_dark else _REQ_TEXT_PRIMARY
+    return theme.TEXT_WHITE if not theme.is_dark else theme.PANEL_TEXT_PRIMARY
 
 
 def _secondary_btn_style(scale: float) -> str:
     fs = max(8, int(9 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
-        f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; border-radius:12px;"
+        f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)}; border-radius:12px;"
         f"  padding:8px 14px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{_REQ_SURFACE_ALT}; border-color:{_REQ_NEON_SECONDARY}; }}"
-        f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 26)}; }}"
-        f"QPushButton:disabled {{ background:{_rgba(_REQ_BORDER_SOFT, 36)}; color:{_REQ_TEXT_MUTED}; border-color:{_REQ_BORDER_SOFT}; }}"
+        f"QPushButton:hover {{ background:{theme.PANEL_SURFACE_ALT}; border-color:{theme.PANEL_NEON_SECONDARY}; }}"
+        f"QPushButton:pressed {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 26)}; }}"
+        f"QPushButton:disabled {{ background:{_rgba(theme.PANEL_BORDER_SOFT, 36)}; color:{theme.PANEL_TEXT_MUTED}; border-color:{theme.PANEL_BORDER_SOFT}; }}"
     )
 
 
@@ -101,7 +90,7 @@ class ItemTable(QWidget):
         self.title_label = QLabel("ITENS DA REQUISIÇÃO")
         fs_title = max(9, int(11 * self.scale))
         self.title_label.setStyleSheet(
-            f"color:{_REQ_NEON_PRIMARY}; font-size:{fs_title}pt; font-weight:800;"
+            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{fs_title}pt; font-weight:800;"
         )
         layout.addWidget(self.title_label)
 
@@ -139,11 +128,11 @@ class ItemTable(QWidget):
 
         self.peso_label = QLabel("PESO TOTAL:")
         self.peso_label.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(10 * self.scale))}pt; font-weight:700;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(10 * self.scale))}pt; font-weight:700;"
         )
         self.total_label = QLabel("0,00")
         self.total_label.setStyleSheet(
-            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:800;"
+            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:800;"
         )
         footer.addWidget(self.peso_label)
         footer.addWidget(self.total_label)
@@ -154,33 +143,33 @@ class ItemTable(QWidget):
         header_fg = _table_header_fg()
         self.table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 82)}; border-radius:14px;"
-            f"  background:{_REQ_SURFACE_BG};"
-            f"  gridline-color:{_REQ_BORDER_SOFT}; font-size:{max(8, int(10 * s))}pt;"
-            f"  color:{_REQ_TEXT_PRIMARY};"
+            f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 82)}; border-radius:14px;"
+            f"  background:{theme.PANEL_SURFACE_BG};"
+            f"  gridline-color:{theme.PANEL_BORDER_SOFT}; font-size:{max(8, int(10 * s))}pt;"
+            f"  color:{theme.PANEL_TEXT_PRIMARY};"
             f"}}"
             f"QHeaderView::section {{"
             f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-            f"    stop:0 {_REQ_TABLE_HEADER_START}, stop:1 {_REQ_TABLE_HEADER_END});"
+            f"    stop:0 {theme.PANEL_TABLE_HEADER_START}, stop:1 {theme.PANEL_TABLE_HEADER_END});"
             f"  color:{header_fg};"
             f"  padding:7px 8px; font-weight:800; font-size:{max(8, int(9 * s))}pt;"
             f"  border:none;"
             f"}}"
-            f"QTableCornerButton::section {{ background:{_REQ_TABLE_HEADER_START}; border:none; }}"
+            f"QTableCornerButton::section {{ background:{theme.PANEL_TABLE_HEADER_START}; border:none; }}"
             f"QTableWidget::item {{"
-            f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
-            f"  padding:6px 5px; border-bottom:1px solid {_rgba(_REQ_NEON_PRIMARY, 24)};"
+            f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"  padding:6px 5px; border-bottom:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 24)};"
             f"}}"
-            f"QTableWidget::item:alternate {{ background:{_REQ_SURFACE_ALT}; color:{_REQ_TEXT_PRIMARY}; }}"
-            f"QTableWidget::item:selected {{ background:{_rgba(_REQ_NEON_PRIMARY, 56)}; color:{_REQ_TEXT_PRIMARY}; }}"
+            f"QTableWidget::item:alternate {{ background:{theme.PANEL_SURFACE_ALT}; color:{theme.PANEL_TEXT_PRIMARY}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 56)}; color:{theme.PANEL_TEXT_PRIMARY}; }}"
         )
-        self.table.viewport().setStyleSheet(f"background:{_REQ_SURFACE_BG};")
+        self.table.viewport().setStyleSheet(f"background:{theme.PANEL_SURFACE_BG};")
 
     def _apply_table_palette(self) -> None:
         pal = self.table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(_REQ_SURFACE_BG))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(_REQ_SURFACE_ALT))
-        pal.setColor(QPalette.ColorRole.Text, QColor(_REQ_TEXT_PRIMARY))
+        pal.setColor(QPalette.ColorRole.Base, QColor(theme.PANEL_SURFACE_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.PANEL_SURFACE_ALT))
+        pal.setColor(QPalette.ColorRole.Text, QColor(theme.PANEL_TEXT_PRIMARY))
         self.table.setPalette(pal)
 
     def apply_theme(self) -> None:
@@ -188,13 +177,13 @@ class ItemTable(QWidget):
         self._apply_table_stylesheet()
         self._apply_table_palette()
         self.title_label.setStyleSheet(
-            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
+            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
         )
         self.peso_label.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(10 * s))}pt; font-weight:700;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(10 * s))}pt; font-weight:700;"
         )
         self.total_label.setStyleSheet(
-            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
         )
         self.btn_add.setStyleSheet(_secondary_btn_style(s))
         self.btn_clear_selected.setStyleSheet(_secondary_btn_style(s))
