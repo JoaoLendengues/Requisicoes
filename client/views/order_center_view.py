@@ -55,6 +55,43 @@ _METRIC_ICON_FILES = {
 
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
+_FULL_WIDTH_SECTION_KEYS = {
+    "aguardando_recebimento",
+    "em_producao",
+    "faturados",
+    "cancelados",
+}
+_TABLE_STRETCH_COLUMNS = {
+    "aguardando_recebimento": {1, 2},
+    "em_producao": {1, 2, 5, 6, 7, 8},
+    "faturados": {1, 2, 6, 7, 8, 9},
+    "cancelados": {1, 2, 5},
+    "atrasados": {1, 2, 6, 7, 8, 9},
+}
+_TABLE_LEFT_ALIGN_COLUMNS = {
+    "aguardando_recebimento": {1, 2},
+    "em_producao": {1, 2, 5, 6, 7, 8},
+    "faturados": {1, 2, 6, 7, 8, 9},
+    "cancelados": {1, 2, 5},
+    "atrasados": {1, 2, 6, 7, 8, 9},
+}
+_TABLE_MIN_COLUMN_WIDTHS = {
+    "aguardando_recebimento": {
+        0: 92, 3: 96, 4: 190, 5: 126, 6: 162,
+    },
+    "em_producao": {
+        0: 92, 3: 96, 4: 158, 9: 126,
+    },
+    "faturados": {
+        0: 92, 3: 96, 4: 158, 5: 158, 10: 156,
+    },
+    "cancelados": {
+        0: 92, 3: 96, 4: 158, 5: 280,
+    },
+    "atrasados": {
+        0: 92, 3: 96, 4: 132, 5: 112, 10: 188,
+    },
+}
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -121,6 +158,19 @@ def _primary_action_btn_style(scale: float) -> str:
         f"QPushButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
         f"QPushButton:pressed {{ background:#152D49; }}"
         f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
+    )
+
+
+def _danger_action_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{theme.DANGER}; color:#FFFFFF; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:#B91C1C; }}"
+        f"QPushButton:pressed {{ background:#991B1B; }}"
+        f"QPushButton:disabled {{ background:#F0B4B4; color:#FFF7F7; }}"
     )
 
 
@@ -427,6 +477,13 @@ class OrderCenterView(QWidget):
         self._btn_reset_filter.clicked.connect(self._reset_filter)
         filter_bar.addWidget(self._btn_reset_filter)
 
+        self._btn_clear_filter = QPushButton("DESMARCAR TODOS")
+        self._btn_clear_filter.setFixedHeight(max(28, int(32 * s)))
+        self._btn_clear_filter.setStyleSheet(_danger_action_btn_style(s))
+        self._btn_clear_filter.setToolTip("Limpar a seleção atual dos filtros")
+        self._btn_clear_filter.clicked.connect(self._clear_filter_selection)
+        filter_bar.addWidget(self._btn_clear_filter)
+
         layout.addLayout(filter_bar)
 
         # ── Pré-constrói as seções (ficam no cache; visibilidade gerida) ──
@@ -492,6 +549,11 @@ class OrderCenterView(QWidget):
         self._active_sections = set(self._filter_chips.keys())
         self._rebuild_sections_layout(animate=True)
 
+    def _clear_filter_selection(self):
+        """Desmarca todos os chips para facilitar uma nova seleção manual."""
+        for chip in self._filter_chips.values():
+            chip.setChecked(False)
+
     # ── Reconstrução do layout ────────────────────────────────────────────────
     def _rebuild_sections_layout(self, animate: bool = True):
         """
@@ -534,15 +596,28 @@ class OrderCenterView(QWidget):
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
 
+        row_idx = 0
+        col_idx = 0
+
         for i, key in enumerate(visible):
             card = self._section_cards[key]
-            row_idx = i // 2
-            col_idx = i % 2
+            should_span = key in _FULL_WIDTH_SECTION_KEYS or (
+                col_idx == 0 and i == len(visible) - 1
+            )
+            if should_span:
             # Última item ímpar → span 2 colunas
-            if i == len(visible) - 1 and len(visible) % 2 == 1:
+                if col_idx != 0:
+                    row_idx += 1
+                    col_idx = 0
                 grid.addWidget(card, row_idx, 0, 1, 2)
+                row_idx += 1
             else:
                 grid.addWidget(card, row_idx, col_idx)
+                if col_idx == 0:
+                    col_idx = 1
+                else:
+                    col_idx = 0
+                    row_idx += 1
             card.show()
 
         # Esconde cards que não estão na seleção
@@ -789,14 +864,6 @@ class OrderCenterView(QWidget):
             "atrasados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "PRAZO ENTREGA", "ATRASO", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "AJUDANTE", "STATUS"],
         }
 
-        stretch_columns = {
-            "aguardando_recebimento": {1, 2},
-            "em_producao": {1, 2, 7, 8},
-            "faturados": {1, 2, 8, 9},
-            "cancelados": {1, 2, 5},
-            "atrasados": {1, 2, 8, 9},
-        }
-
         headers = headers_by_section[key]
         table = QTableWidget(0, len(headers))
         table.setHorizontalHeaderLabels(headers)
@@ -811,19 +878,11 @@ class OrderCenterView(QWidget):
 
         s = self.scale
         header = table.horizontalHeader()
-        for col in range(len(headers)):
-            mode = (
-                QHeaderView.ResizeMode.Stretch
-                if col in stretch_columns[key]
-                else QHeaderView.ResizeMode.ResizeToContents
-            )
-            header.setSectionResizeMode(col, mode)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setMinimumHeight(max(34, int(40 * s)))
+        header.setMinimumSectionSize(max(86, int(96 * s)))
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         if key == "atrasados":
-            header.setSectionResizeMode(10, QHeaderView.ResizeMode.Interactive)
-            table.setColumnWidth(10, max(180, int(210 * s)))
             table.verticalHeader().setDefaultSectionSize(max(36, int(42 * s)))
 
         table.setSortingEnabled(True)
@@ -858,7 +917,28 @@ class OrderCenterView(QWidget):
         table.viewport().setAutoFillBackground(True)
         table.setMinimumHeight(max(320, int(360 * s)))
         apply_smooth_scroll(table)
+        self._configure_table_columns(table, key)
         return table
+
+    def _configure_table_columns(self, table: QTableWidget, key: str):
+        header = table.horizontalHeader()
+        stretch_columns = _TABLE_STRETCH_COLUMNS[key]
+        min_widths = _TABLE_MIN_COLUMN_WIDTHS.get(key, {})
+        header_metrics = QFontMetrics(header.font())
+        header_padding = max(26, int(34 * self.scale))
+
+        for col in range(table.columnCount()):
+            if col in stretch_columns:
+                header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
+                continue
+
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+            table.resizeColumnToContents(col)
+            header_text = table.horizontalHeaderItem(col).text() if table.horizontalHeaderItem(col) else ""
+            header_width = header_metrics.horizontalAdvance(header_text) + header_padding
+            minimum_width = int(min_widths.get(col, 0) * self.scale)
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            table.setColumnWidth(col, max(table.columnWidth(col), header_width, minimum_width))
 
     def refresh(self):
         self._set_loading(True)
@@ -927,9 +1007,11 @@ class OrderCenterView(QWidget):
 
         if not rows:
             self._set_empty_message(table, "Nenhum pedido encontrado nesta etapa.")
+            self._configure_table_columns(table, key)
             return
 
         table.setSortingEnabled(False)
+        left_align_columns = _TABLE_LEFT_ALIGN_COLUMNS.get(key, set())
         for row_data in rows:
             if not isinstance(row_data, dict):
                 continue
@@ -1097,9 +1179,16 @@ class OrderCenterView(QWidget):
                 else:
                     sk = sort_keys[col] if col < len(sort_keys) else None
                     item = SortableItem(value, sort_key=sk) if sk is not None else QTableWidgetItem(value)
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    alignment = (
+                        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+                        if col in left_align_columns
+                        else Qt.AlignmentFlag.AlignCenter
+                    )
+                    item.setTextAlignment(alignment)
+                    item.setToolTip(value)
                     table.setItem(row, col, item)
         table.setSortingEnabled(True)
+        self._configure_table_columns(table, key)
 
     def _set_empty_message(self, table: QTableWidget, message: str):
         table.setRowCount(1)
