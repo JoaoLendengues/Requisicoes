@@ -314,6 +314,10 @@ class OrderCenterView(QWidget):
             "atrasados": [],
         }
         self._metric_labels: dict[str, QLabel] = {}
+        self._metric_title_labels: dict[str, QLabel] = {}
+        self._metric_helper_labels: dict[str, QLabel] = {}
+        self._section_title_labels: list[QLabel] = []
+        self._section_subtitle_labels: list[QLabel] = []
         self._tables: dict[str, QTableWidget] = {}
         self._section_cards: dict = {}
         # Filtros: chaves ativas = tabelas visíveis. Persiste entre refreshes.
@@ -761,6 +765,8 @@ class OrderCenterView(QWidget):
         layout.addStretch()
         layout.addWidget(accent_line)
         self._metric_labels[key] = value
+        self._metric_title_labels[key] = title
+        self._metric_helper_labels[key] = helper
         return card
 
     def _build_metric_icon_label(self, key: str) -> QLabel | None:
@@ -857,6 +863,8 @@ class OrderCenterView(QWidget):
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         title_row.addLayout(title_col, 1)
+        self._section_title_labels.append(title)
+        self._section_subtitle_labels.append(subtitle)
 
         btn_open = QPushButton("ABRIR PEDIDO")
         btn_open.setFixedHeight(max(34, int(38 * s)))
@@ -1379,6 +1387,39 @@ class OrderCenterView(QWidget):
         card_qss = _order_card_qss(radius=max(18, int(20 * s)))
         for card in self.findChildren(QFrame, "orderCenterCard"):
             card.setStyleSheet(card_qss)
+
+        # Labels dos metric cards (topo) — re-estiliza para refletir a paleta
+        # corrente. Sem isso, a cor congelada na criação fica igual ao fundo
+        # quando o tema troca (escuro<->claro).
+        for lbl in self._metric_labels.values():
+            lbl.setStyleSheet(
+                f"font-size:{max(20, int(26 * s))}pt;"
+                f"font-weight:800; background:transparent; border:none;"
+                f"color:{theme.PANEL_TEXT_PRIMARY};"
+            )
+        for lbl in self._metric_title_labels.values():
+            lbl.setStyleSheet(
+                f"font-size:{max(9, int(11 * s))}pt;"
+                f"font-weight:700; background:transparent; border:none;"
+                f"color:{theme.PANEL_TEXT_PRIMARY};"
+            )
+        for lbl in self._metric_helper_labels.values():
+            lbl.setStyleSheet(
+                f"font-size:{max(7, int(8 * s))}pt;"
+                f"background:transparent; border:none;"
+                f"color:{theme.PANEL_TEXT_MUTED};"
+            )
+        # Títulos / subtítulos dos cards de seção (Aguardando, Em Produção...).
+        for lbl in self._section_title_labels:
+            lbl.setStyleSheet(
+                f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
+                f"color:{theme.PANEL_TEXT_PRIMARY};"
+            )
+        for lbl in self._section_subtitle_labels:
+            lbl.setStyleSheet(
+                f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
+                f"color:{theme.PANEL_TEXT_MUTED};"
+            )
 
         # Re-polish dos filhos garante que labels e botões internos (que têm
         # setStyleSheet inline sem cor explícita) peguem o global_style novo.
