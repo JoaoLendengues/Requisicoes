@@ -1,6 +1,12 @@
 from PySide6.QtWidgets import QLabel
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from ..core.theme import STATUS_COLORS, STATUS_LABELS
+
+
+def _rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 
 class StatusBadge(QLabel):
@@ -17,7 +23,13 @@ class StatusBadge(QLabel):
         fs = max(8, int(10 * self.scale))
         self.setText(label.upper())
         self.setStyleSheet(
-            f"background:{color}; color:#fff; border-radius:8px;"
-            f"padding:4px 12px; font-size:{fs}pt; font-weight:600;"
+            f"background:{_rgba(color, 48)}; color:#F8FAFC;"
+            f"border:1px solid {_rgba(color, 155)}; border-radius:12px;"
+            f"padding:4px 12px; font-size:{fs}pt; font-weight:700;"
         )
         self.setFixedHeight(max(24, int(28 * self.scale)))
+
+    def apply_theme(self, scale: float | None = None) -> None:
+        if scale is not None:
+            self.scale = scale
+        self.set_status(getattr(self, "_status", "em_andamento"))
