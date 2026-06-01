@@ -67,6 +67,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.scale = res.effective_scale
+        self._allow_close_without_prompt = False
         self._threads: list = []
         self._unread_count = 0
         self._listener: NotificationListener | None = None
@@ -1200,6 +1201,7 @@ class MainWindow(QMainWindow):
         if reply:
             self._stop_runtime_services()
             session.logout()
+            self._allow_close_without_prompt = True
             self.close()
 
     def _switch_user(self):
@@ -1224,8 +1226,12 @@ class MainWindow(QMainWindow):
         self._switch_anim.setStartValue(1.0)
         self._switch_anim.setEndValue(0.0)
         self._switch_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._switch_anim.finished.connect(self.close)
+        self._switch_anim.finished.connect(self._close_without_confirmation)
         self._switch_anim.start()
+
+    def _close_without_confirmation(self):
+        self._allow_close_without_prompt = True
+        self.close()
 
     # ── Tour guiado (spotlight) ───────────────────────────────────────────────
 
@@ -2098,3 +2104,23 @@ class MainWindow(QMainWindow):
             self._notif_timer.stop()
         if self._listener:
             self._listener.stop()
+
+    def closeEvent(self, event):
+        if self._allow_close_without_prompt:
+            super().closeEvent(event)
+            return
+
+        should_close = ask_confirmation(
+            self,
+            "Fechar sistema",
+            "Deseja realmente fechar o sistema?",
+            yes_text="Sim",
+            no_text="Não",
+        )
+        if not should_close:
+            event.ignore()
+            return
+
+        self._stop_runtime_services()
+        self._allow_close_without_prompt = True
+        super().closeEvent(event)
