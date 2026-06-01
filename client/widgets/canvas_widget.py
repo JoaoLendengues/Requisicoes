@@ -88,11 +88,14 @@ _CALHA_PRESET_LABELS = {
     "calha_2_aba": "Calha com 2 Aba",
     "calha_abas_dobrada": "Calha com Abas Dobrada",
     "calha_modulada": "Calha Modulada",
+    "calha_3d": "Calha 3D",
+    "calha_1_aba_3d": "Calha com 1 Aba 3D",
 }
 _BANDEJA_PRESET_LABELS = {
     "bandeja_1": "Bandeja 1",
     "bandeja_2": "Bandeja 2",
     "bandeja_3": "Bandeja 3",
+    "bandeja_4": "Bandeja 4",
 }
 
 
@@ -4944,6 +4947,43 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(120.0, -52.0))
             path.lineTo(QPointF(10.0, -52.0))
             path.lineTo(QPointF(10.0, -8.0))
+        elif preset == "calha_3d":
+            # Duas almas inclinadas com fechamento superior, conforme referência.
+            path.moveTo(QPointF(-170.0, 72.0))
+            path.lineTo(QPointF(-170.0, -8.0))
+            path.lineTo(QPointF(20.0, -96.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(-170.0, 72.0))
+
+            path.moveTo(QPointF(-20.0, 72.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(170.0, -96.0))
+            path.lineTo(QPointF(170.0, -10.0))
+            path.lineTo(QPointF(-20.0, 72.0))
+
+            path.moveTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(170.0, -10.0))
+        elif preset == "calha_1_aba_3d":
+            # Perfil 3D com aba lateral única e linhas internas de reforço.
+            path.moveTo(QPointF(-180.0, 70.0))
+            path.lineTo(QPointF(-180.0, -30.0))
+            path.lineTo(QPointF(130.0, -110.0))
+            path.lineTo(QPointF(130.0, -10.0))
+            path.lineTo(QPointF(-180.0, 70.0))
+
+            path.moveTo(QPointF(-180.0, 70.0))
+            path.lineTo(QPointF(-20.0, 70.0))
+            path.lineTo(QPointF(220.0, -10.0))
+
+            path.moveTo(QPointF(-20.0, 0.0))
+            path.lineTo(QPointF(220.0, -80.0))
+            path.moveTo(QPointF(-20.0, 0.0))
+            path.lineTo(QPointF(-20.0, 70.0))
+
+            path.moveTo(QPointF(130.0, -10.0))
+            path.lineTo(QPointF(220.0, -10.0))
+            path.lineTo(QPointF(220.0, -80.0))
+            path.lineTo(QPointF(130.0, -10.0))
 
         return path
 
@@ -4992,6 +5032,8 @@ class DrawingCanvas(QWidget):
             "calha_2_aba",
             "calha_abas_dobrada",
             "calha_modulada",
+            "calha_3d",
+            "calha_1_aba_3d",
         ):
             item = QListWidgetItem(_CALHA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
@@ -5068,47 +5110,66 @@ class DrawingCanvas(QWidget):
 
     def _build_bandeja_path(self, preset: str) -> QPainterPath:
         path = QPainterPath()
-        left_x, right_x = -170.0, 170.0
         mid_y = 0.0
         top_y = -82.0
         bottom_y = 82.0
 
         if preset == "bandeja_1":
-            # Bandeja 1: base com abas nas pontas + eixo deslocado e aba superior curta.
-            axis_x = -26.0
-            right_local = 92.0
+            # Eixo central + abas nas duas pontas da base + dobra inferior à direita.
+            axis_x = 0.0
+            left_x, right_x = -150.0, 150.0
             path.moveTo(QPointF(left_x, mid_y))
-            path.lineTo(QPointF(right_local, mid_y))
+            path.lineTo(QPointF(right_x, mid_y))
             path.moveTo(QPointF(left_x, mid_y))
-            path.lineTo(QPointF(left_x, -28.0))
-            path.moveTo(QPointF(right_local, mid_y))
-            path.lineTo(QPointF(right_local, -28.0))
+            path.lineTo(QPointF(left_x, -26.0))
+            path.moveTo(QPointF(right_x, mid_y))
+            path.lineTo(QPointF(right_x, -26.0))
             path.moveTo(QPointF(axis_x, top_y))
             path.lineTo(QPointF(axis_x, bottom_y))
             path.moveTo(QPointF(axis_x, top_y))
-            path.lineTo(QPointF(46.0, top_y))
+            path.lineTo(QPointF(66.0, top_y))
+            path.moveTo(QPointF(axis_x, bottom_y))
+            path.lineTo(QPointF(66.0, bottom_y))
         elif preset == "bandeja_2":
-            # Bandeja 2: eixo deslocado para a esquerda + dupla descida no lado direito.
-            axis_x = -78.0
+            # Eixo central + base com queda vertical na ponta direita.
+            axis_x = 0.0
+            left_x, right_x = -150.0, 130.0
             path.moveTo(QPointF(left_x, mid_y))
             path.lineTo(QPointF(right_x, mid_y))
+            path.moveTo(QPointF(right_x, mid_y))
+            path.lineTo(QPointF(right_x, 38.0))
             path.moveTo(QPointF(axis_x, top_y))
             path.lineTo(QPointF(axis_x, bottom_y))
             path.moveTo(QPointF(axis_x, top_y))
-            path.lineTo(QPointF(-22.0, top_y))
-            path.moveTo(QPointF(104.0, mid_y))
-            path.lineTo(QPointF(104.0, 32.0))
-            path.moveTo(QPointF(122.0, mid_y))
-            path.lineTo(QPointF(122.0, 32.0))
+            path.lineTo(QPointF(64.0, top_y))
         elif preset == "bandeja_3":
-            # Bandeja 3: versão limpa da 2 (sem descidas), mantendo eixo deslocado.
-            axis_x = -78.0
+            # Eixo central + base com queda vertical na ponta esquerda.
+            axis_x = 0.0
+            left_x, right_x = -130.0, 130.0
             path.moveTo(QPointF(left_x, mid_y))
             path.lineTo(QPointF(right_x, mid_y))
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(left_x, 38.0))
             path.moveTo(QPointF(axis_x, top_y))
             path.lineTo(QPointF(axis_x, bottom_y))
             path.moveTo(QPointF(axis_x, top_y))
-            path.lineTo(QPointF(-26.0, top_y))
+            path.lineTo(QPointF(64.0, top_y))
+        elif preset == "bandeja_4":
+            # Versão espelhada da bandeja 1 com eixo deslocado para a direita.
+            axis_x = 54.0
+            left_x, right_x = -150.0, 150.0
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(right_x, mid_y))
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(left_x, -26.0))
+            path.moveTo(QPointF(right_x, mid_y))
+            path.lineTo(QPointF(right_x, -26.0))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(axis_x, bottom_y))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(-12.0, top_y))
+            path.moveTo(QPointF(axis_x, bottom_y))
+            path.lineTo(QPointF(-12.0, bottom_y))
 
         return path
 
@@ -5151,7 +5212,7 @@ class DrawingCanvas(QWidget):
         list_widget.viewport().setMouseTracking(True)
         list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
 
-        for key in ("bandeja_1", "bandeja_2", "bandeja_3"):
+        for key in ("bandeja_1", "bandeja_2", "bandeja_3", "bandeja_4"):
             item = QListWidgetItem(_BANDEJA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
             list_widget.addItem(item)
