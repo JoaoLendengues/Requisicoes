@@ -1,22 +1,20 @@
-"""Tela de Feedbacks com categorias, status workflow e histórico do usuário."""
+"""Tela de Feedbacks — design moderno com métricas, chips e cards."""
 from __future__ import annotations
 
 from datetime import datetime
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
-    QTableWidget,
-    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -25,7 +23,7 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..core.session import session
-from ..widgets.smooth_scroll import apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea
 
 MAX_FEEDBACK_LEN = 1000
 
@@ -36,6 +34,12 @@ CATEGORY_OPTIONS = (
     ("👍 Elogio", "elogio"),
 )
 CATEGORY_LABELS = {value: label for label, value in CATEGORY_OPTIONS}
+CATEGORY_EMOJI = {
+    "bug":      "🐛",
+    "problema": "⚠️",
+    "sugestao": "💡",
+    "elogio":   "👍",
+}
 
 STATUS_OPTIONS = (
     ("Nova",        "nova"),
@@ -44,10 +48,6 @@ STATUS_OPTIONS = (
     ("Descartada",  "descartada"),
 )
 STATUS_LABELS = {value: label for label, value in STATUS_OPTIONS}
-
-# Filtros (admin) — incluem opção "Todos"
-CATEGORY_FILTER_OPTIONS = (("Todas as categorias", ""),) + CATEGORY_OPTIONS
-STATUS_FILTER_OPTIONS   = (("Todos os status", ""),)     + STATUS_OPTIONS
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -75,13 +75,25 @@ def _category_color(category_value: str) -> str:
 
 def _fmt_datetime(value: object) -> str:
     if not value:
-        return "-"
+        return "—"
     text = str(value)
     try:
         return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%d/%m/%Y %H:%M")
     except Exception:
         return text
 
+
+def _apply_shadow(widget: QWidget, blur: int = 24, y_offset: int = 4, alpha: int = 22) -> None:
+    shadow = QGraphicsDropShadowEffect(widget)
+    shadow.setBlurRadius(blur)
+    shadow.setOffset(0, y_offset)
+    color = QColor(theme.TEXT_DARK)
+    color.setAlpha(alpha)
+    shadow.setColor(color)
+    widget.setGraphicsEffect(shadow)
+
+
+# ── Workers HTTP ──────────────────────────────────────────────────────────────
 
 class _ApiWorker(QObject):
     result = Signal(object)
@@ -114,22 +126,172 @@ def _run_in_thread(fn, *args, on_result=None, on_error=None, **kwargs):
     worker = _ApiWorker(fn, *args, **kwargs)
     thread = QThread()
     cb = _Callback()
-
     worker.moveToThread(thread)
     thread.started.connect(worker.run)
     worker.result.connect(cb.result)
     worker.error.connect(cb.error)
     worker.finished.connect(thread.quit)
-
     if on_result:
         cb.result.connect(on_result)
     if on_error:
         cb.error.connect(on_error)
-
     worker._cb = cb
     thread.start()
     return thread, worker
 
+
+# ── Card de feedback (item da lista) ──────────────────────────────────────────
+
+class _FeedbackCard(QFrame):
+    """Card visual de um único feedback. Lista usada no estilo "feed"."""
+
+    clicked = Signal(int)  # feedback_id
+
+    def __init__(self, data: dict, scale: float, show_author: bool, parent=None):
+        super().__init__(parent)
+        self.data = data
+        self.scale = scale
+        self.feedback_id = int(data.get("id") or 0)
+        self.is_selected = False
+        self._build_ui(show_author)
+
+    def _build_ui(self, show_author: bool):
+        s = self.scale
+        cat = str(self.data.get("category") or "sugestao")
+        stt = str(self.data.get("status") or "nova")
+        cat_color = _category_color(cat)
+        stt_color = _status_color(stt)
+
+        self.setObjectName("feedbackCard")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._refresh_style(cat_color)
+        _apply_shadow(self)
+
+        root = QHBoxLayout(self)
+        root.setContentsMargins(
+            max(14, int(16 * s)), max(12, int(14 * s)),
+            max(14, int(16 * s)), max(12, int(14 * s)),
+        )
+        root.setSpacing(max(10, int(12 * s)))
+
+        # ── Emoji grande à esquerda ─────────────────────────────────────────
+        emoji = QLabel(CATEGORY_EMOJI.get(cat, "💬"))
+        emoji.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        emoji.setFixedSize(max(40, int(48 * s)), max(40, int(48 * s)))
+        emoji.setStyleSheet(
+            f"background:{_rgba(cat_color, 28)}; border:1px solid {_rgba(cat_color, 60)};"
+            f"border-radius:{max(20, int(24 * s))}px;"
+            f"font-size:{max(16, int(20 * s))}pt;"
+        )
+        root.addWidget(emoji, 0, Qt.AlignmentFlag.AlignTop)
+
+        # ── Bloco central: autor + categoria + mensagem ─────────────────────
+        center = QVBoxLayout()
+        center.setSpacing(max(3, int(4 * s)))
+
+        # Linha do topo: autor (se admin) + categoria + data
+        top_row = QHBoxLayout()
+        top_row.setSpacing(max(6, int(8 * s)))
+
+        if show_author:
+            author = QLabel(str(self.data.get("user_name") or "—"))
+            author.setStyleSheet(
+                f"color:{theme.TEXT_DARK}; font-weight:700;"
+                f"font-size:{max(10, int(11 * s))}pt; background:transparent;"
+            )
+            top_row.addWidget(author)
+
+            sep = QLabel("•")
+            sep.setStyleSheet(
+                f"color:{theme.TEXT_LIGHT}; background:transparent;"
+                f"font-size:{max(8, int(10 * s))}pt;"
+            )
+            top_row.addWidget(sep)
+
+        cat_label = QLabel(CATEGORY_LABELS.get(cat, cat).upper())
+        cat_label.setStyleSheet(
+            f"color:{cat_color}; font-weight:700; letter-spacing:0.5px;"
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
+        )
+        top_row.addWidget(cat_label)
+
+        top_row.addStretch(1)
+
+        date_label = QLabel(_fmt_datetime(self.data.get("created_at")))
+        date_label.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; background:transparent;"
+            f"font-size:{max(8, int(9 * s))}pt;"
+        )
+        top_row.addWidget(date_label)
+        center.addLayout(top_row)
+
+        # Mensagem
+        msg = QLabel(str(self.data.get("message") or "").strip())
+        msg.setWordWrap(True)
+        msg.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; background:transparent;"
+            f"font-size:{max(9, int(10 * s))}pt; line-height:1.4;"
+        )
+        center.addWidget(msg)
+
+        # Linha do rodapé: status pill + (resolvido por, se houver)
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(max(8, int(10 * s)))
+
+        status_pill = QLabel(STATUS_LABELS.get(stt, stt))
+        status_pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        status_pill.setStyleSheet(
+            f"background:{_rgba(stt_color, 35)}; color:{stt_color};"
+            f"border-radius:999px; padding:3px 12px; font-weight:700;"
+            f"font-size:{max(7, int(8 * s))}pt;"
+        )
+        bottom_row.addWidget(status_pill)
+
+        read_by = self.data.get("read_by_name")
+        if read_by:
+            mark = QLabel(f"por {read_by}")
+            mark.setStyleSheet(
+                f"color:{theme.TEXT_LIGHT}; background:transparent;"
+                f"font-size:{max(7, int(8 * s))}pt; font-style:italic;"
+            )
+            bottom_row.addWidget(mark)
+
+        bottom_row.addStretch(1)
+        center.addLayout(bottom_row)
+
+        root.addLayout(center, 1)
+
+    def _refresh_style(self, accent_color: str):
+        # Selected vs idle vs hover são gerenciados por QSS via property
+        self.setStyleSheet(
+            f"QFrame#feedbackCard {{"
+            f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"  border-left:4px solid {accent_color}; border-radius:12px;"
+            f"}}"
+            f"QFrame#feedbackCard[selected=\"true\"] {{"
+            f"  background:{_rgba(theme.PRIMARY, 14)};"
+            f"  border:1px solid {_rgba(theme.PRIMARY, 80)};"
+            f"  border-left:4px solid {accent_color};"
+            f"}}"
+            f"QFrame#feedbackCard:hover {{"
+            f"  background:{theme.SURFACE_SOFT};"
+            f"}}"
+        )
+
+    def set_selected(self, selected: bool):
+        self.is_selected = selected
+        self.setProperty("selected", "true" if selected else "false")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def mousePressEvent(self, event):  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.feedback_id)
+        super().mousePressEvent(event)
+
+
+# ── View principal ────────────────────────────────────────────────────────────
 
 class FeedbackView(QWidget):
     def __init__(self, scale: float = 1.0, parent=None):
@@ -137,186 +299,371 @@ class FeedbackView(QWidget):
         self.scale = scale
         self._threads: list[tuple[QThread, object]] = []
         self._admin_rows: list[dict] = []
-        self._admin_filtered: list[dict] = []
         self._mine_rows: list[dict] = []
+        # Filtros como chips
+        self._active_category = ""   # "" = todas
+        self._active_status = ""     # "" = todos
+        # Card selecionado
+        self._selected_id: int | None = None
+        # Cards atuais na lista (pra atualizar seleção/refresh)
+        self._cards_in_view: list[_FeedbackCard] = []
         self._setup_ui()
 
     # ── UI ────────────────────────────────────────────────────────────────────
     def _setup_ui(self):
         s = self.scale
-        self.root_layout = QVBoxLayout(self)
-        self.root_layout.setContentsMargins(16, 16, 16, 16)
-        self.root_layout.setSpacing(10)
 
-        self.title = QLabel("FEEDBACKS")
-        self.root_layout.addWidget(self.title)
+        # Scroll-root para a tela inteira (evita corte em telas pequenas)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        self.subtitle = QLabel("Reporte bugs, problemas, sugestões e elogios para melhorar o sistema.")
+        self._page_scroll = SmoothScrollArea()
+        self._page_scroll.setWidgetResizable(True)
+        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer.addWidget(self._page_scroll)
+
+        self._page_content = QWidget()
+        self._page_content.setObjectName("feedbackContent")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_scroll.setWidget(self._page_content)
+
+        self.root_layout = QVBoxLayout(self._page_content)
+        self.root_layout.setContentsMargins(
+            max(18, int(22 * s)), max(18, int(22 * s)),
+            max(18, int(22 * s)), max(18, int(22 * s)),
+        )
+        self.root_layout.setSpacing(max(14, int(16 * s)))
+
+        # ── Cabeçalho ────────────────────────────────────────────────────────
+        header = QHBoxLayout()
+        title_col = QVBoxLayout()
+        title_col.setSpacing(max(3, int(4 * s)))
+        self.title = QLabel("Feedbacks")
+        self.subtitle = QLabel(
+            "Sua opinião é o que faz o sistema melhorar. Reporte bugs, problemas, sugestões ou um elogio."
+        )
         self.subtitle.setWordWrap(True)
-        self.root_layout.addWidget(self.subtitle)
+        title_col.addWidget(self.title)
+        title_col.addWidget(self.subtitle)
+        header.addLayout(title_col, 1)
+        self.root_layout.addLayout(header)
 
-        # ── Card de envio ────────────────────────────────────────────────────
+        # ── Métricas (admin) ─────────────────────────────────────────────────
+        self.metrics_row = QHBoxLayout()
+        self.metrics_row.setSpacing(max(10, int(12 * s)))
+        self._metric_widgets: dict[str, tuple[QFrame, QLabel]] = {}
+        for status_key, label, _value in (
+            ("nova",        "Novas",        "0"),
+            ("em_analise",  "Em análise",   "0"),
+            ("resolvida",   "Resolvidas",   "0"),
+            ("descartada",  "Descartadas",  "0"),
+        ):
+            card, value_lbl = self._build_metric_card(status_key, label, "0")
+            self._metric_widgets[status_key] = (card, value_lbl)
+            self.metrics_row.addWidget(card, 1)
+        self.metrics_container = QWidget()
+        self.metrics_container.setLayout(self.metrics_row)
+        self.root_layout.addWidget(self.metrics_container)
+
+        # ── Compose box (envio) — discreto ──────────────────────────────────
         self.compose_card = QFrame()
-        self.compose_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.compose_card.setObjectName("composeCard")
+        self.compose_card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        _apply_shadow(self.compose_card)
         compose_lay = QVBoxLayout(self.compose_card)
-        compose_lay.setContentsMargins(14, 14, 14, 14)
-        compose_lay.setSpacing(8)
+        compose_lay.setContentsMargins(
+            max(14, int(16 * s)), max(12, int(14 * s)),
+            max(14, int(16 * s)), max(12, int(14 * s)),
+        )
+        compose_lay.setSpacing(max(8, int(10 * s)))
 
+        compose_top = QHBoxLayout()
         self.compose_title = QLabel("Enviar feedback")
-        compose_lay.addWidget(self.compose_title)
-
-        # Linha da categoria
-        cat_row = QHBoxLayout()
-        cat_row.setSpacing(8)
-        cat_lbl = QLabel("CATEGORIA")
-        cat_lbl.setProperty("muted", "1")
-        cat_lbl.setFixedWidth(max(80, int(95 * s)))
-        cat_lbl.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        compose_top.addWidget(self.compose_title)
+        compose_top.addStretch(1)
+        # Combo categoria à direita do título
         self.combo_category = QComboBox()
-        self.combo_category.setFixedHeight(max(32, int(36 * s)))
+        self.combo_category.setFixedHeight(max(30, int(34 * s)))
         for label, value in CATEGORY_OPTIONS:
             self.combo_category.addItem(label, value)
-        self.combo_category.setCurrentIndex(2)  # "Sugestão" default
-        cat_row.addWidget(cat_lbl)
-        cat_row.addWidget(self.combo_category, 1)
-        compose_lay.addLayout(cat_row)
+        self.combo_category.setCurrentIndex(2)  # default Sugestão
+        compose_top.addWidget(self.combo_category)
+        compose_lay.addLayout(compose_top)
 
-        # Textarea
         self.input_feedback = QTextEdit()
-        self.input_feedback.setPlaceholderText("Descreva o feedback com detalhes — o que aconteceu, em qual tela, etc.")
+        self.input_feedback.setPlaceholderText(
+            "Descreva o que aconteceu, em qual tela, o que esperava... (até 1000 caracteres)"
+        )
         self.input_feedback.textChanged.connect(self._on_text_changed)
-        self.input_feedback.setMinimumHeight(max(120, int(150 * s)))
-        self.input_feedback.setMaximumHeight(max(180, int(220 * s)))
+        self.input_feedback.setMinimumHeight(max(90, int(110 * s)))
+        self.input_feedback.setMaximumHeight(max(140, int(170 * s)))
         compose_lay.addWidget(self.input_feedback)
 
-        # Rodapé do card: contador + botão enviar
-        bottom_row = QHBoxLayout()
+        compose_bottom = QHBoxLayout()
         self.counter = QLabel(f"0/{MAX_FEEDBACK_LEN}")
-        bottom_row.addWidget(self.counter)
-        bottom_row.addStretch(1)
+        compose_bottom.addWidget(self.counter)
+        compose_bottom.addStretch(1)
         self.btn_send = QPushButton("ENVIAR")
+        self.btn_send.setFixedHeight(max(34, int(38 * s)))
         self.btn_send.clicked.connect(self._send_feedback)
-        bottom_row.addWidget(self.btn_send)
-        compose_lay.addLayout(bottom_row)
-
+        compose_bottom.addWidget(self.btn_send)
+        compose_lay.addLayout(compose_bottom)
         self.root_layout.addWidget(self.compose_card)
 
-        # ── Card "Meus feedbacks" (visível pra todos os perfis) ──────────────
-        self.mine_card = QFrame()
-        mine_lay = QVBoxLayout(self.mine_card)
-        mine_lay.setContentsMargins(14, 14, 14, 14)
-        mine_lay.setSpacing(8)
+        # ── Toggle entre "Caixa de entrada" (admin) e "Meus feedbacks" ──────
+        self.tab_row = QHBoxLayout()
+        self.tab_row.setSpacing(max(6, int(8 * s)))
+        self.btn_tab_inbox = QPushButton("Caixa de entrada")
+        self.btn_tab_inbox.setCheckable(True)
+        self.btn_tab_inbox.clicked.connect(lambda: self._switch_tab("inbox"))
+        self.btn_tab_mine = QPushButton("Meus feedbacks")
+        self.btn_tab_mine.setCheckable(True)
+        self.btn_tab_mine.clicked.connect(lambda: self._switch_tab("mine"))
+        self.tab_row.addWidget(self.btn_tab_inbox)
+        self.tab_row.addWidget(self.btn_tab_mine)
+        self.tab_row.addStretch(1)
+        # Ação à direita do toggle
+        self.btn_refresh = QPushButton("Atualizar")
+        self.btn_refresh.setFixedHeight(max(30, int(34 * s)))
+        self.btn_refresh.clicked.connect(self.refresh)
+        self.tab_row.addWidget(self.btn_refresh)
+        self.root_layout.addLayout(self.tab_row)
 
-        mine_header = QHBoxLayout()
-        self.mine_title = QLabel("Meus feedbacks")
-        mine_header.addWidget(self.mine_title)
-        mine_header.addStretch(1)
-        self.btn_refresh_mine = QPushButton("ATUALIZAR")
-        self.btn_refresh_mine.clicked.connect(self._load_my_feedbacks)
-        mine_header.addWidget(self.btn_refresh_mine)
-        mine_lay.addLayout(mine_header)
+        # ── Chips de filtro (visíveis só no inbox de admin) ─────────────────
+        self.chips_container = QWidget()
+        chips_lay = QHBoxLayout(self.chips_container)
+        chips_lay.setContentsMargins(0, 0, 0, 0)
+        chips_lay.setSpacing(max(6, int(8 * s)))
 
-        self.mine_table = QTableWidget(0, 4)
-        self.mine_table.setHorizontalHeaderLabels(["CATEGORIA", "MENSAGEM", "STATUS", "ENVIADO EM"])
-        self._setup_table(self.mine_table, stretch_col=1)
-        mine_lay.addWidget(self.mine_table)
+        self._chips_cat: dict[str, QPushButton] = {}
+        self._chips_stt: dict[str, QPushButton] = {}
 
-        self.root_layout.addWidget(self.mine_card, 1)
-
-        # ── Card admin: caixa de entrada ─────────────────────────────────────
-        self.admin_card = QFrame()
-        admin_lay = QVBoxLayout(self.admin_card)
-        admin_lay.setContentsMargins(14, 14, 14, 14)
-        admin_lay.setSpacing(8)
-
-        admin_header = QHBoxLayout()
-        self.admin_title = QLabel("Caixa de entrada (admin)")
-        admin_header.addWidget(self.admin_title)
-        admin_header.addStretch(1)
-        self.btn_refresh_admin = QPushButton("ATUALIZAR")
-        self.btn_refresh_admin.clicked.connect(self._load_admin_feedbacks)
-        admin_header.addWidget(self.btn_refresh_admin)
-        admin_lay.addLayout(admin_header)
-
-        # Filtros
-        filters = QHBoxLayout()
-        filters.setSpacing(8)
-        self.combo_filter_cat = QComboBox()
-        for label, value in CATEGORY_FILTER_OPTIONS:
-            self.combo_filter_cat.addItem(label, value)
-        self.combo_filter_cat.currentIndexChanged.connect(self._apply_admin_filters)
-
-        self.combo_filter_status = QComboBox()
-        for label, value in STATUS_FILTER_OPTIONS:
-            self.combo_filter_status.addItem(label, value)
-        self.combo_filter_status.currentIndexChanged.connect(self._apply_admin_filters)
-
-        filters.addWidget(self.combo_filter_cat, 1)
-        filters.addWidget(self.combo_filter_status, 1)
-        filters.addStretch(2)
-        admin_lay.addLayout(filters)
-
-        # Tabela de feedbacks
-        self.admin_table = QTableWidget(0, 6)
-        self.admin_table.setHorizontalHeaderLabels(
-            ["AUTOR", "CATEGORIA", "MENSAGEM", "STATUS", "ENVIADO EM", "RESOLVIDO POR"]
+        cat_label = QLabel("CATEGORIA")
+        cat_label.setProperty("muted", "1")
+        cat_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
         )
-        self._setup_table(self.admin_table, stretch_col=2)
-        self.admin_table.itemSelectionChanged.connect(self._on_admin_selection_changed)
-        admin_lay.addWidget(self.admin_table, 1)
+        chips_lay.addWidget(cat_label)
+        all_chip = self._make_chip("Todas", "", "cat")
+        chips_lay.addWidget(all_chip)
+        self._chips_cat[""] = all_chip
+        for label, value in CATEGORY_OPTIONS:
+            chip = self._make_chip(label, value, "cat")
+            chips_lay.addWidget(chip)
+            self._chips_cat[value] = chip
 
-        # Ações sobre o feedback selecionado
-        action_row = QHBoxLayout()
-        action_row.setSpacing(8)
-        action_lbl = QLabel("MUDAR STATUS PARA:")
-        action_lbl.setProperty("muted", "1")
-        action_lbl.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
-        action_row.addWidget(action_lbl)
+        chips_lay.addSpacing(max(10, int(14 * s)))
 
+        st_label = QLabel("STATUS")
+        st_label.setProperty("muted", "1")
+        st_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+        )
+        chips_lay.addWidget(st_label)
+        all_st_chip = self._make_chip("Todos", "", "stt")
+        chips_lay.addWidget(all_st_chip)
+        self._chips_stt[""] = all_st_chip
+        for label, value in STATUS_OPTIONS:
+            chip = self._make_chip(label, value, "stt")
+            chips_lay.addWidget(chip)
+            self._chips_stt[value] = chip
+
+        chips_lay.addStretch(1)
+        self.root_layout.addWidget(self.chips_container)
+
+        # ── Lista (cards) ────────────────────────────────────────────────────
+        self.list_scroll = SmoothScrollArea()
+        self.list_scroll.setWidgetResizable(True)
+        self.list_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.list_scroll.setMinimumHeight(max(280, int(320 * s)))
+        self._list_inner = QWidget()
+        self.list_layout = QVBoxLayout(self._list_inner)
+        self.list_layout.setContentsMargins(0, 0, 0, 0)
+        self.list_layout.setSpacing(max(8, int(10 * s)))
+        self.list_layout.addStretch(1)
+        self.list_scroll.setWidget(self._list_inner)
+        self.root_layout.addWidget(self.list_scroll, 1)
+
+        # ── Ação sobre feedback selecionado (admin only) ────────────────────
+        self.action_bar = QFrame()
+        self.action_bar.setObjectName("actionBar")
+        self.action_bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        action_lay = QHBoxLayout(self.action_bar)
+        action_lay.setContentsMargins(
+            max(14, int(16 * s)), max(8, int(10 * s)),
+            max(14, int(16 * s)), max(8, int(10 * s)),
+        )
+        action_lay.setSpacing(max(8, int(10 * s)))
+        action_label = QLabel("Status do feedback selecionado:")
+        action_label.setStyleSheet(
+            f"color:{theme.TEXT_MEDIUM}; font-weight:600;"
+            f"font-size:{max(8, int(9 * s))}pt; background:transparent;"
+        )
+        action_lay.addWidget(action_label)
+        action_lay.addStretch(1)
         self.combo_new_status = QComboBox()
+        self.combo_new_status.setFixedHeight(max(30, int(34 * s)))
         for label, value in STATUS_OPTIONS:
             self.combo_new_status.addItem(label, value)
-        action_row.addWidget(self.combo_new_status, 1)
-
+        action_lay.addWidget(self.combo_new_status)
         self.btn_apply_status = QPushButton("APLICAR")
+        self.btn_apply_status.setFixedHeight(max(30, int(34 * s)))
         self.btn_apply_status.clicked.connect(self._apply_status_change)
-        action_row.addWidget(self.btn_apply_status)
-        admin_lay.addLayout(action_row)
+        action_lay.addWidget(self.btn_apply_status)
+        self.root_layout.addWidget(self.action_bar)
 
-        self.root_layout.addWidget(self.admin_card, 1)
-
+        # Estado inicial
+        self._current_tab = "inbox" if session.is_admin else "mine"
+        self.btn_tab_inbox.setChecked(self._current_tab == "inbox")
+        self.btn_tab_mine.setChecked(self._current_tab == "mine")
         self._apply_role_visibility()
+        self._update_chip_styles()
         self.apply_theme()
+        self._update_action_bar_state()
 
-    def _setup_table(self, table: QTableWidget, stretch_col: int):
+    # ── Helpers visuais ───────────────────────────────────────────────────────
+    def _build_metric_card(self, status_key: str, label: str, initial_value: str):
         s = self.scale
-        table.verticalHeader().setVisible(False)
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        table.setAlternatingRowColors(True)
-        table.setFrameShape(QFrame.Shape.NoFrame)
-        table.setShowGrid(False)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        apply_smooth_scroll(table)
-        head = table.horizontalHeader()
-        for col in range(table.columnCount()):
-            mode = (
-                QHeaderView.ResizeMode.Stretch
-                if col == stretch_col
-                else QHeaderView.ResizeMode.ResizeToContents
-            )
-            head.setSectionResizeMode(col, mode)
-        head.setMinimumHeight(max(32, int(38 * s)))
-        table.verticalHeader().setDefaultSectionSize(max(30, int(36 * s)))
-        table.setMinimumHeight(max(220, int(260 * s)))
+        color = _status_color(status_key)
+        card = QFrame()
+        card.setObjectName("metricCard")
+        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        card.setCursor(Qt.CursorShape.PointingHandCursor)
+        card.setStyleSheet(
+            f"QFrame#metricCard {{"
+            f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"  border-radius:14px;"
+            f"}}"
+            f"QFrame#metricCard:hover {{"
+            f"  background:{theme.SURFACE_SOFT};"
+            f"  border:1px solid {_rgba(color, 80)};"
+            f"}}"
+            f"QFrame#metricCard[selected=\"true\"] {{"
+            f"  border:2px solid {color};"
+            f"  background:{_rgba(color, 14)};"
+            f"}}"
+        )
+        _apply_shadow(card, blur=18, y_offset=3, alpha=18)
 
-    # ── Lógica ────────────────────────────────────────────────────────────────
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(
+            max(12, int(14 * s)), max(10, int(12 * s)),
+            max(12, int(14 * s)), max(10, int(12 * s)),
+        )
+        lay.setSpacing(max(2, int(3 * s)))
+
+        # Linha topo: emoji + label
+        top = QHBoxLayout()
+        top.setSpacing(max(6, int(8 * s)))
+        dot = QLabel("●")
+        dot.setStyleSheet(
+            f"color:{color}; font-size:{max(12, int(14 * s))}pt; background:transparent;"
+        )
+        top.addWidget(dot)
+        lbl = QLabel(label.upper())
+        lbl.setStyleSheet(
+            f"color:{theme.TEXT_MEDIUM}; font-weight:700; letter-spacing:0.5px;"
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
+        )
+        top.addWidget(lbl)
+        top.addStretch(1)
+        lay.addLayout(top)
+
+        value_lbl = QLabel(initial_value)
+        value_lbl.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-weight:800;"
+            f"font-size:{max(22, int(28 * s))}pt; background:transparent;"
+        )
+        lay.addWidget(value_lbl)
+
+        # Filtra pelo status ao clicar
+        card.mousePressEvent = lambda _ev, k=status_key: self._toggle_metric_filter(k)
+        return card, value_lbl
+
+    def _make_chip(self, label: str, value: str, kind: str) -> QPushButton:
+        s = self.scale
+        btn = QPushButton(label)
+        btn.setCheckable(True)
+        btn.setFixedHeight(max(26, int(30 * s)))
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.clicked.connect(lambda _checked=False, v=value, k=kind: self._set_filter(k, v))
+        return btn
+
+    def _chip_style(self, active: bool, accent: str | None = None) -> str:
+        s = self.scale
+        if active:
+            color = accent or theme.PRIMARY
+            return (
+                f"QPushButton {{"
+                f"  background:{color}; color:#FFFFFF;"
+                f"  border:1px solid {color}; border-radius:999px;"
+                f"  padding:3px 12px; font-weight:700;"
+                f"  font-size:{max(8, int(9 * s))}pt;"
+                f"}}"
+                f"QPushButton:hover {{ background:{_rgba(color, 220)}; }}"
+            )
+        return (
+            f"QPushButton {{"
+            f"  background:transparent; color:{theme.TEXT_MEDIUM};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:999px;"
+            f"  padding:3px 12px; font-weight:600;"
+            f"  font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QPushButton:hover {{ background:{theme.SURFACE_SOFT}; color:{theme.TEXT_DARK}; }}"
+        )
+
+    def _update_chip_styles(self):
+        for value, chip in self._chips_cat.items():
+            active = (value == self._active_category)
+            accent = _category_color(value) if value else theme.PRIMARY
+            chip.setChecked(active)
+            chip.setStyleSheet(self._chip_style(active, accent))
+        for value, chip in self._chips_stt.items():
+            active = (value == self._active_status)
+            accent = _status_color(value) if value else theme.PRIMARY
+            chip.setChecked(active)
+            chip.setStyleSheet(self._chip_style(active, accent))
+
+    def _set_filter(self, kind: str, value: str):
+        if kind == "cat":
+            self._active_category = value
+        else:
+            self._active_status = value
+        self._update_chip_styles()
+        self._update_metric_selection()
+        self._refresh_list()
+
+    def _toggle_metric_filter(self, status_key: str):
+        # Clicar num card alterna o filtro de status entre o card e "todos"
+        if self._active_status == status_key:
+            self._active_status = ""
+        else:
+            self._active_status = status_key
+        self._update_chip_styles()
+        self._update_metric_selection()
+        self._refresh_list()
+
+    def _update_metric_selection(self):
+        for key, (card, _lbl) in self._metric_widgets.items():
+            card.setProperty("selected", "true" if self._active_status == key else "false")
+            card.style().unpolish(card)
+            card.style().polish(card)
+
     def _apply_role_visibility(self):
         is_admin = session.is_admin
-        self.admin_card.setVisible(is_admin)
-        self.btn_apply_status.setEnabled(False)
-        self.combo_new_status.setEnabled(False)
+        self.metrics_container.setVisible(is_admin)
+        self.btn_tab_inbox.setVisible(is_admin)
+        self.action_bar.setVisible(is_admin)
+        # Sem inbox para não-admin → toggle some, só "meus feedbacks"
+        if not is_admin:
+            self._current_tab = "mine"
+        # Chips só fazem sentido no inbox de admin
+        self.chips_container.setVisible(is_admin and self._current_tab == "inbox")
 
+    # ── Compose / envio ───────────────────────────────────────────────────────
     def _on_text_changed(self):
         text = self.input_feedback.toPlainText()
         if len(text) > MAX_FEEDBACK_LEN:
@@ -329,7 +676,19 @@ class FeedbackView(QWidget):
             self.input_feedback.setTextCursor(cursor)
             self.input_feedback.blockSignals(False)
             text = trimmed
-        self.counter.setText(f"{len(text)}/{MAX_FEEDBACK_LEN}")
+        n = len(text)
+        self.counter.setText(f"{n}/{MAX_FEEDBACK_LEN}")
+        # Cor: passa de amarelo a vermelho conforme se aproxima do limite
+        if n >= MAX_FEEDBACK_LEN:
+            color = theme.DANGER
+        elif n >= MAX_FEEDBACK_LEN - 100:
+            color = theme.WARNING
+        else:
+            color = theme.TEXT_LIGHT
+        self.counter.setStyleSheet(
+            f"color:{color}; background:transparent;"
+            f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:600;"
+        )
 
     def _send_feedback(self):
         text = self.input_feedback.toPlainText().strip()
@@ -339,12 +698,10 @@ class FeedbackView(QWidget):
         if len(text) > MAX_FEEDBACK_LEN:
             QMessageBox.warning(self, "Feedbacks", f"O limite é de {MAX_FEEDBACK_LEN} caracteres.")
             return
-
         category = self.combo_category.currentData() or "sugestao"
         self.btn_send.setEnabled(False)
         thread, worker = _run_in_thread(
-            api.create_feedback,
-            text, category,
+            api.create_feedback, text, category,
             on_result=self._on_feedback_sent,
             on_error=self._on_feedback_send_error,
         )
@@ -363,110 +720,152 @@ class FeedbackView(QWidget):
         self.btn_send.setEnabled(True)
         QMessageBox.critical(self, "Feedbacks", msg)
 
-    # ── Meus feedbacks ────────────────────────────────────────────────────────
+    # ── Loads ─────────────────────────────────────────────────────────────────
     def _load_my_feedbacks(self):
-        self.btn_refresh_mine.setEnabled(False)
         thread, worker = _run_in_thread(
             api.list_my_feedbacks,
             on_result=self._on_my_feedbacks_loaded,
-            on_error=lambda msg: (
-                self.btn_refresh_mine.setEnabled(True),
-                QMessageBox.warning(self, "Feedbacks", msg),
-            ),
+            on_error=lambda msg: QMessageBox.warning(self, "Feedbacks", msg),
         )
         self._threads.append((thread, worker))
 
     def _on_my_feedbacks_loaded(self, rows: list[dict]):
-        self.btn_refresh_mine.setEnabled(True)
         self._mine_rows = [r for r in (rows or []) if isinstance(r, dict)]
-        self._fill_mine_table()
+        if self._current_tab == "mine":
+            self._refresh_list()
 
-    def _fill_mine_table(self):
-        self.mine_table.setRowCount(0)
-        for row in self._mine_rows:
-            r = self.mine_table.rowCount()
-            self.mine_table.insertRow(r)
-            cat = str(row.get("category") or "sugestao")
-            stt = str(row.get("status") or "nova")
-            self.mine_table.setItem(r, 0, self._badge_item(CATEGORY_LABELS.get(cat, cat), _category_color(cat)))
-            self.mine_table.setItem(r, 1, self._text_item(row.get("message"), left=True))
-            self.mine_table.setItem(r, 2, self._badge_item(STATUS_LABELS.get(stt, stt), _status_color(stt)))
-            self.mine_table.setItem(r, 3, self._text_item(_fmt_datetime(row.get("created_at"))))
-
-    # ── Admin: caixa de entrada ───────────────────────────────────────────────
     def _load_admin_feedbacks(self):
         if not session.is_admin:
             return
-        self.btn_refresh_admin.setEnabled(False)
         thread, worker = _run_in_thread(
             api.list_feedbacks,
             on_result=self._on_admin_feedbacks_loaded,
-            on_error=lambda msg: (
-                self.btn_refresh_admin.setEnabled(True),
-                QMessageBox.warning(self, "Feedbacks", msg),
-            ),
+            on_error=lambda msg: QMessageBox.warning(self, "Feedbacks", msg),
         )
         self._threads.append((thread, worker))
 
     def _on_admin_feedbacks_loaded(self, rows: list[dict]):
-        self.btn_refresh_admin.setEnabled(True)
         self._admin_rows = [r for r in (rows or []) if isinstance(r, dict)]
-        self._apply_admin_filters()
+        self._update_metrics()
+        if self._current_tab == "inbox":
+            self._refresh_list()
 
-    def _apply_admin_filters(self):
-        cat = self.combo_filter_cat.currentData() or ""
-        stt = self.combo_filter_status.currentData() or ""
-        self._admin_filtered = [
+    def _update_metrics(self):
+        counts = {"nova": 0, "em_analise": 0, "resolvida": 0, "descartada": 0}
+        for row in self._admin_rows:
+            stt = str(row.get("status") or "nova")
+            if stt in counts:
+                counts[stt] += 1
+        for key, (_card, value_lbl) in self._metric_widgets.items():
+            value_lbl.setText(str(counts.get(key, 0)))
+
+    # ── Lista (cards) ─────────────────────────────────────────────────────────
+    def _switch_tab(self, tab: str):
+        if not session.is_admin:
+            tab = "mine"
+        self._current_tab = tab
+        self.btn_tab_inbox.setChecked(tab == "inbox")
+        self.btn_tab_mine.setChecked(tab == "mine")
+        self.chips_container.setVisible(session.is_admin and tab == "inbox")
+        self.action_bar.setVisible(session.is_admin and tab == "inbox")
+        self._selected_id = None
+        self._update_action_bar_state()
+        self._refresh_list()
+
+    def _refresh_list(self):
+        # Remove cards atuais (mantém o stretch final)
+        while self.list_layout.count() > 1:
+            item = self.list_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._cards_in_view = []
+
+        if self._current_tab == "inbox":
+            rows = self._filtered_admin_rows()
+            show_author = True
+        else:
+            rows = self._mine_rows
+            show_author = False
+
+        if not rows:
+            empty = self._build_empty_state()
+            self.list_layout.insertWidget(self.list_layout.count() - 1, empty)
+            return
+
+        for row in rows:
+            card = _FeedbackCard(row, self.scale, show_author=show_author)
+            card.clicked.connect(self._on_card_clicked)
+            if self._selected_id and card.feedback_id == self._selected_id:
+                card.set_selected(True)
+            self._cards_in_view.append(card)
+            self.list_layout.insertWidget(self.list_layout.count() - 1, card)
+
+    def _filtered_admin_rows(self) -> list[dict]:
+        cat = self._active_category
+        stt = self._active_status
+        return [
             r for r in self._admin_rows
             if (not cat or str(r.get("category") or "") == cat)
             and (not stt or str(r.get("status") or "") == stt)
         ]
-        self._fill_admin_table()
 
-    def _fill_admin_table(self):
-        self.admin_table.setRowCount(0)
-        for row in self._admin_filtered:
-            r = self.admin_table.rowCount()
-            self.admin_table.insertRow(r)
-            cat = str(row.get("category") or "sugestao")
-            stt = str(row.get("status") or "nova")
-            self.admin_table.setItem(r, 0, self._text_item(row.get("user_name") or "-", left=True))
-            self.admin_table.setItem(r, 1, self._badge_item(CATEGORY_LABELS.get(cat, cat), _category_color(cat)))
-            self.admin_table.setItem(r, 2, self._text_item(row.get("message"), left=True))
-            self.admin_table.setItem(r, 3, self._badge_item(STATUS_LABELS.get(stt, stt), _status_color(stt)))
-            self.admin_table.setItem(r, 4, self._text_item(_fmt_datetime(row.get("created_at"))))
-            self.admin_table.setItem(r, 5, self._text_item(row.get("read_by_name") or "-"))
-        self.btn_apply_status.setEnabled(False)
-        self.combo_new_status.setEnabled(False)
+    def _build_empty_state(self) -> QWidget:
+        s = self.scale
+        wrap = QFrame()
+        lay = QVBoxLayout(wrap)
+        lay.setContentsMargins(20, 40, 20, 40)
+        lay.setSpacing(max(8, int(10 * s)))
+        icon = QLabel("💬")
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setStyleSheet(
+            f"font-size:{max(32, int(42 * s))}pt; background:transparent;"
+        )
+        text = QLabel(
+            "Nada por aqui ainda." if self._current_tab == "mine"
+            else "Nenhum feedback encontrado com os filtros atuais."
+        )
+        text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        text.setStyleSheet(
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(10, int(11 * s))}pt;"
+            f"background:transparent;"
+        )
+        lay.addWidget(icon)
+        lay.addWidget(text)
+        return wrap
 
-    def _on_admin_selection_changed(self):
-        idx = self.admin_table.currentRow()
-        ok = 0 <= idx < len(self._admin_filtered)
+    def _on_card_clicked(self, feedback_id: int):
+        self._selected_id = feedback_id
+        for card in self._cards_in_view:
+            card.set_selected(card.feedback_id == feedback_id)
+        self._update_action_bar_state()
+
+    def _update_action_bar_state(self):
+        rows = self._filtered_admin_rows() if self._current_tab == "inbox" else []
+        selected = next((r for r in rows if int(r.get("id") or 0) == (self._selected_id or 0)), None)
+        ok = selected is not None
         self.combo_new_status.setEnabled(ok)
         self.btn_apply_status.setEnabled(ok)
         if ok:
-            current_status = str(self._admin_filtered[idx].get("status") or "nova")
+            current_status = str(selected.get("status") or "nova")
             i = self.combo_new_status.findData(current_status)
             if i >= 0:
                 self.combo_new_status.setCurrentIndex(i)
 
     def _apply_status_change(self):
-        idx = self.admin_table.currentRow()
-        if not (0 <= idx < len(self._admin_filtered)):
+        if not self._selected_id:
             return
-        row = self._admin_filtered[idx]
-        fb_id = int(row.get("id") or 0)
         new_status = self.combo_new_status.currentData() or "nova"
-        if not fb_id:
+        rows = self._filtered_admin_rows()
+        selected = next((r for r in rows if int(r.get("id") or 0) == self._selected_id), None)
+        if not selected:
             return
-        if str(row.get("status") or "") == new_status:
+        if str(selected.get("status") or "") == new_status:
             QMessageBox.information(self, "Feedbacks", "O feedback já está nesse status.")
             return
-
         self.btn_apply_status.setEnabled(False)
         thread, worker = _run_in_thread(
-            api.update_feedback_status,
-            fb_id, new_status,
+            api.update_feedback_status, self._selected_id, new_status,
             on_result=lambda _r: self._on_status_change_done(),
             on_error=self._on_status_change_error,
         )
@@ -484,24 +883,6 @@ class FeedbackView(QWidget):
         QMessageBox.critical(self, "Feedbacks", msg)
         self.btn_apply_status.setEnabled(True)
 
-    # ── Helpers de tabela ─────────────────────────────────────────────────────
-    def _text_item(self, value: object, left: bool = False) -> QTableWidgetItem:
-        item = QTableWidgetItem(str(value or "-"))
-        if left:
-            item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        else:
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        return item
-
-    def _badge_item(self, text: str, color: str) -> QTableWidgetItem:
-        item = QTableWidgetItem(text)
-        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        item.setForeground(QColor(color))
-        bg = QColor(color)
-        bg.setAlpha(30)
-        item.setBackground(bg)
-        return item
-
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
     def refresh(self):
         self._apply_role_visibility()
@@ -511,52 +892,66 @@ class FeedbackView(QWidget):
 
     def apply_theme(self):
         s = self.scale
+        bg = theme.CONTENT_BG
+        self._page_content.setStyleSheet(
+            f"QWidget#feedbackContent {{ background:{bg}; }}"
+        )
+        self._page_scroll.setStyleSheet(
+            f"QScrollArea {{ border:none; background:{bg}; }}"
+        )
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg};")
+        self.list_scroll.setStyleSheet(
+            f"QScrollArea {{ border:none; background:{bg}; }}"
+        )
+        self.list_scroll.viewport().setStyleSheet(f"background:{bg};")
+        self._list_inner.setStyleSheet(f"background:{bg};")
+
+        # Header
         self.title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"color:{theme.TEXT_DARK}; font-size:{max(20, int(26 * s))}pt; font-weight:800;"
+            f"background:transparent;"
         )
         self.subtitle.setStyleSheet(
             f"color:{theme.TEXT_MEDIUM}; font-size:{max(9, int(11 * s))}pt;"
+            f"background:transparent;"
+        )
+
+        # Compose
+        self.compose_card.setStyleSheet(
+            f"QFrame#composeCard {{"
+            f"  background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
+            f"  border-radius:14px;"
+            f"}}"
+        )
+        self.compose_title.setStyleSheet(
+            f"color:{theme.TEXT_DARK}; font-size:{max(11, int(13 * s))}pt; font-weight:700;"
+            f"background:transparent;"
         )
         self.counter.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(10 * s))}pt;"
+            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+            f"background:transparent;"
         )
-        for lbl in (self.compose_title, self.mine_title, self.admin_title):
-            lbl.setStyleSheet(
-                f"background:transparent; border:none; color:{theme.TEXT_DARK};"
-                f"font-size:{max(10, int(12 * s))}pt; font-weight:700;"
-            )
-
-        self.compose_card.setStyleSheet(theme.card_style())
-        self.mine_card.setStyleSheet(theme.card_style())
-        self.admin_card.setStyleSheet(theme.card_style())
-        self.input_feedback.setStyleSheet(theme.input_style(s))
         self.combo_category.setStyleSheet(theme.input_style(s))
-        self.combo_filter_cat.setStyleSheet(theme.input_style(s))
-        self.combo_filter_status.setStyleSheet(theme.input_style(s))
-        self.combo_new_status.setStyleSheet(theme.input_style(s))
+        self.input_feedback.setStyleSheet(theme.input_style(s))
         self.btn_send.setStyleSheet(theme.primary_btn_style(s))
-        self.btn_apply_status.setStyleSheet(theme.primary_btn_style(s))
-        self.btn_refresh_mine.setStyleSheet(theme.secondary_btn_style(s))
-        self.btn_refresh_admin.setStyleSheet(theme.secondary_btn_style(s))
 
-        for tbl in (self.mine_table, self.admin_table):
-            tbl.setStyleSheet(
-                f"QTableWidget {{"
-                f"  border:none; outline:none; background:{theme.CARD_BG};"
-                f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
-                f"  border-radius:10px; gridline-color:transparent;"
-                f"  font-size:{max(8, int(9 * s))}pt;"
-                f"}}"
-                f"QHeaderView::section {{"
-                f"  background:{theme.PRIMARY}; color:#fff; padding:7px 10px;"
-                f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
-                f"}}"
-                f"QTableWidget::item {{"
-                f"  padding:6px 8px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
-                f"}}"
-                f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
-            )
-            pal = tbl.palette()
-            pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
-            pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
-            tbl.setPalette(pal)
+        # Toggle tabs
+        for btn, key in ((self.btn_tab_inbox, "inbox"), (self.btn_tab_mine, "mine")):
+            active = (self._current_tab == key)
+            btn.setStyleSheet(self._chip_style(active, theme.PRIMARY))
+            btn.setFixedHeight(max(30, int(34 * s)))
+
+        self.btn_refresh.setStyleSheet(theme.secondary_btn_style(s))
+
+        # Chips e métricas: já são restilizados em _update_chip_styles e nos próprios setStyleSheet.
+        self._update_chip_styles()
+
+        # Action bar
+        self.action_bar.setStyleSheet(
+            f"QFrame#actionBar {{"
+            f"  background:{_rgba(theme.PRIMARY, 8)}; border:1px solid {_rgba(theme.PRIMARY, 28)};"
+            f"  border-radius:12px;"
+            f"}}"
+        )
+        self.combo_new_status.setStyleSheet(theme.input_style(s))
+        self.btn_apply_status.setStyleSheet(theme.primary_btn_style(s))
