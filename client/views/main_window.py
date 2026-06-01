@@ -458,41 +458,64 @@ class MainWindow(QMainWindow):
         raise ValueError(f"Página desconhecida: {page}")
 
     def _connect_view_signals(self, page: int, view) -> None:
-        """Conecta os sinais da view recém-criada."""
+        """Conecta os sinais da view recém-criada.
+
+        Botão "?" de cada tela abre o tutorial DAQUELA tela (force=True), em
+        vez do guia geral. O guia geral fica reservado para o botão
+        "Ver Guia Rápido" em Configurações.
+        """
         if page == PAGE_HISTORY:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "history")
             )
-            view.guide_requested.connect(self.show_onboarding)
+            view.guide_requested.connect(
+                lambda: self._show_screen_guide("historico", force=True)
+            )
         elif page == PAGE_ORDER_CENTER:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "order_center")
             )
-            view.guide_requested.connect(self.show_onboarding)
+            view.guide_requested.connect(
+                lambda: self._show_screen_guide("pedidos", force=True)
+            )
         elif page == PAGE_DELIVERY_CENTER:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "delivery_center")
             )
-            view.guide_requested.connect(self.show_onboarding)
+            view.guide_requested.connect(
+                lambda: self._show_screen_guide("entregas", force=True)
+            )
         elif page == PAGE_DASHBOARD:
-            view.guide_requested.connect(self.show_onboarding)
+            view.guide_requested.connect(
+                lambda: self._show_screen_guide("dashboard", force=True)
+            )
         elif page == PAGE_TECHNICAL:
-            view.guide_requested.connect(self.show_onboarding)
+            view.guide_requested.connect(
+                lambda: self._show_screen_guide("tecnico", force=True)
+            )
         elif page == PAGE_USER_CENTER:
-            view.guide_requested.connect(self.show_onboarding)
+            view.guide_requested.connect(
+                lambda: self._show_screen_guide("usuarios", force=True)
+            )
         elif page == PAGE_PINHEIRO_INDUSTRIA:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "production")
             )
-            view.guide_requested.connect(self.show_onboarding)
+            view.guide_requested.connect(
+                lambda: self._show_screen_guide("pinheiro_industria", force=True)
+            )
         elif page == PAGE_AR:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "production")
             )
-            view.guide_requested.connect(self.show_onboarding)
+            view.guide_requested.connect(
+                lambda: self._show_screen_guide("ar", force=True)
+            )
         elif page == PAGE_SETTINGS:
             view.scale_changed.connect(self._on_scale_changed)
             view.font_size_changed.connect(lambda: self._on_scale_changed(res.scale))
+            # Em Configurações o botão "Ver Guia Rápido" reabre o guia GERAL
+            # (visão de todas as telas) — mantém comportamento original.
             view.show_guide_requested.connect(self.show_onboarding)
 
     # ─────────────────────────────────────────────────────────────────────────
