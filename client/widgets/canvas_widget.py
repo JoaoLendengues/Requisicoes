@@ -29,7 +29,8 @@ from PySide6.QtWidgets import (
     QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsTextItem,
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
-    QSizePolicy, QFrame, QComboBox, QApplication,
+    QSizePolicy, QFrame, QComboBox, QApplication, QDialog,
+    QListWidget, QListWidgetItem,
 )
 from ..core import theme
 from ..core.text_case import normalize_upper_text
@@ -64,6 +65,11 @@ _STYLE_TO_STR = {
 _STR_TO_STYLE = {v: k for k, v in _STYLE_TO_STR.items()}
 _CANVAS_CLIPBOARD_MIME = "application/x-requisicoes-canvas-items"
 _IMAGE_FILE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"}
+_PINGADEIRA_PRESET_LABELS = {
+    "direita": "Pingadeira Direita",
+    "esquerda": "Pingadeira Esquerda",
+    "dupla": "Pingadeira Dupla",
+}
 
 
 # Limita a maior dimensão de imagens inseridas/coladas no canvas antes de
@@ -276,6 +282,9 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
             path_meta["ft_resize_locked"] = _to_bool(d.get("ft_resize_locked"))
         if path_meta.get("preset_3d_name") in {"quadrado", "retangulo", "triangulo", "prisma", "cilindro"}:
             path_meta["is_3d_preset"] = True
+        pingadeira_name = str(d.get("preset_pingadeira_name") or "").strip().lower()
+        if pingadeira_name in _PINGADEIRA_PRESET_LABELS:
+            path_meta["preset_pingadeira_name"] = pingadeira_name
         item.setData(0, path_meta)
 
     elif t == "text":
@@ -2919,6 +2928,11 @@ class DrawingCanvas(QWidget):
         btn_3d.setToolTip("Inserir desenho 3D pre-definido")
         btn_3d.clicked.connect(self._open_3d_preset_popup)
         btn_3d.setStyleSheet(self._tool_btn_style())
+        btn_pingadeira = QPushButton("Pingadeira")
+        btn_pingadeira.setFixedHeight(fh)
+        btn_pingadeira.setToolTip("Inserir modelo de pingadeira")
+        btn_pingadeira.clicked.connect(self._open_pingadeira_popup)
+        btn_pingadeira.setStyleSheet(self._tool_btn_style())
 
         btn_dim = QPushButton("📏 MM")
         btn_dim.setFixedHeight(fh)
@@ -2939,6 +2953,7 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_pdf)
         row2.addWidget(btn_attachments)
         row2.addWidget(btn_3d)
+        row2.addWidget(btn_pingadeira)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
@@ -3778,6 +3793,143 @@ class DrawingCanvas(QWidget):
         self._redo_stack.clear()
         self.changed.emit()
 
+    def _build_pingadeira_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+        left_x, right_x = -150.0, 150.0
+        top_y, bottom_y = -72.0, 72.0
+
+        path.moveTo(QPointF(left_x, bottom_y))
+        path.lineTo(QPointF(left_x, top_y))
+        path.lineTo(QPointF(right_x, top_y))
+        path.lineTo(QPointF(right_x, bottom_y))
+
+        if preset == "direita":
+            path.moveTo(QPointF(74.0, -2.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+        elif preset == "esquerda":
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(-34.0, -6.0))
+        elif preset == "dupla":
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(-70.0, -2.0))
+            path.moveTo(QPointF(92.0, 0.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+
+        return path
+
+    def _pingadeira_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_pingadeira_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_pingadeira_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Pingadeira")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de pingadeira:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in ("direita", "esquerda", "dupla"):
+            item = QListWidgetItem(_PINGADEIRA_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._pingadeira_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_pingadeira_preset(preset)
+
+    def _insert_pingadeira_preset(self, preset: str):
+        if preset not in _PINGADEIRA_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_pingadeira_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_pingadeira_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
     # Limpar
     def _clear(self):
         self.scene.cancel_angle_mode()
@@ -4182,6 +4334,9 @@ class DrawingCanvas(QWidget):
                 preset_name = str(meta.get("preset_3d_name") or "").strip().lower()
                 if preset_name in {"quadrado", "retangulo", "triangulo", "prisma", "cilindro"}:
                     payload["preset_3d_name"] = preset_name
+                pingadeira_name = str(meta.get("preset_pingadeira_name") or "").strip().lower()
+                if pingadeira_name in _PINGADEIRA_PRESET_LABELS:
+                    payload["preset_pingadeira_name"] = pingadeira_name
                 if "is_3d_preset" in meta:
                     payload["is_3d_preset"] = bool(meta.get("is_3d_preset"))
                 if "ft_resize_locked" in meta:
