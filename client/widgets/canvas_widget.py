@@ -69,6 +69,8 @@ _PINGADEIRA_PRESET_LABELS = {
     "direita": "Pingadeira Direita",
     "esquerda": "Pingadeira Esquerda",
     "dupla": "Pingadeira Dupla",
+    "pingadeira_rufo": "Pingadeira + Rufo",
+    "pingadeira_rufo_2": "Pingadeira + Rufo 2",
 }
 
 
@@ -3814,6 +3816,24 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(-70.0, -2.0))
             path.moveTo(QPointF(92.0, 0.0))
             path.lineTo(QPointF(right_x, bottom_y))
+        elif preset == "pingadeira_rufo":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, -70.0))
+            path.lineTo(QPointF(-90.0, -10.0))
+            path.lineTo(QPointF(150.0, -10.0))
+            path.lineTo(QPointF(150.0, 70.0))
+            path.moveTo(QPointF(108.0, 34.0))
+            path.lineTo(QPointF(150.0, 70.0))
+        elif preset == "pingadeira_rufo_2":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, 70.0))
+            path.lineTo(QPointF(-150.0, -70.0))
+            path.lineTo(QPointF(30.0, -70.0))
+            path.lineTo(QPointF(30.0, 70.0))
+            path.lineTo(QPointF(150.0, 70.0))
+            path.lineTo(QPointF(150.0, 128.0))
+            path.moveTo(QPointF(-150.0, 70.0))
+            path.lineTo(QPointF(-88.0, 10.0))
 
         return path
 
@@ -3856,7 +3876,7 @@ class DrawingCanvas(QWidget):
         list_widget.viewport().setMouseTracking(True)
         list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
 
-        for key in ("direita", "esquerda", "dupla"):
+        for key in ("direita", "esquerda", "dupla", "pingadeira_rufo", "pingadeira_rufo_2"):
             item = QListWidgetItem(_PINGADEIRA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
             list_widget.addItem(item)
