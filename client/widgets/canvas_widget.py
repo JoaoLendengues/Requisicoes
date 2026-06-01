@@ -3222,24 +3222,7 @@ class DrawingCanvas(QWidget):
             if not ok:
                 return None
             degrees = float(value)
-
-        style_label, ok = QInputDialog.getItem(
-            self,
-            "Forma do ângulo",
-            "Escolha o marcador visual:",
-            ["Automático", "Meia lua", "Quadrado"],
-            0,
-            False,
-        )
-        if not ok:
-            return None
-
-        style_map = {
-            "Automático": "auto",
-            "Meia lua": "arc",
-            "Quadrado": "square",
-        }
-        style = style_map.get(style_label, "auto")
+        style = "arc"
         label = f"{degrees:.1f}°"
         return degrees, label, style
 
