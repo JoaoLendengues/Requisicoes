@@ -61,9 +61,35 @@ class DashboardMachineUsageItem(BaseModel):
     machine_status: str
 
 
+class DashboardKgComparisonItem(BaseModel):
+    label: str
+    monthly_kg: float = 0.0
+    weekly_kg: float = 0.0
+    daily_kg: float = 0.0
+
+
+class DashboardCountKgComparisonItem(BaseModel):
+    label: str
+    monthly_count: int = 0
+    monthly_kg: float = 0.0
+    weekly_count: int = 0
+    weekly_kg: float = 0.0
+    daily_count: int = 0
+    daily_kg: float = 0.0
+
+
+class DashboardInsightsResponse(BaseModel):
+    production_kg_by_destination: list[DashboardKgComparisonItem]
+    production_kg_by_machine: list[DashboardKgComparisonItem]
+    requisitions_kg_by_vendor: list[DashboardCountKgComparisonItem]
+    requisitions_kg_by_operator: list[DashboardCountKgComparisonItem]
+    requisitions_kg_by_helper: list[DashboardCountKgComparisonItem]
+
+
 class ManagementDashboardResponse(BaseModel):
     generated_at: datetime
     stats: DashboardStatsResponse
+    insights: DashboardInsightsResponse
     top_vendors: list[DashboardVendorItem]
     top_operators: list[DashboardProductionPersonItem]
     top_helpers: list[DashboardProductionPersonItem]

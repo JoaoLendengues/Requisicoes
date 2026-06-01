@@ -17,6 +17,9 @@ from ..models.requisition import (
 )
 from ..models.user import User, Role
 from ..schemas.dashboard import (
+    DashboardCountKgComparisonItem,
+    DashboardInsightsResponse,
+    DashboardKgComparisonItem,
     DashboardMachineUsageItem,
     DashboardProductionPersonItem,
     DashboardReceiptAlertItem,
@@ -1689,6 +1692,218 @@ def _build_top_production_people_rows(
     return _build_rows(operators_stats), _build_rows(helpers_stats)
 
 
+def _comparison_period_windows(
+    now: datetime | None = None,
+) -> dict[str, tuple[datetime, datetime]]:
+    local_now = _to_local_datetime(now or datetime.now(_LOCAL_TIMEZONE)) or datetime.now(_LOCAL_TIMEZONE)
+    today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return {
+        "monthly": (_month_start(local_now), local_now),
+        "weekly": (today_start - timedelta(days=6), local_now),
+        "daily": (today_start, local_now),
+    }
+
+
+def _new_kg_comparison_entry(label: str) -> dict[str, object]:
+    return {
+        "label": label,
+        "monthly_kg": 0.0,
+        "weekly_kg": 0.0,
+        "daily_kg": 0.0,
+    }
+
+
+def _new_count_kg_comparison_entry(label: str) -> dict[str, object]:
+    return {
+        "label": label,
+        "monthly_count": 0,
+        "monthly_kg": 0.0,
+        "weekly_count": 0,
+        "weekly_kg": 0.0,
+        "daily_count": 0,
+        "daily_kg": 0.0,
+    }
+
+
+def _accumulate_kg_comparison(
+    entry: dict[str, object],
+    value_at: object,
+    weight: float,
+    periods: dict[str, tuple[datetime, datetime]],
+) -> None:
+    local_value = _to_local_datetime(value_at)
+    if local_value is None:
+        return
+
+    for period_key, (period_start, period_end) in periods.items():
+        if period_start <= local_value < period_end:
+            field_name = f"{period_key}_kg"
+            entry[field_name] = float(entry.get(field_name) or 0.0) + weight
+
+
+def _accumulate_count_kg_comparison(
+    entry: dict[str, object],
+    value_at: object,
+    weight: float,
+    periods: dict[str, tuple[datetime, datetime]],
+) -> None:
+    local_value = _to_local_datetime(value_at)
+    if local_value is None:
+        return
+
+    for period_key, (period_start, period_end) in periods.items():
+        if period_start <= local_value < period_end:
+            count_field = f"{period_key}_count"
+            kg_field = f"{period_key}_kg"
+            entry[count_field] = int(entry.get(count_field) or 0) + 1
+            entry[kg_field] = float(entry.get(kg_field) or 0.0) + weight
+
+
+def _build_kg_comparison_rows(
+    rows: dict[object, dict[str, object]],
+    *,
+    limit: int | None = None,
+) -> list[DashboardKgComparisonItem]:
+    items = [
+        DashboardKgComparisonItem(
+            label=str(data.get("label") or "-"),
+            monthly_kg=round(float(data.get("monthly_kg") or 0.0), 2),
+            weekly_kg=round(float(data.get("weekly_kg") or 0.0), 2),
+            daily_kg=round(float(data.get("daily_kg") or 0.0), 2),
+        )
+        for data in rows.values()
+    ]
+    items.sort(
+        key=lambda item: (
+            -item.monthly_kg,
+            -item.weekly_kg,
+            -item.daily_kg,
+            _normalize_text(item.label),
+        )
+    )
+    if limit is not None:
+        return items[:limit]
+    return items
+
+
+def _build_count_kg_comparison_rows(
+    rows: dict[object, dict[str, object]],
+    *,
+    limit: int | None = None,
+) -> list[DashboardCountKgComparisonItem]:
+    items = [
+        DashboardCountKgComparisonItem(
+            label=str(data.get("label") or "-"),
+            monthly_count=int(data.get("monthly_count") or 0),
+            monthly_kg=round(float(data.get("monthly_kg") or 0.0), 2),
+            weekly_count=int(data.get("weekly_count") or 0),
+            weekly_kg=round(float(data.get("weekly_kg") or 0.0), 2),
+            daily_count=int(data.get("daily_count") or 0),
+            daily_kg=round(float(data.get("daily_kg") or 0.0), 2),
+        )
+        for data in rows.values()
+    ]
+    items.sort(
+        key=lambda item: (
+            -item.monthly_count,
+            -item.monthly_kg,
+            -item.weekly_count,
+            -item.weekly_kg,
+            -item.daily_count,
+            -item.daily_kg,
+            _normalize_text(item.label),
+        )
+    )
+    if limit is not None:
+        return items[:limit]
+    return items
+
+
+def _build_production_destination_comparison(
+    reqs: list[Requisition],
+    now: datetime | None = None,
+) -> list[DashboardKgComparisonItem]:
+    periods = _comparison_period_windows(now)
+    stats: dict[str, dict[str, object]] = {}
+
+    for req in reqs:
+        weight = float(req.weight or 0.0)
+        for cycle in _all_finished_cycles(req):
+            destination = _canonical_destination(cycle.get("target"))
+            if not destination:
+                continue
+            entry = stats.setdefault(destination, _new_kg_comparison_entry(destination))
+            _accumulate_kg_comparison(entry, cycle.get("finished_at"), weight, periods)
+
+    return _build_kg_comparison_rows(stats)
+
+
+def _build_production_machine_comparison(
+    reqs: list[Requisition],
+    now: datetime | None = None,
+    *,
+    limit: int = 8,
+) -> list[DashboardKgComparisonItem]:
+    periods = _comparison_period_windows(now)
+    stats: dict[tuple[str, str], dict[str, object]] = {}
+
+    for req in reqs:
+        weight = float(req.weight or 0.0)
+        for cycle in _all_finished_cycles(req):
+            destination = _canonical_destination(cycle.get("target"))
+            machine_name = _normalize_machine_name(cycle.get("machine"))
+            if not machine_name:
+                continue
+            label = machine_name if not destination else f"{destination} - {machine_name}"
+            entry = stats.setdefault(
+                (destination, machine_name),
+                _new_kg_comparison_entry(label),
+            )
+            _accumulate_kg_comparison(entry, cycle.get("finished_at"), weight, periods)
+
+    return _build_kg_comparison_rows(stats, limit=limit)
+
+
+def _build_vendor_comparison(
+    reqs: list[Requisition],
+    now: datetime | None = None,
+    *,
+    limit: int = 8,
+) -> list[DashboardCountKgComparisonItem]:
+    periods = _comparison_period_windows(now)
+    stats: dict[tuple[int, str], dict[str, object]] = {}
+
+    for req in reqs:
+        vendor_name = (req.vendor_name or "").strip() or "Sem vendedor"
+        vendor_key = (int(req.vendor_id or 0), vendor_name)
+        emission_at = _parse_local_emission_datetime(req.emission_date) or _to_local_datetime(req.created_at)
+        entry = stats.setdefault(vendor_key, _new_count_kg_comparison_entry(vendor_name))
+        _accumulate_count_kg_comparison(entry, emission_at, float(req.weight or 0.0), periods)
+
+    return _build_count_kg_comparison_rows(stats, limit=limit)
+
+
+def _build_people_comparison(
+    reqs: list[Requisition],
+    people_key: str,
+    now: datetime | None = None,
+    *,
+    limit: int = 8,
+) -> list[DashboardCountKgComparisonItem]:
+    periods = _comparison_period_windows(now)
+    stats: dict[str, dict[str, object]] = {}
+
+    for req in reqs:
+        weight = float(req.weight or 0.0)
+        for cycle in _all_finished_cycles(req):
+            finished_at = cycle.get("finished_at")
+            for person_name in _clean_operator_names(list(cycle.get(people_key) or [])):
+                entry = stats.setdefault(person_name, _new_count_kg_comparison_entry(person_name))
+                _accumulate_count_kg_comparison(entry, finished_at, weight, periods)
+
+    return _build_count_kg_comparison_rows(stats, limit=limit)
+
+
 def _build_management_dashboard(
     reqs: list[Requisition],
     machines: list[ProductionMachine],
@@ -1792,6 +2007,13 @@ def _build_management_dashboard(
         people_destination,
         now,
     )
+    insights = DashboardInsightsResponse(
+        production_kg_by_destination=_build_production_destination_comparison(reqs, now),
+        production_kg_by_machine=_build_production_machine_comparison(reqs, now),
+        requisitions_kg_by_vendor=_build_vendor_comparison(reqs, now),
+        requisitions_kg_by_operator=_build_people_comparison(reqs, "operators", now),
+        requisitions_kg_by_helper=_build_people_comparison(reqs, "helpers", now),
+    )
 
     receipt_alerts.sort(key=lambda item: item.waiting_minutes, reverse=True)
     recent_requisitions.sort(key=lambda item: item.emission_date, reverse=True)
@@ -1827,6 +2049,7 @@ def _build_management_dashboard(
             pedidos_sem_confirmacao_1h=len(receipt_alerts),
             tempo_medio_finalizacao_segundos=average_seconds,
         ),
+        insights=insights,
         top_vendors=top_vendors,
         top_operators=top_operators,
         top_helpers=top_helpers,

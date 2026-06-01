@@ -3,8 +3,8 @@
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
-from PySide6.QtGui import QColor, QPalette, QPixmap
+from PySide6.QtCore import QObject, QRectF, QSize, QThread, Qt, Signal
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -44,6 +44,11 @@ _METRIC_ICON_FILES = {
     "requisicoes_feitas_no_dia": "requisicoes_do_dia.png",
     "pedidos_sem_confirmacao_1h": "aguardando_recebimento.png",
     "tempo_medio_finalizacao_segundos": "tempo_medio_producao.png",
+}
+_NEON_PERIOD_COLORS = {
+    "monthly": "#22D3EE",
+    "weekly": "#FB7185",
+    "daily": "#A3E635",
 }
 
 
@@ -235,6 +240,232 @@ class _SortableTableWidgetItem(QTableWidgetItem):
             return (0, float(value))
         return (1, str(value).casefold())
 
+
+class NeonComparisonWidget(QWidget):
+    def __init__(
+        self,
+        title: str,
+        subtitle: str,
+        scale: float,
+        mode: str = "kg",
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._title = title
+        self._subtitle = subtitle
+        self._scale = scale
+        self._mode = mode
+        self._rows: list[dict] = []
+        self._empty_message = "Nenhum dado disponivel para exibir."
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setMinimumHeight(self._content_height())
+
+    def set_rows(self, rows: object, empty_message: str) -> None:
+        self._rows = [row for row in (rows or []) if isinstance(row, dict)]
+        self._empty_message = empty_message
+        self.setMinimumHeight(self._content_height())
+        self.updateGeometry()
+        self.update()
+
+    def sizeHint(self) -> QSize:
+        return QSize(max(320, int(360 * self._scale)), self._content_height())
+
+    def _content_height(self) -> int:
+        top_block = max(108, int(124 * self._scale))
+        row_height = max(78, int(86 * self._scale)) if self._mode == "count_kg" else max(70, int(78 * self._scale))
+        visible_rows = max(1, len(self._rows))
+        bottom_padding = max(16, int(20 * self._scale))
+        return top_block + (visible_rows * row_height) + bottom_padding
+
+    def _value_for_period(self, row: dict, period_key: str) -> float:
+        return max(0.0, float(row.get(f"{period_key}_kg") or 0.0))
+
+    def _bar_label(self, row: dict, period_key: str) -> str:
+        kg_text = f"{_format_weight_kg(row.get(f'{period_key}_kg'))} kg"
+        if self._mode == "count_kg":
+            count = int(row.get(f"{period_key}_count") or 0)
+            return f"{count} req | {kg_text}"
+        return kg_text
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        path = QPainterPath()
+        radius = max(18, int(22 * self._scale))
+        path.addRoundedRect(QRectF(rect), radius, radius)
+
+        background = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        background.setColorAt(0.0, QColor("#07111E"))
+        background.setColorAt(0.55, QColor("#0A1628"))
+        background.setColorAt(1.0, QColor("#111F36"))
+        painter.fillPath(path, background)
+
+        border = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        border.setColorAt(0.0, QColor(_NEON_PERIOD_COLORS["monthly"]))
+        border.setColorAt(0.5, QColor(_NEON_PERIOD_COLORS["weekly"]))
+        border.setColorAt(1.0, QColor(_NEON_PERIOD_COLORS["daily"]))
+        pen = QPen()
+        pen.setBrush(border)
+        pen.setWidth(max(1, int(1.4 * self._scale)))
+        painter.setPen(pen)
+        painter.drawPath(path)
+
+        painter.setPen(QColor("#F8FAFC"))
+        title_font = painter.font()
+        title_font.setPointSize(max(10, int(12 * self._scale)))
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        left_pad = max(18, int(22 * self._scale))
+        top_pad = max(16, int(20 * self._scale))
+        painter.drawText(
+            QRectF(left_pad, top_pad, rect.width() - (left_pad * 2), max(24, int(30 * self._scale))),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self._title,
+        )
+
+        painter.setPen(QColor("#93A4BD"))
+        subtitle_font = painter.font()
+        subtitle_font.setPointSize(max(7, int(8 * self._scale)))
+        subtitle_font.setBold(False)
+        painter.setFont(subtitle_font)
+        subtitle_rect = QRectF(
+            left_pad,
+            top_pad + max(24, int(30 * self._scale)),
+            rect.width() - (left_pad * 2),
+            max(30, int(36 * self._scale)),
+        )
+        subtitle_flags = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop) | int(Qt.TextFlag.TextWordWrap)
+        painter.drawText(
+            subtitle_rect,
+            subtitle_flags,
+            self._subtitle,
+        )
+
+        legend_y = subtitle_rect.bottom() + max(10, int(12 * self._scale))
+        legend_x = left_pad
+        legend_font = painter.font()
+        legend_font.setPointSize(max(7, int(8 * self._scale)))
+        painter.setFont(legend_font)
+
+        for period_key, label in (("monthly", "MENSAL"), ("weekly", "SEMANAL"), ("daily", "DIARIO")):
+            color = QColor(_NEON_PERIOD_COLORS[period_key])
+            painter.setPen(QPen(Qt.PenStyle.NoPen))
+            painter.setBrush(color)
+            painter.drawEllipse(QRectF(legend_x, legend_y + 2, max(8, int(10 * self._scale)), max(8, int(10 * self._scale))))
+            painter.setPen(QColor("#E2E8F0"))
+            painter.drawText(
+                QRectF(
+                    legend_x + max(14, int(18 * self._scale)),
+                    legend_y - 2,
+                    max(60, int(72 * self._scale)),
+                    max(16, int(20 * self._scale)),
+                ),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                label,
+            )
+            legend_x += max(86, int(102 * self._scale))
+
+        body_top = legend_y + max(24, int(30 * self._scale))
+        if not self._rows:
+            painter.setPen(QColor("#7F8DA3"))
+            empty_font = painter.font()
+            empty_font.setPointSize(max(8, int(9 * self._scale)))
+            painter.setFont(empty_font)
+            empty_flags = int(Qt.AlignmentFlag.AlignCenter) | int(Qt.TextFlag.TextWordWrap)
+            painter.drawText(
+                QRectF(
+                    left_pad,
+                    body_top,
+                    rect.width() - (left_pad * 2),
+                    rect.height() - body_top - max(16, int(20 * self._scale)),
+                ),
+                empty_flags,
+                self._empty_message,
+            )
+            return
+
+        max_value = max(
+            max(self._value_for_period(row, "monthly"), self._value_for_period(row, "weekly"), self._value_for_period(row, "daily"))
+            for row in self._rows
+        )
+        if max_value <= 0:
+            max_value = 1.0
+
+        row_height = max(78, int(86 * self._scale)) if self._mode == "count_kg" else max(70, int(78 * self._scale))
+        bar_height = max(8, int(10 * self._scale))
+        bar_gap = max(8, int(10 * self._scale))
+        label_column_width = max(110, int(130 * self._scale))
+        value_column_width = max(110, int(132 * self._scale)) if self._mode == "kg" else max(148, int(182 * self._scale))
+        bar_x = left_pad + label_column_width
+        bar_width = max(90, rect.width() - bar_x - value_column_width - max(18, int(22 * self._scale)))
+
+        for row_index, row in enumerate(self._rows):
+            row_top = body_top + (row_index * row_height)
+
+            painter.setPen(QColor("#F8FAFC"))
+            row_label_font = painter.font()
+            row_label_font.setPointSize(max(8, int(9 * self._scale)))
+            row_label_font.setBold(True)
+            painter.setFont(row_label_font)
+            painter.drawText(
+                QRectF(
+                    left_pad,
+                    row_top,
+                    label_column_width - max(10, int(12 * self._scale)),
+                    max(16, int(20 * self._scale)),
+                ),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                str(row.get("label") or "-"),
+            )
+
+            for period_index, period_key in enumerate(("monthly", "weekly", "daily")):
+                value = self._value_for_period(row, period_key)
+                ratio = min(1.0, value / max_value) if max_value else 0.0
+                current_y = row_top + max(22, int(26 * self._scale)) + period_index * (bar_height + bar_gap)
+                track_rect = QRectF(bar_x, current_y, bar_width, bar_height)
+
+                painter.setPen(QPen(Qt.PenStyle.NoPen))
+                painter.setBrush(QColor(255, 255, 255, 18))
+                painter.drawRoundedRect(track_rect, bar_height / 2, bar_height / 2)
+
+                fill_width = max(0.0, bar_width * ratio)
+                if fill_width > 0:
+                    glow_color = QColor(_NEON_PERIOD_COLORS[period_key])
+                    glow_color.setAlpha(58)
+                    painter.setBrush(glow_color)
+                    painter.drawRoundedRect(
+                        QRectF(track_rect.x(), track_rect.y() - 1, fill_width, bar_height + 2),
+                        (bar_height + 2) / 2,
+                        (bar_height + 2) / 2,
+                    )
+
+                    fill_gradient = QLinearGradient(track_rect.left(), track_rect.top(), track_rect.left() + fill_width, track_rect.top())
+                    fill_gradient.setColorAt(0.0, QColor(_NEON_PERIOD_COLORS[period_key]).lighter(140))
+                    fill_gradient.setColorAt(1.0, QColor(_NEON_PERIOD_COLORS[period_key]))
+                    painter.setBrush(fill_gradient)
+                    painter.drawRoundedRect(
+                        QRectF(track_rect.x(), track_rect.y(), fill_width, bar_height),
+                        bar_height / 2,
+                        bar_height / 2,
+                    )
+
+                painter.setPen(QColor("#D8E1EC"))
+                value_font = painter.font()
+                value_font.setPointSize(max(7, int(8 * self._scale)))
+                value_font.setBold(False)
+                painter.setFont(value_font)
+                painter.drawText(
+                    QRectF(
+                        bar_x + bar_width + max(10, int(12 * self._scale)),
+                        current_y - max(4, int(4 * self._scale)),
+                        value_column_width,
+                        bar_height + max(8, int(10 * self._scale)),
+                    ),
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                    self._bar_label(row, period_key),
+                )
 
 class DashWorker(QObject):
     result = Signal(object)
@@ -436,6 +667,14 @@ class DashboardView(QWidget):
                 row,
                 col,
             )
+
+        self.comparison_insights_card = self._build_section_card(
+            "RADAR COMPARATIVO DE PRODUCAO",
+            "Visao neon com comparativos mensal, semanal e diario de peso processado e volume de requisicoes por equipe.",
+            self._build_comparison_insights_body(),
+            theme.PRIMARY_HOVER,
+        )
+        layout.addWidget(self.comparison_insights_card)
 
         secondary_row = QHBoxLayout()
         secondary_row.setSpacing(max(12, int(16 * s)))
@@ -708,6 +947,64 @@ class DashboardView(QWidget):
         layout.addWidget(body, 1)
         return card
 
+    def _build_comparison_insights_body(self) -> QWidget:
+        container = QWidget()
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        grid = QGridLayout(container)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(max(12, int(16 * self.scale)))
+        grid.setVerticalSpacing(max(12, int(16 * self.scale)))
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+
+        self.production_destination_chart = NeonComparisonWidget(
+            "PRODUCAO EM KG POR DESTINO",
+            "Peso finalizado por producao com leitura mensal, semanal e diaria.",
+            self.scale,
+            mode="kg",
+        )
+        self.production_machine_chart = NeonComparisonWidget(
+            "PRODUCAO EM KG POR MAQUINA",
+            "Top maquinas por peso processado nos tres recortes de tempo.",
+            self.scale,
+            mode="kg",
+        )
+        self.vendor_comparison_chart = NeonComparisonWidget(
+            "VENDEDORES | REQUISICOES E KG",
+            "Top 8 vendedores por quantidade de requisicoes e peso emitido.",
+            self.scale,
+            mode="count_kg",
+        )
+        self.operator_comparison_chart = NeonComparisonWidget(
+            "OPERADORES | REQUISICOES E KG",
+            "Top 8 operadores por requisicoes finalizadas e peso processado.",
+            self.scale,
+            mode="count_kg",
+        )
+        self.helper_comparison_chart = NeonComparisonWidget(
+            "AJUDANTES | REQUISICOES E KG",
+            "Top 8 ajudantes por requisicoes finalizadas e peso processado.",
+            self.scale,
+            mode="count_kg",
+        )
+
+        left_column = QVBoxLayout()
+        left_column.setContentsMargins(0, 0, 0, 0)
+        left_column.setSpacing(max(12, int(16 * self.scale)))
+        left_column.addWidget(self.production_destination_chart)
+        left_column.addWidget(self.production_machine_chart)
+
+        right_column = QVBoxLayout()
+        right_column.setContentsMargins(0, 0, 0, 0)
+        right_column.setSpacing(max(12, int(16 * self.scale)))
+        right_column.addWidget(self.vendor_comparison_chart)
+        right_column.addWidget(self.operator_comparison_chart)
+        right_column.addWidget(self.helper_comparison_chart)
+
+        grid.addLayout(left_column, 0, 0)
+        grid.addLayout(right_column, 0, 1)
+        return container
+
     def _create_table(self, headers: list[str], stretch_columns: set[int]) -> QTableWidget:
         s = self.scale
         table = QTableWidget(0, len(headers))
@@ -958,6 +1255,7 @@ class DashboardView(QWidget):
         self.date_label.setText(_format_header_date(current))
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
+        self._fill_comparison_charts(payload.get("insights") or {})
         self._fill_top_vendors_table(payload.get("top_vendors") or [])
         self._fill_top_people_table(
             self.top_operators_table,
@@ -981,6 +1279,29 @@ class DashboardView(QWidget):
             "Nenhuma máquina da Indústria encontrada.",
         )
         self._fill_recent_table(payload.get("recent_requisitions") or [])
+
+    def _fill_comparison_charts(self, insights: object) -> None:
+        data = insights if isinstance(insights, dict) else {}
+        self.production_destination_chart.set_rows(
+            data.get("production_kg_by_destination") or [],
+            "Nenhuma producao finalizada encontrada para o comparativo em KG.",
+        )
+        self.production_machine_chart.set_rows(
+            data.get("production_kg_by_machine") or [],
+            "Nenhuma maquina com producao finalizada encontrada no comparativo.",
+        )
+        self.vendor_comparison_chart.set_rows(
+            data.get("requisitions_kg_by_vendor") or [],
+            "Nenhum vendedor com requisicoes suficientes para o comparativo.",
+        )
+        self.operator_comparison_chart.set_rows(
+            data.get("requisitions_kg_by_operator") or [],
+            "Nenhum operador com producoes finalizadas no comparativo.",
+        )
+        self.helper_comparison_chart.set_rows(
+            data.get("requisitions_kg_by_helper") or [],
+            "Nenhum ajudante com producoes finalizadas no comparativo.",
+        )
 
     def _fill_top_vendors_table(self, rows: object):
         table = self.top_vendors_table
@@ -1315,3 +1636,12 @@ class DashboardView(QWidget):
             lbl.setStyleSheet(
                 f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
             )
+        for chart in [
+            getattr(self, "production_destination_chart", None),
+            getattr(self, "production_machine_chart", None),
+            getattr(self, "vendor_comparison_chart", None),
+            getattr(self, "operator_comparison_chart", None),
+            getattr(self, "helper_comparison_chart", None),
+        ]:
+            if chart is not None:
+                chart.update()
