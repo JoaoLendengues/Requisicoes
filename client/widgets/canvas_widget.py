@@ -5069,43 +5069,46 @@ class DrawingCanvas(QWidget):
     def _build_bandeja_path(self, preset: str) -> QPainterPath:
         path = QPainterPath()
         left_x, right_x = -170.0, 170.0
-        axis_x = 0.0
         mid_y = 0.0
         top_y = -82.0
         bottom_y = 82.0
 
         if preset == "bandeja_1":
-            # Bandeja 1: eixo vertical central + base horizontal com abas de ponta para cima.
+            # Bandeja 1: base com abas nas pontas + eixo deslocado e aba superior curta.
+            axis_x = -26.0
+            right_local = 92.0
             path.moveTo(QPointF(left_x, mid_y))
-            path.lineTo(QPointF(right_x, mid_y))
+            path.lineTo(QPointF(right_local, mid_y))
             path.moveTo(QPointF(left_x, mid_y))
             path.lineTo(QPointF(left_x, -28.0))
-            path.moveTo(QPointF(right_x, mid_y))
-            path.lineTo(QPointF(right_x, -28.0))
+            path.moveTo(QPointF(right_local, mid_y))
+            path.lineTo(QPointF(right_local, -28.0))
             path.moveTo(QPointF(axis_x, top_y))
             path.lineTo(QPointF(axis_x, bottom_y))
             path.moveTo(QPointF(axis_x, top_y))
-            path.lineTo(QPointF(78.0, top_y))
+            path.lineTo(QPointF(46.0, top_y))
         elif preset == "bandeja_2":
-            # Bandeja 2: eixo vertical central + base horizontal com dupla descida no lado direito.
+            # Bandeja 2: eixo deslocado para a esquerda + dupla descida no lado direito.
+            axis_x = -78.0
             path.moveTo(QPointF(left_x, mid_y))
             path.lineTo(QPointF(right_x, mid_y))
             path.moveTo(QPointF(axis_x, top_y))
             path.lineTo(QPointF(axis_x, bottom_y))
             path.moveTo(QPointF(axis_x, top_y))
-            path.lineTo(QPointF(76.0, top_y))
-            path.moveTo(QPointF(106.0, mid_y))
-            path.lineTo(QPointF(106.0, 34.0))
-            path.moveTo(QPointF(126.0, mid_y))
-            path.lineTo(QPointF(126.0, 34.0))
+            path.lineTo(QPointF(-22.0, top_y))
+            path.moveTo(QPointF(104.0, mid_y))
+            path.lineTo(QPointF(104.0, 32.0))
+            path.moveTo(QPointF(122.0, mid_y))
+            path.lineTo(QPointF(122.0, 32.0))
         elif preset == "bandeja_3":
-            # Bandeja 3: eixo vertical central + base horizontal simples.
+            # Bandeja 3: versão limpa da 2 (sem descidas), mantendo eixo deslocado.
+            axis_x = -78.0
             path.moveTo(QPointF(left_x, mid_y))
             path.lineTo(QPointF(right_x, mid_y))
             path.moveTo(QPointF(axis_x, top_y))
             path.lineTo(QPointF(axis_x, bottom_y))
             path.moveTo(QPointF(axis_x, top_y))
-            path.lineTo(QPointF(64.0, top_y))
+            path.lineTo(QPointF(-26.0, top_y))
 
         return path
 
