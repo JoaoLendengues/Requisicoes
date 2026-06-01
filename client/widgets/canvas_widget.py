@@ -88,6 +88,9 @@ _CALHA_PRESET_LABELS = {
     "calha_2_aba": "Calha com 2 Aba",
     "calha_abas_dobrada": "Calha com Abas Dobrada",
     "calha_modulada": "Calha Modulada",
+    "calha_com_angulo": "Calha com Angulo",
+    "calha_dobrada": "Calha Dobrada",
+    "calha_sem_aba": "Calha Sem Aba",
     "calha_3d": "Calha 3D",
 }
 _BANDEJA_PRESET_LABELS = {
@@ -4946,6 +4949,37 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(120.0, -52.0))
             path.lineTo(QPointF(10.0, -52.0))
             path.lineTo(QPointF(10.0, -8.0))
+        elif preset == "calha_com_angulo":
+            path.moveTo(QPointF(-170.0, -56.0))
+            path.lineTo(QPointF(-20.0, -8.0))
+            path.lineTo(QPointF(-20.0, 72.0))
+            path.lineTo(QPointF(120.0, 72.0))
+            path.lineTo(QPointF(120.0, -8.0))
+            path.lineTo(QPointF(270.0, -56.0))
+        elif preset == "calha_dobrada":
+            path.moveTo(QPointF(-170.0, -96.0))
+            path.lineTo(QPointF(-170.0, -8.0))
+            path.lineTo(QPointF(-20.0, 72.0))
+            path.lineTo(QPointF(120.0, 72.0))
+            path.lineTo(QPointF(270.0, -8.0))
+            path.lineTo(QPointF(270.0, -96.0))
+        elif preset == "calha_sem_aba":
+            path.moveTo(QPointF(-170.0, 72.0))
+            path.lineTo(QPointF(-170.0, -8.0))
+            path.lineTo(QPointF(-20.0, -108.0))
+            path.lineTo(QPointF(-20.0, -18.0))
+            path.lineTo(QPointF(-170.0, 72.0))
+
+            path.moveTo(QPointF(20.0, 72.0))
+            path.lineTo(QPointF(20.0, -8.0))
+            path.lineTo(QPointF(170.0, -108.0))
+            path.lineTo(QPointF(170.0, -18.0))
+            path.lineTo(QPointF(20.0, 72.0))
+
+            path.moveTo(QPointF(-20.0, -18.0))
+            path.lineTo(QPointF(170.0, -18.0))
+            path.moveTo(QPointF(-170.0, 72.0))
+            path.lineTo(QPointF(20.0, 72.0))
         elif preset in {"calha_foto", "calha_3d"}:
             # Perfil conforme a foto enviada: dois planos inclinados e ponte superior.
             left_bottom = QPointF(-170.0, 72.0)
@@ -5036,6 +5070,9 @@ class DrawingCanvas(QWidget):
             "calha_2_aba",
             "calha_abas_dobrada",
             "calha_modulada",
+            "calha_com_angulo",
+            "calha_dobrada",
+            "calha_sem_aba",
         ):
             item = QListWidgetItem(_CALHA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
