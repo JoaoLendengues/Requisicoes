@@ -186,11 +186,11 @@ def _req_secondary_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
-        f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; outline:none; border-radius:14px;"
-        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+            f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
+            f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; outline:none; border-radius:14px;"
+            f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{_REQ_SURFACE_ALT}; border-color:{_REQ_NEON_SECONDARY}; }}"
+        f"QPushButton:hover {{ background:{_REQ_SURFACE_ALT}; border-color:{_REQ_NEON_PRIMARY}; }}"
         f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 26)}; }}"
         f"QPushButton:disabled {{ background:{_rgba(_REQ_BORDER_SOFT, 36)}; color:{_REQ_TEXT_MUTED}; border-color:{_REQ_BORDER_SOFT}; }}"
     )
@@ -209,7 +209,7 @@ def _req_input_style(scale: float, *, bold: bool = False, accent: str | None = N
         f"  selection-background-color:{_rgba(_REQ_NEON_PRIMARY, 64)}; selection-color:{_REQ_TEXT_PRIMARY};"
         f"}}"
         f"QLineEdit:hover, QDateEdit:hover, QComboBox:hover {{ border-color:{_REQ_NEON_PRIMARY}; }}"
-        f"QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border-color:{_REQ_NEON_SECONDARY}; }}"
+        f"QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border-color:{_REQ_NEON_PRIMARY}; }}"
     )
 
 
@@ -223,7 +223,7 @@ def _req_text_edit_style(scale: float) -> str:
         f"  selection-background-color:{_rgba(_REQ_NEON_PRIMARY, 64)}; selection-color:{_REQ_TEXT_PRIMARY};"
         f"}}"
         f"QTextEdit:hover, QPlainTextEdit:hover {{ border-color:{_REQ_NEON_PRIMARY}; }}"
-        f"QTextEdit:focus, QPlainTextEdit:focus {{ border-color:{_REQ_NEON_SECONDARY}; }}"
+        f"QTextEdit:focus, QPlainTextEdit:focus {{ border-color:{_REQ_NEON_PRIMARY}; }}"
     )
 
 
@@ -263,7 +263,7 @@ def _req_round_icon_btn_style(scale: float, diameter: int) -> str:
         f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 102)};"
         f"  border-radius:{diameter // 2}px; padding:0;"
         f"}}"
-        f"QPushButton:hover {{ color:{_REQ_TEXT_PRIMARY}; border-color:{_REQ_NEON_SECONDARY}; background:{_REQ_SURFACE_ALT}; }}"
+        f"QPushButton:hover {{ color:{_REQ_TEXT_PRIMARY}; border-color:{_REQ_NEON_PRIMARY}; background:{_REQ_SURFACE_ALT}; }}"
         f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 24)}; }}"
     )
 
@@ -389,9 +389,9 @@ def _make_card(parent=None) -> QFrame:
         f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
         f"    stop:0 {_REQ_CARD_BG_START}, stop:0.55 {_REQ_CARD_BG_MID}, stop:1 {_REQ_CARD_BG_END});"
         f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 82)};"
-        f"  border-radius:18px;"
+        f"  border-radius:22px;"
         f"}}"
-        f"QFrame#reqCard:hover {{ border-color:{_rgba(_REQ_NEON_SECONDARY, 180)}; }}"
+        f"QFrame#reqCard:hover {{ border-color:{_rgba(_REQ_NEON_PRIMARY, 140)}; }}"
     )
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(28)
@@ -406,17 +406,19 @@ def _make_card(parent=None) -> QFrame:
 def _field_label(text: str, scale: float) -> QLabel:
     lbl = QLabel(text)
     lbl.setProperty("accent", "1")
+    lbl.setFrameStyle(QFrame.Shape.NoFrame)
     lbl.setStyleSheet(
         f"font-size:{max(7, int(8*scale))}pt; "
-        f"font-weight:700; text-transform:uppercase; border:none; color:{_REQ_TEXT_MUTED};"
+        f"font-weight:700; text-transform:uppercase; border:none; background:transparent; color:{_REQ_TEXT_MUTED};"
     )
     return lbl
 
 
 def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     lbl = QLabel(text)
+    lbl.setFrameStyle(QFrame.Shape.NoFrame)
     lbl.setStyleSheet(
-        f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none; color:{_REQ_TEXT_PRIMARY};"
+        f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none; background:transparent; color:{_REQ_TEXT_PRIMARY};"
     )
     return lbl
 
@@ -1886,12 +1888,14 @@ class RequisitionForm(QWidget):
         title_col.setSpacing(0)
         lbl_req = QLabel("REQUISIÇÃO")
         lbl_req.setProperty("accent", "1")
+        lbl_req.setFrameStyle(QFrame.Shape.NoFrame)
         lbl_req.setStyleSheet(
             f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; background:transparent; color:{_REQ_TEXT_MUTED};"
         )
         self.lbl_req_title = lbl_req
         self.lbl_ped_num = QLabel("#000000")
         self.lbl_ped_num.setProperty("accent", "1")
+        self.lbl_ped_num.setFrameStyle(QFrame.Shape.NoFrame)
         self.lbl_ped_num.setStyleSheet(
             f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; background:transparent; color:{_REQ_NEON_PRIMARY};"
         )

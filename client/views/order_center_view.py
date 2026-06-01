@@ -480,17 +480,18 @@ class OrderCenterView(QWidget):
     # ── Chip style ───────────────────────────────────────────────────────────
     def _chip_style(self, scale: float) -> str:
         fs = max(8, int(9 * scale))
+        radius = max(16, int(18 * scale))
         return (
             f"QPushButton {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_MEDIUM};"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:999px;"
-            f"  padding:4px 14px; font-size:{fs}pt; font-weight:700; outline:none;"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:{radius}px;"
+            f"  padding:6px 16px; font-size:{fs}pt; font-weight:700; outline:none;"
             f"}}"
-            f"QPushButton:hover {{ border-color:{_rgba(theme.PRIMARY, 80)}; color:{theme.TEXT_DARK}; }}"
+            f"QPushButton:hover {{ border-color:{_rgba(theme.PRIMARY, 80)}; color:{theme.TEXT_DARK}; border-radius:{radius}px; }}"
             f"QPushButton:checked {{"
-            f"  background:{theme.PRIMARY}; color:#FFFFFF; border-color:{theme.PRIMARY};"
+            f"  background:{theme.PRIMARY}; color:#FFFFFF; border-color:{theme.PRIMARY}; border-radius:{radius}px;"
             f"}}"
-            f"QPushButton:checked:hover {{ background:{theme.PRIMARY_HOVER}; border-color:{theme.PRIMARY_HOVER}; }}"
+            f"QPushButton:checked:hover {{ background:{theme.PRIMARY_HOVER}; border-color:{theme.PRIMARY_HOVER}; border-radius:{radius}px; }}"
         )
 
     # ── Lógica de filtros ─────────────────────────────────────────────────────
