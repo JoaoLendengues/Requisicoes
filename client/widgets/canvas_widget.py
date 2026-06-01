@@ -3844,6 +3844,59 @@ class DrawingCanvas(QWidget):
             f"QPushButton:hover:!checked {{ background:{theme.SELECTION_BG}; border-color:{theme.PRIMARY_LIGHT}; }}"
         )
 
+    def apply_theme(self) -> None:
+        """Reaplica o tema corrente em todos os controles do editor de desenho.
+
+        Necessário porque o estilo é setado item a item no construtor; ao
+        trocar de tema em runtime, os widgets ficam com as cores antigas
+        até essa função ser chamada.
+        """
+        fs = max(9, int(11 * self.scale))
+        small = max(8, int(9 * self.scale))
+
+        # Borda do canvas. O fundo do canvas é sempre branco (papel de desenho).
+        if hasattr(self, "view") and self.view is not None:
+            self.view.setStyleSheet(
+                f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
+            )
+
+        # Reaplica estilo nos botões de ferramentas (lista guardada)
+        tool_style = self._tool_btn_style()
+        for btn in getattr(self, "_tool_btns", {}).values():
+            btn.setStyleSheet(tool_style)
+
+        # Botão de cor: preserva o swatch da cor atual, atualiza só a borda
+        if hasattr(self, "btn_color") and self.btn_color is not None:
+            self.btn_color.setStyleSheet(
+                f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
+                f"font-size:{small}pt;"
+            )
+
+        # Demais botões e labels: aplica estilo padrão.
+        # Pula os que já estilizamos especificamente acima.
+        from PySide6.QtWidgets import QPushButton, QLabel
+        special_btns = set(getattr(self, "_tool_btns", {}).values())
+        if hasattr(self, "btn_color"):
+            special_btns.add(self.btn_color)
+
+        for btn in self.findChildren(QPushButton):
+            if btn in special_btns:
+                continue
+            # Mantém botões com estilo custom (ex.: que tenham background:transparent
+            # no QSS atual) — re-aplicar o estilo padrão a TODOS dá um look uniforme,
+            # que é o que queremos quando troca o tema.
+            btn.setStyleSheet(tool_style)
+
+        # Labels: detecta o título (cor PRIMARY/bold/maior) e re-estiliza
+        for lbl in self.findChildren(QLabel):
+            current = lbl.styleSheet() or ""
+            if "font-weight:bold" in current.replace(" ", ""):
+                lbl.setStyleSheet(
+                    f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
+                )
+            else:
+                lbl.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
+
     def _setup_shortcuts(self):
         shortcuts = {
             Qt.Key.Key_S: Tool.SELECT,
@@ -5417,3 +5470,17 @@ class CanvasPreview(QGraphicsView):
         if rect.isNull():
             rect = QRectF(0, 0, 100, 80)
         self.fitInView(rect.adjusted(-10, -10, 10, 10), Qt.AspectRatioMode.KeepAspectRatio)
+
+    def apply_theme(self) -> None:
+        """Reaplica o tema corrente — chamado pela view quando troca claro/escuro."""
+        self.setStyleSheet(
+            f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
+        )
+        # Atualiza o placeholder "🖼️ Nenhum desenho salvo" se estiver presente.
+        for item in self._scene.items():
+            try:
+                from PySide6.QtWidgets import QGraphicsTextItem
+                if isinstance(item, QGraphicsTextItem):
+                    item.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
+            except Exception:
+                pass

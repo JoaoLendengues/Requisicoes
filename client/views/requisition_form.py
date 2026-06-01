@@ -48,21 +48,6 @@ from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_sc
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
 ALL_DATES_SENTINEL = QDate(2000, 1, 1)
-_REQ_CARD_BG_START = theme.PANEL_CARD_BG_START
-_REQ_CARD_BG_MID = theme.PANEL_CARD_BG_MID
-_REQ_CARD_BG_END = theme.PANEL_CARD_BG_END
-_REQ_SURFACE_BG = theme.PANEL_SURFACE_BG
-_REQ_SURFACE_ALT = theme.PANEL_SURFACE_ALT
-_REQ_BORDER_SOFT = theme.PANEL_BORDER_SOFT
-_REQ_TEXT_PRIMARY = theme.PANEL_TEXT_PRIMARY
-_REQ_TEXT_MUTED = theme.PANEL_TEXT_MUTED
-_REQ_NEON_PRIMARY = theme.PANEL_NEON_PRIMARY
-_REQ_NEON_SECONDARY = theme.PANEL_NEON_SECONDARY
-_REQ_NEON_TERTIARY = theme.PANEL_NEON_TERTIARY
-_REQ_TABLE_HEADER_START = theme.PANEL_TABLE_HEADER_START
-_REQ_TABLE_HEADER_END = theme.PANEL_TABLE_HEADER_END
-
-
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
@@ -72,11 +57,11 @@ def _req_dialog_style() -> str:
     return (
         f"QDialog {{"
         f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
-        f"    stop:0 {_REQ_CARD_BG_START}, stop:0.55 {_REQ_CARD_BG_MID}, stop:1 {_REQ_CARD_BG_END});"
-        f"  color:{_REQ_TEXT_PRIMARY}; border:1px solid {_rgba(_REQ_NEON_PRIMARY, 92)}; border-radius:16px;"
+        f"    stop:0 {theme.PANEL_CARD_BG_START}, stop:0.55 {theme.PANEL_CARD_BG_MID}, stop:1 {theme.PANEL_CARD_BG_END});"
+        f"  color:{theme.PANEL_TEXT_PRIMARY}; border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 92)}; border-radius:16px;"
         f"}}"
-        f"QDialog QWidget {{ color:{_REQ_TEXT_PRIMARY}; }}"
-        f"QLabel {{ background:transparent; color:{_REQ_TEXT_PRIMARY}; border:none; }}"
+        f"QDialog QWidget {{ color:{theme.PANEL_TEXT_PRIMARY}; }}"
+        f"QLabel {{ background:transparent; color:{theme.PANEL_TEXT_PRIMARY}; border:none; }}"
     )
 
 
@@ -173,7 +158,7 @@ def _req_primary_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{_REQ_NEON_PRIMARY}; color:#04111F; border:none; border-radius:14px;"
+        f"  background:{theme.PANEL_NEON_PRIMARY}; color:#04111F; border:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:800;"
         f"}}"
         f"QPushButton:hover {{ background:#67E8F9; }}"
@@ -186,6 +171,7 @@ def _req_secondary_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
+<<<<<<< HEAD
             f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
             f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; outline:none; border-radius:14px;"
             f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
@@ -193,23 +179,37 @@ def _req_secondary_btn_style(scale: float) -> str:
         f"QPushButton:hover {{ background:{_REQ_SURFACE_ALT}; border-color:{_REQ_NEON_PRIMARY}; }}"
         f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 26)}; }}"
         f"QPushButton:disabled {{ background:{_rgba(_REQ_BORDER_SOFT, 36)}; color:{_REQ_TEXT_MUTED}; border-color:{_REQ_BORDER_SOFT}; }}"
+=======
+        f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)}; outline:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{theme.PANEL_SURFACE_ALT}; border-color:{theme.PANEL_NEON_SECONDARY}; }}"
+        f"QPushButton:pressed {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 26)}; }}"
+        f"QPushButton:disabled {{ background:{_rgba(theme.PANEL_BORDER_SOFT, 36)}; color:{theme.PANEL_TEXT_MUTED}; border-color:{theme.PANEL_BORDER_SOFT}; }}"
+>>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
 
 
 def _req_input_style(scale: float, *, bold: bool = False, accent: str | None = None) -> str:
     fs = max(9, int(10 * scale))
     radius = max(10, int(12 * scale))
-    border = accent or _REQ_BORDER_SOFT
+    border = accent or theme.PANEL_BORDER_SOFT
     weight = 700 if bold else 600
     return (
         f"QLineEdit, QDateEdit, QComboBox {{"
-        f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
+        f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
         f"  border:1px solid {border}; border-radius:{radius}px;"
         f"  padding:7px 10px; font-size:{fs}pt; font-weight:{weight};"
-        f"  selection-background-color:{_rgba(_REQ_NEON_PRIMARY, 64)}; selection-color:{_REQ_TEXT_PRIMARY};"
+        f"  selection-background-color:{_rgba(theme.PANEL_NEON_PRIMARY, 64)}; selection-color:{theme.PANEL_TEXT_PRIMARY};"
         f"}}"
+<<<<<<< HEAD
         f"QLineEdit:hover, QDateEdit:hover, QComboBox:hover {{ border-color:{_REQ_NEON_PRIMARY}; }}"
         f"QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border-color:{_REQ_NEON_PRIMARY}; }}"
+=======
+        f"QLineEdit:hover, QDateEdit:hover, QComboBox:hover {{ border-color:{theme.PANEL_NEON_PRIMARY}; }}"
+        f"QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border-color:{theme.PANEL_NEON_SECONDARY}; }}"
+>>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
 
 
@@ -217,13 +217,18 @@ def _req_text_edit_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QTextEdit, QPlainTextEdit {{"
-        f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
-        f"  border:1px solid {_REQ_BORDER_SOFT}; border-radius:10px;"
+        f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {theme.PANEL_BORDER_SOFT}; border-radius:10px;"
         f"  padding:6px 8px; font-size:{fs}pt;"
-        f"  selection-background-color:{_rgba(_REQ_NEON_PRIMARY, 64)}; selection-color:{_REQ_TEXT_PRIMARY};"
+        f"  selection-background-color:{_rgba(theme.PANEL_NEON_PRIMARY, 64)}; selection-color:{theme.PANEL_TEXT_PRIMARY};"
         f"}}"
+<<<<<<< HEAD
         f"QTextEdit:hover, QPlainTextEdit:hover {{ border-color:{_REQ_NEON_PRIMARY}; }}"
         f"QTextEdit:focus, QPlainTextEdit:focus {{ border-color:{_REQ_NEON_PRIMARY}; }}"
+=======
+        f"QTextEdit:hover, QPlainTextEdit:hover {{ border-color:{theme.PANEL_NEON_PRIMARY}; }}"
+        f"QTextEdit:focus, QPlainTextEdit:focus {{ border-color:{theme.PANEL_NEON_SECONDARY}; }}"
+>>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
 
 
@@ -231,13 +236,13 @@ def _req_checkbox_style(scale: float) -> str:
     fs = max(9, int(11 * scale))
     size = max(16, int(18 * scale))
     return (
-        f"QCheckBox {{ color:{_REQ_TEXT_PRIMARY}; font-size:{fs}pt; border:none; spacing:8px; }}"
+        f"QCheckBox {{ color:{theme.PANEL_TEXT_PRIMARY}; font-size:{fs}pt; border:none; spacing:8px; }}"
         f"QCheckBox::indicator {{"
         f"  width:{size}px; height:{size}px; border-radius:5px;"
-        f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; background:{_REQ_SURFACE_BG};"
+        f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)}; background:{theme.PANEL_SURFACE_BG};"
         f"}}"
         f"QCheckBox::indicator:checked {{"
-        f"  background:{_REQ_NEON_PRIMARY}; border-color:{_REQ_NEON_PRIMARY};"
+        f"  background:{theme.PANEL_NEON_PRIMARY}; border-color:{theme.PANEL_NEON_PRIMARY};"
         f"}}"
     )
 
@@ -245,13 +250,13 @@ def _req_checkbox_style(scale: float) -> str:
 def _req_search_drop_style(scale: float) -> str:
     return (
         f"QListWidget {{"
-        f"  background:{_REQ_SURFACE_BG};"
-        f"  border:2px solid {_REQ_NEON_PRIMARY}; border-radius:0 0 8px 8px;"
+        f"  background:{theme.PANEL_SURFACE_BG};"
+        f"  border:2px solid {theme.PANEL_NEON_PRIMARY}; border-radius:0 0 8px 8px;"
         f"  font-size:{max(9,int(10*scale))}pt; outline:none;"
         f"}}"
-        f"QListWidget::item {{ padding:7px 12px; color:{_REQ_TEXT_PRIMARY}; }}"
+        f"QListWidget::item {{ padding:7px 12px; color:{theme.PANEL_TEXT_PRIMARY}; }}"
         f"QListWidget::item:hover, QListWidget::item:selected"
-        f" {{ background:{_rgba(_REQ_NEON_PRIMARY, 64)}; color:{_REQ_TEXT_PRIMARY}; }}"
+        f" {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 64)}; color:{theme.PANEL_TEXT_PRIMARY}; }}"
     )
 
 
@@ -259,12 +264,17 @@ def _req_round_icon_btn_style(scale: float, diameter: int) -> str:
     return (
         f"QPushButton {{"
         f"  font-size:{max(10, int(11 * scale))}pt; font-weight:700;"
-        f"  color:{_REQ_TEXT_MUTED}; background:{_REQ_SURFACE_BG};"
-        f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 102)};"
+        f"  color:{theme.PANEL_TEXT_MUTED}; background:{theme.PANEL_SURFACE_BG};"
+        f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 102)};"
         f"  border-radius:{diameter // 2}px; padding:0;"
         f"}}"
+<<<<<<< HEAD
         f"QPushButton:hover {{ color:{_REQ_TEXT_PRIMARY}; border-color:{_REQ_NEON_PRIMARY}; background:{_REQ_SURFACE_ALT}; }}"
         f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 24)}; }}"
+=======
+        f"QPushButton:hover {{ color:{theme.PANEL_TEXT_PRIMARY}; border-color:{theme.PANEL_NEON_SECONDARY}; background:{theme.PANEL_SURFACE_ALT}; }}"
+        f"QPushButton:pressed {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 24)}; }}"
+>>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
 
 
@@ -272,7 +282,7 @@ def _calendar_btn_style(scale: float) -> str:
     fs = max(11, int(13 * scale))
     return (
         f"QToolButton {{"
-        f"  background:{_REQ_NEON_PRIMARY}; color:#04111F; border:none; border-radius:12px;"
+        f"  background:{theme.PANEL_NEON_PRIMARY}; color:#04111F; border:none; border-radius:12px;"
         f"  font-size:{fs}pt; font-weight:700; padding:0px 2px;"
         f"}}"
         f"QToolButton:hover {{ background:#67E8F9; }}"
@@ -283,23 +293,23 @@ def _calendar_btn_style(scale: float) -> str:
 def _dialog_table_style(scale: float) -> str:
     body_fs = max(8, int(9 * scale))
     head_fs = max(7, int(8 * scale))
-    header_fg = theme.TEXT_WHITE if not theme.is_dark else _REQ_TEXT_PRIMARY
+    header_fg = theme.TEXT_WHITE if not theme.is_dark else theme.PANEL_TEXT_PRIMARY
     return (
         f"QTableWidget {{"
-        f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
-        f"  border:1px solid {_REQ_BORDER_SOFT}; border-radius:8px;"
-        f"  alternate-background-color:{_REQ_SURFACE_ALT};"
+        f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {theme.PANEL_BORDER_SOFT}; border-radius:8px;"
+        f"  alternate-background-color:{theme.PANEL_SURFACE_ALT};"
         f"  font-size:{body_fs}pt; gridline-color:transparent;"
         f"}}"
         f"QTableWidget::item {{ padding:8px 10px; border:none; }}"
-        f"QTableWidget::item:selected {{ background:{_rgba(_REQ_NEON_PRIMARY, 56)}; color:{_REQ_TEXT_PRIMARY}; }}"
+        f"QTableWidget::item:selected {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 56)}; color:{theme.PANEL_TEXT_PRIMARY}; }}"
         f"QHeaderView::section {{"
         f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-        f"    stop:0 {_REQ_TABLE_HEADER_START}, stop:1 {_REQ_TABLE_HEADER_END});"
+        f"    stop:0 {theme.PANEL_TABLE_HEADER_START}, stop:1 {theme.PANEL_TABLE_HEADER_END});"
         f"  color:{header_fg};"
         f"  border:none; padding:8px 10px; font-size:{head_fs}pt; font-weight:700;"
         f"}}"
-        f"QTableCornerButton::section {{ background:{_REQ_TABLE_HEADER_START}; border:none; }}"
+        f"QTableCornerButton::section {{ background:{theme.PANEL_TABLE_HEADER_START}; border:none; }}"
     )
 
 
@@ -387,11 +397,19 @@ def _make_card(parent=None) -> QFrame:
     card.setStyleSheet(
         f"QFrame#reqCard {{"
         f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+<<<<<<< HEAD
         f"    stop:0 {_REQ_CARD_BG_START}, stop:0.55 {_REQ_CARD_BG_MID}, stop:1 {_REQ_CARD_BG_END});"
         f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 82)};"
         f"  border-radius:22px;"
         f"}}"
         f"QFrame#reqCard:hover {{ border-color:{_rgba(_REQ_NEON_PRIMARY, 140)}; }}"
+=======
+        f"    stop:0 {theme.PANEL_CARD_BG_START}, stop:0.55 {theme.PANEL_CARD_BG_MID}, stop:1 {theme.PANEL_CARD_BG_END});"
+        f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 82)};"
+        f"  border-radius:18px;"
+        f"}}"
+        f"QFrame#reqCard:hover {{ border-color:{_rgba(theme.PANEL_NEON_SECONDARY, 180)}; }}"
+>>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(28)
@@ -409,7 +427,11 @@ def _field_label(text: str, scale: float) -> QLabel:
     lbl.setFrameStyle(QFrame.Shape.NoFrame)
     lbl.setStyleSheet(
         f"font-size:{max(7, int(8*scale))}pt; "
+<<<<<<< HEAD
         f"font-weight:700; text-transform:uppercase; border:none; background:transparent; color:{_REQ_TEXT_MUTED};"
+=======
+        f"font-weight:700; text-transform:uppercase; border:none; color:{theme.PANEL_TEXT_MUTED};"
+>>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
     return lbl
 
@@ -418,7 +440,11 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     lbl = QLabel(text)
     lbl.setFrameStyle(QFrame.Shape.NoFrame)
     lbl.setStyleSheet(
+<<<<<<< HEAD
         f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none; background:transparent; color:{_REQ_TEXT_PRIMARY};"
+=======
+        f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none; color:{theme.PANEL_TEXT_PRIMARY};"
+>>>>>>> 33591905c1e113fc76c5abbb1d984ac8ec390837
     )
     return lbl
 
@@ -509,7 +535,7 @@ class ClientSearchBox(QWidget):
         self._drop.clear()
         loading = QListWidgetItem("  Buscando...")
         loading.setFlags(Qt.ItemFlag.NoItemFlags)
-        loading.setForeground(QColor(_REQ_TEXT_MUTED))
+        loading.setForeground(QColor(theme.PANEL_TEXT_MUTED))
         self._drop.addItem(loading)
         self._reposition()
         self._drop.show()
@@ -534,7 +560,7 @@ class ClientSearchBox(QWidget):
         self._drop.clear()
         it = QListWidgetItem("  Erro ao buscar — verifique a conexão")
         it.setFlags(Qt.ItemFlag.NoItemFlags)
-        it.setForeground(QColor(_REQ_NEON_SECONDARY))
+        it.setForeground(QColor(theme.PANEL_NEON_SECONDARY))
         self._drop.addItem(it)
         self._reposition()
         self._drop.show()
@@ -547,7 +573,7 @@ class ClientSearchBox(QWidget):
         if not clients:
             it = QListWidgetItem("  Nenhum cliente encontrado")
             it.setFlags(Qt.ItemFlag.NoItemFlags)
-            it.setForeground(QColor(_REQ_TEXT_MUTED))
+            it.setForeground(QColor(theme.PANEL_TEXT_MUTED))
             self._drop.addItem(it)
         else:
             for c in clients:
@@ -823,7 +849,7 @@ class _CanvasReadOnlyView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.setStyleSheet(
-            f"border:1px solid {_rgba(_REQ_NEON_PRIMARY, 96)}; border-radius:12px; background:#fff;"
+            f"border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 96)}; border-radius:12px; background:#fff;"
         )
         self.setMinimumHeight(max(300, int(420 * scale)))
 
@@ -884,7 +910,7 @@ class CanvasViewerDialog(QDialog):
         toolbar = QHBoxLayout()
         helper = QLabel("Visualização somente leitura. Use Ctrl + rolagem para zoom.")
         helper.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9 * scale))}pt;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9 * scale))}pt;"
         )
         toolbar.addWidget(helper)
         toolbar.addStretch()
@@ -921,7 +947,7 @@ class CanvasViewerDialog(QDialog):
         result = load_canvas_scene(scene, json_data, selectable=False)
         if result.get("items", 0) == 0:
             placeholder = scene.addText("Nenhum desenho salvo para visualizar.")
-            placeholder.setDefaultTextColor(QColor(_REQ_TEXT_MUTED))
+            placeholder.setDefaultTextColor(QColor(theme.PANEL_TEXT_MUTED))
             placeholder.setFont(QFont(theme.FONT_PRIMARY, max(9, int(10 * scale))))
             placeholder.setPos(20, 20)
         self.canvas_view.fit_scene()
@@ -1111,11 +1137,11 @@ class SignaturePad(QWidget):
             if self._has_strokes
             else Qt.PenStyle.DashLine
         )
-        painter.setPen(QPen(QColor(_REQ_NEON_PRIMARY), 1, border_style))
+        painter.setPen(QPen(QColor(theme.PANEL_NEON_PRIMARY), 1, border_style))
         painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 6, 6)
 
         if not self._has_strokes:
-            painter.setPen(QColor(_REQ_TEXT_MUTED))
+            painter.setPen(QColor(theme.PANEL_TEXT_MUTED))
             painter.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self._scale))))
             painter.drawText(
                 self.rect(),
@@ -1143,7 +1169,7 @@ class SignatureDialog(QDialog):
 
         hint = QLabel("Desenhe a assinatura abaixo com mouse ou caneta da mesa digitalizadora.")
         hint.setWordWrap(True)
-        hint.setStyleSheet(f"font-size:{max(8, int(9 * scale))}pt; color:{_REQ_TEXT_MUTED};")
+        hint.setStyleSheet(f"font-size:{max(8, int(9 * scale))}pt; color:{theme.PANEL_TEXT_MUTED};")
         layout.addWidget(hint)
 
         self.pad = SignaturePad(scale, self)
@@ -1309,7 +1335,7 @@ class RequisitionForm(QWidget):
         self.lock_label.setVisible(False)
         self.lock_label.setWordWrap(True)
         self.lock_label.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
         )
         layout.addWidget(self.lock_label)
 
@@ -1480,14 +1506,14 @@ class RequisitionForm(QWidget):
 
         lbl = QLabel("Digite o número do PED:")
         lbl.setStyleSheet(
-            f"font-size:{max(8, int(10 * self.scale))}pt; font-weight:700; color:{_REQ_TEXT_PRIMARY};"
+            f"font-size:{max(8, int(10 * self.scale))}pt; font-weight:700; color:{theme.PANEL_TEXT_PRIMARY};"
         )
         layout.addWidget(lbl)
 
         input_ped = QLineEdit(default_value)
         input_ped.setPlaceholderText("Ex.: 123456")
         input_ped.setValidator(QRegularExpressionValidator(QRegularExpression(r"\d*")))
-        input_ped.setStyleSheet(_req_input_style(self.scale, bold=True, accent=_REQ_NEON_PRIMARY))
+        input_ped.setStyleSheet(_req_input_style(self.scale, bold=True, accent=theme.PANEL_NEON_PRIMARY))
         input_ped.setMinimumWidth(max(240, int(280 * self.scale)))
         layout.addWidget(input_ped)
 
@@ -1605,7 +1631,7 @@ class RequisitionForm(QWidget):
 
         lbl = QLabel("BUSCA POR PED, CLIENTE OU OBRA")
         lbl.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{_REQ_TEXT_PRIMARY};"
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
         )
         search = QLineEdit()
         search.setPlaceholderText("Ex.: nome do cliente, obra ou 123456")
@@ -1616,7 +1642,7 @@ class RequisitionForm(QWidget):
 
         vendor_label = QLabel("VENDEDOR")
         vendor_label.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{_REQ_TEXT_PRIMARY};"
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
         )
         vendor_search = QLineEdit()
         vendor_search.setPlaceholderText("Nome ou código do vendedor")
@@ -1628,7 +1654,7 @@ class RequisitionForm(QWidget):
 
         period_label = QLabel("Período de emissão")
         period_label.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{_REQ_TEXT_PRIMARY};"
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
         )
         layout.addWidget(period_label)
 
@@ -1637,13 +1663,13 @@ class RequisitionForm(QWidget):
         )
         shortcuts.setWordWrap(True)
         shortcuts.setStyleSheet(
-            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         layout.addWidget(shortcuts)
 
         period_hint = QLabel("Filtro opcional. Use Delete para limpar a data do campo selecionado.")
         period_hint.setProperty("muted", "1")
-        period_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; color:{_REQ_TEXT_MUTED};")
+        period_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; color:{theme.PANEL_TEXT_MUTED};")
         layout.addWidget(period_hint)
 
         today = local_now().date()
@@ -1681,7 +1707,7 @@ class RequisitionForm(QWidget):
 
         until_label = QLabel("ATÉ")
         until_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; color:{_REQ_TEXT_MUTED};"
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; color:{theme.PANEL_TEXT_MUTED};"
         )
         until_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -1734,7 +1760,7 @@ class RequisitionForm(QWidget):
 
         hint = QLabel("Digite ao menos 2 caracteres na busca principal, filtre por vendedor e/ou informe um período.")
         hint.setProperty("muted", "1")
-        hint.setStyleSheet(f"font-size:{max(7, int(9 * s))}pt; color:{_REQ_TEXT_MUTED};")
+        hint.setStyleSheet(f"font-size:{max(7, int(9 * s))}pt; color:{theme.PANEL_TEXT_MUTED};")
         layout.addWidget(hint)
 
         buttons = QHBoxLayout()
@@ -1890,14 +1916,14 @@ class RequisitionForm(QWidget):
         lbl_req.setProperty("accent", "1")
         lbl_req.setFrameStyle(QFrame.Shape.NoFrame)
         lbl_req.setStyleSheet(
-            f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; background:transparent; color:{_REQ_TEXT_MUTED};"
+            f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
         )
         self.lbl_req_title = lbl_req
         self.lbl_ped_num = QLabel("#000000")
         self.lbl_ped_num.setProperty("accent", "1")
         self.lbl_ped_num.setFrameStyle(QFrame.Shape.NoFrame)
         self.lbl_ped_num.setStyleSheet(
-            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; background:transparent; color:{_REQ_NEON_PRIMARY};"
+            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; background:transparent; color:{theme.PANEL_NEON_PRIMARY};"
         )
         title_col.addWidget(lbl_req)
         title_col.addWidget(self.lbl_ped_num)
@@ -1939,7 +1965,7 @@ class RequisitionForm(QWidget):
         self._ped_max_width = max(180, int(240*s))
         self.input_ped.setFixedWidth(self._ped_min_width)
         self.input_ped.setFixedHeight(max(30, int(36*s)))
-        self.input_ped.setStyleSheet(_req_input_style(s, bold=True, accent=_REQ_NEON_PRIMARY))
+        self.input_ped.setStyleSheet(_req_input_style(s, bold=True, accent=theme.PANEL_NEON_PRIMARY))
         # Apenas dígitos permitidos
         self.input_ped.setValidator(
             QRegularExpressionValidator(QRegularExpression(r"\d*"))
@@ -2161,7 +2187,7 @@ class RequisitionForm(QWidget):
 
         lbl_preview = QLabel("🎨 EDITOR DE DESENHO")
         lbl_preview.setStyleSheet(
-            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
+            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
         )
         preview_layout.addWidget(lbl_preview)
         self.lbl_preview_title = lbl_preview
@@ -2169,7 +2195,7 @@ class RequisitionForm(QWidget):
         lbl_preview_hint = QLabel("Prévia do desenho salvo na requisição.")
         lbl_preview_hint.setWordWrap(True)
         lbl_preview_hint.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
         )
         preview_layout.addWidget(lbl_preview_hint)
         self.lbl_preview_hint = lbl_preview_hint
@@ -2180,7 +2206,7 @@ class RequisitionForm(QWidget):
         self.lbl_canvas_info = QLabel("Nenhum desenho salvo ainda.")
         self.lbl_canvas_info.setWordWrap(True)
         self.lbl_canvas_info.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
         )
         preview_layout.addWidget(self.lbl_canvas_info)
         self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
@@ -2242,8 +2268,8 @@ class RequisitionForm(QWidget):
         self.signature_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.signature_preview.setMinimumHeight(max(72, int(90 * s)))
         self.signature_preview.setStyleSheet(
-            f"background:#fff; border:1px dashed {_REQ_NEON_PRIMARY}; border-radius:10px;"
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9 * s))}pt; font-style:italic;"
+            f"background:#fff; border:1px dashed {theme.PANEL_NEON_PRIMARY}; border-radius:10px;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9 * s))}pt; font-style:italic;"
         )
         sig_col.addWidget(self.signature_preview, 1)
 
@@ -2273,19 +2299,19 @@ class RequisitionForm(QWidget):
         self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.qr_label.setFixedSize(max(80,int(90*s)), max(80,int(90*s)))
         self.qr_label.setStyleSheet(
-            f"border:1px solid {_rgba(_REQ_NEON_PRIMARY, 96)}; border-radius:10px; background:#fff;"
+            f"border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 96)}; border-radius:10px; background:#fff;"
         )
         lbl_qr_txt = QLabel("🔳 QR CODE\nVendedor")
         lbl_qr_txt.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_qr_txt.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
         self.lbl_qr_title = lbl_qr_txt
         self.lbl_qr_contact = QLabel("")
         self.lbl_qr_contact.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_qr_contact.setWordWrap(True)
         self.lbl_qr_contact.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
         qr_col.addWidget(self.qr_label)
         qr_col.addWidget(lbl_qr_txt)
@@ -2391,8 +2417,8 @@ class RequisitionForm(QWidget):
         if not self._signature_png_bytes:
             label.setText("Imprimir e assinar")
             label.setStyleSheet(
-                f"background:#fff; border:1px dashed {_REQ_NEON_PRIMARY}; border-radius:10px;"
-                f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9 * self.scale))}pt; font-style:italic;"
+                f"background:#fff; border:1px dashed {theme.PANEL_NEON_PRIMARY}; border-radius:10px;"
+                f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9 * self.scale))}pt; font-style:italic;"
             )
             if hasattr(self, "btn_clear_signature"):
                 self.btn_clear_signature.setEnabled(False)
@@ -2416,7 +2442,7 @@ class RequisitionForm(QWidget):
         label.setText("")
         label.setPixmap(scaled)
         label.setStyleSheet(
-            f"background:#fff; border:1px solid {_rgba(_REQ_NEON_PRIMARY, 96)}; border-radius:10px;"
+            f"background:#fff; border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 96)}; border-radius:10px;"
         )
         if hasattr(self, "btn_clear_signature"):
             self.btn_clear_signature.setEnabled(True)
@@ -2825,13 +2851,13 @@ class RequisitionForm(QWidget):
         # Título
         lbl_title = QLabel("⚖️  Calculadora de Peso")
         lbl_title.setStyleSheet(
-            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:800;"
+            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:800;"
         )
         layout.addWidget(lbl_title)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color:{_REQ_BORDER_SOFT};")
+        sep.setStyleSheet(f"color:{theme.PANEL_BORDER_SOFT};")
         layout.addWidget(sep)
 
         # Campos de entrada
@@ -2840,7 +2866,7 @@ class RequisitionForm(QWidget):
         grid.setColumnStretch(1, 1)
 
         fs = max(9, int(10 * s))
-        lbl_style = f"font-size:{fs}pt; font-weight:700; color:{_REQ_TEXT_MUTED};"
+        lbl_style = f"font-size:{fs}pt; font-weight:700; color:{theme.PANEL_TEXT_MUTED};"
 
         def _lbl(text):
             l = QLabel(text)
@@ -2867,7 +2893,7 @@ class RequisitionForm(QWidget):
         inp_var.setReadOnly(True)
         inp_var.setStyleSheet(
             inp_var.styleSheet() +
-            f"background-color:{_REQ_SURFACE_ALT}; color:{_REQ_TEXT_MUTED};"
+            f"background-color:{theme.PANEL_SURFACE_ALT}; color:{theme.PANEL_TEXT_MUTED};"
         )
 
         grid.addWidget(_lbl("QNT:"),          0, 0)
@@ -2885,16 +2911,16 @@ class RequisitionForm(QWidget):
         # Separador resultado
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet(f"color:{_REQ_BORDER_SOFT};")
+        sep2.setStyleSheet(f"color:{theme.PANEL_BORDER_SOFT};")
         layout.addWidget(sep2)
 
         # Label de resultado
         lbl_result = QLabel("PESO = —")
         lbl_result.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_result.setStyleSheet(
-            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(14, int(16 * s))}pt;"
+            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(14, int(16 * s))}pt;"
             f"font-weight:800; padding:{max(8, int(10 * s))}px;"
-            f"background-color:{_REQ_SURFACE_BG}; border:1px solid {_rgba(_REQ_NEON_PRIMARY, 92)};"
+            f"background-color:{theme.PANEL_SURFACE_BG}; border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 92)};"
             f"border-radius:12px;"
         )
         layout.addWidget(lbl_result)
@@ -2903,7 +2929,7 @@ class RequisitionForm(QWidget):
         lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_hint.setWordWrap(True)
         lbl_hint.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(7, int(8 * s))}pt; font-style:italic;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7, int(8 * s))}pt; font-style:italic;"
         )
         layout.addWidget(lbl_hint)
 
@@ -3291,7 +3317,7 @@ class RequisitionForm(QWidget):
         self._page_scroll.setStyleSheet(f"QScrollArea {{ background:{bg}; border:none; }}")
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
         self._page_content.setStyleSheet(f"QWidget#requisitionFormContent {{ background:{bg}; }}")
-        self.input_ped.setStyleSheet(_req_input_style(s, bold=True, accent=_REQ_NEON_PRIMARY))
+        self.input_ped.setStyleSheet(_req_input_style(s, bold=True, accent=theme.PANEL_NEON_PRIMARY))
         self.input_obs.setStyleSheet(_req_text_edit_style(s))
         self.input_obra.setStyleSheet(_req_input_style(s))
         self.input_prazo.setStyleSheet(_req_input_style(s))
@@ -3303,6 +3329,8 @@ class RequisitionForm(QWidget):
         self.client_search.apply_theme(s)
         self.status_badge.apply_theme(s)
         self.item_table.apply_theme()
+        if hasattr(self, "canvas_preview") and self.canvas_preview is not None:
+            self.canvas_preview.apply_theme()
         self.btn_calc.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
         self.btn_production.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
         self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
@@ -3321,36 +3349,36 @@ class RequisitionForm(QWidget):
             self.btn_search_req.setStyleSheet(_req_round_icon_btn_style(s, self.btn_search_req.width()))
         if hasattr(self, "lbl_req_title"):
             self.lbl_req_title.setStyleSheet(
-                f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; background:transparent; color:{_REQ_TEXT_MUTED};"
+                f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
             )
         self.lbl_ped_num.setStyleSheet(
-            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; background:transparent; color:{_REQ_NEON_PRIMARY};"
+            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; background:transparent; color:{theme.PANEL_NEON_PRIMARY};"
         )
         self.lock_label.setStyleSheet(
-            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
+            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
         )
         if hasattr(self, "lbl_preview_title"):
             self.lbl_preview_title.setStyleSheet(
-                f"color:{_REQ_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
+                f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
             )
         if hasattr(self, "lbl_preview_hint"):
             self.lbl_preview_hint.setStyleSheet(
-                f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+                f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
             )
         if hasattr(self, "lbl_canvas_info"):
             self.lbl_canvas_info.setStyleSheet(
-                f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+                f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
             )
         if hasattr(self, "lbl_qr_title"):
             self.lbl_qr_title.setStyleSheet(
-                f"color:{_REQ_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+                f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
             )
         if hasattr(self, "lbl_qr_contact"):
             self.lbl_qr_contact.setStyleSheet(
-                f"color:{_REQ_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+                f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
             )
         if hasattr(self, "qr_label"):
             self.qr_label.setStyleSheet(
-                f"border:1px solid {_rgba(_REQ_NEON_PRIMARY, 96)}; border-radius:10px; background:#fff;"
+                f"border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 96)}; border-radius:10px; background:#fff;"
             )
         self._refresh_signature_preview()
