@@ -1354,7 +1354,9 @@ class SettingsView(QWidget):
         lbl = QLabel(text)
         lbl.setProperty("muted", "1")
         fs = max(8, int(9 * scale))
-        style = f"font-size:{fs}pt;"
+        # background:transparent é obrigatório: stylesheet inline faz o QLabel
+        # parar de herdar o transparente do QSS global.
+        style = f"font-size:{fs}pt; background:transparent;"
         if italic:
             style += " font-style:italic;"
         lbl.setStyleSheet(style)

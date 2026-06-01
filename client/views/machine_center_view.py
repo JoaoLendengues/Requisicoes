@@ -352,6 +352,7 @@ class MachineCenterView(QWidget):
         label.setProperty("muted", "1")
         label.setStyleSheet(
             f"font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
+            f"background:transparent;"
         )
         return label
 

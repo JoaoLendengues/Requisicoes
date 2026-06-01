@@ -337,7 +337,10 @@ class ClientCenterView(QWidget):
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text.upper())
         label.setProperty("muted", "1")
-        label.setStyleSheet(f"font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;")
+        label.setStyleSheet(
+            f"font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
+            f"background:transparent;"
+        )
         return label
 
     # ── Busca / listagem ──────────────────────────────────────────────────────

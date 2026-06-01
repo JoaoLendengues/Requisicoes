@@ -410,8 +410,11 @@ def _field_label(text: str, scale: float) -> QLabel:
     lbl = QLabel(text)
     lbl.setProperty("accent", "1")
     lbl.setFrameStyle(QFrame.Shape.NoFrame)
+    # background:transparent é OBRIGATÓRIO aqui: quando o widget recebe um
+    # stylesheet inline, o Qt para de herdar o background do QSS global, e
+    # o QLabel passa a pintar com a cor padrão (escura no tema dark).
     lbl.setStyleSheet(
-        f"font-size:{max(7, int(8*scale))}pt; "
+        f"font-size:{max(7, int(8*scale))}pt; background:transparent;"
         f"font-weight:700; text-transform:uppercase; border:none; color:{theme.PANEL_TEXT_MUTED};"
     )
     return lbl
@@ -421,7 +424,8 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     lbl = QLabel(text)
     lbl.setFrameStyle(QFrame.Shape.NoFrame)
     lbl.setStyleSheet(
-        f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none;"
+        f"background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
     )
     return lbl
 
