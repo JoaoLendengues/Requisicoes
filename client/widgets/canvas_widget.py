@@ -72,6 +72,14 @@ _PINGADEIRA_PRESET_LABELS = {
     "pingadeira_rufo": "Pingadeira + Rufo",
     "pingadeira_rufo_2": "Pingadeira + Rufo 2",
 }
+_CALHA_PRESET_LABELS = {
+    "calha_aba_esq": "Calha com Aba Esq",
+    "calha_aba_dir": "Calha com Aba Dir",
+    "calha_2_aba": "Calha com 2 Aba",
+    "calha_abas_dobrada": "Calha com Abas Dobrada",
+    "calha_modulada": "Calha Modulada",
+    "calha_abas_dobradas": "Calha com Abas Dobradas",
+}
 
 
 # Limita a maior dimensão de imagens inseridas/coladas no canvas antes de
@@ -287,6 +295,9 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         pingadeira_name = str(d.get("preset_pingadeira_name") or "").strip().lower()
         if pingadeira_name in _PINGADEIRA_PRESET_LABELS:
             path_meta["preset_pingadeira_name"] = pingadeira_name
+        calha_name = str(d.get("preset_calha_name") or "").strip().lower()
+        if calha_name in _CALHA_PRESET_LABELS:
+            path_meta["preset_calha_name"] = calha_name
         item.setData(0, path_meta)
 
     elif t == "text":
@@ -2935,6 +2946,11 @@ class DrawingCanvas(QWidget):
         btn_pingadeira.setToolTip("Inserir modelo de pingadeira")
         btn_pingadeira.clicked.connect(self._open_pingadeira_popup)
         btn_pingadeira.setStyleSheet(self._tool_btn_style())
+        btn_calhas = QPushButton("Calhas")
+        btn_calhas.setFixedHeight(fh)
+        btn_calhas.setToolTip("Inserir modelo de calha")
+        btn_calhas.clicked.connect(self._open_calha_popup)
+        btn_calhas.setStyleSheet(self._tool_btn_style())
 
         btn_dim = QPushButton("📏 MM")
         btn_dim.setFixedHeight(fh)
@@ -2956,6 +2972,7 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_attachments)
         row2.addWidget(btn_3d)
         row2.addWidget(btn_pingadeira)
+        row2.addWidget(btn_calhas)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
@@ -3933,6 +3950,195 @@ class DrawingCanvas(QWidget):
         self._redo_stack.clear()
         self.changed.emit()
 
+    def _build_calha_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+        left_inner_x, right_inner_x = -105.0, 105.0
+        top_y, bottom_y = -72.0, 72.0
+
+        if preset == "calha_aba_esq":
+            path.moveTo(QPointF(-170.0, top_y))
+            path.lineTo(QPointF(left_inner_x, top_y))
+            path.lineTo(QPointF(left_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, top_y))
+        elif preset == "calha_aba_dir":
+            path.moveTo(QPointF(left_inner_x, top_y))
+            path.lineTo(QPointF(left_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, top_y))
+            path.lineTo(QPointF(170.0, top_y))
+        elif preset == "calha_2_aba":
+            path.moveTo(QPointF(-170.0, top_y))
+            path.lineTo(QPointF(left_inner_x, top_y))
+            path.lineTo(QPointF(left_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, top_y))
+            path.lineTo(QPointF(170.0, top_y))
+        elif preset == "calha_abas_dobrada":
+            path.moveTo(QPointF(-140.0, top_y))
+            path.lineTo(QPointF(-50.0, top_y))
+            path.lineTo(QPointF(-50.0, -20.0))
+            path.moveTo(QPointF(-50.0, top_y))
+            path.lineTo(QPointF(left_inner_x, top_y))
+            path.lineTo(QPointF(left_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, top_y))
+            path.lineTo(QPointF(50.0, top_y))
+            path.lineTo(QPointF(50.0, -20.0))
+            path.moveTo(QPointF(50.0, top_y))
+            path.lineTo(QPointF(140.0, top_y))
+        elif preset == "calha_modulada":
+            path.moveTo(QPointF(-170.0, top_y))
+            path.lineTo(QPointF(left_inner_x, top_y))
+            path.lineTo(QPointF(left_inner_x, bottom_y))
+            path.lineTo(QPointF(-20.0, bottom_y))
+            path.lineTo(QPointF(-20.0, 30.0))
+            path.lineTo(QPointF(50.0, 30.0))
+            path.lineTo(QPointF(50.0, -10.0))
+            path.lineTo(QPointF(120.0, -10.0))
+            path.lineTo(QPointF(120.0, -52.0))
+            path.lineTo(QPointF(10.0, -52.0))
+            path.lineTo(QPointF(10.0, -8.0))
+        elif preset == "calha_abas_dobradas":
+            path.moveTo(QPointF(-150.0, -66.0))
+            path.lineTo(QPointF(-108.0, -30.0))
+            path.lineTo(QPointF(-108.0, 72.0))
+            path.lineTo(QPointF(108.0, 72.0))
+            path.lineTo(QPointF(108.0, -30.0))
+            path.lineTo(QPointF(150.0, -66.0))
+            path.moveTo(QPointF(-140.0, -76.0))
+            path.lineTo(QPointF(-150.0, -66.0))
+            path.lineTo(QPointF(-150.0, -60.0))
+            path.moveTo(QPointF(140.0, -76.0))
+            path.lineTo(QPointF(150.0, -66.0))
+            path.lineTo(QPointF(150.0, -60.0))
+            path.moveTo(QPointF(-144.0, -60.0))
+            path.lineTo(QPointF(-118.0, -36.0))
+            path.moveTo(QPointF(144.0, -60.0))
+            path.lineTo(QPointF(118.0, -36.0))
+
+        return path
+
+    def _calha_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_calha_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_calha_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Calha")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de calha:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "calha_aba_esq",
+            "calha_aba_dir",
+            "calha_2_aba",
+            "calha_abas_dobrada",
+            "calha_modulada",
+            "calha_abas_dobradas",
+        ):
+            item = QListWidgetItem(_CALHA_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._calha_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_calha_preset(preset)
+
+    def _insert_calha_preset(self, preset: str):
+        if preset not in _CALHA_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_calha_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_calha_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
     # Limpar
     def _clear(self):
         self.scene.cancel_angle_mode()
@@ -4340,6 +4546,9 @@ class DrawingCanvas(QWidget):
                 pingadeira_name = str(meta.get("preset_pingadeira_name") or "").strip().lower()
                 if pingadeira_name in _PINGADEIRA_PRESET_LABELS:
                     payload["preset_pingadeira_name"] = pingadeira_name
+                calha_name = str(meta.get("preset_calha_name") or "").strip().lower()
+                if calha_name in _CALHA_PRESET_LABELS:
+                    payload["preset_calha_name"] = calha_name
                 if "is_3d_preset" in meta:
                     payload["is_3d_preset"] = bool(meta.get("is_3d_preset"))
                 if "ft_resize_locked" in meta:
