@@ -1239,16 +1239,36 @@ class MainWindow(QMainWindow):
 
     # ── Tour guiado (spotlight) ───────────────────────────────────────────────
 
+    def _home_screen_key(self) -> str:
+        """Tela inicial do perfil (mesma lógica de _navigate_to_home)."""
+        if session.is_view_only:
+            return "ar" if session.can_access_ar else "pinheiro_industria"
+        return "nova"
+
     def _maybe_show_onboarding(self) -> None:
-        """No primeiro login do perfil, exibe o guia GERAL (boas-vindas +
-        visão geral de cada tela). Cada tela se explica sozinha na primeira
-        visita manual (ver _maybe_show_screen_guide)."""
-        if not res.guide_shown(session.role):
-            self._start_overview_tour()
+        """No primeiro login do perfil: boas-vindas + tutorial da TELA INICIAL.
+        As demais telas se explicam sozinhas na 1ª visita manual."""
+        if res.guide_shown(session.role):
+            return
+        from ..widgets.spotlight_overlay import SpotlightOverlay
+        welcome, _order, groups = self._split_tour_steps(self._build_tour_steps(session.role))
+        home = self._home_screen_key()
+        steps = list(welcome) + groups.get(home, [])
+        if not steps:
+            res.mark_guide_shown(session.role)
+            return
+        role = session.role
+        overlay = SpotlightOverlay(
+            self, steps, self.scale, role=role,
+            on_finish=lambda r=role, k=home: (
+                res.mark_guide_shown(r), res.mark_screen_guide_shown(r, k)
+            ),
+        )
+        overlay.start()
 
     def show_onboarding(self) -> None:
-        """Reabre o guia GERAL (boas-vindas + visão geral). Chamado pelo botão
-        'Ver Guia Rápido' em Configurações."""
+        """Reabre o guia GERAL completo (boas-vindas + visão geral de todas as
+        telas). Chamado pelo botão 'Ver Guia Rápido' em Configurações."""
         self._start_overview_tour()
 
     def _start_overview_tour(self) -> None:
