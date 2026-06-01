@@ -402,19 +402,36 @@ def mark_one_notification_read(notif_id: int) -> dict:
         return _check(client.patch(f"/notifications/{notif_id}/read"))
 
 
-def create_feedback(message: str) -> dict:
+def create_feedback(message: str, category: str = "sugestao") -> dict:
     with _cli() as client:
-        return _check(client.post("/feedbacks/", json={"message": message}))
+        return _check(
+            client.post("/feedbacks/", json={"message": message, "category": category})
+        )
 
 
 def list_feedbacks() -> list:
+    """Admin: lista todos os feedbacks."""
     with _cli() as client:
         return _check(client.get("/feedbacks/"))
 
 
-def acknowledge_feedback(feedback_id: int) -> dict:
+def list_my_feedbacks() -> list:
+    """Qualquer usuário: lista os próprios feedbacks."""
     with _cli() as client:
-        return _check(client.patch(f"/feedbacks/{feedback_id}/ack"))
+        return _check(client.get("/feedbacks/mine"))
+
+
+def update_feedback_status(feedback_id: int, new_status: str) -> dict:
+    """Admin: muda o status de um feedback (nova/em_analise/resolvida/descartada)."""
+    with _cli() as client:
+        return _check(
+            client.patch(f"/feedbacks/{feedback_id}/status", json={"status": new_status})
+        )
+
+
+def acknowledge_feedback(feedback_id: int) -> dict:
+    """Legado: marca feedback como "em análise" (mantido por compatibilidade)."""
+    return update_feedback_status(feedback_id, "em_analise")
 
 
 def health_check(server_url: str) -> bool:

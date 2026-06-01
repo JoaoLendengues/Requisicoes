@@ -75,6 +75,17 @@ def _migrate():
         "CREATE INDEX IF NOT EXISTS idx_req_items_requisition_id     ON requisition_items (requisition_id)",
         "CREATE INDEX IF NOT EXISTS idx_status_history_requisition_id ON status_history (requisition_id)",
         "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread    ON notifications (user_id, read)",
+
+        # ── Feedbacks: novas colunas (category/status) + mensagem ate 1000 ──
+        "ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT 'sugestao'",
+        "ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS status   TEXT NOT NULL DEFAULT 'nova'",
+        "ALTER TABLE feedbacks ALTER COLUMN message TYPE VARCHAR(1000)",
+        # Backfill: feedbacks ja lidos pelo admin viram "resolvida"
+        "UPDATE feedbacks SET status = 'resolvida' WHERE read_at IS NOT NULL AND status = 'nova'",
+        "CREATE INDEX IF NOT EXISTS idx_feedbacks_user_id    ON feedbacks (user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_feedbacks_status     ON feedbacks (status)",
+        "CREATE INDEX IF NOT EXISTS idx_feedbacks_category   ON feedbacks (category)",
+        "CREATE INDEX IF NOT EXISTS idx_feedbacks_created_at ON feedbacks (created_at DESC)",
     ]
     for stmt in stmts:
         try:
