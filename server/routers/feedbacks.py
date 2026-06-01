@@ -23,6 +23,13 @@ _STATUS_LABEL = {
     FeedbackStatus.DESCARTADA: "Descartada",
 }
 
+_CATEGORY_LABEL = {
+    FeedbackCategory.BUG:      "Bug",
+    FeedbackCategory.PROBLEMA: "Problema",
+    FeedbackCategory.SUGESTAO: "Sugestão",
+    FeedbackCategory.ELOGIO:   "Elogio",
+}
+
 
 def _feedback_to_out(db: Session, fb: Feedback) -> FeedbackOut:
     user = db.query(User).filter(User.id == fb.user_id).first()
@@ -60,7 +67,34 @@ def create_feedback(
         status=FeedbackStatus.NOVA,
     )
     db.add(fb)
+    db.flush()  # garante fb.id antes das notificações
+
+    # Notifica TODOS os admins ativos (exceto o próprio remetente, se for admin)
+    admins = (
+        db.query(User)
+        .filter(User.role == Role.ADMIN, User.is_active.is_(True), User.id != current_user.id)
+        .all()
+    )
+    cat_label = _CATEGORY_LABEL.get(data.category, str(data.category))
+    sender_name = current_user.name or f"Usuário #{current_user.id}"
+    preview = text if len(text) <= 80 else text[:77] + "..."
+    notifications: list[Notification] = []
+    for admin in admins:
+        notif = Notification(
+            user_id=admin.id,
+            type="feedback_new",
+            title=f"Novo feedback ({cat_label})",
+            message=f"{sender_name}: {preview}",
+            requisition_id=None,
+        )
+        db.add(notif)
+        notifications.append(notif)
+
     db.commit()
+    for notif in notifications:
+        db.refresh(notif)
+    push_all(notifications)
+
     db.refresh(fb)
     return _feedback_to_out(db, fb)
 
