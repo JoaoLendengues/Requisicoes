@@ -70,6 +70,15 @@ _PINGADEIRA_PRESET_LABELS = {
     "direita": "Pingadeira Direita",
     "esquerda": "Pingadeira Esquerda",
     "dupla": "Pingadeira Dupla",
+    "pingadeira_4": "Pingadeira 4",
+    "pingadeira_5": "Pingadeira 5",
+    "pingadeira_6": "Pingadeira 6",
+    "pingadeira_7": "Pingadeira 7",
+    "pingadeira_10": "Pingadeira 10",
+    "pingadeira_11": "Pingadeira 11",
+    "pingadeira_12": "Pingadeira 12",
+    "pingadeira_13": "Pingadeira 13",
+    "pingadeira_14": "Pingadeira 14",
     "pingadeira_rufo": "Pingadeira + Rufo",
     "pingadeira_rufo_2": "Pingadeira + Rufo 2",
 }
@@ -4665,6 +4674,83 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(150.0, 128.0))
             path.moveTo(QPointF(-150.0, 70.0))
             path.lineTo(QPointF(-88.0, 10.0))
+        elif preset == "pingadeira_4":
+            path = QPainterPath()
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(left_x, -82.0))
+            path.lineTo(QPointF(6.0, -82.0))
+            path.moveTo(QPointF(right_x, -82.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+            path.lineTo(QPointF(left_x, bottom_y))
+        elif preset == "pingadeira_5":
+            path = QPainterPath()
+            path.moveTo(QPointF(-6.0, -82.0))
+            path.lineTo(QPointF(right_x, -82.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+            path.lineTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(left_x, -82.0))
+        elif preset == "pingadeira_6":
+            path = QPainterPath()
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(left_x, -82.0))
+            path.lineTo(QPointF(right_x, -82.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+            path.lineTo(QPointF(0.0, bottom_y))
+        elif preset == "pingadeira_7":
+            path = QPainterPath()
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(left_x, -82.0))
+            path.lineTo(QPointF(right_x, -82.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(0.0, bottom_y))
+        elif preset == "pingadeira_10":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, 78.0))
+            path.lineTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(20.0, -80.0))
+            path.lineTo(QPointF(20.0, 78.0))
+            path.lineTo(QPointF(150.0, 128.0))
+        elif preset == "pingadeira_11":
+            path = QPainterPath()
+            path.moveTo(QPointF(-40.0, -80.0))
+            path.lineTo(QPointF(40.0, -80.0))
+            path.lineTo(QPointF(40.0, 18.0))
+            path.lineTo(QPointF(150.0, 126.0))
+            path.moveTo(QPointF(-40.0, -80.0))
+            path.lineTo(QPointF(-40.0, 18.0))
+            path.lineTo(QPointF(-150.0, 126.0))
+        elif preset == "pingadeira_12":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+            path.moveTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+        elif preset == "pingadeira_13":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-150.0, -8.0))
+            path.lineTo(QPointF(-76.0, -82.0))
+            path.lineTo(QPointF(76.0, -82.0))
+            path.lineTo(QPointF(150.0, -8.0))
+            path.lineTo(QPointF(150.0, 80.0))
+            path.moveTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-76.0, 80.0))
+            path.moveTo(QPointF(76.0, 80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+        elif preset == "pingadeira_14":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+            path.lineTo(QPointF(95.0, 80.0))
+            path.lineTo(QPointF(95.0, 22.0))
+            path.moveTo(QPointF(-95.0, 22.0))
+            path.lineTo(QPointF(-95.0, 80.0))
+            path.lineTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-150.0, -80.0))
 
         return path
 
@@ -4707,7 +4793,22 @@ class DrawingCanvas(QWidget):
         list_widget.viewport().setMouseTracking(True)
         list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
 
-        for key in ("direita", "esquerda", "dupla", "pingadeira_rufo", "pingadeira_rufo_2"):
+        for key in (
+            "direita",
+            "esquerda",
+            "dupla",
+            "pingadeira_4",
+            "pingadeira_5",
+            "pingadeira_6",
+            "pingadeira_7",
+            "pingadeira_rufo",
+            "pingadeira_rufo_2",
+            "pingadeira_10",
+            "pingadeira_11",
+            "pingadeira_12",
+            "pingadeira_13",
+            "pingadeira_14",
+        ):
             item = QListWidgetItem(_PINGADEIRA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
             list_widget.addItem(item)
