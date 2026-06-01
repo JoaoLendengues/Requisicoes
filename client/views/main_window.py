@@ -1491,7 +1491,7 @@ class MainWindow(QMainWindow):
                     "Editor de Desenho",
                     "Clique no canvas para desenhar croquis e cotas diretamente "
                     "na requisição. O desenho é exportado no PDF final.",
-                    form("canvas"), "top",
+                    form("canvas_preview"), "top",
                 ),
                 TourStep(
                     "Salvar / Imprimir",
@@ -1562,12 +1562,6 @@ class MainWindow(QMainWindow):
                     "Pedidos que já foram recebidos e estão sendo produzidos. "
                     "Acompanhe em qual destino cada um está.",
                     order("_section_cards", "em_producao"), "left",
-                ),
-                TourStep(
-                    "Aguardando Faturamento",
-                    "Pedidos com produção concluída. "
-                    "O vendedor precisa faturar e gerar o PDF final.",
-                    order("_section_cards", "aguardando_faturamento"), "right",
                 ),
                 TourStep(
                     "Pedidos Finalizados",
@@ -1704,7 +1698,7 @@ class MainWindow(QMainWindow):
                     "Editor de Desenho",
                     "Desenhe croquis e cotas diretamente na requisição. "
                     "O desenho é incluído no PDF final.",
-                    form("canvas"), "top",
+                    form("canvas_preview"), "top",
                 ),
                 TourStep(
                     "Salvar / Imprimir",
@@ -1759,11 +1753,6 @@ class MainWindow(QMainWindow):
                     "Em Produção",
                     "Pedidos já recebidos e em andamento na fábrica.",
                     order("_section_cards", "em_producao"), "left",
-                ),
-                TourStep(
-                    "Aguardando Faturamento",
-                    "Produção concluída — o vendedor precisa faturar.",
-                    order("_section_cards", "aguardando_faturamento"), "right",
                 ),
                 TourStep(
                     "Pedidos Finalizados",
@@ -1876,7 +1865,7 @@ class MainWindow(QMainWindow):
                     "Clique aqui para desenhar croquis e medidas. "
                     "Ferramentas: caneta, linha, seta, retângulo e cota MM. "
                     "O desenho vai incluído no PDF.",
-                    form("canvas"), "top",
+                    form("canvas_preview"), "top",
                 ),
                 TourStep(
                     "Salvar",
