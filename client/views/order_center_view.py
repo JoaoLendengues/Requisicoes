@@ -147,6 +147,51 @@ def _order_card_qss(radius: int, accent_color: str | None = None) -> str:
     )
 
 
+def _order_table_qss(scale: float) -> str:
+    """QSS das tabelas das seções — mesma identidade neon do Painel Gerencial."""
+    header_fg = theme.TEXT_WHITE if not theme.is_dark else theme.PANEL_TEXT_PRIMARY
+    return (
+        f"QTableWidget {{"
+        f"  border:none; outline:none; background:{theme.PANEL_SURFACE_BG};"
+        f"  alternate-background-color:{theme.PANEL_SURFACE_ALT};"
+        f"  color:{theme.PANEL_TEXT_PRIMARY}; border-radius:14px;"
+        f"  gridline-color:transparent; font-size:{max(8, int(9 * scale))}pt;"
+        f"}}"
+        f"QHeaderView::section {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        f"    stop:0 {theme.PANEL_TABLE_HEADER_START},"
+        f"    stop:1 {theme.PANEL_TABLE_HEADER_END});"
+        f"  color:{header_fg}; padding:9px 10px;"
+        f"  font-weight:800; font-size:{max(7, int(8 * scale))}pt; border:none;"
+        f"}}"
+        f"QHeaderView::section:hover {{ background:{theme.PANEL_NEON_SECONDARY}; }}"
+        f"QTableWidget::item {{"
+        f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 26)};"
+        f"}}"
+        f"QTableWidget::item:alternate {{"
+        f"  background:{theme.PANEL_SURFACE_ALT}; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"}}"
+        f"QTableWidget::item:selected {{"
+        f"  background:{_rgba(theme.PANEL_NEON_PRIMARY, 56)};"
+        f"  color:{theme.PANEL_TEXT_PRIMARY};"
+        f"}}"
+    )
+
+
+def _apply_order_table_palette(table) -> None:
+    """Atualiza a QPalette da tabela — necessário no Windows pois o Qt
+    ignora QSS em algumas regiões do QTableView (linhas alternadas)."""
+    pal = table.palette()
+    pal.setColor(QPalette.ColorRole.Base, QColor(theme.PANEL_SURFACE_BG))
+    pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.PANEL_SURFACE_ALT))
+    pal.setColor(QPalette.ColorRole.Text, QColor(theme.PANEL_TEXT_PRIMARY))
+    pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.PANEL_TEXT_PRIMARY))
+    pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PANEL_NEON_PRIMARY, 60)))
+    table.setPalette(pal)
+    table.viewport().setAutoFillBackground(True)
+
+
 def _metric_icon_path(key: str) -> Path | None:
     filename = _METRIC_ICON_FILES.get(key)
     if not filename:
@@ -885,35 +930,8 @@ class OrderCenterView(QWidget):
             table.verticalHeader().setDefaultSectionSize(max(36, int(42 * s)))
 
         table.setSortingEnabled(True)
-        table.setStyleSheet(
-            f"QTableWidget {{"
-            f"  border:none; outline:none; background:{theme.CARD_BG};"
-            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
-            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
-            f"}}"
-            f"QHeaderView::section {{"
-            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
-            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
-            f"}}"
-            f"QHeaderView::section:hover {{ background:{theme.PRIMARY_HOVER}; }}"
-            f"QTableWidget::item {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
-            f"}}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
-        )
-        # Sobrescreve a paleta do sistema (Windows ignora QSS em QTableView items).
-        # QPalette.Base = fundo das células normais.
-        # QPalette.AlternateBase = fundo das linhas alternadas.
-        pal = table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
-        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
-        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
-        table.setPalette(pal)
-        table.viewport().setAutoFillBackground(True)
+        table.setStyleSheet(_order_table_qss(s))
+        _apply_order_table_palette(table)
         table.setMinimumHeight(max(320, int(360 * s)))
         apply_smooth_scroll(table)
         self._configure_table_columns(table, key)
@@ -1327,31 +1345,8 @@ class OrderCenterView(QWidget):
         self.refresh()
 
     def _apply_table_style(self, table: QTableWidget) -> None:
-        s = self.scale
-        table.setStyleSheet(
-            f"QTableWidget {{"
-            f"  border:none; outline:none; background:{theme.CARD_BG};"
-            f"  alternate-background-color:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK};"
-            f"  border-radius:14px; gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
-            f"}}"
-            f"QHeaderView::section {{"
-            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
-            f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
-            f"}}"
-            f"QTableWidget::item {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
-            f"}}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 18)}; color:{theme.TEXT_DARK}; }}"
-        )
-        pal = table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
-        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
-        pal.setColor(QPalette.ColorRole.Highlight, QColor(_rgba(theme.PRIMARY, 40)))
-        table.setPalette(pal)
+        table.setStyleSheet(_order_table_qss(self.scale))
+        _apply_order_table_palette(table)
 
     def apply_theme(self) -> None:
         s = self.scale
