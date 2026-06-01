@@ -50,6 +50,11 @@ _NEON_PERIOD_COLORS = {
     "weekly": "#FB7185",
     "daily": "#A3E635",
 }
+_NEON_PERIOD_LABELS = {
+    "monthly": "MENSAL",
+    "weekly": "SEMANAL",
+    "daily": "DIARIO",
+}
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -132,6 +137,23 @@ def _field_style(scale: float) -> str:
         f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
         f"  border:1px solid {theme.BORDER_COLOR}; selection-background-color:{_rgba(theme.PRIMARY, 38)};"
         f"}}"
+    )
+
+
+def _neon_period_chip_style(scale: float) -> str:
+    fs = max(8, int(9 * scale))
+    radius = max(12, int(14 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:#0B1324; color:#CBD5E1;"
+        f"  border:1px solid rgba(148, 163, 184, 0.32); border-radius:{radius}px;"
+        f"  padding:7px 14px; font-size:{fs}pt; font-weight:800;"
+        f"}}"
+        f"QPushButton:hover {{ border-color:{_NEON_PERIOD_COLORS['monthly']}; color:#F8FAFC; }}"
+        f"QPushButton:checked {{"
+        f"  background:#101D34; color:#F8FAFC; border:1px solid {_NEON_PERIOD_COLORS['monthly']};"
+        f"}}"
+        f"QPushButton:checked:hover {{ border-color:{_NEON_PERIOD_COLORS['weekly']}; }}"
     )
 
 
@@ -248,6 +270,7 @@ class NeonComparisonWidget(QWidget):
         subtitle: str,
         scale: float,
         mode: str = "kg",
+        max_rows: int | None = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -255,6 +278,8 @@ class NeonComparisonWidget(QWidget):
         self._subtitle = subtitle
         self._scale = scale
         self._mode = mode
+        self._max_rows = max_rows
+        self._selected_period = "monthly"
         self._rows: list[dict] = []
         self._empty_message = "Nenhum dado disponivel para exibir."
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -270,10 +295,20 @@ class NeonComparisonWidget(QWidget):
     def sizeHint(self) -> QSize:
         return QSize(max(320, int(360 * self._scale)), self._content_height())
 
+    def set_selected_period(self, period_key: str) -> None:
+        if period_key not in _NEON_PERIOD_COLORS:
+            period_key = "monthly"
+        if self._selected_period == period_key:
+            return
+        self._selected_period = period_key
+        self.setMinimumHeight(self._content_height())
+        self.updateGeometry()
+        self.update()
+
     def _content_height(self) -> int:
-        top_block = max(108, int(124 * self._scale))
+        top_block = max(88, int(104 * self._scale))
         row_height = max(78, int(86 * self._scale)) if self._mode == "count_kg" else max(70, int(78 * self._scale))
-        visible_rows = max(1, len(self._rows))
+        visible_rows = max(1, len(self._visible_rows()))
         bottom_padding = max(16, int(20 * self._scale))
         return top_block + (visible_rows * row_height) + bottom_padding
 
@@ -286,6 +321,25 @@ class NeonComparisonWidget(QWidget):
             count = int(row.get(f"{period_key}_count") or 0)
             return f"{count} req | {kg_text}"
         return kg_text
+
+    def _visible_rows(self) -> list[dict]:
+        period_key = self._selected_period
+
+        def _sort_key(row: dict) -> tuple[float, float, float, str]:
+            count_value = float(row.get(f"{period_key}_count") or 0)
+            kg_value = self._value_for_period(row, period_key)
+            weekly_value = self._value_for_period(row, "weekly")
+            return (
+                -count_value,
+                -kg_value,
+                -weekly_value,
+                str(row.get("label") or "").casefold(),
+            )
+
+        rows = sorted(self._rows, key=_sort_key)
+        if self._max_rows is not None:
+            return rows[: self._max_rows]
+        return rows
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -303,9 +357,10 @@ class NeonComparisonWidget(QWidget):
         painter.fillPath(path, background)
 
         border = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        border.setColorAt(0.0, QColor(_NEON_PERIOD_COLORS["monthly"]))
-        border.setColorAt(0.5, QColor(_NEON_PERIOD_COLORS["weekly"]))
-        border.setColorAt(1.0, QColor(_NEON_PERIOD_COLORS["daily"]))
+        active_color = _NEON_PERIOD_COLORS.get(self._selected_period, _NEON_PERIOD_COLORS["monthly"])
+        border.setColorAt(0.0, QColor(active_color).lighter(150))
+        border.setColorAt(0.5, QColor(active_color))
+        border.setColorAt(1.0, QColor(active_color).darker(170))
         pen = QPen()
         pen.setBrush(border)
         pen.setWidth(max(1, int(1.4 * self._scale)))
@@ -323,6 +378,30 @@ class NeonComparisonWidget(QWidget):
             QRectF(left_pad, top_pad, rect.width() - (left_pad * 2), max(24, int(30 * self._scale))),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             self._title,
+        )
+
+        badge_width = max(90, int(106 * self._scale))
+        badge_height = max(20, int(24 * self._scale))
+        badge_rect = QRectF(
+            rect.right() - left_pad - badge_width,
+            top_pad,
+            badge_width,
+            badge_height,
+        )
+        painter.setPen(QPen(Qt.PenStyle.NoPen))
+        badge_color = QColor(active_color)
+        badge_color.setAlpha(46)
+        painter.setBrush(badge_color)
+        painter.drawRoundedRect(badge_rect, badge_height / 2, badge_height / 2)
+        painter.setPen(QColor(active_color).lighter(150))
+        badge_font = painter.font()
+        badge_font.setPointSize(max(7, int(8 * self._scale)))
+        badge_font.setBold(True)
+        painter.setFont(badge_font)
+        painter.drawText(
+            badge_rect,
+            Qt.AlignmentFlag.AlignCenter,
+            _NEON_PERIOD_LABELS.get(self._selected_period, "MENSAL"),
         )
 
         painter.setPen(QColor("#93A4BD"))
@@ -343,32 +422,9 @@ class NeonComparisonWidget(QWidget):
             self._subtitle,
         )
 
-        legend_y = subtitle_rect.bottom() + max(10, int(12 * self._scale))
-        legend_x = left_pad
-        legend_font = painter.font()
-        legend_font.setPointSize(max(7, int(8 * self._scale)))
-        painter.setFont(legend_font)
-
-        for period_key, label in (("monthly", "MENSAL"), ("weekly", "SEMANAL"), ("daily", "DIARIO")):
-            color = QColor(_NEON_PERIOD_COLORS[period_key])
-            painter.setPen(QPen(Qt.PenStyle.NoPen))
-            painter.setBrush(color)
-            painter.drawEllipse(QRectF(legend_x, legend_y + 2, max(8, int(10 * self._scale)), max(8, int(10 * self._scale))))
-            painter.setPen(QColor("#E2E8F0"))
-            painter.drawText(
-                QRectF(
-                    legend_x + max(14, int(18 * self._scale)),
-                    legend_y - 2,
-                    max(60, int(72 * self._scale)),
-                    max(16, int(20 * self._scale)),
-                ),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                label,
-            )
-            legend_x += max(86, int(102 * self._scale))
-
-        body_top = legend_y + max(24, int(30 * self._scale))
-        if not self._rows:
+        body_top = subtitle_rect.bottom() + max(14, int(18 * self._scale))
+        visible_rows = self._visible_rows()
+        if not visible_rows:
             painter.setPen(QColor("#7F8DA3"))
             empty_font = painter.font()
             empty_font.setPointSize(max(8, int(9 * self._scale)))
@@ -387,21 +443,20 @@ class NeonComparisonWidget(QWidget):
             return
 
         max_value = max(
-            max(self._value_for_period(row, "monthly"), self._value_for_period(row, "weekly"), self._value_for_period(row, "daily"))
-            for row in self._rows
+            self._value_for_period(row, self._selected_period)
+            for row in visible_rows
         )
         if max_value <= 0:
             max_value = 1.0
 
         row_height = max(78, int(86 * self._scale)) if self._mode == "count_kg" else max(70, int(78 * self._scale))
-        bar_height = max(8, int(10 * self._scale))
-        bar_gap = max(8, int(10 * self._scale))
+        bar_height = max(14, int(16 * self._scale))
         label_column_width = max(110, int(130 * self._scale))
         value_column_width = max(110, int(132 * self._scale)) if self._mode == "kg" else max(148, int(182 * self._scale))
         bar_x = left_pad + label_column_width
         bar_width = max(90, rect.width() - bar_x - value_column_width - max(18, int(22 * self._scale)))
 
-        for row_index, row in enumerate(self._rows):
+        for row_index, row in enumerate(visible_rows):
             row_top = body_top + (row_index * row_height)
 
             painter.setPen(QColor("#F8FAFC"))
@@ -420,52 +475,52 @@ class NeonComparisonWidget(QWidget):
                 str(row.get("label") or "-"),
             )
 
-            for period_index, period_key in enumerate(("monthly", "weekly", "daily")):
-                value = self._value_for_period(row, period_key)
-                ratio = min(1.0, value / max_value) if max_value else 0.0
-                current_y = row_top + max(22, int(26 * self._scale)) + period_index * (bar_height + bar_gap)
-                track_rect = QRectF(bar_x, current_y, bar_width, bar_height)
+            period_key = self._selected_period
+            value = self._value_for_period(row, period_key)
+            ratio = min(1.0, value / max_value) if max_value else 0.0
+            current_y = row_top + max(24, int(28 * self._scale))
+            track_rect = QRectF(bar_x, current_y, bar_width, bar_height)
 
-                painter.setPen(QPen(Qt.PenStyle.NoPen))
-                painter.setBrush(QColor(255, 255, 255, 18))
-                painter.drawRoundedRect(track_rect, bar_height / 2, bar_height / 2)
+            painter.setPen(QPen(Qt.PenStyle.NoPen))
+            painter.setBrush(QColor(255, 255, 255, 18))
+            painter.drawRoundedRect(track_rect, bar_height / 2, bar_height / 2)
 
-                fill_width = max(0.0, bar_width * ratio)
-                if fill_width > 0:
-                    glow_color = QColor(_NEON_PERIOD_COLORS[period_key])
-                    glow_color.setAlpha(58)
-                    painter.setBrush(glow_color)
-                    painter.drawRoundedRect(
-                        QRectF(track_rect.x(), track_rect.y() - 1, fill_width, bar_height + 2),
-                        (bar_height + 2) / 2,
-                        (bar_height + 2) / 2,
-                    )
-
-                    fill_gradient = QLinearGradient(track_rect.left(), track_rect.top(), track_rect.left() + fill_width, track_rect.top())
-                    fill_gradient.setColorAt(0.0, QColor(_NEON_PERIOD_COLORS[period_key]).lighter(140))
-                    fill_gradient.setColorAt(1.0, QColor(_NEON_PERIOD_COLORS[period_key]))
-                    painter.setBrush(fill_gradient)
-                    painter.drawRoundedRect(
-                        QRectF(track_rect.x(), track_rect.y(), fill_width, bar_height),
-                        bar_height / 2,
-                        bar_height / 2,
-                    )
-
-                painter.setPen(QColor("#D8E1EC"))
-                value_font = painter.font()
-                value_font.setPointSize(max(7, int(8 * self._scale)))
-                value_font.setBold(False)
-                painter.setFont(value_font)
-                painter.drawText(
-                    QRectF(
-                        bar_x + bar_width + max(10, int(12 * self._scale)),
-                        current_y - max(4, int(4 * self._scale)),
-                        value_column_width,
-                        bar_height + max(8, int(10 * self._scale)),
-                    ),
-                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                    self._bar_label(row, period_key),
+            fill_width = max(0.0, bar_width * ratio)
+            if fill_width > 0:
+                glow_color = QColor(_NEON_PERIOD_COLORS[period_key])
+                glow_color.setAlpha(58)
+                painter.setBrush(glow_color)
+                painter.drawRoundedRect(
+                    QRectF(track_rect.x(), track_rect.y() - 1, fill_width, bar_height + 2),
+                    (bar_height + 2) / 2,
+                    (bar_height + 2) / 2,
                 )
+
+                fill_gradient = QLinearGradient(track_rect.left(), track_rect.top(), track_rect.left() + fill_width, track_rect.top())
+                fill_gradient.setColorAt(0.0, QColor(_NEON_PERIOD_COLORS[period_key]).lighter(140))
+                fill_gradient.setColorAt(1.0, QColor(_NEON_PERIOD_COLORS[period_key]))
+                painter.setBrush(fill_gradient)
+                painter.drawRoundedRect(
+                    QRectF(track_rect.x(), track_rect.y(), fill_width, bar_height),
+                    bar_height / 2,
+                    bar_height / 2,
+                )
+
+            painter.setPen(QColor("#D8E1EC"))
+            value_font = painter.font()
+            value_font.setPointSize(max(7, int(8 * self._scale)))
+            value_font.setBold(False)
+            painter.setFont(value_font)
+            painter.drawText(
+                QRectF(
+                    bar_x + bar_width + max(10, int(12 * self._scale)),
+                    current_y - max(4, int(4 * self._scale)),
+                    value_column_width,
+                    bar_height + max(8, int(10 * self._scale)),
+                ),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                self._bar_label(row, period_key),
+            )
 
 class DashWorker(QObject):
     result = Signal(object)
@@ -514,6 +569,8 @@ class DashboardView(QWidget):
         self.scale = scale
         self._threads: list[tuple[QThread, QObject]] = []
         self._metric_labels: dict[str, QLabel] = {}
+        self._comparison_period = "monthly"
+        self._comparison_period_buttons: dict[str, QPushButton] = {}
         self._machine_period_options = [
             ("Últimos 30 dias", "30d"),
             ("Últimos 7 dias", "7d"),
@@ -950,7 +1007,34 @@ class DashboardView(QWidget):
     def _build_comparison_insights_body(self) -> QWidget:
         container = QWidget()
         container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
-        grid = QGridLayout(container)
+        root = QVBoxLayout(container)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(max(12, int(16 * self.scale)))
+
+        selector_row = QHBoxLayout()
+        selector_row.setContentsMargins(0, 0, 0, 0)
+        selector_row.setSpacing(max(8, int(10 * self.scale)))
+
+        selector_label = QLabel("PERIODO DO COMPARATIVO:")
+        selector_label.setStyleSheet(
+            f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
+        )
+        selector_row.addWidget(selector_label)
+
+        for period_key in ("monthly", "weekly", "daily"):
+            btn = QPushButton(_NEON_PERIOD_LABELS[period_key])
+            btn.setCheckable(True)
+            btn.setChecked(period_key == self._comparison_period)
+            btn.setFixedHeight(max(32, int(36 * self.scale)))
+            btn.setStyleSheet(_neon_period_chip_style(self.scale))
+            btn.clicked.connect(lambda checked=False, key=period_key: self._set_comparison_period(key))
+            self._comparison_period_buttons[period_key] = btn
+            selector_row.addWidget(btn)
+
+        selector_row.addStretch()
+        root.addLayout(selector_row)
+
+        grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(max(12, int(16 * self.scale)))
         grid.setVerticalSpacing(max(12, int(16 * self.scale)))
@@ -962,30 +1046,35 @@ class DashboardView(QWidget):
             "Peso finalizado por producao com leitura mensal, semanal e diaria.",
             self.scale,
             mode="kg",
+            max_rows=None,
         )
         self.production_machine_chart = NeonComparisonWidget(
             "PRODUCAO EM KG POR MAQUINA",
             "Top maquinas por peso processado nos tres recortes de tempo.",
             self.scale,
             mode="kg",
+            max_rows=8,
         )
         self.vendor_comparison_chart = NeonComparisonWidget(
             "VENDEDORES | REQUISICOES E KG",
             "Top 8 vendedores por quantidade de requisicoes e peso emitido.",
             self.scale,
             mode="count_kg",
+            max_rows=8,
         )
         self.operator_comparison_chart = NeonComparisonWidget(
             "OPERADORES | REQUISICOES E KG",
             "Top 8 operadores por requisicoes finalizadas e peso processado.",
             self.scale,
             mode="count_kg",
+            max_rows=8,
         )
         self.helper_comparison_chart = NeonComparisonWidget(
             "AJUDANTES | REQUISICOES E KG",
             "Top 8 ajudantes por requisicoes finalizadas e peso processado.",
             self.scale,
             mode="count_kg",
+            max_rows=8,
         )
 
         left_column = QVBoxLayout()
@@ -1003,7 +1092,31 @@ class DashboardView(QWidget):
 
         grid.addLayout(left_column, 0, 0)
         grid.addLayout(right_column, 0, 1)
+        root.addLayout(grid)
+        self._apply_comparison_period()
         return container
+
+    def _set_comparison_period(self, period_key: str) -> None:
+        if period_key not in _NEON_PERIOD_LABELS:
+            period_key = "monthly"
+        self._comparison_period = period_key
+        self._apply_comparison_period()
+
+    def _apply_comparison_period(self) -> None:
+        for key, btn in self._comparison_period_buttons.items():
+            btn.blockSignals(True)
+            btn.setChecked(key == self._comparison_period)
+            btn.blockSignals(False)
+
+        for chart in [
+            getattr(self, "production_destination_chart", None),
+            getattr(self, "production_machine_chart", None),
+            getattr(self, "vendor_comparison_chart", None),
+            getattr(self, "operator_comparison_chart", None),
+            getattr(self, "helper_comparison_chart", None),
+        ]:
+            if chart is not None:
+                chart.set_selected_period(self._comparison_period)
 
     def _create_table(self, headers: list[str], stretch_columns: set[int]) -> QTableWidget:
         s = self.scale
@@ -1626,6 +1739,8 @@ class DashboardView(QWidget):
         ]:
             if combo is not None:
                 combo.setStyleSheet(_field_style(s))
+        for btn in self._comparison_period_buttons.values():
+            btn.setStyleSheet(_neon_period_chip_style(s))
         for tbl in [
             getattr(self, "top_machines_ar_table", None),
             getattr(self, "top_machines_industria_table", None),
