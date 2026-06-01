@@ -361,8 +361,7 @@ class _FeedbackCard(QFrame):
             f"    stop:1 {led_bg_bottom}"
             f"  );"
             f"  border:1px solid {theme.DRAWER_BORDER};"
-            f"  border-left:4px solid {accent_color};"
-            f"  border-radius:10px;"
+            f"  border-radius:12px;"
             f"}}"
             f"QFrame#feedbackCard[selected=\"true\"] {{"
             f"  background:qlineargradient("
@@ -372,7 +371,6 @@ class _FeedbackCard(QFrame):
             f"    stop:1 {led_selected_bottom}"
             f"  );"
             f"  border:2px solid {accent_color};"
-            f"  border-left:4px solid {accent_color};"
             f"}}"
             f"QFrame#feedbackCard:hover {{"
             f"  background:qlineargradient("
@@ -713,12 +711,13 @@ class FeedbackView(QWidget):
 
     def _chip_style(self, active: bool, accent: str | None = None) -> str:
         s = self.scale
+        radius = max(8, int(10 * s))
         if active:
             color = accent or theme.PRIMARY
             return (
                 f"QPushButton {{"
                 f"  background:{color}; color:#FFFFFF;"
-                f"  border:1px solid {color}; border-radius:999px;"
+                f"  border:1px solid {color}; border-radius:{radius}px;"
                 f"  padding:3px 12px; font-weight:700;"
                 f"  font-size:{max(8, int(9 * s))}pt;"
                 f"}}"
@@ -727,7 +726,7 @@ class FeedbackView(QWidget):
         return (
             f"QPushButton {{"
             f"  background:transparent; color:{theme.TEXT_MEDIUM};"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:999px;"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:{radius}px;"
             f"  padding:3px 12px; font-weight:600;"
             f"  font-size:{max(8, int(9 * s))}pt;"
             f"}}"
