@@ -173,7 +173,9 @@ class MainWindow(QMainWindow):
 
         # Sinal do formulário conectado imediatamente (único que precisa existir já)
         self.form_view.save_requested.connect(self._save_requisition)
-        self.form_view.guide_requested.connect(self.show_onboarding)
+        self.form_view.guide_requested.connect(
+            lambda: self._show_screen_guide("nova", force=True)
+        )
 
         # ── Visibilidade dos botões da sidebar por perfil ─────────────────────
         nav_visible = {
@@ -368,6 +370,8 @@ class MainWindow(QMainWindow):
             self.feedback_view.refresh()
 
         self._nav_transition(page)
+        # 1ª visita manual a esta tela → dispara o tutorial dela (uma vez).
+        self._maybe_show_screen_guide(key)
 
     def _navigate_to_home(self) -> None:
         """Navega para a página inicial correta de acordo com o perfil."""
@@ -1236,19 +1240,88 @@ class MainWindow(QMainWindow):
     # ── Tour guiado (spotlight) ───────────────────────────────────────────────
 
     def _maybe_show_onboarding(self) -> None:
-        """Exibe o tour spotlight na primeira vez que este perfil faz login."""
+        """No primeiro login do perfil, exibe o guia GERAL (boas-vindas +
+        visão geral de cada tela). Cada tela se explica sozinha na primeira
+        visita manual (ver _maybe_show_screen_guide)."""
         if not res.guide_shown(session.role):
-            self._start_tour()
+            self._start_overview_tour()
 
     def show_onboarding(self) -> None:
-        """Abre o tour manualmente (chamado por Configurações)."""
-        self._start_tour()
+        """Reabre o guia GERAL (boas-vindas + visão geral). Chamado pelo botão
+        'Ver Guia Rápido' em Configurações."""
+        self._start_overview_tour()
 
-    def _start_tour(self) -> None:
+    def _start_overview_tour(self) -> None:
         from ..widgets.spotlight_overlay import SpotlightOverlay
-        steps = self._build_tour_steps(session.role)
-        overlay = SpotlightOverlay(self, steps, self.scale, role=session.role)
+        steps = self._general_overview_steps(session.role)
+        if not steps:
+            return
+        role = session.role
+        overlay = SpotlightOverlay(
+            self, steps, self.scale, role=role,
+            on_finish=lambda r=role: res.mark_guide_shown(r),
+        )
         overlay.start()
+
+    def _show_screen_guide(self, key: str, force: bool = False) -> None:
+        """Mostra o tutorial detalhado de UMA tela. force=True (botão '?')
+        ignora o marcador de 'já visto'."""
+        from ..widgets.spotlight_overlay import SpotlightOverlay
+        role = session.role
+        if not force and res.screen_guide_shown(role, key):
+            return
+        steps = self._screen_guide_steps(role, key)
+        if not steps:
+            return
+        overlay = SpotlightOverlay(
+            self, steps, self.scale, role=role,
+            on_finish=lambda r=role, k=key: res.mark_screen_guide_shown(r, k),
+        )
+        overlay.start()
+
+    def _maybe_show_screen_guide(self, key: str) -> None:
+        """Na PRIMEIRA visita manual a uma tela, dispara seu tutorial (uma vez).
+        Adiado até o fim da transição de navegação."""
+        role = session.role
+        if not key or res.screen_guide_shown(role, key):
+            return
+        QTimer.singleShot(450, lambda k=key: self._show_screen_guide(k))
+
+    @staticmethod
+    def _split_tour_steps(steps: list):
+        """Divide a lista plana em (boas-vindas, ordem_de_telas, {tela: passos}).
+        Cada passo com navigate_key inicia o grupo de uma tela."""
+        welcome: list = []
+        order: list = []
+        groups: dict = {}
+        current = None
+        for st in steps:
+            key = getattr(st, "navigate_key", None)
+            if key:
+                current = key
+                if key not in groups:
+                    groups[key] = []
+                    order.append(key)
+                groups[key].append(st)
+            elif current is None:
+                welcome.append(st)
+            else:
+                groups[current].append(st)
+        return welcome, order, groups
+
+    def _general_overview_steps(self, role: str) -> list:
+        """Guia geral: boas-vindas + o 1º passo (visão geral) de cada tela."""
+        welcome, order, groups = self._split_tour_steps(self._build_tour_steps(role))
+        steps = list(welcome)
+        for key in order:
+            if groups.get(key):
+                steps.append(groups[key][0])
+        return steps
+
+    def _screen_guide_steps(self, role: str, key: str) -> list:
+        """Tutorial detalhado de uma tela específica."""
+        _, _, groups = self._split_tour_steps(self._build_tour_steps(role))
+        return groups.get(key, [])
 
     def _build_tour_steps(self, role: str) -> list:
         from ..widgets.spotlight_overlay import TourStep

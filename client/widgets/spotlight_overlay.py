@@ -343,6 +343,7 @@ class SpotlightOverlay(QWidget):
         "usuarios":           7,
         "config":             8,
         "feedback":           9,
+        "entregas":           10,
     }
 
     def __init__(
@@ -352,6 +353,7 @@ class SpotlightOverlay(QWidget):
         scale: float,
         role: str = "",
         parent: QWidget | None = None,
+        on_finish: Optional[Callable[[], None]] = None,
     ) -> None:
         super().__init__(parent or main_window)
         self._mw      = main_window
@@ -359,6 +361,7 @@ class SpotlightOverlay(QWidget):
         self._scale   = scale
         self._role    = role
         self._current = 0
+        self._on_finish = on_finish
 
         # Estado do spotlight animado
         self._spot_rect:   QRectF = QRectF()
@@ -488,7 +491,13 @@ class SpotlightOverlay(QWidget):
     def _finish(self) -> None:
         self._anim_timer.stop()
         self._pulse_timer.stop()
-        res.mark_guide_shown(self._role)
+        if self._on_finish is not None:
+            try:
+                self._on_finish()
+            except Exception:
+                pass
+        elif self._role:
+            res.mark_guide_shown(self._role)
         self.hide()
         self.finished.emit()
         self.deleteLater()

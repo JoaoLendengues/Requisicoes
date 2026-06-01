@@ -265,6 +265,14 @@ class ResolutionManager:
         """Salva em settings.json que o guia foi exibido para este role."""
         self.save(**{f"guide_shown_{role}": True})
 
+    def screen_guide_shown(self, role: str, screen: str) -> bool:
+        """True se o tutorial de uma TELA específica já foi exibido p/ este role."""
+        return bool(self._read_file().get(f"guide_shown_{role}_{screen}", False))
+
+    def mark_screen_guide_shown(self, role: str, screen: str) -> None:
+        """Marca o tutorial de uma tela específica como já exibido."""
+        self.save(**{f"guide_shown_{role}_{screen}": True})
+
     # ── Helpers ─────────────────────────────────────────────────────────────
     def _load_setting(self, key: str, default=None):
         return self._read_file().get(key, default)
