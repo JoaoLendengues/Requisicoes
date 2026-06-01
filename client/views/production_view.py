@@ -2106,9 +2106,17 @@ class ProductionView(QWidget):
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         for panel in (self.waiting_receipt_panel, self.waiting_queue_panel):
             self._apply_table_style(panel["table"])
-        for card in self._machine_cards.values():
-            self._apply_table_style(card["table"])
-            card["combo"].setStyleSheet(_machine_combo_style(s))
+
+        # Os machine_cards têm muitos labels e accent_lines com QSS inline que
+        # ficam congelados ao trocar tema. Em vez de reaplicar dezenas de
+        # estilos manualmente, recriamos os cards a partir do cache de dados
+        # (_machines_data) — sem nova chamada a API.
+        if getattr(self, "_machines_data", None) and hasattr(self, "_populate_machine_cards"):
+            self._populate_machine_cards()
+        else:
+            for card in self._machine_cards.values():
+                self._apply_table_style(card["table"])
+                card["combo"].setStyleSheet(_machine_combo_style(s))
 
 
 
