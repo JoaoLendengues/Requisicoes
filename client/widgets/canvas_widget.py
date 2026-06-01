@@ -303,6 +303,7 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
             path_meta["vector_pen_nodes"] = vector_nodes
             path_meta["vector_pen_radii"] = d.get("vector_pen_radii", [])
             path_meta["vector_pen_closed"] = bool(d.get("vector_pen_closed"))
+            path_meta["vector_pen_handles"] = d.get("vector_pen_handles", [])
         item.setData(0, path_meta)
 
     elif t == "text":
@@ -491,6 +492,7 @@ class DrawingScene(QGraphicsScene):
         self._vp_corner_dragging: bool = False
         self._vp_corner_drag_item: QGraphicsPathItem | None = None
         self._vp_corner_drag_index: int = -1
+        self._vp_active_node_index: int = -1
         self._vp_corner_label_text: str = ""
         self._vp_corner_label_pos: QPointF | None = None
         self.setItemIndexMethod(QGraphicsScene.ItemIndexMethod.NoIndex)
@@ -947,6 +949,7 @@ class DrawingScene(QGraphicsScene):
             self._vp_corner_drag_item = None
             self._vp_corner_dragging = False
             self._vp_corner_drag_index = -1
+            self._vp_active_node_index = -1
             self._vp_corner_label_text = ""
             self._vp_corner_label_pos = None
             self.update()
@@ -1261,13 +1264,15 @@ class DrawingScene(QGraphicsScene):
                 painter.drawLine(QPointF(vp.x(), vp.y() - r), QPointF(vp.x(), vp.y() + r))
                 painter.restore()
 
-        # Handles de arredondamento de canto da Pen Vetorial
+        # Nós e alças da Pen Vetorial
         if self.cw.tool == Tool.VECTOR_PEN:
             item = self._current_vector_item()
             view = self._view()
             if item is not None and view is not None and not self._vp_drawing:
                 handles = self._vector_corner_handles(item)
                 if handles:
+                    nodes, _radii, _closed, handles_data = self._vector_item_data(item)
+                    active_idx = self._vp_corner_drag_index if self._vp_corner_dragging else self._vp_active_node_index
                     painter.save()
                     painter.resetTransform()
                     for idx, scene_pt, radius in handles:
@@ -1284,6 +1289,23 @@ class DrawingScene(QGraphicsScene):
                         if radius > 0.01:
                             painter.setPen(QPen(QColor("#0B57D0"), 1.0))
                             painter.drawEllipse(vp, 1.4, 1.4)
+                        if idx == active_idx and idx < len(nodes):
+                            node_local = nodes[idx]
+                            node_scene = item.mapToScene(node_local)
+                            in_v, out_v = handles_data[idx]
+                            in_scene = item.mapToScene(QPointF(node_local.x() + in_v.x(), node_local.y() + in_v.y()))
+                            out_scene = item.mapToScene(QPointF(node_local.x() + out_v.x(), node_local.y() + out_v.y()))
+                            vp_node = QPointF(view.mapFromScene(node_scene))
+                            vp_in = QPointF(view.mapFromScene(in_scene))
+                            vp_out = QPointF(view.mapFromScene(out_scene))
+                            painter.setPen(QPen(QColor("#6B7C96"), 1.0))
+                            painter.drawLine(vp_node, vp_in)
+                            painter.drawLine(vp_node, vp_out)
+                            hs = 3.0
+                            painter.setPen(QPen(QColor("#0B57D0"), 1.2))
+                            painter.setBrush(QBrush(QColor("#FFFFFF")))
+                            painter.drawRect(QRectF(vp_in.x() - hs, vp_in.y() - hs, hs * 2, hs * 2))
+                            painter.drawRect(QRectF(vp_out.x() - hs, vp_out.y() - hs, hs * 2, hs * 2))
                     if self._vp_corner_label_text and self._vp_corner_label_pos is not None:
                         label_vp = QPointF(view.mapFromScene(self._vp_corner_label_pos))
                         text = self._vp_corner_label_text
@@ -1340,10 +1362,13 @@ class DrawingScene(QGraphicsScene):
             and len(meta.get("vector_pen_nodes") or []) >= 2
         )
 
-    def _vector_item_data(self, item: QGraphicsPathItem) -> tuple[list[QPointF], list[float], bool]:
+    def _vector_item_data(
+        self,
+        item: QGraphicsPathItem,
+    ) -> tuple[list[QPointF], list[float], bool, list[tuple[QPointF, QPointF]]]:
         meta = item.data(0)
         if not isinstance(meta, dict):
-            return [], [], False
+            return [], [], False, []
         raw_nodes = meta.get("vector_pen_nodes") or []
         nodes: list[QPointF] = []
         for pt in raw_nodes:
@@ -1364,7 +1389,32 @@ class DrawingScene(QGraphicsScene):
         elif len(radii) > len(nodes):
             radii = radii[:len(nodes)]
         closed = bool(meta.get("vector_pen_closed"))
-        return nodes, radii, closed
+
+        raw_handles = meta.get("vector_pen_handles") or []
+        handles: list[tuple[QPointF, QPointF]] = []
+        for entry in raw_handles:
+            in_v = QPointF(0.0, 0.0)
+            out_v = QPointF(0.0, 0.0)
+            if (
+                isinstance(entry, (list, tuple))
+                and len(entry) == 2
+                and isinstance(entry[0], (list, tuple))
+                and len(entry[0]) == 2
+                and isinstance(entry[1], (list, tuple))
+                and len(entry[1]) == 2
+            ):
+                try:
+                    in_v = QPointF(float(entry[0][0]), float(entry[0][1]))
+                    out_v = QPointF(float(entry[1][0]), float(entry[1][1]))
+                except (TypeError, ValueError):
+                    in_v = QPointF(0.0, 0.0)
+                    out_v = QPointF(0.0, 0.0)
+            handles.append((in_v, out_v))
+        if len(handles) < len(nodes):
+            handles.extend([(QPointF(0.0, 0.0), QPointF(0.0, 0.0))] * (len(nodes) - len(handles)))
+        elif len(handles) > len(nodes):
+            handles = handles[:len(nodes)]
+        return nodes, radii, closed, handles
 
     def _set_vector_item_data(
         self,
@@ -1372,6 +1422,7 @@ class DrawingScene(QGraphicsScene):
         nodes: list[QPointF],
         radii: list[float],
         closed: bool,
+        handles: list[tuple[QPointF, QPointF]] | None = None,
     ) -> None:
         meta = item.data(0)
         if not isinstance(meta, dict):
@@ -1380,6 +1431,12 @@ class DrawingScene(QGraphicsScene):
         payload["vector_pen_nodes"] = [[pt.x(), pt.y()] for pt in nodes]
         payload["vector_pen_radii"] = [max(0.0, float(r)) for r in radii[:len(nodes)]]
         payload["vector_pen_closed"] = bool(closed)
+        if handles is None:
+            handles = [(QPointF(0.0, 0.0), QPointF(0.0, 0.0))] * len(nodes)
+        serialized_handles = []
+        for in_v, out_v in handles[:len(nodes)]:
+            serialized_handles.append([[in_v.x(), in_v.y()], [out_v.x(), out_v.y()]])
+        payload["vector_pen_handles"] = serialized_handles
         item.setData(0, payload)
 
     @staticmethod
@@ -1422,7 +1479,13 @@ class DrawingScene(QGraphicsScene):
         p2 = QPointF(corner.x() + (u_out_x * trim), corner.y() + (u_out_y * trim))
         return p1, p2
 
-    def _build_vector_pen_path(self, nodes: list[QPointF], radii: list[float], closed: bool) -> QPainterPath:
+    def _build_vector_pen_path(
+        self,
+        nodes: list[QPointF],
+        radii: list[float],
+        closed: bool,
+        handles: list[tuple[QPointF, QPointF]] | None = None,
+    ) -> QPainterPath:
         path = QPainterPath()
         n = len(nodes)
         if n == 0:
@@ -1432,6 +1495,40 @@ class DrawingScene(QGraphicsScene):
             return path
         if len(radii) < n:
             radii = list(radii) + [0.0] * (n - len(radii))
+        if handles is None:
+            handles = [(QPointF(0.0, 0.0), QPointF(0.0, 0.0))] * n
+        elif len(handles) < n:
+            handles = list(handles) + ([(QPointF(0.0, 0.0), QPointF(0.0, 0.0))] * (n - len(handles)))
+
+        has_bezier = any(
+            abs(in_v.x()) > 1e-6
+            or abs(in_v.y()) > 1e-6
+            or abs(out_v.x()) > 1e-6
+            or abs(out_v.y()) > 1e-6
+            for in_v, out_v in handles
+        )
+
+        if has_bezier:
+            path.moveTo(nodes[0])
+            last = n if closed else (n - 1)
+            for i in range(last):
+                j = (i + 1) % n
+                out_v = handles[i][1]
+                in_v = handles[j][0]
+                cp1 = QPointF(nodes[i].x() + out_v.x(), nodes[i].y() + out_v.y())
+                cp2 = QPointF(nodes[j].x() + in_v.x(), nodes[j].y() + in_v.y())
+                if (
+                    abs(out_v.x()) <= 1e-6
+                    and abs(out_v.y()) <= 1e-6
+                    and abs(in_v.x()) <= 1e-6
+                    and abs(in_v.y()) <= 1e-6
+                ):
+                    path.lineTo(nodes[j])
+                    continue
+                path.cubicTo(cp1, cp2, nodes[j])
+            if closed:
+                path.closeSubpath()
+            return path
 
         if not closed:
             path.moveTo(nodes[0])
@@ -1476,9 +1573,12 @@ class DrawingScene(QGraphicsScene):
         self._vp_nodes = []
         self._vp_radii = []
         self._vp_closed = False
+        self._vp_active_node_index = -1
         self._vp_hover_scene_pos = None
         self._vp_snap_candidates = []
         self._snap_point = None
+        self._vp_corner_label_text = ""
+        self._vp_corner_label_pos = None
         self._clear_vector_pen_preview()
         self.update()
 
@@ -1515,7 +1615,8 @@ class DrawingScene(QGraphicsScene):
             else:
                 nodes.append(QPointF(self._vp_hover_scene_pos.x(), self._vp_hover_scene_pos.y()))
                 radii.append(0.0)
-        path = self._build_vector_pen_path(nodes, radii, closed)
+        zero_handles = [(QPointF(0.0, 0.0), QPointF(0.0, 0.0))] * len(nodes)
+        path = self._build_vector_pen_path(nodes, radii, closed, zero_handles)
         self._vp_preview_item.setPath(path)
 
     def _finalize_vector_pen_drawing(self, close_path: bool) -> None:
@@ -1529,7 +1630,8 @@ class DrawingScene(QGraphicsScene):
         if len(radii) < len(nodes):
             radii.extend([0.0] * (len(nodes) - len(radii)))
         closed = bool(close_path and len(nodes) >= 3)
-        path = self._build_vector_pen_path(nodes, radii, closed)
+        zero_handles = [(QPointF(0.0, 0.0), QPointF(0.0, 0.0))] * len(nodes)
+        path = self._build_vector_pen_path(nodes, radii, closed, zero_handles)
         if path.isEmpty():
             self._cancel_vector_pen_drawing()
             return
@@ -1537,7 +1639,7 @@ class DrawingScene(QGraphicsScene):
         item = QGraphicsPathItem(path)
         item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         item.setPen(self._pen())
-        self._set_vector_item_data(item, nodes, radii, closed)
+        self._set_vector_item_data(item, nodes, radii, closed, zero_handles)
         item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -1559,7 +1661,7 @@ class DrawingScene(QGraphicsScene):
         return None
 
     def _vector_corner_handles(self, item: QGraphicsPathItem) -> list[tuple[int, QPointF, float]]:
-        nodes, radii, closed = self._vector_item_data(item)
+        nodes, _radii, closed, handles_data = self._vector_item_data(item)
         n = len(nodes)
         if n < 3:
             return []
@@ -1567,8 +1669,9 @@ class DrawingScene(QGraphicsScene):
         for i, corner in enumerate(nodes):
             if not closed and (i == 0 or i == n - 1):
                 continue
-            radius = radii[i] if i < len(radii) else 0.0
-            handles.append((i, item.mapToScene(corner), radius))
+            in_v, out_v = handles_data[i]
+            mag = max(math.hypot(in_v.x(), in_v.y()), math.hypot(out_v.x(), out_v.y()))
+            handles.append((i, item.mapToScene(corner), mag))
         return handles
 
     def _vector_corner_hit(self, scene_pos: QPointF) -> tuple[QGraphicsPathItem, int] | None:
@@ -1586,15 +1689,29 @@ class DrawingScene(QGraphicsScene):
                 return item, index
         return None
 
-    def _set_vector_corner_radius(self, item: QGraphicsPathItem, index: int, radius: float) -> None:
-        nodes, radii, closed = self._vector_item_data(item)
+    def _set_vector_corner_handles(
+        self,
+        item: QGraphicsPathItem,
+        index: int,
+        in_v: QPointF,
+        out_v: QPointF,
+        *,
+        alt_mode: bool,
+    ) -> None:
+        nodes, radii, closed, handles_data = self._vector_item_data(item)
         if not nodes or not (0 <= index < len(nodes)):
             return
-        if len(radii) < len(nodes):
-            radii.extend([0.0] * (len(nodes) - len(radii)))
-        radii[index] = max(0.0, float(radius))
-        item.setPath(self._build_vector_pen_path(nodes, radii, closed))
-        self._set_vector_item_data(item, nodes, radii, closed)
+        if len(handles_data) < len(nodes):
+            handles_data.extend([(QPointF(0.0, 0.0), QPointF(0.0, 0.0))] * (len(nodes) - len(handles_data)))
+        if alt_mode:
+            handles_data[index] = (QPointF(in_v.x(), in_v.y()), QPointF(out_v.x(), out_v.y()))
+        else:
+            handles_data[index] = (
+                QPointF(-out_v.x(), -out_v.y()),
+                QPointF(out_v.x(), out_v.y()),
+            )
+        item.setPath(self._build_vector_pen_path(nodes, radii, closed, handles_data))
+        self._set_vector_item_data(item, nodes, radii, closed, handles_data)
 
     def _commit_curve_draw(self, ctrl: QPointF):
         """Aplica uma dobra da curva (até CURVE_MAX_BENDS) e finaliza ao atingir o limite."""
@@ -2021,12 +2138,8 @@ class DrawingScene(QGraphicsScene):
         return normalized
 
     def _resolve_angle_style(self, degrees: float, style: str | None = None) -> str:
-        normalized = self._normalize_angle_degrees(degrees)
-        selected = str(style or "auto").strip().lower()
-        if selected in {"square", "arc"}:
-            return selected
-        if abs(normalized - 90.0) < 1e-3:
-            return "square"
+        del degrees, style
+        # Regra de UX: ferramenta de ângulo sempre em meia-lua.
         return "arc"
 
     def _build_angle_marker_path(
@@ -2363,6 +2476,7 @@ class DrawingScene(QGraphicsScene):
                     self._vp_corner_dragging = True
                     self._vp_corner_drag_item = item
                     self._vp_corner_drag_index = index
+                    self._vp_active_node_index = index
                     self._vp_corner_label_pos = QPointF(pos.x(), pos.y())
                     self._vp_corner_label_text = ""
                     event.accept()
@@ -2373,6 +2487,7 @@ class DrawingScene(QGraphicsScene):
                         target_item is not None
                         and bool(target_item.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
                     ):
+                        self._vp_active_node_index = -1
                         super().mousePressEvent(event)
                         event.accept()
                         return
@@ -2400,6 +2515,7 @@ class DrawingScene(QGraphicsScene):
                 self._vp_nodes = [click_pos]
                 self._vp_radii = [0.0]
                 self._vp_closed = False
+                self._vp_active_node_index = -1
                 self._vp_hover_scene_pos = QPointF(click_pos.x(), click_pos.y())
                 self._vp_snap_candidates = self._collect_snap_points()
                 self._update_vector_pen_preview()
@@ -2592,16 +2708,21 @@ class DrawingScene(QGraphicsScene):
         if self._vp_corner_dragging and self._vp_corner_drag_item is not None:
             item = self._vp_corner_drag_item
             index = self._vp_corner_drag_index
-            nodes, _radii, _closed = self._vector_item_data(item)
+            nodes, _radii, _closed, handles_data = self._vector_item_data(item)
             if 0 <= index < len(nodes):
                 corner_local = nodes[index]
                 mouse_local = item.mapFromScene(pos)
-                radius = math.hypot(
+                out_v = QPointF(
                     mouse_local.x() - corner_local.x(),
                     mouse_local.y() - corner_local.y(),
-                ) * 0.45
-                self._set_vector_corner_radius(item, index, radius)
-                self._vp_corner_label_text = f"R: {max(0.0, radius):.2f} px"
+                )
+                alt_mode = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
+                current_in = handles_data[index][0] if index < len(handles_data) else QPointF(0.0, 0.0)
+                if alt_mode:
+                    self._set_vector_corner_handles(item, index, current_in, out_v, alt_mode=True)
+                else:
+                    self._set_vector_corner_handles(item, index, QPointF(-out_v.x(), -out_v.y()), out_v, alt_mode=False)
+                self._vp_corner_label_text = f"A: {math.hypot(out_v.x(), out_v.y()):.2f} px"
                 self._vp_corner_label_pos = QPointF(pos.x(), pos.y())
                 self.cw.changed.emit()
                 self.update()
@@ -4590,6 +4711,7 @@ class DrawingCanvas(QWidget):
         self.scene._vp_corner_dragging = False
         self.scene._vp_corner_drag_item = None
         self.scene._vp_corner_drag_index = -1
+        self.scene._vp_active_node_index = -1
         self.scene._vp_corner_label_text = ""
         self.scene._vp_corner_label_pos = None
         self._undo_stack.clear()
@@ -4993,6 +5115,7 @@ class DrawingCanvas(QWidget):
                     payload["vector_pen_nodes"] = vector_nodes
                     payload["vector_pen_radii"] = meta.get("vector_pen_radii", [])
                     payload["vector_pen_closed"] = bool(meta.get("vector_pen_closed"))
+                    payload["vector_pen_handles"] = meta.get("vector_pen_handles", [])
                 if "is_3d_preset" in meta:
                     payload["is_3d_preset"] = bool(meta.get("is_3d_preset"))
                 if "ft_resize_locked" in meta:
