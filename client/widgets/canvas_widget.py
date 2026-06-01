@@ -3760,6 +3760,11 @@ class DrawingCanvas(QWidget):
         btn_bandeja.setToolTip("Inserir modelo de bandeja")
         btn_bandeja.clicked.connect(self._open_bandeja_popup)
         btn_bandeja.setStyleSheet(self._tool_btn_style())
+        btn_cantoneira = QPushButton("Cantoneira")
+        btn_cantoneira.setFixedHeight(fh)
+        btn_cantoneira.setToolTip("Inserir modelo de cantoneira")
+        btn_cantoneira.clicked.connect(self._open_cantoneira_popup)
+        btn_cantoneira.setStyleSheet(self._tool_btn_style())
 
         btn_dim = QPushButton("MM")
         btn_dim.setFixedHeight(fh)
@@ -3783,6 +3788,7 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_pingadeira)
         row2.addWidget(btn_calhas)
         row2.addWidget(btn_bandeja)
+        row2.addWidget(btn_cantoneira)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
@@ -5329,6 +5335,168 @@ class DrawingCanvas(QWidget):
             {
                 "type": "path",
                 "preset_bandeja_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
+    def _build_cantoneira_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+
+        if preset == "cantoneira_1":
+            path.moveTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(130.0, 80.0))
+        elif preset == "cantoneira_2":
+            path.moveTo(QPointF(-130.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+        elif preset == "cantoneira_3":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-170.0, 80.0))
+            path.lineTo(QPointF(-20.0, 80.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(130.0, -10.0))
+        elif preset == "cantoneira_4":
+            path.moveTo(QPointF(-130.0, -10.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(20.0, 80.0))
+            path.lineTo(QPointF(170.0, 80.0))
+            path.lineTo(QPointF(170.0, -80.0))
+        elif preset == "cantoneira_5":
+            path.moveTo(QPointF(90.0, -80.0))
+            path.lineTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(90.0, 80.0))
+        elif preset == "cantoneira_7":
+            path.moveTo(QPointF(-90.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+            path.lineTo(QPointF(-90.0, 80.0))
+        elif preset == "cantoneira_8":
+            path.moveTo(QPointF(-110.0, 80.0))
+            path.lineTo(QPointF(-110.0, -30.0))
+            path.lineTo(QPointF(110.0, -30.0))
+            path.lineTo(QPointF(110.0, 80.0))
+
+        return path
+
+    def _cantoneira_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_cantoneira_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_cantoneira_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Cantoneira")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de cantoneira:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "cantoneira_1",
+            "cantoneira_2",
+            "cantoneira_3",
+            "cantoneira_4",
+            "cantoneira_5",
+            "cantoneira_7",
+            "cantoneira_8",
+        ):
+            item = QListWidgetItem(_CANTONEIRA_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._cantoneira_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_cantoneira_preset(preset)
+
+    def _insert_cantoneira_preset(self, preset: str):
+        if preset not in _CANTONEIRA_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_cantoneira_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_cantoneira_name": preset,
             },
         )
         item.setPos(self._base_insert_pos())
