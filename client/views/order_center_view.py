@@ -116,14 +116,35 @@ def _make_card(
     radius: int = 18,
     hover_background: str | None = None,
 ) -> QFrame:
+    """Card com o mesmo design "neon" do Painel Gerencial e Nova Requisição:
+    gradient escuro suave + borda neon + sombra com cor de painel.
+    """
     card = QFrame()
     card.setObjectName("orderCenterCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
     card.setProperty("theme_bg", "card_bordered" if border_color else "card")
-    card.setStyleSheet(f"QFrame#orderCenterCard {{ border-radius:{radius}px; }}")
-    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
+    accent = border_color or theme.PANEL_BORDER_SOFT
+    card.setStyleSheet(_order_card_qss(radius, accent))
+    _apply_shadow(card, blur=max(28, int(34 * scale)), y_offset=max(4, int(5 * scale)), alpha=56)
     return card
+
+
+def _order_card_qss(radius: int, accent_color: str | None = None) -> str:
+    """QSS do card neon — separado para que apply_theme possa reaplicar
+    com a paleta corrente ao trocar claro/escuro."""
+    accent = accent_color or theme.PANEL_BORDER_SOFT
+    return (
+        f"QFrame#orderCenterCard {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {theme.PANEL_CARD_BG_START},"
+        f"    stop:0.55 {theme.PANEL_CARD_BG_MID},"
+        f"    stop:1 {theme.PANEL_CARD_BG_END});"
+        f"  border:1px solid {_rgba(accent, 126)};"
+        f"  border-radius:{radius}px;"
+        f"}}"
+        f"QFrame#orderCenterCard:hover {{ border-color:{_rgba(accent, 210)}; }}"
+    )
 
 
 def _metric_icon_path(key: str) -> Path | None:
@@ -652,6 +673,7 @@ class OrderCenterView(QWidget):
         value.setStyleSheet(
             f"font-size:{max(20, int(26 * s))}pt;"
             f"font-weight:800; background:transparent; border:none;"
+            f"color:{theme.PANEL_TEXT_PRIMARY};"
         )
         value.setWordWrap(True)
 
@@ -660,6 +682,7 @@ class OrderCenterView(QWidget):
         title.setStyleSheet(
             f"font-size:{max(9, int(11 * s))}pt;"
             f"font-weight:700; background:transparent; border:none;"
+            f"color:{theme.PANEL_TEXT_PRIMARY};"
         )
 
         helper = QLabel(helper_text)
@@ -668,6 +691,7 @@ class OrderCenterView(QWidget):
         helper.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt;"
             f"background:transparent; border:none;"
+            f"color:{theme.PANEL_TEXT_MUTED};"
         )
 
         accent_line = QFrame()
@@ -776,12 +800,14 @@ class OrderCenterView(QWidget):
         title = QLabel(title_text)
         title.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
+            f"color:{theme.PANEL_TEXT_PRIMARY};"
         )
         subtitle = QLabel(subtitle_text)
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
+            f"color:{theme.PANEL_TEXT_MUTED};"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -1351,6 +1377,19 @@ class OrderCenterView(QWidget):
         )
         for table in self._tables.values():
             self._apply_table_style(table)
+
+        # Reaplica o gradient dos cards (mesmo padrão do Painel Gerencial e
+        # Nova Requisição): o QSS é gravado uma única vez na criação e fica
+        # com a paleta antiga ao trocar tema sem essa reaplicação.
+        card_qss = _order_card_qss(radius=max(18, int(20 * s)))
+        for card in self.findChildren(QFrame, "orderCenterCard"):
+            card.setStyleSheet(card_qss)
+
+        # Re-polish dos filhos garante que labels e botões internos (que têm
+        # setStyleSheet inline sem cor explícita) peguem o global_style novo.
+        for w in self.findChildren(QWidget):
+            w.style().unpolish(w)
+            w.style().polish(w)
 
     def _open_pdf_for_requisition(self, req: dict):
         folder = res.pdf_folder.strip()
