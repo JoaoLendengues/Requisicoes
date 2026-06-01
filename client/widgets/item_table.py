@@ -5,17 +5,18 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QModelIndex, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 
+from ..core import theme
 from ..core.text_case import normalize_upper_text
 
-_REQ_SURFACE_BG = "#0B1324"
-_REQ_SURFACE_ALT = "#10203A"
-_REQ_BORDER_SOFT = "#24364F"
-_REQ_TEXT_PRIMARY = "#F8FAFC"
-_REQ_TEXT_MUTED = "#93A4BD"
-_REQ_NEON_PRIMARY = "#22D3EE"
-_REQ_NEON_SECONDARY = "#FB7185"
-_REQ_TABLE_HEADER_START = "#12233E"
-_REQ_TABLE_HEADER_END = "#1C3B63"
+_REQ_SURFACE_BG = theme.PANEL_SURFACE_BG
+_REQ_SURFACE_ALT = theme.PANEL_SURFACE_ALT
+_REQ_BORDER_SOFT = theme.PANEL_BORDER_SOFT
+_REQ_TEXT_PRIMARY = theme.PANEL_TEXT_PRIMARY
+_REQ_TEXT_MUTED = theme.PANEL_TEXT_MUTED
+_REQ_NEON_PRIMARY = theme.PANEL_NEON_PRIMARY
+_REQ_NEON_SECONDARY = theme.PANEL_NEON_SECONDARY
+_REQ_TABLE_HEADER_START = theme.PANEL_TABLE_HEADER_START
+_REQ_TABLE_HEADER_END = theme.PANEL_TABLE_HEADER_END
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -31,9 +32,9 @@ def _secondary_btn_style(scale: float) -> str:
         f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; border-radius:12px;"
         f"  padding:8px 14px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:#101D34; border-color:{_REQ_NEON_SECONDARY}; }}"
-        f"QPushButton:pressed {{ background:#142744; }}"
-        f"QPushButton:disabled {{ background:#0F172A; color:#64748B; border-color:#1E293B; }}"
+        f"QPushButton:hover {{ background:{_REQ_SURFACE_ALT}; border-color:{_REQ_NEON_SECONDARY}; }}"
+        f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 26)}; }}"
+        f"QPushButton:disabled {{ background:{_rgba(_REQ_BORDER_SOFT, 36)}; color:{_REQ_TEXT_MUTED}; border-color:{_REQ_BORDER_SOFT}; }}"
     )
 
 

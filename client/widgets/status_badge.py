@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QLabel
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from ..core.theme import STATUS_COLORS, STATUS_LABELS
+from ..core import theme
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -18,12 +18,12 @@ class StatusBadge(QLabel):
 
     def set_status(self, status: str):
         self._status = status
-        color = STATUS_COLORS.get(status, "#6B778C")
-        label = STATUS_LABELS.get(status, status.upper())
+        color = theme.STATUS_COLORS.get(status, theme.TEXT_MEDIUM)
+        label = theme.STATUS_LABELS.get(status, status.upper())
         fs = max(8, int(10 * self.scale))
         self.setText(label.upper())
         self.setStyleSheet(
-            f"background:{_rgba(color, 48)}; color:#F8FAFC;"
+            f"background:{_rgba(color, 48)}; color:{theme.PANEL_TEXT_PRIMARY};"
             f"border:1px solid {_rgba(color, 155)}; border-radius:12px;"
             f"padding:4px 12px; font-size:{fs}pt; font-weight:700;"
         )

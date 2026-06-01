@@ -13,58 +13,74 @@ Troca de tema em tempo de execução:
 """
 import sys
 
+from PySide6.QtGui import QColor
+
 # ── Paleta clara (padrão) ─────────────────────────────────────────────────────
 
 _LIGHT: dict = {
     # Sidebar / rodapé
-    "SIDEBAR_BG":        "#002C6D",
-    "SIDEBAR_HOVER":     "#003B8F",
-    "SIDEBAR_ACTIVE":    "#0057D8",
-    "SIDEBAR_INDICATOR": "#2D7FF9",
-    "FOOTER_BG":         "#002C6D",
+    "SIDEBAR_BG":        "#0F3D6E",
+    "SIDEBAR_HOVER":     "#16508F",
+    "SIDEBAR_ACTIVE":    "#1E5FA8",
+    "SIDEBAR_INDICATOR": "#22D3EE",
+    "FOOTER_BG":         "#0F3D6E",
 
     # Área de conteúdo
-    "CONTENT_BG":        "#F5F7FA",
+    "CONTENT_BG":        "#EAF3FF",
     "CARD_BG":           "#FFFFFF",
-    "INPUT_BG":          "#FFFFFF",
-    "SURFACE_SOFT":      "#F8FBFF",
+    "INPUT_BG":          "#F9FCFF",
+    "SURFACE_SOFT":      "#EFF6FF",
 
     # Primária
-    "PRIMARY":           "#003B8F",
-    "PRIMARY_HOVER":     "#0057D8",
-    "PRIMARY_LIGHT":     "#2D7FF9",
+    "PRIMARY":           "#0F5BD7",
+    "PRIMARY_HOVER":     "#0284C7",
+    "PRIMARY_LIGHT":     "#38BDF8",
 
     # Bordas / tabelas
-    "BORDER_COLOR":      "#D9E1EC",
-    "TABLE_HEADER_BG":   "#003B8F",
-    "TABLE_ALT_ROW":     "#F8FAFD",
-    "TABLE_BORDER":      "#D9E1EC",
-    "SELECTION_BG":      "#DCE9FF",
+    "BORDER_COLOR":      "#C8D9EC",
+    "TABLE_HEADER_BG":   "#154E86",
+    "TABLE_ALT_ROW":     "#F3F8FF",
+    "TABLE_BORDER":      "#C8D9EC",
+    "SELECTION_BG":      "#DBEEFF",
 
     # Texto
-    "TEXT_DARK":         "#1E2A3A",
-    "TEXT_MEDIUM":       "#6B778C",
-    "TEXT_LIGHT":        "#7A8798",
-    "TEXT_LABEL":        "#94A0B2",
+    "TEXT_DARK":         "#102033",
+    "TEXT_MEDIUM":       "#61758E",
+    "TEXT_LIGHT":        "#7F91A8",
+    "TEXT_LABEL":        "#97A9BD",
     "TEXT_WHITE":        "#FFFFFF",
 
     # Semânticas
-    "DANGER":            "#D64545",
-    "SUCCESS":           "#2DBE4E",
-    "WARNING":           "#F3A01B",
+    "DANGER":            "#E11D48",
+    "SUCCESS":           "#16A34A",
+    "WARNING":           "#D97706",
 
     # Status de requisição
     "STATUS_COLORS": {
-        "em_andamento":           "#2D7FF9",
-        "prazo_alterado":         "#7C3AED",
-        "entregue":               "#16A34A",
-        "aguardando_recebimento": "#F3A01B",
-        "aguardando_na_fila":     "#C7790A",
-        "aguardando_faturamento": "#A16207",
-        "em_producao":            "#0057D8",
-        "faturado":               "#2DBE4E",
-        "cancelada":              "#D64545",
+        "em_andamento":           "#38BDF8",
+        "prazo_alterado":         "#A855F7",
+        "entregue":               "#22C55E",
+        "aguardando_recebimento": "#F59E0B",
+        "aguardando_na_fila":     "#D97706",
+        "aguardando_faturamento": "#B45309",
+        "em_producao":            "#0F5BD7",
+        "faturado":               "#16A34A",
+        "cancelada":              "#E11D48",
     },
+    "PANEL_CARD_BG_START":   "#F8FCFF",
+    "PANEL_CARD_BG_MID":     "#EEF6FF",
+    "PANEL_CARD_BG_END":     "#F8FBFF",
+    "PANEL_SURFACE_BG":      "#FFFFFF",
+    "PANEL_SURFACE_ALT":     "#EDF5FF",
+    "PANEL_BORDER_SOFT":     "#C5D7EB",
+    "PANEL_TEXT_PRIMARY":    "#102033",
+    "PANEL_TEXT_MUTED":      "#61758E",
+    "PANEL_NEON_PRIMARY":    "#0EA5E9",
+    "PANEL_NEON_SECONDARY":  "#F43F5E",
+    "PANEL_NEON_TERTIARY":   "#84CC16",
+    "PANEL_TABLE_HEADER_START": "#123E6F",
+    "PANEL_TABLE_HEADER_END":   "#1B5C97",
+    "PANEL_SHADOW":          "#0F172A",
 
     # ── Tokens: Toast de notificação ──────────────────────────────────────────
     "TOAST_BG":          "#E7ECF3",       # fundo do card (mais escuro para contraste)
@@ -93,54 +109,68 @@ _LIGHT: dict = {
 
 _DARK: dict = {
     # Sidebar / rodapé
-    "SIDEBAR_BG":        "#0F1929",
-    "SIDEBAR_HOVER":     "#1A2640",
-    "SIDEBAR_ACTIVE":    "#1D3461",
-    "SIDEBAR_INDICATOR": "#3B82F6",
-    "FOOTER_BG":         "#0F1929",
+    "SIDEBAR_BG":        "#08111F",
+    "SIDEBAR_HOVER":     "#0E1B2D",
+    "SIDEBAR_ACTIVE":    "#13304A",
+    "SIDEBAR_INDICATOR": "#22D3EE",
+    "FOOTER_BG":         "#08111F",
 
     # Área de conteúdo
-    "CONTENT_BG":        "#111827",
-    "CARD_BG":           "#1E293B",
-    "INPUT_BG":          "#1E293B",
-    "SURFACE_SOFT":      "#162032",
+    "CONTENT_BG":        "#06101B",
+    "CARD_BG":           "#0B1324",
+    "INPUT_BG":          "#0B1324",
+    "SURFACE_SOFT":      "#10203A",
 
     # Primária
-    "PRIMARY":           "#2563EB",
-    "PRIMARY_HOVER":     "#3B82F6",
-    "PRIMARY_LIGHT":     "#60A5FA",
+    "PRIMARY":           "#22D3EE",
+    "PRIMARY_HOVER":     "#67E8F9",
+    "PRIMARY_LIGHT":     "#A5F3FC",
 
     # Bordas / tabelas
-    "BORDER_COLOR":      "#334155",
-    "TABLE_HEADER_BG":   "#1D3461",
-    "TABLE_ALT_ROW":     "#162032",
-    "TABLE_BORDER":      "#334155",
-    "SELECTION_BG":      "#1E3A5F",
+    "BORDER_COLOR":      "#24364F",
+    "TABLE_HEADER_BG":   "#1C3B63",
+    "TABLE_ALT_ROW":     "#10203A",
+    "TABLE_BORDER":      "#24364F",
+    "SELECTION_BG":      "#133452",
 
     # Texto
-    "TEXT_DARK":         "#F1F5F9",
-    "TEXT_MEDIUM":       "#94A3B8",
-    "TEXT_LIGHT":        "#64748B",
-    "TEXT_LABEL":        "#475569",
+    "TEXT_DARK":         "#F8FAFC",
+    "TEXT_MEDIUM":       "#93A4BD",
+    "TEXT_LIGHT":        "#7187A3",
+    "TEXT_LABEL":        "#5E728A",
     "TEXT_WHITE":        "#FFFFFF",
 
     # Semânticas
-    "DANGER":            "#EF4444",
-    "SUCCESS":           "#22C55E",
-    "WARNING":           "#EAB308",
+    "DANGER":            "#FB7185",
+    "SUCCESS":           "#4ADE80",
+    "WARNING":           "#FBBF24",
 
     # Status de requisição
     "STATUS_COLORS": {
-        "em_andamento":           "#60A5FA",
-        "prazo_alterado":         "#A78BFA",
-        "entregue":               "#22C55E",
+        "em_andamento":           "#67E8F9",
+        "prazo_alterado":         "#C084FC",
+        "entregue":               "#4ADE80",
         "aguardando_recebimento": "#FBBF24",
         "aguardando_na_fila":     "#F59E0B",
         "aguardando_faturamento": "#D97706",
-        "em_producao":            "#3B82F6",
-        "faturado":               "#22C55E",
-        "cancelada":              "#EF4444",
+        "em_producao":            "#22D3EE",
+        "faturado":               "#4ADE80",
+        "cancelada":              "#FB7185",
     },
+    "PANEL_CARD_BG_START":   "#07111E",
+    "PANEL_CARD_BG_MID":     "#0A1628",
+    "PANEL_CARD_BG_END":     "#111F36",
+    "PANEL_SURFACE_BG":      "#0B1324",
+    "PANEL_SURFACE_ALT":     "#10203A",
+    "PANEL_BORDER_SOFT":     "#24364F",
+    "PANEL_TEXT_PRIMARY":    "#F8FAFC",
+    "PANEL_TEXT_MUTED":      "#93A4BD",
+    "PANEL_NEON_PRIMARY":    "#22D3EE",
+    "PANEL_NEON_SECONDARY":  "#FB7185",
+    "PANEL_NEON_TERTIARY":   "#A3E635",
+    "PANEL_TABLE_HEADER_START": "#12233E",
+    "PANEL_TABLE_HEADER_END":   "#1C3B63",
+    "PANEL_SHADOW":          "#020817",
 
     # ── Tokens: Toast de notificação ──────────────────────────────────────────
     "TOAST_BG":          "#1E293B",
@@ -196,6 +226,56 @@ def _apply_palette(palette: dict) -> None:
         setattr(m, key, value)
 
 
+def _sync_external_panel_tokens() -> None:
+    token_map = {
+        "client.views.dashboard_view": {
+            "_DASH_CARD_BG_START": "PANEL_CARD_BG_START",
+            "_DASH_CARD_BG_MID": "PANEL_CARD_BG_MID",
+            "_DASH_CARD_BG_END": "PANEL_CARD_BG_END",
+            "_DASH_SURFACE_BG": "PANEL_SURFACE_BG",
+            "_DASH_SURFACE_ALT": "PANEL_SURFACE_ALT",
+            "_DASH_BORDER_SOFT": "PANEL_BORDER_SOFT",
+            "_DASH_TEXT_PRIMARY": "PANEL_TEXT_PRIMARY",
+            "_DASH_TEXT_MUTED": "PANEL_TEXT_MUTED",
+            "_DASH_TABLE_HEADER_START": "PANEL_TABLE_HEADER_START",
+            "_DASH_TABLE_HEADER_END": "PANEL_TABLE_HEADER_END",
+        },
+        "client.views.requisition_form": {
+            "_REQ_CARD_BG_START": "PANEL_CARD_BG_START",
+            "_REQ_CARD_BG_MID": "PANEL_CARD_BG_MID",
+            "_REQ_CARD_BG_END": "PANEL_CARD_BG_END",
+            "_REQ_SURFACE_BG": "PANEL_SURFACE_BG",
+            "_REQ_SURFACE_ALT": "PANEL_SURFACE_ALT",
+            "_REQ_BORDER_SOFT": "PANEL_BORDER_SOFT",
+            "_REQ_TEXT_PRIMARY": "PANEL_TEXT_PRIMARY",
+            "_REQ_TEXT_MUTED": "PANEL_TEXT_MUTED",
+            "_REQ_NEON_PRIMARY": "PANEL_NEON_PRIMARY",
+            "_REQ_NEON_SECONDARY": "PANEL_NEON_SECONDARY",
+            "_REQ_NEON_TERTIARY": "PANEL_NEON_TERTIARY",
+            "_REQ_TABLE_HEADER_START": "PANEL_TABLE_HEADER_START",
+            "_REQ_TABLE_HEADER_END": "PANEL_TABLE_HEADER_END",
+        },
+        "client.widgets.item_table": {
+            "_REQ_SURFACE_BG": "PANEL_SURFACE_BG",
+            "_REQ_SURFACE_ALT": "PANEL_SURFACE_ALT",
+            "_REQ_BORDER_SOFT": "PANEL_BORDER_SOFT",
+            "_REQ_TEXT_PRIMARY": "PANEL_TEXT_PRIMARY",
+            "_REQ_TEXT_MUTED": "PANEL_TEXT_MUTED",
+            "_REQ_NEON_PRIMARY": "PANEL_NEON_PRIMARY",
+            "_REQ_NEON_SECONDARY": "PANEL_NEON_SECONDARY",
+            "_REQ_TABLE_HEADER_START": "PANEL_TABLE_HEADER_START",
+            "_REQ_TABLE_HEADER_END": "PANEL_TABLE_HEADER_END",
+        },
+    }
+    theme_module = sys.modules[__name__]
+    for module_name, mapping in token_map.items():
+        module = sys.modules.get(module_name)
+        if module is None:
+            continue
+        for attr_name, theme_attr in mapping.items():
+            setattr(module, attr_name, getattr(theme_module, theme_attr))
+
+
 def set_dark(dark: bool) -> None:
     """
     Alterna entre modo escuro e claro.
@@ -204,88 +284,105 @@ def set_dark(dark: bool) -> None:
     global is_dark
     is_dark = dark
     _apply_palette(_DARK if dark else _LIGHT)
+    _sync_external_panel_tokens()
 
 
 # Aplica paleta clara como padrão ao importar o módulo
 _apply_palette(_LIGHT)
+_sync_external_panel_tokens()
 
 
 # ── Helpers de estilo ─────────────────────────────────────────────────────────
 
+def rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
+
+
 def status_style(status: str) -> str:
     color = STATUS_COLORS.get(status, TEXT_MEDIUM)  # noqa: F821
     return (
-        f"background:{color}; color:{TEXT_WHITE}; border-radius:8px; "  # noqa: F821
-        f"padding:4px 12px; font-weight:600;"
+        f"background:{rgba(color, 46)}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
+        f"border:1px solid {rgba(color, 155)}; border-radius:12px;"
+        f"padding:4px 12px; font-weight:700;"
     )
 
 
 def card_style() -> str:
     return (
-        f"background:{CARD_BG}; border:1px solid {BORDER_COLOR}; "  # noqa: F821
-        f"border-radius:8px;"
+        f"background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"stop:0 {PANEL_CARD_BG_START}, stop:0.55 {PANEL_CARD_BG_MID}, stop:1 {PANEL_CARD_BG_END});"
+        f"border:1px solid {rgba(PANEL_NEON_PRIMARY, 72)}; border-radius:18px;"
     )
 
 
 def input_style(scale: float = 1.0) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
+    radius = max(12, int(14 * scale))
     return (
         f"QLineEdit, QComboBox, QDateEdit, QTextEdit, QSpinBox, QDoubleSpinBox {{"
-        f"  background:{INPUT_BG}; border:1px solid {BORDER_COLOR}; border-radius:8px;"  # noqa: F821
-        f"  padding:7px 10px; font-size:{fs}pt; color:{TEXT_DARK};"  # noqa: F821
-        f"  selection-background-color:{SELECTION_BG}; selection-color:{TEXT_DARK};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG}; border:1px solid {PANEL_BORDER_SOFT}; border-radius:{radius}px;"  # noqa: F821
+        f"  padding:8px 12px; font-size:{fs}pt; color:{PANEL_TEXT_PRIMARY}; font-weight:600;"  # noqa: F821
+        f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 64)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"
         f"QLineEdit, QTextEdit {{"
         f"  placeholder-text-color:{TEXT_LABEL};"  # noqa: F821
         f"}}"
         f"QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QTextEdit:focus, "
         f"QSpinBox:focus, QDoubleSpinBox:focus {{"
-        f"  border:1px solid {PRIMARY_LIGHT};"  # noqa: F821
+        f"  border:1px solid {PANEL_NEON_SECONDARY};"  # noqa: F821
+        f"}}"
+        f"QLineEdit:hover, QComboBox:hover, QDateEdit:hover, QTextEdit:hover, "
+        f"QSpinBox:hover, QDoubleSpinBox:hover {{"
+        f"  border:1px solid {PANEL_NEON_PRIMARY};"  # noqa: F821
         f"}}"
         f"QComboBox::drop-down, QDateEdit::drop-down {{"
         f"  border:none; width:24px;"
         f"}}"
         f"QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{"
-        f"  background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"  # noqa: F821
-        f"  selection-background-color:{SELECTION_BG}; selection-color:{TEXT_DARK};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
+        f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 56)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"
     )
 
 
 def primary_btn_style(scale: float = 1.0) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
+    fg = "#04111F" if is_dark else TEXT_WHITE
     return (
         f"QPushButton {{"
-        f"  background:{PRIMARY}; color:{TEXT_WHITE}; border:none; border-radius:8px;"  # noqa: F821
-        f"  padding:8px 18px; font-size:{fs}pt; font-weight:600;"
+        f"  background:{PRIMARY}; color:{fg}; border:none; border-radius:14px;"  # noqa: F821
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:800;"
         f"}}"
         f"QPushButton:hover {{ background:{PRIMARY_HOVER}; }}"  # noqa: F821
-        f"QPushButton:pressed {{ background:{SIDEBAR_BG}; }}"  # noqa: F821
-        f"QPushButton:disabled {{ background:#AAB8CE; color:#EEF2F8; }}"
+        f"QPushButton:pressed {{ background:{rgba(PRIMARY, 220)}; color:{fg}; }}"  # noqa: F821
+        f"QPushButton:disabled {{ background:{rgba(PANEL_BORDER_SOFT, 90)}; color:{TEXT_LIGHT}; }}"
     )
 
 
 def secondary_btn_style(scale: float = 1.0) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{CARD_BG}; color:{PRIMARY}; border:1px solid {BORDER_COLOR};"  # noqa: F821
-        f"  border-radius:8px; padding:7px 16px; font-size:{fs}pt; font-weight:600;"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {rgba(PANEL_NEON_PRIMARY, 110)};"  # noqa: F821
+        f"  border-radius:14px; padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{SELECTION_BG}; border-color:{PRIMARY_LIGHT}; }}"  # noqa: F821
-        f"QPushButton:pressed {{ background:#CFE0FF; }}"
+        f"QPushButton:hover {{ background:{PANEL_SURFACE_ALT}; border-color:{PANEL_NEON_SECONDARY}; }}"  # noqa: F821
+        f"QPushButton:pressed {{ background:{rgba(PANEL_NEON_PRIMARY, 26)}; }}"
+        f"QPushButton:disabled {{ background:{rgba(PANEL_BORDER_SOFT, 36)}; color:{PANEL_TEXT_MUTED}; border-color:{PANEL_BORDER_SOFT}; }}"  # noqa: F821
     )
 
 
 def danger_btn_style(scale: float = 1.0) -> str:
-    fs = max(9, int(11 * scale))
+    fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{DANGER}; color:{TEXT_WHITE}; border:none; border-radius:8px;"  # noqa: F821
-        f"  padding:8px 18px; font-size:{fs}pt; font-weight:600;"
+        f"  background:{DANGER}; color:{TEXT_WHITE}; border:none; border-radius:14px;"  # noqa: F821
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:800;"
         f"}}"
-        f"QPushButton:hover {{ background:#BF3636; }}"
-        f"QPushButton:pressed {{ background:#A92F2F; }}"
+        f"QPushButton:hover {{ background:{QColor(DANGER).lighter(112).name()}; }}"
+        f"QPushButton:pressed {{ background:{QColor(DANGER).darker(118).name()}; }}"
+        f"QPushButton:disabled {{ background:{rgba(DANGER, 90)}; color:{TEXT_WHITE}; }}"
     )
 
 
@@ -296,11 +393,11 @@ def global_style() -> str:
         f"  font-family:'{FONT_PRIMARY}', '{FONT_FALLBACK}', 'Segoe UI';"
         f"}}"
         f"QDialog {{"
-        f"  background-color:{CARD_BG}; color:{TEXT_DARK};"  # noqa: F821
+        f"  background-color:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"  font-family:'{FONT_PRIMARY}', '{FONT_FALLBACK}', 'Segoe UI';"
         f"}}"
         f"QDialog QWidget {{"
-        f"  background-color:{CARD_BG}; color:{TEXT_DARK};"  # noqa: F821
+        f"  background-color:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"
         f"QWidget {{"
         f"  color:{TEXT_DARK};"  # noqa: F821
@@ -309,25 +406,26 @@ def global_style() -> str:
         f"QLabel {{ background:transparent; color:{TEXT_DARK}; }}"  # noqa: F821
         f"QFrame {{ color:{TEXT_DARK}; }}"  # noqa: F821
         f"QToolTip {{"
-        f"  background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"  # noqa: F821
-        f"  padding:6px 10px; border-radius:8px;"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {rgba(PANEL_NEON_PRIMARY, 96)};"  # noqa: F821
+        f"  padding:6px 10px; border-radius:10px;"
         f"}}"
         f"QAbstractItemView {{"
         f"  outline:none; alternate-background-color:{TABLE_ALT_ROW};"  # noqa: F821
         f"  selection-background-color:{SELECTION_BG}; selection-color:{TEXT_DARK};"  # noqa: F821
         f"}}"
         f"QHeaderView::section {{"
-        f"  background:{TABLE_HEADER_BG}; color:{TEXT_WHITE}; padding:8px 10px;"  # noqa: F821
-        f"  border:none; font-weight:600;"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {PANEL_TABLE_HEADER_START}, stop:1 {PANEL_TABLE_HEADER_END});"
+        f"  color:{PANEL_TEXT_PRIMARY}; padding:8px 10px;"  # noqa: F821
+        f"  border:none; font-weight:700;"
         f"}}"
         f"QTableCornerButton::section {{"
-        f"  background:{TABLE_HEADER_BG}; border:none;"  # noqa: F821
+        f"  background:{PANEL_TABLE_HEADER_START}; border:none;"  # noqa: F821
         f"}}"
         f"QTabBar::tab {{"
-        f"  background:{CARD_BG}; color:{TEXT_MEDIUM}; border:1px solid {BORDER_COLOR};"  # noqa: F821
-        f"  padding:8px 14px; margin-right:4px; border-top-left-radius:8px; border-top-right-radius:8px;"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_MUTED}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
+        f"  padding:8px 14px; margin-right:4px; border-top-left-radius:10px; border-top-right-radius:10px;"
         f"}}"
-        f"QTabBar::tab:selected {{ background:{PRIMARY}; color:{TEXT_WHITE}; border-color:{PRIMARY}; }}"  # noqa: F821
+        f"QTabBar::tab:selected {{ background:{PANEL_SURFACE_ALT}; color:{PANEL_TEXT_PRIMARY}; border-color:{PANEL_NEON_PRIMARY}; }}"  # noqa: F821
         f"QScrollBar:vertical {{ width:10px; background:transparent; margin:2px; }}"
         f"QScrollBar::handle:vertical {{"
         f"  background:{BORDER_COLOR}; border-radius:5px; min-height:36px;"  # noqa: F821
@@ -338,17 +436,17 @@ def global_style() -> str:
         f"QScrollBar::handle:horizontal {{ background:{BORDER_COLOR}; border-radius:5px; }}"  # noqa: F821
         f"QScrollBar::handle:horizontal:hover {{ background:{PRIMARY_LIGHT}; }}"  # noqa: F821
         f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
-        f"QCalendarWidget QWidget {{ background:{CARD_BG}; color:{TEXT_DARK}; }}"  # noqa: F821
+        f"QCalendarWidget QWidget {{ background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; }}"  # noqa: F821
         f"QCalendarWidget QAbstractItemView:enabled {{"
-        f"  background:{CARD_BG}; color:{TEXT_DARK};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"  selection-background-color:{PRIMARY}; selection-color:{TEXT_WHITE};"  # noqa: F821
         f"}}"
         f"QCalendarWidget QToolButton {{"
-        f"  background:{CARD_BG}; color:{TEXT_DARK}; border:none; padding:6px; border-radius:8px;"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:none; padding:6px; border-radius:10px;"  # noqa: F821
         f"}}"
-        f"QCalendarWidget QToolButton:hover {{ background:{SELECTION_BG}; }}"  # noqa: F821
+        f"QCalendarWidget QToolButton:hover {{ background:{PANEL_SURFACE_ALT}; }}"  # noqa: F821
         f"QCalendarWidget #qt_calendar_navigationbar {{"
-        f"  background:{SURFACE_SOFT}; border-bottom:1px solid {BORDER_COLOR};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_ALT}; border-bottom:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
         f"}}"
         f"QMessageBox {{"
         f"  background-color:{CARD_BG}; border:1px solid {BORDER_COLOR}; border-radius:8px;"  # noqa: F821
@@ -425,35 +523,35 @@ def global_style() -> str:
         f"  background-color:{BORDER_COLOR}; color:{TEXT_LIGHT}; border:1px solid {BORDER_COLOR};"  # noqa: F821
         f"}}"
         f"QLineEdit, QTextEdit, QPlainTextEdit {{"
-        f"  background:{INPUT_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"  # noqa: F821
-        f"  border-radius:8px; padding:7px 10px;"
-        f"  selection-background-color:{SELECTION_BG}; selection-color:{TEXT_DARK};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
+        f"  border-radius:12px; padding:8px 12px;"
+        f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 64)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"
         f"QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {{"
-        f"  border:1px solid {PRIMARY_LIGHT};"  # noqa: F821
+        f"  border:1px solid {PANEL_NEON_SECONDARY};"  # noqa: F821
         f"}}"
         f"QLineEdit:read-only, QTextEdit:read-only, QPlainTextEdit:read-only {{"
-        f"  background:{SURFACE_SOFT}; color:{TEXT_MEDIUM};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_ALT}; color:{PANEL_TEXT_MUTED};"  # noqa: F821
         f"}}"
         f"QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {{"
-        f"  background:{INPUT_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"  # noqa: F821
-        f"  border-radius:8px; padding:7px 10px;"
-        f"  selection-background-color:{SELECTION_BG}; selection-color:{TEXT_DARK};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
+        f"  border-radius:12px; padding:8px 12px;"
+        f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 64)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"
         f"QComboBox:focus, QDateEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{"
-        f"  border:1px solid {PRIMARY_LIGHT};"  # noqa: F821
+        f"  border:1px solid {PANEL_NEON_SECONDARY};"  # noqa: F821
         f"}}"
         f"QComboBox::drop-down, QDateEdit::drop-down {{"
         f"  border:none; width:24px;"
         f"}}"
         f"QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{"
-        f"  background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"  # noqa: F821
-        f"  selection-background-color:{SELECTION_BG}; selection-color:{TEXT_DARK};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
+        f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 56)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"
         f"QCheckBox {{ spacing:8px; }}"
         f"QCheckBox::indicator {{"
-        f"  width:16px; height:16px; border-radius:4px; border:1px solid {BORDER_COLOR};"  # noqa: F821
-        f"  background:{CARD_BG};"  # noqa: F821
+        f"  width:16px; height:16px; border-radius:4px; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG};"  # noqa: F821
         f"}}"
         f"QCheckBox::indicator:checked {{"
         f"  background:{PRIMARY}; border:1px solid {PRIMARY};"  # noqa: F821
@@ -466,16 +564,24 @@ def global_style() -> str:
         f"}}"
         f"QSlider::sub-page:horizontal {{ background:{PRIMARY_LIGHT}; border-radius:3px; }}"  # noqa: F821
         f"QMenu {{"
-        f"  background:{CARD_BG}; color:{TEXT_DARK}; border:1px solid {BORDER_COLOR};"  # noqa: F821
-        f"  border-radius:8px; padding:6px;"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
+        f"  border-radius:10px; padding:6px;"
         f"}}"
         f"QMenu::item {{ padding:8px 12px; border-radius:6px; }}"
-        f"QMenu::item:selected {{ background:{SELECTION_BG}; color:{TEXT_DARK}; }}"  # noqa: F821
+        f"QMenu::item:selected {{ background:{rgba(PANEL_NEON_PRIMARY, 56)}; color:{PANEL_TEXT_PRIMARY}; }}"  # noqa: F821
         f"QStatusBar {{ background:{FOOTER_BG}; color:{TEXT_WHITE}; }}"  # noqa: F821
         # ── Propriedades dinâmicas — permitem auto-tema sem rebuild ──────────────
-        f"QFrame[theme_bg='card'] {{ background:{CARD_BG}; border:none; }}"  # noqa: F821
-        f"QFrame[theme_bg='card_bordered'] {{ background:{CARD_BG}; border:1px solid {BORDER_COLOR}; }}"  # noqa: F821
+        f"QFrame[theme_bg='card'] {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {PANEL_CARD_BG_START}, stop:0.55 {PANEL_CARD_BG_MID}, stop:1 {PANEL_CARD_BG_END});"
+        f"  border:1px solid {rgba(PANEL_NEON_PRIMARY, 64)};"
+        f"}}"
+        f"QFrame[theme_bg='card_bordered'] {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {PANEL_CARD_BG_START}, stop:0.55 {PANEL_CARD_BG_MID}, stop:1 {PANEL_CARD_BG_END});"
+        f"  border:1px solid {rgba(PANEL_NEON_SECONDARY, 78)};"
+        f"}}"
         f"QFrame[theme_bg='separator'] {{ background:{BORDER_COLOR}; border:none; }}"  # noqa: F821
         f"QLabel[muted='1'] {{ color:{TEXT_MEDIUM}; background:transparent; }}"  # noqa: F821
-        f"QLabel[accent='1'] {{ color:{PRIMARY}; background:transparent; }}"  # noqa: F821
+        f"QLabel[accent='1'] {{ color:{PANEL_NEON_PRIMARY}; background:transparent; }}"  # noqa: F821
     )

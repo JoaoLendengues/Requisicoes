@@ -74,7 +74,7 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
     shadow.setOffset(0, y_offset)
-    color = QColor(theme.TEXT_DARK)
+    color = QColor(theme.PANEL_SHADOW)
     color.setAlpha(alpha)
     shadow.setColor(color)
     widget.setGraphicsEffect(shadow)
@@ -98,30 +98,11 @@ def _make_card(
 
 
 def _flat_secondary_btn_style(scale: float) -> str:
-    fs = max(9, int(10 * scale))
-    return (
-        f"QPushButton {{"
-        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
-        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
-        f"}}"
-        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
-        f"QPushButton:pressed {{ background:#E7EEF7; }}"
-        f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
-    )
+    return theme.secondary_btn_style(scale)
 
 
 def _primary_action_btn_style(scale: float) -> str:
-    fs = max(9, int(10 * scale))
-    return (
-        f"QPushButton {{"
-        f"  background:{theme.PRIMARY}; color:#FFFFFF; border:none; border-radius:14px;"
-        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
-        f"}}"
-        f"QPushButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
-        f"QPushButton:pressed {{ background:#152D49; }}"
-        f"QPushButton:disabled {{ background:#A7B3C6; color:#F8FAFC; }}"
-    )
+    return theme.primary_btn_style(scale)
 
 
 def _field_style(scale: float) -> str:
@@ -184,7 +165,7 @@ def _calendar_btn_style(scale: float) -> str:
         f"  font-size:{fs}pt; font-weight:700; padding:0px 2px;"
         f"}}"
         f"QToolButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
-        f"QToolButton:pressed {{ background:#152D49; }}"
+        f"QToolButton:pressed {{ background:{theme.SIDEBAR_BG}; }}"
     )
 
 

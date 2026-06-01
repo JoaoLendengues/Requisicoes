@@ -48,19 +48,19 @@ from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_sc
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
 ALL_DATES_SENTINEL = QDate(2000, 1, 1)
-_REQ_CARD_BG_START = "#07111E"
-_REQ_CARD_BG_MID = "#0A1628"
-_REQ_CARD_BG_END = "#111F36"
-_REQ_SURFACE_BG = "#0B1324"
-_REQ_SURFACE_ALT = "#10203A"
-_REQ_BORDER_SOFT = "#24364F"
-_REQ_TEXT_PRIMARY = "#F8FAFC"
-_REQ_TEXT_MUTED = "#93A4BD"
-_REQ_NEON_PRIMARY = "#22D3EE"
-_REQ_NEON_SECONDARY = "#FB7185"
-_REQ_NEON_TERTIARY = "#A3E635"
-_REQ_TABLE_HEADER_START = "#12233E"
-_REQ_TABLE_HEADER_END = "#1C3B63"
+_REQ_CARD_BG_START = theme.PANEL_CARD_BG_START
+_REQ_CARD_BG_MID = theme.PANEL_CARD_BG_MID
+_REQ_CARD_BG_END = theme.PANEL_CARD_BG_END
+_REQ_SURFACE_BG = theme.PANEL_SURFACE_BG
+_REQ_SURFACE_ALT = theme.PANEL_SURFACE_ALT
+_REQ_BORDER_SOFT = theme.PANEL_BORDER_SOFT
+_REQ_TEXT_PRIMARY = theme.PANEL_TEXT_PRIMARY
+_REQ_TEXT_MUTED = theme.PANEL_TEXT_MUTED
+_REQ_NEON_PRIMARY = theme.PANEL_NEON_PRIMARY
+_REQ_NEON_SECONDARY = theme.PANEL_NEON_SECONDARY
+_REQ_NEON_TERTIARY = theme.PANEL_NEON_TERTIARY
+_REQ_TABLE_HEADER_START = theme.PANEL_TABLE_HEADER_START
+_REQ_TABLE_HEADER_END = theme.PANEL_TABLE_HEADER_END
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -190,9 +190,9 @@ def _req_secondary_btn_style(scale: float) -> str:
         f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; outline:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:#101D34; border-color:{_REQ_NEON_SECONDARY}; }}"
-        f"QPushButton:pressed {{ background:#142744; }}"
-        f"QPushButton:disabled {{ background:#0F172A; color:#64748B; border-color:#1E293B; }}"
+        f"QPushButton:hover {{ background:{_REQ_SURFACE_ALT}; border-color:{_REQ_NEON_SECONDARY}; }}"
+        f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 26)}; }}"
+        f"QPushButton:disabled {{ background:{_rgba(_REQ_BORDER_SOFT, 36)}; color:{_REQ_TEXT_MUTED}; border-color:{_REQ_BORDER_SOFT}; }}"
     )
 
 
@@ -263,8 +263,8 @@ def _req_round_icon_btn_style(scale: float, diameter: int) -> str:
         f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 102)};"
         f"  border-radius:{diameter // 2}px; padding:0;"
         f"}}"
-        f"QPushButton:hover {{ color:{_REQ_TEXT_PRIMARY}; border-color:{_REQ_NEON_SECONDARY}; background:#101D34; }}"
-        f"QPushButton:pressed {{ background:#142744; }}"
+        f"QPushButton:hover {{ color:{_REQ_TEXT_PRIMARY}; border-color:{_REQ_NEON_SECONDARY}; background:{_REQ_SURFACE_ALT}; }}"
+        f"QPushButton:pressed {{ background:{_rgba(_REQ_NEON_PRIMARY, 24)}; }}"
     )
 
 
@@ -395,7 +395,7 @@ def _make_card(parent=None) -> QFrame:
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(28)
     shadow.setOffset(0, 5)
-    glow = QColor("#020817")
+    glow = QColor(theme.PANEL_SHADOW)
     glow.setAlpha(52)
     shadow.setColor(glow)
     card.setGraphicsEffect(shadow)

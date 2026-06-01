@@ -134,17 +134,17 @@ class MainWindow(QMainWindow):
             f"  width:8px; background:transparent;"
             f"}}"
             f"QScrollBar::handle:vertical {{"
-            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-height:32px;"
+            f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 58)}; border-radius:4px; min-height:32px;"
             f"}}"
-            f"QScrollBar::handle:vertical:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::handle:vertical:hover {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 96)}; }}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
             f"QScrollBar:horizontal {{"
             f"  height:8px; background:transparent;"
             f"}}"
             f"QScrollBar::handle:horizontal {{"
-            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-width:32px;"
+            f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 58)}; border-radius:4px; min-width:32px;"
             f"}}"
-            f"QScrollBar::handle:horizontal:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::handle:horizontal:hover {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 96)}; }}"
             f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
         )
         self._scroll_main.setWidget(self.stack)
@@ -1083,17 +1083,17 @@ class MainWindow(QMainWindow):
             f"  width:8px; background:transparent;"
             f"}}"
             f"QScrollBar::handle:vertical {{"
-            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-height:32px;"
+            f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 58)}; border-radius:4px; min-height:32px;"
             f"}}"
-            f"QScrollBar::handle:vertical:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::handle:vertical:hover {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 96)}; }}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
             f"QScrollBar:horizontal {{"
             f"  height:8px; background:transparent;"
             f"}}"
             f"QScrollBar::handle:horizontal {{"
-            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-width:32px;"
+            f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 58)}; border-radius:4px; min-width:32px;"
             f"}}"
-            f"QScrollBar::handle:horizontal:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::handle:horizontal:hover {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 96)}; }}"
             f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
         )
         self.sidebar.apply_theme()
@@ -1135,17 +1135,17 @@ class MainWindow(QMainWindow):
             f"  width:8px; background:transparent;"
             f"}}"
             f"QScrollBar::handle:vertical {{"
-            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-height:32px;"
+            f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 58)}; border-radius:4px; min-height:32px;"
             f"}}"
-            f"QScrollBar::handle:vertical:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::handle:vertical:hover {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 96)}; }}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
             f"QScrollBar:horizontal {{"
             f"  height:8px; background:transparent;"
             f"}}"
             f"QScrollBar::handle:horizontal {{"
-            f"  background:rgba(0,0,0,0.18); border-radius:4px; min-width:32px;"
+            f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 58)}; border-radius:4px; min-width:32px;"
             f"}}"
-            f"QScrollBar::handle:horizontal:hover {{ background:rgba(0,0,0,0.32); }}"
+            f"QScrollBar::handle:horizontal:hover {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 96)}; }}"
             f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
         )
         self.sidebar.apply_theme()
@@ -1181,7 +1181,7 @@ class MainWindow(QMainWindow):
                 effect = child.graphicsEffect()
                 if isinstance(effect, QGraphicsDropShadowEffect):
                     alpha = effect.color().alpha()
-                    color = QColor(theme.TEXT_DARK)
+                    color = QColor(theme.PANEL_SHADOW)
                     color.setAlpha(alpha)
                     effect.setColor(color)
 

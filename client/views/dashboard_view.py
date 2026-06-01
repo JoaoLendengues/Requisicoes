@@ -55,16 +55,16 @@ _NEON_PERIOD_LABELS = {
     "weekly": "SEMANAL",
     "daily": "DIARIO",
 }
-_DASH_CARD_BG_START = "#07111E"
-_DASH_CARD_BG_MID = "#0A1628"
-_DASH_CARD_BG_END = "#111F36"
-_DASH_SURFACE_BG = "#0B1324"
-_DASH_SURFACE_ALT = "#10203A"
-_DASH_BORDER_SOFT = "#24364F"
-_DASH_TEXT_PRIMARY = "#F8FAFC"
-_DASH_TEXT_MUTED = "#93A4BD"
-_DASH_TABLE_HEADER_START = "#12233E"
-_DASH_TABLE_HEADER_END = "#1C3B63"
+_DASH_CARD_BG_START = theme.PANEL_CARD_BG_START
+_DASH_CARD_BG_MID = theme.PANEL_CARD_BG_MID
+_DASH_CARD_BG_END = theme.PANEL_CARD_BG_END
+_DASH_SURFACE_BG = theme.PANEL_SURFACE_BG
+_DASH_SURFACE_ALT = theme.PANEL_SURFACE_ALT
+_DASH_BORDER_SOFT = theme.PANEL_BORDER_SOFT
+_DASH_TEXT_PRIMARY = theme.PANEL_TEXT_PRIMARY
+_DASH_TEXT_MUTED = theme.PANEL_TEXT_MUTED
+_DASH_TABLE_HEADER_START = theme.PANEL_TABLE_HEADER_START
+_DASH_TABLE_HEADER_END = theme.PANEL_TABLE_HEADER_END
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -86,7 +86,7 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
     shadow.setOffset(0, y_offset)
-    color = QColor("#020817")
+    color = QColor(theme.PANEL_SHADOW)
     color.setAlpha(alpha)
     shadow.setColor(color)
     widget.setGraphicsEffect(shadow)
@@ -127,17 +127,7 @@ def _metric_icon_path(key: str) -> Path | None:
 
 
 def _flat_secondary_btn_style(scale: float) -> str:
-    fs = max(9, int(10 * scale))
-    return (
-        f"QPushButton {{"
-        f"  background:{_DASH_SURFACE_BG}; color:{_DASH_TEXT_PRIMARY};"
-        f"  border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 110)}; outline:none; border-radius:14px;"
-        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
-        f"}}"
-        f"QPushButton:hover {{ background:#101D34; border-color:{_NEON_PERIOD_COLORS['weekly']}; }}"
-        f"QPushButton:pressed {{ background:#142744; }}"
-        f"QPushButton:disabled {{ background:#0F172A; color:#64748B; border-color:#1E293B; }}"
-    )
+    return theme.secondary_btn_style(scale)
 
 
 def _field_style(scale: float) -> str:
@@ -166,13 +156,13 @@ def _neon_period_chip_style(scale: float) -> str:
     radius = max(12, int(14 * scale))
     return (
         f"QPushButton {{"
-        f"  background:#0B1324; color:#CBD5E1;"
+        f"  background:{_DASH_SURFACE_BG}; color:{_DASH_TEXT_MUTED};"
         f"  border:1px solid rgba(148, 163, 184, 0.32); border-radius:{radius}px;"
         f"  padding:7px 14px; font-size:{fs}pt; font-weight:800;"
         f"}}"
-        f"QPushButton:hover {{ border-color:{_NEON_PERIOD_COLORS['monthly']}; color:#F8FAFC; }}"
+        f"QPushButton:hover {{ border-color:{_NEON_PERIOD_COLORS['monthly']}; color:{_DASH_TEXT_PRIMARY}; }}"
         f"QPushButton:checked {{"
-        f"  background:#101D34; color:#F8FAFC; border:1px solid {_NEON_PERIOD_COLORS['monthly']};"
+        f"  background:{_DASH_SURFACE_ALT}; color:{_DASH_TEXT_PRIMARY}; border:1px solid {_NEON_PERIOD_COLORS['monthly']};"
         f"}}"
         f"QPushButton:checked:hover {{ border-color:{_NEON_PERIOD_COLORS['weekly']}; }}"
     )
@@ -372,9 +362,9 @@ class NeonComparisonWidget(QWidget):
         path.addRoundedRect(QRectF(rect), radius, radius)
 
         background = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        background.setColorAt(0.0, QColor("#07111E"))
-        background.setColorAt(0.55, QColor("#0A1628"))
-        background.setColorAt(1.0, QColor("#111F36"))
+        background.setColorAt(0.0, QColor(_DASH_CARD_BG_START))
+        background.setColorAt(0.55, QColor(_DASH_CARD_BG_MID))
+        background.setColorAt(1.0, QColor(_DASH_CARD_BG_END))
         painter.fillPath(path, background)
 
         border = QLinearGradient(rect.topLeft(), rect.bottomRight())
@@ -388,7 +378,7 @@ class NeonComparisonWidget(QWidget):
         painter.setPen(pen)
         painter.drawPath(path)
 
-        painter.setPen(QColor("#F8FAFC"))
+        painter.setPen(QColor(_DASH_TEXT_PRIMARY))
         title_font = painter.font()
         title_font.setPointSize(max(10, int(12 * self._scale)))
         title_font.setBold(True)
@@ -425,7 +415,7 @@ class NeonComparisonWidget(QWidget):
             _NEON_PERIOD_LABELS.get(self._selected_period, "MENSAL"),
         )
 
-        painter.setPen(QColor("#93A4BD"))
+        painter.setPen(QColor(_DASH_TEXT_MUTED))
         subtitle_font = painter.font()
         subtitle_font.setPointSize(max(7, int(8 * self._scale)))
         subtitle_font.setBold(False)
@@ -446,7 +436,7 @@ class NeonComparisonWidget(QWidget):
         body_top = subtitle_rect.bottom() + max(14, int(18 * self._scale))
         visible_rows = self._visible_rows()
         if not visible_rows:
-            painter.setPen(QColor("#7F8DA3"))
+            painter.setPen(QColor(_DASH_TEXT_MUTED))
             empty_font = painter.font()
             empty_font.setPointSize(max(8, int(9 * self._scale)))
             painter.setFont(empty_font)
@@ -480,7 +470,7 @@ class NeonComparisonWidget(QWidget):
         for row_index, row in enumerate(visible_rows):
             row_top = body_top + (row_index * row_height)
 
-            painter.setPen(QColor("#F8FAFC"))
+            painter.setPen(QColor(_DASH_TEXT_PRIMARY))
             row_label_font = painter.font()
             row_label_font.setPointSize(max(8, int(9 * self._scale)))
             row_label_font.setBold(True)
@@ -527,7 +517,7 @@ class NeonComparisonWidget(QWidget):
                     bar_height / 2,
                 )
 
-            painter.setPen(QColor("#D8E1EC"))
+            painter.setPen(QColor(_DASH_TEXT_MUTED))
             value_font = painter.font()
             value_font.setPointSize(max(7, int(8 * self._scale)))
             value_font.setBold(False)

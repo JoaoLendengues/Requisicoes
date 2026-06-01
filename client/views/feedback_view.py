@@ -99,7 +99,7 @@ def _apply_shadow(widget: QWidget, blur: int = 24, y_offset: int = 4, alpha: int
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
     shadow.setOffset(0, y_offset)
-    color = QColor(theme.TEXT_DARK)
+    color = QColor(theme.PANEL_SHADOW)
     color.setAlpha(alpha)
     shadow.setColor(color)
     widget.setGraphicsEffect(shadow)
