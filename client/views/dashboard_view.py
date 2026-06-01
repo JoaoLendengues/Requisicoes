@@ -55,6 +55,16 @@ _NEON_PERIOD_LABELS = {
     "weekly": "SEMANAL",
     "daily": "DIARIO",
 }
+_DASH_CARD_BG_START = "#07111E"
+_DASH_CARD_BG_MID = "#0A1628"
+_DASH_CARD_BG_END = "#111F36"
+_DASH_SURFACE_BG = "#0B1324"
+_DASH_SURFACE_ALT = "#10203A"
+_DASH_BORDER_SOFT = "#24364F"
+_DASH_TEXT_PRIMARY = "#F8FAFC"
+_DASH_TEXT_MUTED = "#93A4BD"
+_DASH_TABLE_HEADER_START = "#12233E"
+_DASH_TABLE_HEADER_END = "#1C3B63"
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -76,7 +86,7 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
     shadow.setOffset(0, y_offset)
-    color = QColor(theme.TEXT_DARK)
+    color = QColor("#020817")
     color.setAlpha(alpha)
     shadow.setColor(color)
     widget.setGraphicsEffect(shadow)
@@ -93,9 +103,18 @@ def _make_shadow_card(
     card.setObjectName("dashboardCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    card.setProperty("theme_bg", "card_bordered" if border_color else "card")
-    card.setStyleSheet(f"QFrame#dashboardCard {{ border-radius:{radius}px; }}")
-    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
+    accent = border_color or _DASH_BORDER_SOFT
+    card.setProperty("theme_bg", "card")
+    card.setStyleSheet(
+        f"QFrame#dashboardCard {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {_DASH_CARD_BG_START}, stop:0.55 {_DASH_CARD_BG_MID}, stop:1 {_DASH_CARD_BG_END});"
+        f"  border:1px solid {_rgba(accent, 126)};"
+        f"  border-radius:{radius}px;"
+        f"}}"
+        f"QFrame#dashboardCard:hover {{ border-color:{_rgba(accent, 210)}; }}"
+    )
+    _apply_shadow(card, blur=max(28, int(34 * scale)), y_offset=max(4, int(5 * scale)), alpha=56)
     return card
 
 
@@ -111,13 +130,13 @@ def _flat_secondary_btn_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
         f"QPushButton {{"
-        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-        f"  border:1px solid {theme.BORDER_COLOR}; outline:none; border-radius:14px;"
+        f"  background:{_DASH_SURFACE_BG}; color:{_DASH_TEXT_PRIMARY};"
+        f"  border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 110)}; outline:none; border-radius:14px;"
         f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
         f"}}"
-        f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 70)}; }}"
-        f"QPushButton:pressed {{ background:#E7EEF7; }}"
-        f"QPushButton:disabled {{ background:#E5EAF2; color:#97A3B6; border-color:#E5EAF2; }}"
+        f"QPushButton:hover {{ background:#101D34; border-color:{_NEON_PERIOD_COLORS['weekly']}; }}"
+        f"QPushButton:pressed {{ background:#142744; }}"
+        f"QPushButton:disabled {{ background:#0F172A; color:#64748B; border-color:#1E293B; }}"
     )
 
 
@@ -126,16 +145,18 @@ def _field_style(scale: float) -> str:
     radius = max(12, int(14 * scale))
     return (
         f"QComboBox {{"
-        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-        f"  border:1px solid {theme.BORDER_COLOR}; border-radius:{radius}px;"
+        f"  background:{_DASH_SURFACE_BG}; color:{_DASH_TEXT_PRIMARY};"
+        f"  border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 92)}; border-radius:{radius}px;"
         f"  padding:8px 28px 8px 12px; font-size:{fs}pt; font-weight:600;"
         f"}}"
-        f"QComboBox:hover {{ border-color:{_rgba(theme.PRIMARY, 74)}; }}"
-        f"QComboBox:focus {{ border-color:{_rgba(theme.PRIMARY, 120)}; }}"
+        f"QComboBox:hover {{ border-color:{_NEON_PERIOD_COLORS['weekly']}; }}"
+        f"QComboBox:focus {{ border-color:{_NEON_PERIOD_COLORS['daily']}; }}"
         f"QComboBox::drop-down {{ border:none; width:24px; }}"
         f"QComboBox QAbstractItemView {{"
-        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-        f"  border:1px solid {theme.BORDER_COLOR}; selection-background-color:{_rgba(theme.PRIMARY, 38)};"
+        f"  background:{_DASH_SURFACE_BG}; color:{_DASH_TEXT_PRIMARY};"
+        f"  border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 92)};"
+        f"  selection-background-color:{_rgba(_NEON_PERIOD_COLORS['monthly'], 56)};"
+        f"  selection-color:{_DASH_TEXT_PRIMARY};"
         f"}}"
     )
 
@@ -624,7 +645,7 @@ class DashboardView(QWidget):
         info_card = _make_shadow_card(
             s,
             theme.CARD_BG,
-            border_color=None,
+            border_color=_NEON_PERIOD_COLORS["monthly"],
             radius=max(16, int(18 * s)),
             hover_background=theme.CARD_BG,
         )
@@ -635,12 +656,18 @@ class DashboardView(QWidget):
 
         date_hint = QLabel("DATA ATUAL")
         date_hint.setProperty("muted", "1")
-        date_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;")
+        date_hint.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent; color:{_DASH_TEXT_MUTED};"
+        )
         self.date_label = QLabel(_format_header_date())
-        self.date_label.setStyleSheet(f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;")
+        self.date_label.setStyleSheet(
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent; color:{_DASH_TEXT_PRIMARY};"
+        )
         self.updated_label = QLabel("Atualizando dados...")
         self.updated_label.setProperty("muted", "1")
-        self.updated_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
+        self.updated_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent; color:{_DASH_TEXT_MUTED};"
+        )
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
@@ -660,8 +687,8 @@ class DashboardView(QWidget):
         self.btn_guide.setFixedSize(sz_g, sz_g)
         self.btn_guide.setStyleSheet(
             f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
-            f"color:{theme.TEXT_MEDIUM}; background:transparent;"
-            f"border:1px solid {theme.BORDER_COLOR};"
+            f"color:{_DASH_TEXT_MUTED}; background:transparent;"
+            f"border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 102)};"
             f"border-radius:{sz_g // 2}px; padding:0;"
         )
         self.btn_guide.clicked.connect(self.guide_requested)
@@ -804,7 +831,7 @@ class DashboardView(QWidget):
         card = _make_shadow_card(
             s,
             theme.CARD_BG,
-            border_color=None,
+            border_color=color,
             radius=max(18, int(20 * s)),
             hover_background=theme.CARD_BG,
         )
@@ -816,6 +843,7 @@ class DashboardView(QWidget):
         value_label = QLabel("-")
         value_label.setStyleSheet(
             f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
+            f"color:{_DASH_TEXT_PRIMARY};"
         )
         value_label.setWordWrap(True)
 
@@ -823,12 +851,15 @@ class DashboardView(QWidget):
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
             f"font-size:{max(9, int(11 * s))}pt; font-weight:700; background:transparent; border:none;"
+            f"color:{_DASH_TEXT_PRIMARY};"
         )
 
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
         helper_label.setProperty("muted", "1")
-        helper_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent; border:none;")
+        helper_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent; border:none; color:{_DASH_TEXT_MUTED};"
+        )
 
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
@@ -884,7 +915,7 @@ class DashboardView(QWidget):
         card = _make_shadow_card(
             s,
             theme.CARD_BG,
-            border_color=None,
+            border_color=accent_color,
             radius=max(18, int(20 * s)),
             hover_background=theme.CARD_BG,
         )
@@ -904,12 +935,15 @@ class DashboardView(QWidget):
         title_label = QLabel(title)
         title_label.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
+            f"color:{_DASH_TEXT_PRIMARY};"
         )
 
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
         subtitle_label.setProperty("muted", "1")
-        subtitle_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
+        subtitle_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent; color:{_DASH_TEXT_MUTED};"
+        )
 
         layout.addWidget(accent)
         layout.addWidget(title_label)
@@ -933,7 +967,7 @@ class DashboardView(QWidget):
         card = _make_shadow_card(
             s,
             theme.CARD_BG,
-            border_color=None,
+            border_color=accent_color,
             radius=max(18, int(20 * s)),
             hover_background=theme.CARD_BG,
         )
@@ -960,6 +994,7 @@ class DashboardView(QWidget):
         title_label = QLabel(title)
         title_label.setStyleSheet(
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
+            f"color:{_DASH_TEXT_PRIMARY};"
         )
 
         period_combo = QComboBox()
@@ -991,7 +1026,9 @@ class DashboardView(QWidget):
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
         subtitle_label.setProperty("muted", "1")
-        subtitle_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; background:transparent;")
+        subtitle_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent; color:{_DASH_TEXT_MUTED};"
+        )
 
         title_row.addWidget(title_label, 1)
         if extra_combo is not None:
@@ -1018,6 +1055,7 @@ class DashboardView(QWidget):
         selector_label = QLabel("PERIODO DO COMPARATIVO:")
         selector_label.setStyleSheet(
             f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
+            f"color:{_DASH_TEXT_PRIMARY};"
         )
         selector_row.addWidget(selector_label)
 
@@ -1147,28 +1185,30 @@ class DashboardView(QWidget):
 
         table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:none; outline:none; background:{theme.CARD_BG};"
-            f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
-            f"  color:{theme.BORDER_COLOR}; border-radius:14px;"
+            f"  border:none; outline:none; background:{_DASH_SURFACE_BG};"
+            f"  alternate-background-color:{_DASH_SURFACE_ALT};"
+            f"  color:{_DASH_TEXT_PRIMARY}; border-radius:14px;"
             f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"    stop:0 {_DASH_TABLE_HEADER_START}, stop:1 {_DASH_TABLE_HEADER_END});"
+            f"  color:{_DASH_TEXT_PRIMARY}; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
-            f"QHeaderView::section:hover {{ background:{theme.PRIMARY_HOVER}; }}"
+            f"QHeaderView::section:hover {{ background:{_DASH_TABLE_HEADER_END}; }}"
             f"QTableWidget::item {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"  background:{_DASH_SURFACE_BG}; color:{_DASH_TEXT_PRIMARY};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 26)};"
             f"}}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:alternate {{ background:{_DASH_SURFACE_ALT}; color:{_DASH_TEXT_PRIMARY}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(_NEON_PERIOD_COLORS['monthly'], 56)}; color:{_DASH_TEXT_PRIMARY}; }}"
         )
         pal = table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
-        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Base, QColor(_DASH_SURFACE_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(_DASH_SURFACE_ALT))
+        pal.setColor(QPalette.ColorRole.Text, QColor(_DASH_TEXT_PRIMARY))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(_DASH_TEXT_PRIMARY))
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
         apply_smooth_scroll(table)
@@ -1201,6 +1241,7 @@ class DashboardView(QWidget):
         label = QLabel(title)
         label.setStyleSheet(
             f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
+            f"color:{_DASH_TEXT_PRIMARY};"
         )
         layout.addWidget(label)
         layout.addWidget(table, 1)
@@ -1575,7 +1616,7 @@ class DashboardView(QWidget):
                     label = QLabel(_machine_status_label(machine_status))
                     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     label.setStyleSheet(
-                        f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                        f"background:{_rgba(color, 48)}; color:{color}; border-radius:6px;"
                         f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
                     table.setCellWidget(line, col, label)
@@ -1640,7 +1681,7 @@ class DashboardView(QWidget):
                     label = QLabel(theme.STATUS_LABELS.get(status, status or "-"))
                     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     label.setStyleSheet(
-                        f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                        f"background:{_rgba(color, 48)}; color:{color}; border-radius:6px;"
                         f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * self.scale))}pt;"
                     )
                     table.setCellWidget(line, col, label)
@@ -1655,34 +1696,36 @@ class DashboardView(QWidget):
         table.setSpan(0, 0, 1, table.columnCount())
         item = QTableWidgetItem(message)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        item.setForeground(QColor(theme.TEXT_MEDIUM))
+        item.setForeground(QColor(_DASH_TEXT_MUTED))
         table.setItem(0, 0, item)
 
     def _apply_table_style(self, table: QTableWidget) -> None:
         s = self.scale
         table.setStyleSheet(
             f"QTableWidget {{"
-            f"  border:none; outline:none; background:{theme.CARD_BG};"
-            f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
-            f"  color:{theme.BORDER_COLOR}; border-radius:14px;"
+            f"  border:none; outline:none; background:{_DASH_SURFACE_BG};"
+            f"  alternate-background-color:{_DASH_SURFACE_ALT};"
+            f"  color:{_DASH_TEXT_PRIMARY}; border-radius:14px;"
             f"  gridline-color:transparent; font-size:{max(8, int(9 * s))}pt;"
             f"}}"
             f"QHeaderView::section {{"
-            f"  background:{theme.PRIMARY}; color:#fff; padding:9px 10px;"
+            f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"    stop:0 {_DASH_TABLE_HEADER_START}, stop:1 {_DASH_TABLE_HEADER_END});"
+            f"  color:{_DASH_TEXT_PRIMARY}; padding:9px 10px;"
             f"  font-weight:800; font-size:{max(7, int(8 * s))}pt; border:none;"
             f"}}"
             f"QTableWidget::item {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-            f"  padding:7px 6px; border-bottom:1px solid {_rgba(theme.PRIMARY, 18)};"
+            f"  background:{_DASH_SURFACE_BG}; color:{_DASH_TEXT_PRIMARY};"
+            f"  padding:7px 6px; border-bottom:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 26)};"
             f"}}"
-            f"QTableWidget::item:alternate {{ background:{theme.TABLE_ALT_ROW}; color:{theme.TEXT_DARK}; }}"
-            f"QTableWidget::item:selected {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.TEXT_DARK}; }}"
+            f"QTableWidget::item:alternate {{ background:{_DASH_SURFACE_ALT}; color:{_DASH_TEXT_PRIMARY}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(_NEON_PERIOD_COLORS['monthly'], 56)}; color:{_DASH_TEXT_PRIMARY}; }}"
         )
         pal = table.palette()
-        pal.setColor(QPalette.ColorRole.Base, QColor(theme.CARD_BG))
-        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(theme.TABLE_ALT_ROW))
-        pal.setColor(QPalette.ColorRole.Text, QColor(theme.TEXT_DARK))
-        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Base, QColor(_DASH_SURFACE_BG))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(_DASH_SURFACE_ALT))
+        pal.setColor(QPalette.ColorRole.Text, QColor(_DASH_TEXT_PRIMARY))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(_DASH_TEXT_PRIMARY))
         table.setPalette(pal)
         table.viewport().setAutoFillBackground(True)
 
@@ -1701,7 +1744,7 @@ class DashboardView(QWidget):
                     machine_status = ""
                 color = _machine_status_color(machine_status)
                 widget.setStyleSheet(
-                    f"background:{_tint(color, 50)}; color:{color}; border-radius:6px;"
+                    f"background:{_rgba(color, 48)}; color:{color}; border-radius:6px;"
                     f"font-weight:700; padding:4px 10px;"
                     f"font-size:{max(7, int(8 * self.scale))}pt;"
                 )
@@ -1714,6 +1757,18 @@ class DashboardView(QWidget):
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
         self._page_content.setStyleSheet(f"QWidget#dashboardContent {{ background:{bg}; }}")
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_guide.setStyleSheet(
+            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+            f"color:{_DASH_TEXT_MUTED}; background:transparent;"
+            f"border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 102)};"
+            f"border-radius:{self.btn_guide.width() // 2}px; padding:0;"
+        )
+        self.date_label.setStyleSheet(
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent; color:{_DASH_TEXT_PRIMARY};"
+        )
+        self.updated_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent; color:{_DASH_TEXT_MUTED};"
+        )
         self.error_label.setStyleSheet(
             f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
             f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
@@ -1750,6 +1805,7 @@ class DashboardView(QWidget):
         for lbl in self._metric_labels.values():
             lbl.setStyleSheet(
                 f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
+                f"color:{_DASH_TEXT_PRIMARY};"
             )
         for chart in [
             getattr(self, "production_destination_chart", None),
