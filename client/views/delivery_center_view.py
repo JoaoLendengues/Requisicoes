@@ -999,3 +999,12 @@ class DeliveryCenterView(QWidget):
         )
         self._apply_table_style(self.table)
         self._apply_table_style(self.completed_table)
+
+        # Re-polish em todos os widgets filhos. Isso força o Qt a reaplicar
+        # o QSS global (que ja foi atualizado em theme.global_style()) sobre
+        # widgets que tem setStyleSheet inline sem cor — caso dos labels
+        # de metric cards desta tela.
+        from PySide6.QtWidgets import QWidget
+        for w in self.findChildren(QWidget):
+            w.style().unpolish(w)
+            w.style().polish(w)

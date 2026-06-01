@@ -1797,3 +1797,20 @@ class DashboardView(QWidget):
         ]:
             if chart is not None:
                 chart.update()
+
+        # Reaplica o gradiente em todos os cards do dashboard. Sem isso, ao
+        # trocar tema o gradient (gravado uma unica vez via _make_shadow_card)
+        # fica com a paleta antiga.
+        card_qss = (
+            f"QFrame#dashboardCard {{"
+            f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            f"    stop:0 {theme.PANEL_CARD_BG_START},"
+            f"    stop:0.55 {theme.PANEL_CARD_BG_MID},"
+            f"    stop:1 {theme.PANEL_CARD_BG_END});"
+            f"  border:1px solid {_rgba(theme.PANEL_BORDER_SOFT, 126)};"
+            f"  border-radius:{max(18, int(20 * s))}px;"
+            f"}}"
+            f"QFrame#dashboardCard:hover {{ border-color:{_rgba(theme.PANEL_BORDER_SOFT, 210)}; }}"
+        )
+        for card in self.findChildren(QFrame, "dashboardCard"):
+            card.setStyleSheet(card_qss)
