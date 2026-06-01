@@ -22,8 +22,11 @@ class StatusBadge(QLabel):
         label = theme.STATUS_LABELS.get(status, status.upper())
         fs = max(8, int(10 * self.scale))
         self.setText(label.upper())
+        # Fundo transparente para herdar o card pai (claro ou escuro), sem
+        # destacar como pílula sobreposta. A semântica de status fica na cor
+        # do texto e da borda.
         self.setStyleSheet(
-            f"background:{_rgba(color, 48)}; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"background:transparent; color:{color};"
             f"border:1px solid {_rgba(color, 155)}; border-radius:12px;"
             f"padding:4px 12px; font-size:{fs}pt; font-weight:700;"
         )

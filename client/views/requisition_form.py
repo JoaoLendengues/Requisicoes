@@ -198,6 +198,24 @@ def _req_input_style(scale: float, *, bold: bool = False, accent: str | None = N
     )
 
 
+def _header_ped_input_style(scale: float) -> str:
+    """Estilo do PED no cabeçalho: fundo transparente para herdar o card
+    (claro ou escuro), sem destacar como uma 'caixinha' a mais."""
+    fs = max(9, int(10 * scale))
+    radius = max(10, int(12 * scale))
+    return (
+        f"QLineEdit {{"
+        f"  background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {theme.PANEL_BORDER_SOFT}; border-radius:{radius}px;"
+        f"  padding:7px 10px; font-size:{fs}pt; font-weight:700;"
+        f"  selection-background-color:{_rgba(theme.PANEL_NEON_PRIMARY, 64)};"
+        f"  selection-color:{theme.PANEL_TEXT_PRIMARY};"
+        f"}}"
+        f"QLineEdit:hover {{ border-color:{theme.PANEL_NEON_PRIMARY}; }}"
+        f"QLineEdit:focus {{ border-color:{theme.PANEL_NEON_SECONDARY}; }}"
+    )
+
+
 def _req_text_edit_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     return (
@@ -1924,7 +1942,7 @@ class RequisitionForm(QWidget):
         self._ped_max_width = max(180, int(240*s))
         self.input_ped.setFixedWidth(self._ped_min_width)
         self.input_ped.setFixedHeight(max(30, int(36*s)))
-        self.input_ped.setStyleSheet(_req_input_style(s, bold=True, accent=theme.PANEL_NEON_PRIMARY))
+        self.input_ped.setStyleSheet(_header_ped_input_style(s))
         # Apenas dígitos permitidos
         self.input_ped.setValidator(
             QRegularExpressionValidator(QRegularExpression(r"\d*"))
@@ -3276,7 +3294,7 @@ class RequisitionForm(QWidget):
         self._page_scroll.setStyleSheet(f"QScrollArea {{ background:{bg}; border:none; }}")
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
         self._page_content.setStyleSheet(f"QWidget#requisitionFormContent {{ background:{bg}; }}")
-        self.input_ped.setStyleSheet(_req_input_style(s, bold=True, accent=theme.PANEL_NEON_PRIMARY))
+        self.input_ped.setStyleSheet(_header_ped_input_style(s))
         self.input_obs.setStyleSheet(_req_text_edit_style(s))
         self.input_obra.setStyleSheet(_req_input_style(s))
         self.input_prazo.setStyleSheet(_req_input_style(s))
