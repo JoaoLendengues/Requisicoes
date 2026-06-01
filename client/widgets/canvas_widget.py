@@ -329,6 +329,9 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         bandeja_name = str(d.get("preset_bandeja_name") or "").strip().lower()
         if bandeja_name in _BANDEJA_PRESET_LABELS:
             path_meta["preset_bandeja_name"] = bandeja_name
+        cantoneira_name = str(d.get("preset_cantoneira_name") or "").strip().lower()
+        if cantoneira_name in _CANTONEIRA_PRESET_LABELS:
+            path_meta["preset_cantoneira_name"] = cantoneira_name
         vector_nodes = d.get("vector_pen_nodes")
         if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
             path_meta["vector_pen_nodes"] = vector_nodes
@@ -5758,6 +5761,9 @@ class DrawingCanvas(QWidget):
                 bandeja_name = str(meta.get("preset_bandeja_name") or "").strip().lower()
                 if bandeja_name in _BANDEJA_PRESET_LABELS:
                     payload["preset_bandeja_name"] = bandeja_name
+                cantoneira_name = str(meta.get("preset_cantoneira_name") or "").strip().lower()
+                if cantoneira_name in _CANTONEIRA_PRESET_LABELS:
+                    payload["preset_cantoneira_name"] = cantoneira_name
                 vector_nodes = meta.get("vector_pen_nodes")
                 if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
                     payload["vector_pen_nodes"] = vector_nodes
