@@ -78,7 +78,6 @@ _CALHA_PRESET_LABELS = {
     "calha_2_aba": "Calha com 2 Aba",
     "calha_abas_dobrada": "Calha com Abas Dobrada",
     "calha_modulada": "Calha Modulada",
-    "calha_abas_dobradas": "Calha com Abas Dobradas",
 }
 
 
@@ -3998,22 +3997,6 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(120.0, -52.0))
             path.lineTo(QPointF(10.0, -52.0))
             path.lineTo(QPointF(10.0, -8.0))
-        elif preset == "calha_abas_dobradas":
-            # Perfil com abas inclinadas e dobras nas pontas (tipo "gancho").
-            path.moveTo(QPointF(-150.0, -66.0))
-            path.lineTo(QPointF(-108.0, -30.0))
-            path.lineTo(QPointF(-108.0, 72.0))
-            path.lineTo(QPointF(108.0, 72.0))
-            path.lineTo(QPointF(108.0, -30.0))
-            path.lineTo(QPointF(150.0, -66.0))
-            path.moveTo(QPointF(-150.0, -76.0))
-            path.lineTo(QPointF(-150.0, -66.0))
-            path.moveTo(QPointF(150.0, -76.0))
-            path.lineTo(QPointF(150.0, -66.0))
-            path.moveTo(QPointF(-144.0, -60.0))
-            path.lineTo(QPointF(-118.0, -36.0))
-            path.moveTo(QPointF(144.0, -60.0))
-            path.lineTo(QPointF(118.0, -36.0))
 
         return path
 
@@ -4062,7 +4045,6 @@ class DrawingCanvas(QWidget):
             "calha_2_aba",
             "calha_abas_dobrada",
             "calha_modulada",
-            "calha_abas_dobradas",
         ):
             item = QListWidgetItem(_CALHA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
