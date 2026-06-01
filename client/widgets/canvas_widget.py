@@ -108,6 +108,22 @@ _CANTONEIRA_PRESET_LABELS = {
     "cantoneira_7": "Cantoneira 7",
     "cantoneira_8": "Cantoneira 8",
 }
+_CHAPA_PRESET_LABELS = {
+    "chapa_1": "Corte de Chapa 1",
+    "chapa_2": "Chapa Dobrada 2",
+    "chapa_3": "Corte em Chapa 3",
+    "chapa_4": "Corte em Chapa 4",
+    "chapa_5": "Corte em Chapa 5",
+    "chapa_6": "Corte em Chapa 6",
+    "chapa_7": "Corte em Chapa 7",
+    "chapa_8": "Corte em Chapa 8",
+    "chapa_9": "Corte em Chapa 9",
+    "chapa_10": "Corte em Chapa 10",
+    "chapa_11": "Corte em Chapa 11",
+    "chapa_12": "Corte em Chapa 12",
+    "chapa_13": "Corte em Chapa 13",
+    "chapa_14": "Corte em Chapa 14",
+}
 
 
 # Limita a maior dimensão de imagens inseridas/coladas no canvas antes de
@@ -332,6 +348,9 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         cantoneira_name = str(d.get("preset_cantoneira_name") or "").strip().lower()
         if cantoneira_name in _CANTONEIRA_PRESET_LABELS:
             path_meta["preset_cantoneira_name"] = cantoneira_name
+        chapa_name = str(d.get("preset_chapa_name") or "").strip().lower()
+        if chapa_name in _CHAPA_PRESET_LABELS:
+            path_meta["preset_chapa_name"] = chapa_name
         vector_nodes = d.get("vector_pen_nodes")
         if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
             path_meta["vector_pen_nodes"] = vector_nodes
@@ -3765,6 +3784,11 @@ class DrawingCanvas(QWidget):
         btn_cantoneira.setToolTip("Inserir modelo de cantoneira")
         btn_cantoneira.clicked.connect(self._open_cantoneira_popup)
         btn_cantoneira.setStyleSheet(self._tool_btn_style())
+        btn_chapas = QPushButton("Chapas")
+        btn_chapas.setFixedHeight(fh)
+        btn_chapas.setToolTip("Inserir modelo de chapa")
+        btn_chapas.clicked.connect(self._open_chapa_popup)
+        btn_chapas.setStyleSheet(self._tool_btn_style())
 
         btn_dim = QPushButton("MM")
         btn_dim.setFixedHeight(fh)
@@ -3789,6 +3813,7 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_calhas)
         row2.addWidget(btn_bandeja)
         row2.addWidget(btn_cantoneira)
+        row2.addWidget(btn_chapas)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
@@ -5505,6 +5530,235 @@ class DrawingCanvas(QWidget):
         self._redo_stack.clear()
         self.changed.emit()
 
+    def _build_chapa_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+
+        if preset == "chapa_1":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-90.0, -80.0))
+            path.lineTo(QPointF(170.0, -10.0))
+            path.lineTo(QPointF(170.0, 90.0))
+            path.lineTo(QPointF(-90.0, 130.0))
+            path.lineTo(QPointF(-90.0, -80.0))
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(60.0, -10.0))
+            path.lineTo(QPointF(170.0, -10.0))
+        elif preset == "chapa_2":
+            path.moveTo(QPointF(-150.0, 120.0))
+            path.lineTo(QPointF(-150.0, 20.0))
+            path.lineTo(QPointF(-20.0, 20.0))
+            path.lineTo(QPointF(80.0, -60.0))
+            path.lineTo(QPointF(80.0, -150.0))
+            path.lineTo(QPointF(-20.0, -150.0))
+            path.lineTo(QPointF(-150.0, 20.0))
+            path.moveTo(QPointF(-20.0, 20.0))
+            path.lineTo(QPointF(-20.0, -70.0))
+            path.lineTo(QPointF(150.0, -150.0))
+            path.lineTo(QPointF(150.0, -120.0))
+            path.lineTo(QPointF(-20.0, -40.0))
+            path.lineTo(QPointF(-20.0, -70.0))
+        elif preset == "chapa_3":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-20.0, 10.0))
+            path.lineTo(QPointF(-20.0, 130.0))
+        elif preset == "chapa_4":
+            path.moveTo(QPointF(-20.0, 130.0))
+            path.lineTo(QPointF(-20.0, 10.0))
+            path.lineTo(QPointF(130.0, -80.0))
+        elif preset == "chapa_5":
+            path.moveTo(QPointF(80.0, -80.0))
+            path.lineTo(QPointF(80.0, 20.0))
+            path.lineTo(QPointF(-90.0, 130.0))
+        elif preset == "chapa_6":
+            path.moveTo(QPointF(-80.0, -80.0))
+            path.lineTo(QPointF(-80.0, 20.0))
+            path.lineTo(QPointF(90.0, 130.0))
+        elif preset == "chapa_7":
+            path.moveTo(QPointF(-40.0, -10.0))
+            path.lineTo(QPointF(-40.0, 90.0))
+            path.lineTo(QPointF(60.0, 190.0))
+            path.moveTo(QPointF(-40.0, -10.0))
+            path.lineTo(QPointF(60.0, -110.0))
+        elif preset == "chapa_8":
+            path.moveTo(QPointF(-100.0, 40.0))
+            path.lineTo(QPointF(100.0, 40.0))
+            path.lineTo(QPointF(180.0, 120.0))
+            path.moveTo(QPointF(-100.0, 40.0))
+            path.lineTo(QPointF(-180.0, 120.0))
+        elif preset == "chapa_9":
+            path.moveTo(QPointF(40.0, -10.0))
+            path.lineTo(QPointF(40.0, 90.0))
+            path.lineTo(QPointF(-60.0, 190.0))
+            path.moveTo(QPointF(40.0, -10.0))
+            path.lineTo(QPointF(-60.0, -110.0))
+        elif preset == "chapa_10":
+            path.moveTo(QPointF(-180.0, -40.0))
+            path.lineTo(QPointF(-100.0, 40.0))
+            path.lineTo(QPointF(100.0, 40.0))
+            path.lineTo(QPointF(180.0, -40.0))
+        elif preset == "chapa_11":
+            path.moveTo(QPointF(80.0, -120.0))
+            path.lineTo(QPointF(180.0, -120.0))
+            path.lineTo(QPointF(180.0, 120.0))
+            path.lineTo(QPointF(-20.0, 120.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(80.0, -10.0))
+            path.lineTo(QPointF(80.0, -120.0))
+        elif preset == "chapa_12":
+            path.moveTo(QPointF(-180.0, -120.0))
+            path.lineTo(QPointF(-80.0, -120.0))
+            path.lineTo(QPointF(-80.0, -10.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(20.0, 120.0))
+            path.lineTo(QPointF(-180.0, 120.0))
+            path.lineTo(QPointF(-180.0, -120.0))
+        elif preset == "chapa_13":
+            path.moveTo(QPointF(-180.0, -120.0))
+            path.lineTo(QPointF(20.0, -120.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(-80.0, -10.0))
+            path.lineTo(QPointF(-80.0, 120.0))
+            path.lineTo(QPointF(-180.0, 120.0))
+            path.lineTo(QPointF(-180.0, -120.0))
+        elif preset == "chapa_14":
+            path.moveTo(QPointF(180.0, -120.0))
+            path.lineTo(QPointF(-20.0, -120.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(80.0, -10.0))
+            path.lineTo(QPointF(80.0, 120.0))
+            path.lineTo(QPointF(180.0, 120.0))
+            path.lineTo(QPointF(180.0, -120.0))
+
+        return path
+
+    def _chapa_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_chapa_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_chapa_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Chapa")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de chapa:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "chapa_1",
+            "chapa_2",
+            "chapa_3",
+            "chapa_4",
+            "chapa_5",
+            "chapa_6",
+            "chapa_7",
+            "chapa_8",
+            "chapa_9",
+            "chapa_10",
+            "chapa_11",
+            "chapa_12",
+            "chapa_13",
+            "chapa_14",
+        ):
+            item = QListWidgetItem(_CHAPA_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._chapa_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_chapa_preset(preset)
+
+    def _insert_chapa_preset(self, preset: str):
+        if preset not in _CHAPA_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_chapa_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_chapa_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
     # Limpar
     def _clear(self):
         self.scene.cancel_angle_mode()
@@ -5932,6 +6186,9 @@ class DrawingCanvas(QWidget):
                 cantoneira_name = str(meta.get("preset_cantoneira_name") or "").strip().lower()
                 if cantoneira_name in _CANTONEIRA_PRESET_LABELS:
                     payload["preset_cantoneira_name"] = cantoneira_name
+                chapa_name = str(meta.get("preset_chapa_name") or "").strip().lower()
+                if chapa_name in _CHAPA_PRESET_LABELS:
+                    payload["preset_chapa_name"] = chapa_name
                 vector_nodes = meta.get("vector_pen_nodes")
                 if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
                     payload["vector_pen_nodes"] = vector_nodes
