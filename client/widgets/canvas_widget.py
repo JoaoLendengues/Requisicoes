@@ -1265,7 +1265,7 @@ class DrawingScene(QGraphicsScene):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(vr)
 
-        # Handles (cantos + laterais) â€” oculta quando o item 3D jÃ¡ teve resize finalizado.
+        # Handles (cantos + laterais) — oculta quando o item 3D jÃ¡ teve resize finalizado.
         if self._ft_resize_allowed_for_current_selection():
             hs = self.FT_HANDLE_SIZE
             painter.setPen(QPen(QColor("#1A73E8"), 1.5))
@@ -2813,7 +2813,7 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.CURVE:
-            # Fase 1: inÃ­cio â€” define ponto inicial da linha base
+            # Fase 1: inÃ­cio — define ponto inicial da linha base
             self._curve_draw_phase = 1
             self._curve_bend_count = 0
             self._curve_dragging = True
@@ -3712,7 +3712,7 @@ class DrawingCanvas(QWidget):
 
         row2.addSpacing(8)
 
-        btn_img = QPushButton("ðŸ–¼ï¸ Imagem")
+        btn_img = QPushButton("🖼️ Imagem")
         btn_img.setFixedHeight(fh)
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
@@ -3911,7 +3911,7 @@ class DrawingCanvas(QWidget):
             if btn in special_btns:
                 continue
             # MantÃ©m botÃµes com estilo custom (ex.: que tenham background:transparent
-            # no QSS atual) â€” re-aplicar o estilo padrÃ£o a TODOS dÃ¡ um look uniforme,
+            # no QSS atual) — re-aplicar o estilo padrÃ£o a TODOS dÃ¡ um look uniforme,
             # que Ã© o que queremos quando troca o tema.
             btn.setStyleSheet(tool_style)
 
@@ -5831,7 +5831,7 @@ class CanvasPreview(QGraphicsView):
     def set_json(self, data: str):
         self._last_result = load_canvas_scene(self._scene, data, selectable=False)
         if self._last_result["items"] == 0:
-            placeholder = self._scene.addText("ðŸ–¼ï¸ Nenhum desenho salvo")
+            placeholder = self._scene.addText("🖼️ Nenhum desenho salvo")
             placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
             font = QFont(theme.FONT_PRIMARY, max(9, int(10 * self.scale_factor)))
             placeholder.setFont(font)
@@ -5849,11 +5849,11 @@ class CanvasPreview(QGraphicsView):
         self.fitInView(rect.adjusted(-10, -10, 10, 10), Qt.AspectRatioMode.KeepAspectRatio)
 
     def apply_theme(self) -> None:
-        """Reaplica o tema corrente â€” chamado pela view quando troca claro/escuro."""
+        """Reaplica o tema corrente — chamado pela view quando troca claro/escuro."""
         self.setStyleSheet(
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
-        # Atualiza o placeholder "ðŸ–¼ï¸ Nenhum desenho salvo" se estiver presente.
+        # Atualiza o placeholder "🖼️ Nenhum desenho salvo" se estiver presente.
         for item in self._scene.items():
             try:
                 from PySide6.QtWidgets import QGraphicsTextItem
