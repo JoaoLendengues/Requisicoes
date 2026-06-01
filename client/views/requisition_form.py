@@ -48,6 +48,36 @@ from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_sc
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
 ALL_DATES_SENTINEL = QDate(2000, 1, 1)
+_REQ_CARD_BG_START = "#07111E"
+_REQ_CARD_BG_MID = "#0A1628"
+_REQ_CARD_BG_END = "#111F36"
+_REQ_SURFACE_BG = "#0B1324"
+_REQ_SURFACE_ALT = "#10203A"
+_REQ_BORDER_SOFT = "#24364F"
+_REQ_TEXT_PRIMARY = "#F8FAFC"
+_REQ_TEXT_MUTED = "#93A4BD"
+_REQ_NEON_PRIMARY = "#22D3EE"
+_REQ_NEON_SECONDARY = "#FB7185"
+_REQ_NEON_TERTIARY = "#A3E635"
+_REQ_TABLE_HEADER_START = "#12233E"
+_REQ_TABLE_HEADER_END = "#1C3B63"
+
+
+def _rgba(color: str, alpha: int) -> str:
+    parsed = QColor(color)
+    return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
+
+
+def _req_dialog_style() -> str:
+    return (
+        f"QDialog {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {_REQ_CARD_BG_START}, stop:0.55 {_REQ_CARD_BG_MID}, stop:1 {_REQ_CARD_BG_END});"
+        f"  color:{_REQ_TEXT_PRIMARY}; border:1px solid {_rgba(_REQ_NEON_PRIMARY, 92)}; border-radius:16px;"
+        f"}}"
+        f"QDialog QWidget {{ color:{_REQ_TEXT_PRIMARY}; }}"
+        f"QLabel {{ background:transparent; color:{_REQ_TEXT_PRIMARY}; border:none; }}"
+    )
 
 
 # ── Worker genérico ───────────────────────────────────────────────────────────
@@ -139,15 +169,114 @@ def _emphasized_btn_style(base_style: str) -> str:
     return base_style + "QPushButton { font-weight:700; }"
 
 
+def _req_primary_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{_REQ_NEON_PRIMARY}; color:#04111F; border:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:800;"
+        f"}}"
+        f"QPushButton:hover {{ background:#67E8F9; }}"
+        f"QPushButton:pressed {{ background:#06B6D4; color:#021019; }}"
+        f"QPushButton:disabled {{ background:#164E63; color:#CFFAFE; }}"
+    )
+
+
+def _req_secondary_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QPushButton {{"
+        f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
+        f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; outline:none; border-radius:14px;"
+        f"  padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:#101D34; border-color:{_REQ_NEON_SECONDARY}; }}"
+        f"QPushButton:pressed {{ background:#142744; }}"
+        f"QPushButton:disabled {{ background:#0F172A; color:#64748B; border-color:#1E293B; }}"
+    )
+
+
+def _req_input_style(scale: float, *, bold: bool = False, accent: str | None = None) -> str:
+    fs = max(9, int(10 * scale))
+    radius = max(10, int(12 * scale))
+    border = accent or _REQ_BORDER_SOFT
+    weight = 700 if bold else 600
+    return (
+        f"QLineEdit, QDateEdit, QComboBox {{"
+        f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
+        f"  border:1px solid {border}; border-radius:{radius}px;"
+        f"  padding:7px 10px; font-size:{fs}pt; font-weight:{weight};"
+        f"  selection-background-color:{_rgba(_REQ_NEON_PRIMARY, 64)}; selection-color:{_REQ_TEXT_PRIMARY};"
+        f"}}"
+        f"QLineEdit:hover, QDateEdit:hover, QComboBox:hover {{ border-color:{_REQ_NEON_PRIMARY}; }}"
+        f"QLineEdit:focus, QDateEdit:focus, QComboBox:focus {{ border-color:{_REQ_NEON_SECONDARY}; }}"
+    )
+
+
+def _req_text_edit_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    return (
+        f"QTextEdit, QPlainTextEdit {{"
+        f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
+        f"  border:1px solid {_REQ_BORDER_SOFT}; border-radius:10px;"
+        f"  padding:6px 8px; font-size:{fs}pt;"
+        f"  selection-background-color:{_rgba(_REQ_NEON_PRIMARY, 64)}; selection-color:{_REQ_TEXT_PRIMARY};"
+        f"}}"
+        f"QTextEdit:hover, QPlainTextEdit:hover {{ border-color:{_REQ_NEON_PRIMARY}; }}"
+        f"QTextEdit:focus, QPlainTextEdit:focus {{ border-color:{_REQ_NEON_SECONDARY}; }}"
+    )
+
+
+def _req_checkbox_style(scale: float) -> str:
+    fs = max(9, int(11 * scale))
+    size = max(16, int(18 * scale))
+    return (
+        f"QCheckBox {{ color:{_REQ_TEXT_PRIMARY}; font-size:{fs}pt; border:none; spacing:8px; }}"
+        f"QCheckBox::indicator {{"
+        f"  width:{size}px; height:{size}px; border-radius:5px;"
+        f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 110)}; background:{_REQ_SURFACE_BG};"
+        f"}}"
+        f"QCheckBox::indicator:checked {{"
+        f"  background:{_REQ_NEON_PRIMARY}; border-color:{_REQ_NEON_PRIMARY};"
+        f"}}"
+    )
+
+
+def _req_search_drop_style(scale: float) -> str:
+    return (
+        f"QListWidget {{"
+        f"  background:{_REQ_SURFACE_BG};"
+        f"  border:2px solid {_REQ_NEON_PRIMARY}; border-radius:0 0 8px 8px;"
+        f"  font-size:{max(9,int(10*scale))}pt; outline:none;"
+        f"}}"
+        f"QListWidget::item {{ padding:7px 12px; color:{_REQ_TEXT_PRIMARY}; }}"
+        f"QListWidget::item:hover, QListWidget::item:selected"
+        f" {{ background:{_rgba(_REQ_NEON_PRIMARY, 64)}; color:{_REQ_TEXT_PRIMARY}; }}"
+    )
+
+
+def _req_round_icon_btn_style(scale: float, diameter: int) -> str:
+    return (
+        f"QPushButton {{"
+        f"  font-size:{max(10, int(11 * scale))}pt; font-weight:700;"
+        f"  color:{_REQ_TEXT_MUTED}; background:{_REQ_SURFACE_BG};"
+        f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 102)};"
+        f"  border-radius:{diameter // 2}px; padding:0;"
+        f"}}"
+        f"QPushButton:hover {{ color:{_REQ_TEXT_PRIMARY}; border-color:{_REQ_NEON_SECONDARY}; background:#101D34; }}"
+        f"QPushButton:pressed {{ background:#142744; }}"
+    )
+
+
 def _calendar_btn_style(scale: float) -> str:
     fs = max(11, int(13 * scale))
     return (
         f"QToolButton {{"
-        f"  background:{theme.PRIMARY}; color:#FFFFFF; border:none; border-radius:12px;"
+        f"  background:{_REQ_NEON_PRIMARY}; color:#04111F; border:none; border-radius:12px;"
         f"  font-size:{fs}pt; font-weight:700; padding:0px 2px;"
         f"}}"
-        f"QToolButton:hover {{ background:{theme.PRIMARY_HOVER}; }}"
-        f"QToolButton:pressed {{ background:#152D49; }}"
+        f"QToolButton:hover {{ background:#67E8F9; }}"
+        f"QToolButton:pressed {{ background:#06B6D4; }}"
     )
 
 
@@ -156,18 +285,20 @@ def _dialog_table_style(scale: float) -> str:
     head_fs = max(7, int(8 * scale))
     return (
         f"QTableWidget {{"
-        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-        f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
-        f"  alternate-background-color:{theme.TABLE_ALT_ROW};"
+        f"  background:{_REQ_SURFACE_BG}; color:{_REQ_TEXT_PRIMARY};"
+        f"  border:1px solid {_REQ_BORDER_SOFT}; border-radius:8px;"
+        f"  alternate-background-color:{_REQ_SURFACE_ALT};"
         f"  font-size:{body_fs}pt; gridline-color:transparent;"
         f"}}"
         f"QTableWidget::item {{ padding:8px 10px; border:none; }}"
-        f"QTableWidget::item:selected {{ background:rgba(30, 64, 175, 0.14); color:{theme.TEXT_DARK}; }}"
+        f"QTableWidget::item:selected {{ background:{_rgba(_REQ_NEON_PRIMARY, 56)}; color:{_REQ_TEXT_PRIMARY}; }}"
         f"QHeaderView::section {{"
-        f"  background:{theme.BORDER_COLOR}; color:{theme.TEXT_LIGHT};"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        f"    stop:0 {_REQ_TABLE_HEADER_START}, stop:1 {_REQ_TABLE_HEADER_END});"
+        f"  color:{_REQ_TEXT_PRIMARY};"
         f"  border:none; padding:8px 10px; font-size:{head_fs}pt; font-weight:700;"
         f"}}"
-        f"QTableCornerButton::section {{ background:{theme.BORDER_COLOR}; border:none; }}"
+        f"QTableCornerButton::section {{ background:{_REQ_TABLE_HEADER_START}; border:none; }}"
     )
 
 
@@ -250,12 +381,23 @@ def _make_card(parent=None) -> QFrame:
     card = QFrame(parent)
     card.setObjectName("reqCard")
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-    card.setProperty("theme_bg", "card_bordered")
-    card.setStyleSheet("QFrame#reqCard { border-radius:8px; }")
+    card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+    card.setProperty("theme_bg", "card")
+    card.setStyleSheet(
+        f"QFrame#reqCard {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {_REQ_CARD_BG_START}, stop:0.55 {_REQ_CARD_BG_MID}, stop:1 {_REQ_CARD_BG_END});"
+        f"  border:1px solid {_rgba(_REQ_NEON_PRIMARY, 82)};"
+        f"  border-radius:18px;"
+        f"}}"
+        f"QFrame#reqCard:hover {{ border-color:{_rgba(_REQ_NEON_SECONDARY, 180)}; }}"
+    )
     shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(10)
-    shadow.setOffset(0, 2)
-    shadow.setColor(QColor(0, 0, 0, 20))
+    shadow.setBlurRadius(28)
+    shadow.setOffset(0, 5)
+    glow = QColor("#020817")
+    glow.setAlpha(52)
+    shadow.setColor(glow)
     card.setGraphicsEffect(shadow)
     return card
 
@@ -265,7 +407,7 @@ def _field_label(text: str, scale: float) -> QLabel:
     lbl.setProperty("accent", "1")
     lbl.setStyleSheet(
         f"font-size:{max(7, int(8*scale))}pt; "
-        f"font-weight:bold; text-transform:uppercase; border:none;"
+        f"font-weight:700; text-transform:uppercase; border:none; color:{_REQ_TEXT_MUTED};"
     )
     return lbl
 
@@ -273,7 +415,7 @@ def _field_label(text: str, scale: float) -> QLabel:
 def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     lbl = QLabel(text)
     lbl.setStyleSheet(
-        f"font-size:{max(9, int(11*scale))}pt; font-weight:bold; border:none;"
+        f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none; color:{_REQ_TEXT_PRIMARY};"
     )
     return lbl
 
@@ -318,7 +460,7 @@ class ClientSearchBox(QWidget):
         self.input = QLineEdit()
         self.input.setPlaceholderText("Nome, código ou CPF/CNPJ...")
         self.input.setFixedHeight(max(30, int(36 * s)))
-        self.input.setStyleSheet(theme.input_style(s))
+        self.input.setStyleSheet(_req_input_style(s))
         self.input.textChanged.connect(self._on_text)
         self.input.installEventFilter(self)
         lay.addWidget(self.input)
@@ -329,14 +471,7 @@ class ClientSearchBox(QWidget):
             Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
         )
         self._drop.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._drop.setStyleSheet(
-            f"QListWidget {{ background:{theme.CARD_BG};"
-            f"border:2px solid {theme.PRIMARY}; border-radius:0 0 6px 6px;"
-            f"font-size:{max(9,int(10*s))}pt; outline:none; }}"
-            f"QListWidget::item {{ padding:7px 12px; color:{theme.TEXT_DARK}; }}"
-            f"QListWidget::item:hover, QListWidget::item:selected"
-            f" {{ background:{theme.PRIMARY}; color:#fff; }}"
-        )
+        self._drop.setStyleSheet(_req_search_drop_style(s))
         self._drop.itemClicked.connect(self._pick)
         self._drop.installEventFilter(self)
         self._drop.hide()
@@ -371,7 +506,7 @@ class ClientSearchBox(QWidget):
         self._drop.clear()
         loading = QListWidgetItem("  Buscando...")
         loading.setFlags(Qt.ItemFlag.NoItemFlags)
-        loading.setForeground(QColor(theme.TEXT_LIGHT))
+        loading.setForeground(QColor(_REQ_TEXT_MUTED))
         self._drop.addItem(loading)
         self._reposition()
         self._drop.show()
@@ -396,7 +531,7 @@ class ClientSearchBox(QWidget):
         self._drop.clear()
         it = QListWidgetItem("  Erro ao buscar — verifique a conexão")
         it.setFlags(Qt.ItemFlag.NoItemFlags)
-        it.setForeground(QColor(theme.TEXT_LIGHT))
+        it.setForeground(QColor(_REQ_NEON_SECONDARY))
         self._drop.addItem(it)
         self._reposition()
         self._drop.show()
@@ -409,7 +544,7 @@ class ClientSearchBox(QWidget):
         if not clients:
             it = QListWidgetItem("  Nenhum cliente encontrado")
             it.setFlags(Qt.ItemFlag.NoItemFlags)
-            it.setForeground(QColor(theme.TEXT_LIGHT))
+            it.setForeground(QColor(_REQ_TEXT_MUTED))
             self._drop.addItem(it)
         else:
             for c in clients:
@@ -579,15 +714,8 @@ class ClientSearchBox(QWidget):
 
     def apply_theme(self, scale: float | None = None) -> None:
         s = scale if scale is not None else self.scale
-        self.input.setStyleSheet(theme.input_style(s))
-        self._drop.setStyleSheet(
-            f"QListWidget {{ background:{theme.CARD_BG};"
-            f"border:2px solid {theme.PRIMARY}; border-radius:0 0 6px 6px;"
-            f"font-size:{max(9,int(10*s))}pt; outline:none; }}"
-            f"QListWidget::item {{ padding:7px 12px; color:{theme.TEXT_DARK}; }}"
-            f"QListWidget::item:hover, QListWidget::item:selected"
-            f" {{ background:{theme.PRIMARY}; color:#fff; }}"
-        )
+        self.input.setStyleSheet(_req_input_style(s))
+        self._drop.setStyleSheet(_req_search_drop_style(s))
 
 
 # ── Dialog do editor de desenho ───────────────────────────────────────────────
@@ -599,11 +727,7 @@ class CanvasDialog(QDialog):
         self.setWindowTitle("Editor de Desenho")
         self.setModal(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(
-            f"QDialog {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QDialog QWidget {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QLabel {{ background-color:transparent; }}"
-        )
+        self.setStyleSheet(_req_dialog_style())
 
         # Dimensiona na tela primária (posição definitiva aplicada no showEvent)
         self._pin_to_primary_screen()
@@ -621,12 +745,12 @@ class CanvasDialog(QDialog):
 
         btn_cancel = QPushButton("✕ Descartar alterações")
         btn_cancel.setFixedHeight(max(34, int(38 * scale)))
-        btn_cancel.setStyleSheet(theme.secondary_btn_style(scale))
+        btn_cancel.setStyleSheet(_req_secondary_btn_style(scale))
         btn_cancel.clicked.connect(self.reject)
 
         btn_ok = QPushButton("✓ Salvar desenho e fechar")
         btn_ok.setFixedHeight(max(34, int(38 * scale)))
-        btn_ok.setStyleSheet(theme.primary_btn_style(scale))
+        btn_ok.setStyleSheet(_req_primary_btn_style(scale))
         btn_ok.clicked.connect(self.accept)
 
         btn_row.addWidget(btn_cancel)
@@ -696,7 +820,7 @@ class _CanvasReadOnlyView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.setStyleSheet(
-            f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
+            f"border:1px solid {_rgba(_REQ_NEON_PRIMARY, 96)}; border-radius:12px; background:#fff;"
         )
         self.setMinimumHeight(max(300, int(420 * scale)))
 
@@ -744,11 +868,7 @@ class CanvasViewerDialog(QDialog):
         self.setWindowTitle("Visualizar Desenho")
         self.setModal(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(
-            f"QDialog {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QDialog QWidget {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QLabel {{ background-color:transparent; }}"
-        )
+        self.setStyleSheet(_req_dialog_style())
 
         from PySide6.QtWidgets import QApplication
         screen = QApplication.primaryScreen().availableGeometry()
@@ -761,24 +881,24 @@ class CanvasViewerDialog(QDialog):
         toolbar = QHBoxLayout()
         helper = QLabel("Visualização somente leitura. Use Ctrl + rolagem para zoom.")
         helper.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * scale))}pt;"
+            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9 * scale))}pt;"
         )
         toolbar.addWidget(helper)
         toolbar.addStretch()
 
         btn_zoom_out = QPushButton("Zoom -")
         btn_zoom_out.setFixedHeight(max(30, int(34 * scale)))
-        btn_zoom_out.setStyleSheet(theme.secondary_btn_style(scale))
+        btn_zoom_out.setStyleSheet(_req_secondary_btn_style(scale))
         toolbar.addWidget(btn_zoom_out)
 
         btn_zoom_in = QPushButton("Zoom +")
         btn_zoom_in.setFixedHeight(max(30, int(34 * scale)))
-        btn_zoom_in.setStyleSheet(theme.secondary_btn_style(scale))
+        btn_zoom_in.setStyleSheet(_req_secondary_btn_style(scale))
         toolbar.addWidget(btn_zoom_in)
 
         btn_fit = QPushButton("Ajustar")
         btn_fit.setFixedHeight(max(30, int(34 * scale)))
-        btn_fit.setStyleSheet(theme.secondary_btn_style(scale))
+        btn_fit.setStyleSheet(_req_secondary_btn_style(scale))
         toolbar.addWidget(btn_fit)
         layout.addLayout(toolbar)
 
@@ -790,7 +910,7 @@ class CanvasViewerDialog(QDialog):
         footer.addStretch()
         btn_close = QPushButton("Fechar")
         btn_close.setFixedHeight(max(34, int(38 * scale)))
-        btn_close.setStyleSheet(theme.primary_btn_style(scale))
+        btn_close.setStyleSheet(_req_primary_btn_style(scale))
         btn_close.clicked.connect(self.accept)
         footer.addWidget(btn_close)
         layout.addLayout(footer)
@@ -798,7 +918,7 @@ class CanvasViewerDialog(QDialog):
         result = load_canvas_scene(scene, json_data, selectable=False)
         if result.get("items", 0) == 0:
             placeholder = scene.addText("Nenhum desenho salvo para visualizar.")
-            placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
+            placeholder.setDefaultTextColor(QColor(_REQ_TEXT_MUTED))
             placeholder.setFont(QFont(theme.FONT_PRIMARY, max(9, int(10 * scale))))
             placeholder.setPos(20, 20)
         self.canvas_view.fit_scene()
@@ -814,7 +934,7 @@ class SignaturePad(QWidget):
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self._scale = scale
-        self._pen = QPen(QColor(theme.PRIMARY), max(2, int(2.4 * scale)))
+        self._pen = QPen(QColor("#0F172A"), max(2, int(2.4 * scale)))
         self._pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         self._pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         self._image = QImage()
@@ -988,11 +1108,11 @@ class SignaturePad(QWidget):
             if self._has_strokes
             else Qt.PenStyle.DashLine
         )
-        painter.setPen(QPen(QColor(theme.BORDER_COLOR), 1, border_style))
+        painter.setPen(QPen(QColor(_REQ_NEON_PRIMARY), 1, border_style))
         painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 6, 6)
 
         if not self._has_strokes:
-            painter.setPen(QColor(theme.TEXT_LIGHT))
+            painter.setPen(QColor(_REQ_TEXT_MUTED))
             painter.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self._scale))))
             painter.drawText(
                 self.rect(),
@@ -1011,10 +1131,7 @@ class SignatureDialog(QDialog):
         self.setWindowTitle("Assinatura do Cliente")
         self.setModal(True)
         self.setMinimumSize(max(460, int(600 * scale)), max(320, int(420 * scale)))
-        self.setStyleSheet(
-            f"QDialog {{ background-color:{theme.CONTENT_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QLabel {{ color:{theme.TEXT_DARK}; }}"
-        )
+        self.setStyleSheet(_req_dialog_style())
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(max(12, int(14 * scale)), max(12, int(14 * scale)),
@@ -1023,7 +1140,7 @@ class SignatureDialog(QDialog):
 
         hint = QLabel("Desenhe a assinatura abaixo com mouse ou caneta da mesa digitalizadora.")
         hint.setWordWrap(True)
-        hint.setStyleSheet(f"font-size:{max(8, int(9 * scale))}pt; color:{theme.TEXT_LIGHT};")
+        hint.setStyleSheet(f"font-size:{max(8, int(9 * scale))}pt; color:{_REQ_TEXT_MUTED};")
         layout.addWidget(hint)
 
         self.pad = SignaturePad(scale, self)
@@ -1034,19 +1151,19 @@ class SignatureDialog(QDialog):
 
         btn_clear = QPushButton("Limpar")
         btn_clear.setFixedHeight(max(30, int(34 * scale)))
-        btn_clear.setStyleSheet(theme.secondary_btn_style(scale))
+        btn_clear.setStyleSheet(_req_secondary_btn_style(scale))
         btn_clear.clicked.connect(lambda _checked=False: self.pad.clear())
         buttons.addWidget(btn_clear)
 
         btn_cancel = QPushButton("Cancelar")
         btn_cancel.setFixedHeight(max(30, int(34 * scale)))
-        btn_cancel.setStyleSheet(theme.secondary_btn_style(scale))
+        btn_cancel.setStyleSheet(_req_secondary_btn_style(scale))
         btn_cancel.clicked.connect(self.reject)
         buttons.addWidget(btn_cancel)
 
         self.btn_apply = QPushButton("Aplicar Assinatura")
         self.btn_apply.setFixedHeight(max(30, int(34 * scale)))
-        self.btn_apply.setStyleSheet(theme.primary_btn_style(scale))
+        self.btn_apply.setStyleSheet(_req_primary_btn_style(scale))
         self.btn_apply.clicked.connect(self._apply_signature)
         buttons.addWidget(self.btn_apply)
         layout.addLayout(buttons)
@@ -1093,6 +1210,9 @@ class RequisitionForm(QWidget):
 
     # ── Construção da UI ──────────────────────────────────────────────────────
     def _setup_ui(self):
+        self.setObjectName("requisitionFormView")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(f"QWidget#requisitionFormView {{ background:{theme.CONTENT_BG}; }}")
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -1103,10 +1223,13 @@ class RequisitionForm(QWidget):
         self._page_scroll.setStyleSheet(
             f"QScrollArea {{ background:{theme.CONTENT_BG}; border:none; }}"
         )
+        self._page_scroll.viewport().setStyleSheet(f"background:{theme.CONTENT_BG}; border:none;")
         root.addWidget(self._page_scroll)
 
         self._page_content = QWidget()
-        self._page_content.setStyleSheet(f"background:{theme.CONTENT_BG};")
+        self._page_content.setObjectName("requisitionFormContent")
+        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._page_content.setStyleSheet(f"QWidget#requisitionFormContent {{ background:{theme.CONTENT_BG}; }}")
         self._page_scroll.setWidget(self._page_content)
 
         layout = QVBoxLayout(self._page_content)
@@ -1129,7 +1252,7 @@ class RequisitionForm(QWidget):
         btn_calc = QPushButton("🧮 CALCULADORA DE PESO")
         btn_calc.setFixedHeight(max(42, int(48 * s)))
         btn_calc.setMinimumWidth(max(200, int(230 * s)))
-        btn_calc.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        btn_calc.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
         btn_calc.clicked.connect(self._open_weight_calculator)
         save_row.addWidget(btn_calc)
         self.btn_calc = btn_calc
@@ -1139,7 +1262,7 @@ class RequisitionForm(QWidget):
         btn_production = QPushButton("ENVIAR PARA PRODUÇÃO")
         btn_production.setFixedHeight(max(42, int(48 * s)))
         btn_production.setMinimumWidth(max(220, int(250 * s)))
-        btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        btn_production.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
         btn_production.clicked.connect(self._send_to_production)
         save_row.addWidget(btn_production)
         self.btn_production = btn_production
@@ -1150,7 +1273,7 @@ class RequisitionForm(QWidget):
         btn_whatsapp = QPushButton("ENVIAR WHATSAPP")
         btn_whatsapp.setFixedHeight(max(42, int(48 * s)))
         btn_whatsapp.setMinimumWidth(max(180, int(210 * s)))
-        btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        btn_whatsapp.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
         btn_whatsapp.clicked.connect(self._send_whatsapp_client)
         save_row.addWidget(btn_whatsapp)
         self.btn_whatsapp = btn_whatsapp
@@ -1161,7 +1284,7 @@ class RequisitionForm(QWidget):
         btn_print = QPushButton("IMPRIMIR")
         btn_print.setFixedHeight(max(42, int(48 * s)))
         btn_print.setMinimumWidth(max(180, int(210 * s)))
-        btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        btn_print.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
         self.btn_print = btn_print
         self._update_print_button_visual()
         btn_print.clicked.connect(self._print_requisition_pdf)
@@ -1172,7 +1295,7 @@ class RequisitionForm(QWidget):
         btn_save = QPushButton("SALVAR REQUISIÇÃO")
         btn_save.setFixedHeight(max(42, int(48 * s)))
         btn_save.setMinimumWidth(max(220, int(260 * s)))
-        btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))
+        btn_save.setStyleSheet(_emphasized_btn_style(_req_primary_btn_style(s)))
         btn_save.clicked.connect(self.save_requested.emit)
         save_row.addWidget(btn_save)
         self.btn_save = btn_save
@@ -1183,7 +1306,7 @@ class RequisitionForm(QWidget):
         self.lock_label.setVisible(False)
         self.lock_label.setWordWrap(True)
         self.lock_label.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
+            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
         )
         layout.addWidget(self.lock_label)
 
@@ -1346,36 +1469,32 @@ class RequisitionForm(QWidget):
         dialog.setWindowTitle("Pedido")
         dialog.setModal(True)
         dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        dialog.setStyleSheet(
-            f"QDialog {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:10px;"
-            f"}}"
-            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
-        )
+        dialog.setStyleSheet(_req_dialog_style())
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(10)
 
         lbl = QLabel("Digite o número do PED:")
-        lbl.setStyleSheet(f"font-size:{max(8, int(10 * self.scale))}pt;")
+        lbl.setStyleSheet(
+            f"font-size:{max(8, int(10 * self.scale))}pt; font-weight:700; color:{_REQ_TEXT_PRIMARY};"
+        )
         layout.addWidget(lbl)
 
         input_ped = QLineEdit(default_value)
         input_ped.setPlaceholderText("Ex.: 123456")
         input_ped.setValidator(QRegularExpressionValidator(QRegularExpression(r"\d*")))
-        input_ped.setStyleSheet(theme.input_style(self.scale))
+        input_ped.setStyleSheet(_req_input_style(self.scale, bold=True, accent=_REQ_NEON_PRIMARY))
         input_ped.setMinimumWidth(max(240, int(280 * self.scale)))
         layout.addWidget(input_ped)
 
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         btn_ok = QPushButton("Confirmar")
-        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        btn_ok.setStyleSheet(_req_primary_btn_style(self.scale))
         btn_ok.clicked.connect(dialog.accept)
         btn_cancel = QPushButton("Cancelar")
-        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.setStyleSheet(_req_secondary_btn_style(self.scale))
         btn_cancel.clicked.connect(dialog.reject)
         buttons.addWidget(btn_ok)
         buttons.addWidget(btn_cancel)
@@ -1470,11 +1589,7 @@ class RequisitionForm(QWidget):
         dialog.setWindowTitle("Buscar requisição")
         dialog.setModal(True)
         dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        dialog.setStyleSheet(
-            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-            f" border:1px solid {theme.BORDER_COLOR}; border-radius:10px; }}"
-            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
-        )
+        dialog.setStyleSheet(_req_dialog_style())
         dialog.setMinimumWidth(max(860, int(980 * s)))
 
         layout = QVBoxLayout(dialog)
@@ -1486,26 +1601,32 @@ class RequisitionForm(QWidget):
         filters_grid.setVerticalSpacing(max(6, int(8 * s)))
 
         lbl = QLabel("BUSCA POR PED, CLIENTE OU OBRA")
-        lbl.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:700;")
+        lbl.setStyleSheet(
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{_REQ_TEXT_PRIMARY};"
+        )
         search = QLineEdit()
         search.setPlaceholderText("Ex.: nome do cliente, obra ou 123456")
-        search.setStyleSheet(theme.input_style(s))
+        search.setStyleSheet(_req_input_style(s))
         search.setMinimumHeight(max(30, int(36 * s)))
         filters_grid.addWidget(lbl, 0, 0)
         filters_grid.addWidget(search, 1, 0)
 
         vendor_label = QLabel("VENDEDOR")
-        vendor_label.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:700;")
+        vendor_label.setStyleSheet(
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{_REQ_TEXT_PRIMARY};"
+        )
         vendor_search = QLineEdit()
         vendor_search.setPlaceholderText("Nome ou código do vendedor")
-        vendor_search.setStyleSheet(theme.input_style(s))
+        vendor_search.setStyleSheet(_req_input_style(s))
         vendor_search.setMinimumHeight(max(30, int(36 * s)))
         filters_grid.addWidget(vendor_label, 0, 1)
         filters_grid.addWidget(vendor_search, 1, 1)
         layout.addLayout(filters_grid)
 
         period_label = QLabel("Período de emissão")
-        period_label.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:700;")
+        period_label.setStyleSheet(
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{_REQ_TEXT_PRIMARY};"
+        )
         layout.addWidget(period_label)
 
         shortcuts = QLabel(
@@ -1513,13 +1634,13 @@ class RequisitionForm(QWidget):
         )
         shortcuts.setWordWrap(True)
         shortcuts.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         layout.addWidget(shortcuts)
 
         period_hint = QLabel("Filtro opcional. Use Delete para limpar a data do campo selecionado.")
         period_hint.setProperty("muted", "1")
-        period_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        period_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; color:{_REQ_TEXT_MUTED};")
         layout.addWidget(period_hint)
 
         today = local_now().date()
@@ -1545,7 +1666,7 @@ class RequisitionForm(QWidget):
         date_from.setDisplayFormat("dd/MM/yyyy")
         date_from.setCalendarPopup(False)
         date_from.setMinimumHeight(max(30, int(36 * s)))
-        date_from.setStyleSheet(theme.input_style(s))
+        date_from.setStyleSheet(_req_input_style(s))
 
         btn_date_from = QToolButton()
         btn_date_from.setText("📅")
@@ -1557,7 +1678,7 @@ class RequisitionForm(QWidget):
 
         until_label = QLabel("ATÉ")
         until_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; color:{theme.TEXT_MEDIUM};"
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; color:{_REQ_TEXT_MUTED};"
         )
         until_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -1568,7 +1689,7 @@ class RequisitionForm(QWidget):
         date_to.setDisplayFormat("dd/MM/yyyy")
         date_to.setCalendarPopup(False)
         date_to.setMinimumHeight(max(30, int(36 * s)))
-        date_to.setStyleSheet(theme.input_style(s))
+        date_to.setStyleSheet(_req_input_style(s))
 
         btn_date_to = QToolButton()
         btn_date_to.setText("📅")
@@ -1610,16 +1731,16 @@ class RequisitionForm(QWidget):
 
         hint = QLabel("Digite ao menos 2 caracteres na busca principal, filtre por vendedor e/ou informe um período.")
         hint.setProperty("muted", "1")
-        hint.setStyleSheet(f"font-size:{max(7, int(9 * s))}pt;")
+        hint.setStyleSheet(f"font-size:{max(7, int(9 * s))}pt; color:{_REQ_TEXT_MUTED};")
         layout.addWidget(hint)
 
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         buttons.addStretch()
         btn_open = QPushButton("Abrir")
-        btn_open.setStyleSheet(theme.primary_btn_style(s))
+        btn_open.setStyleSheet(_req_primary_btn_style(s))
         btn_close = QPushButton("Fechar")
-        btn_close.setStyleSheet(theme.secondary_btn_style(s))
+        btn_close.setStyleSheet(_req_secondary_btn_style(s))
         buttons.addWidget(btn_open)
         buttons.addWidget(btn_close)
         layout.addLayout(buttons)
@@ -1765,12 +1886,13 @@ class RequisitionForm(QWidget):
         lbl_req = QLabel("REQUISIÇÃO")
         lbl_req.setProperty("accent", "1")
         lbl_req.setStyleSheet(
-            f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none;"
+            f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; color:{_REQ_TEXT_MUTED};"
         )
+        self.lbl_req_title = lbl_req
         self.lbl_ped_num = QLabel("#000000")
         self.lbl_ped_num.setProperty("accent", "1")
         self.lbl_ped_num.setStyleSheet(
-            f"font-size:{max(16,int(20*s))}pt; font-weight:bold; border:none;"
+            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; color:{_REQ_NEON_PRIMARY};"
         )
         title_col.addWidget(lbl_req)
         title_col.addWidget(self.lbl_ped_num)
@@ -1812,11 +1934,7 @@ class RequisitionForm(QWidget):
         self._ped_max_width = max(180, int(240*s))
         self.input_ped.setFixedWidth(self._ped_min_width)
         self.input_ped.setFixedHeight(max(30, int(36*s)))
-        self.input_ped.setStyleSheet(
-            f"font-size:{max(14,int(18*s))}pt; font-weight:bold; color:{theme.PRIMARY};"
-            f"border:1px solid {theme.BORDER_COLOR}; border-radius:5px; padding:2px 6px;"
-            f"background:{theme.INPUT_BG};"
-        )
+        self.input_ped.setStyleSheet(_req_input_style(s, bold=True, accent=_REQ_NEON_PRIMARY))
         # Apenas dígitos permitidos
         self.input_ped.setValidator(
             QRegularExpressionValidator(QRegularExpression(r"\d*"))
@@ -1839,15 +1957,7 @@ class RequisitionForm(QWidget):
 
         # Coluna de ações redondas: "?" (guia) em cima, lupa (buscar) embaixo
         sz_g = max(24, int(28 * s))
-        _round_btn_style = (
-            f"QPushButton {{"
-            f"  font-size:{max(10, int(11 * s))}pt; font-weight:700;"
-            f"  color:{theme.TEXT_MEDIUM}; background:transparent;"
-            f"  border:1px solid {theme.BORDER_COLOR};"
-            f"  border-radius:{sz_g // 2}px; padding:0;"
-            f"}}"
-            f"QPushButton:hover {{ color:{theme.PRIMARY}; border-color:{theme.PRIMARY}; }}"
-        )
+        _round_btn_style = _req_round_icon_btn_style(s, sz_g)
 
         self.btn_guide = QPushButton("?")
         self.btn_guide.setToolTip("Abrir guia rápido")
@@ -1897,12 +2007,12 @@ class RequisitionForm(QWidget):
         self.input_prazo.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.input_prazo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.input_prazo.setFixedHeight(max(28,int(32*s)))
-        self.input_prazo.setStyleSheet(theme.input_style(s))
+        self.input_prazo.setStyleSheet(_req_input_style(s))
         add_field("📦", "PRAZO DE ENTREGA", self.input_prazo)
         self._apply_min_delivery_constraint()
 
         # Retirada — mutuamente exclusivo com Entrega
-        chk_style = f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
+        chk_style = _req_checkbox_style(s)
 
         self.chk_retirada = QCheckBox("NÃO")
         self.chk_retirada.setStyleSheet(chk_style)
@@ -1991,7 +2101,7 @@ class RequisitionForm(QWidget):
         self.input_obra = QLineEdit()
         self.input_obra.setPlaceholderText("Nome da obra")
         self.input_obra.setFixedHeight(max(30,int(36*s)))
-        self.input_obra.setStyleSheet(theme.input_style(s))
+        self.input_obra.setStyleSheet(_req_input_style(s))
         bind_uppercase_line_edit(self.input_obra)
         layout.addWidget(self.input_obra, 1, 1)
 
@@ -2000,7 +2110,7 @@ class RequisitionForm(QWidget):
         self.input_fone = QLineEdit()
         self.input_fone.setPlaceholderText("(61) 9 9999-9999")
         self.input_fone.setFixedHeight(max(30,int(36*s)))
-        self.input_fone.setStyleSheet(theme.input_style(s))
+        self.input_fone.setStyleSheet(_req_input_style(s))
         self.input_fone.setMaxLength(16)
         self.input_fone.textEdited.connect(self._on_phone_edited)
         layout.addWidget(self.input_fone, 3, 0)
@@ -2010,7 +2120,7 @@ class RequisitionForm(QWidget):
         self.input_address = QLineEdit()
         self.input_address.setPlaceholderText("Endereço completo de entrega")
         self.input_address.setFixedHeight(max(30,int(36*s)))
-        self.input_address.setStyleSheet(theme.input_style(s))
+        self.input_address.setStyleSheet(_req_input_style(s))
         bind_uppercase_line_edit(self.input_address)
         layout.addWidget(self.input_address, 3, 1)
 
@@ -2044,19 +2154,20 @@ class RequisitionForm(QWidget):
                                           max(10, int(12*s)), max(10, int(12*s)))
         preview_layout.setSpacing(max(8, int(10*s)))
 
-        lbl_preview = QLabel("EDITOR DE DESENHO")
+        lbl_preview = QLabel("🎨 EDITOR DE DESENHO")
         lbl_preview.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:bold; border:none;"
+            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
         )
         preview_layout.addWidget(lbl_preview)
-        lbl_preview.setText("🎨 EDITOR DE DESENHO")
+        self.lbl_preview_title = lbl_preview
 
         lbl_preview_hint = QLabel("Prévia do desenho salvo na requisição.")
         lbl_preview_hint.setWordWrap(True)
         lbl_preview_hint.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt; border:none;"
+            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
         )
         preview_layout.addWidget(lbl_preview_hint)
+        self.lbl_preview_hint = lbl_preview_hint
 
         self.canvas_preview = CanvasPreview(s)
         preview_layout.addWidget(self.canvas_preview, 1)
@@ -2064,20 +2175,20 @@ class RequisitionForm(QWidget):
         self.lbl_canvas_info = QLabel("Nenhum desenho salvo ainda.")
         self.lbl_canvas_info.setWordWrap(True)
         self.lbl_canvas_info.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9*s))}pt; border:none;"
+            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
         )
         preview_layout.addWidget(self.lbl_canvas_info)
         self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
 
         btn_canvas = QPushButton("✏️ Abrir Editor de Desenho")
         btn_canvas.setFixedHeight(max(28, int(32*s)))
-        btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
+        btn_canvas.setStyleSheet(_req_secondary_btn_style(s))
         btn_canvas.clicked.connect(self._open_canvas_dialog)
         self.btn_canvas = btn_canvas
 
         btn_canvas_view = QPushButton("🖼️ Visualizar Desenho")
         btn_canvas_view.setFixedHeight(max(28, int(32*s)))
-        btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))
+        btn_canvas_view.setStyleSheet(_req_secondary_btn_style(s))
         btn_canvas_view.clicked.connect(self._open_canvas_viewer)
         self.btn_canvas_view = btn_canvas_view
 
@@ -2109,10 +2220,7 @@ class RequisitionForm(QWidget):
         self.input_obs = QTextEdit()
         self.input_obs.setPlaceholderText("Observações adicionais...")
         self.input_obs.setMaximumHeight(max(100,int(120*s)))
-        self.input_obs.setStyleSheet(
-            f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
-            f"font-size:{max(9,int(11*s))}pt; padding:6px; background:{theme.INPUT_BG};"
-        )
+        self.input_obs.setStyleSheet(_req_text_edit_style(s))
         bind_uppercase_text_edit(self.input_obs)
         obs_layout.addWidget(self.input_obs)
         layout.addWidget(obs_card, 2)
@@ -2129,8 +2237,8 @@ class RequisitionForm(QWidget):
         self.signature_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.signature_preview.setMinimumHeight(max(72, int(90 * s)))
         self.signature_preview.setStyleSheet(
-            f"background:#fff; border:1px dashed {theme.BORDER_COLOR}; border-radius:6px;"
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt; font-style:italic;"
+            f"background:#fff; border:1px dashed {_REQ_NEON_PRIMARY}; border-radius:10px;"
+            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9 * s))}pt; font-style:italic;"
         )
         sig_col.addWidget(self.signature_preview, 1)
 
@@ -2140,13 +2248,13 @@ class RequisitionForm(QWidget):
 
         self.btn_sign = QPushButton("Assinar")
         self.btn_sign.setFixedHeight(max(28, int(32 * s)))
-        self.btn_sign.setStyleSheet(theme.secondary_btn_style(s))
+        self.btn_sign.setStyleSheet(_req_secondary_btn_style(s))
         self.btn_sign.clicked.connect(self._open_signature_dialog)
         sig_btn_row.addWidget(self.btn_sign, 1)
 
         self.btn_clear_signature = QPushButton("Limpar assinatura")
         self.btn_clear_signature.setFixedHeight(max(28, int(32 * s)))
-        self.btn_clear_signature.setStyleSheet(theme.secondary_btn_style(s))
+        self.btn_clear_signature.setStyleSheet(_req_secondary_btn_style(s))
         self.btn_clear_signature.clicked.connect(self._clear_signature)
         sig_btn_row.addWidget(self.btn_clear_signature, 1)
 
@@ -2160,19 +2268,19 @@ class RequisitionForm(QWidget):
         self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.qr_label.setFixedSize(max(80,int(90*s)), max(80,int(90*s)))
         self.qr_label.setStyleSheet(
-            f"border:1px solid {theme.BORDER_COLOR}; border-radius:4px; background:#fff;"
+            f"border:1px solid {_rgba(_REQ_NEON_PRIMARY, 96)}; border-radius:10px; background:#fff;"
         )
-        lbl_qr_txt = QLabel("QR CODE\nVendedor")
+        lbl_qr_txt = QLabel("🔳 QR CODE\nVendedor")
         lbl_qr_txt.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_qr_txt.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7,int(8*s))}pt; border:none;"
+            f"color:{_REQ_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
-        lbl_qr_txt.setText("🔳 QR CODE\nVendedor")
+        self.lbl_qr_title = lbl_qr_txt
         self.lbl_qr_contact = QLabel("")
         self.lbl_qr_contact.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_qr_contact.setWordWrap(True)
         self.lbl_qr_contact.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7,int(8*s))}pt; border:none;"
+            f"color:{_REQ_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
         qr_col.addWidget(self.qr_label)
         qr_col.addWidget(lbl_qr_txt)
@@ -2278,8 +2386,8 @@ class RequisitionForm(QWidget):
         if not self._signature_png_bytes:
             label.setText("Imprimir e assinar")
             label.setStyleSheet(
-                f"background:#fff; border:1px dashed {theme.BORDER_COLOR}; border-radius:6px;"
-                f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * self.scale))}pt; font-style:italic;"
+                f"background:#fff; border:1px dashed {_REQ_NEON_PRIMARY}; border-radius:10px;"
+                f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9 * self.scale))}pt; font-style:italic;"
             )
             if hasattr(self, "btn_clear_signature"):
                 self.btn_clear_signature.setEnabled(False)
@@ -2303,7 +2411,7 @@ class RequisitionForm(QWidget):
         label.setText("")
         label.setPixmap(scaled)
         label.setStyleSheet(
-            f"background:#fff; border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
+            f"background:#fff; border:1px solid {_rgba(_REQ_NEON_PRIMARY, 96)}; border-radius:10px;"
         )
         if hasattr(self, "btn_clear_signature"):
             self.btn_clear_signature.setEnabled(True)
@@ -2702,15 +2810,7 @@ class RequisitionForm(QWidget):
         dlg.setModal(True)
         dlg.setMinimumWidth(max(340, int(380 * s)))
         dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-
-        dlg.setStyleSheet(
-            f"QDialog {{"
-            f"  background-color:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
-            f"  border-radius:8px;"
-            f"}}"
-            f"QDialog QWidget {{ background-color:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QLabel {{ color:{theme.TEXT_DARK}; background-color:transparent; border:none; }}"
-        )
+        dlg.setStyleSheet(_req_dialog_style())
 
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(max(20, int(24 * s)), max(20, int(24 * s)),
@@ -2720,13 +2820,13 @@ class RequisitionForm(QWidget):
         # Título
         lbl_title = QLabel("⚖️  Calculadora de Peso")
         lbl_title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:bold;"
+            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:800;"
         )
         layout.addWidget(lbl_title)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color:{theme.BORDER_COLOR};")
+        sep.setStyleSheet(f"color:{_REQ_BORDER_SOFT};")
         layout.addWidget(sep)
 
         # Campos de entrada
@@ -2735,7 +2835,7 @@ class RequisitionForm(QWidget):
         grid.setColumnStretch(1, 1)
 
         fs = max(9, int(10 * s))
-        lbl_style = f"font-size:{fs}pt; font-weight:bold; color:{theme.TEXT_MEDIUM};"
+        lbl_style = f"font-size:{fs}pt; font-weight:700; color:{_REQ_TEXT_MUTED};"
 
         def _lbl(text):
             l = QLabel(text)
@@ -2747,7 +2847,7 @@ class RequisitionForm(QWidget):
             inp.setPlaceholderText(placeholder)
             inp.setText(default)
             inp.setFixedHeight(max(30, int(36 * s)))
-            inp.setStyleSheet(theme.input_style(s))
+            inp.setStyleSheet(_req_input_style(s))
             validator = QRegularExpressionValidator(
                 QRegularExpression(r"[0-9]*\.?[0-9]*")
             )
@@ -2762,7 +2862,7 @@ class RequisitionForm(QWidget):
         inp_var.setReadOnly(True)
         inp_var.setStyleSheet(
             inp_var.styleSheet() +
-            f"background-color:{theme.SURFACE_SOFT}; color:{theme.TEXT_MEDIUM};"
+            f"background-color:{_REQ_SURFACE_ALT}; color:{_REQ_TEXT_MUTED};"
         )
 
         grid.addWidget(_lbl("QNT:"),          0, 0)
@@ -2780,17 +2880,17 @@ class RequisitionForm(QWidget):
         # Separador resultado
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet(f"color:{theme.BORDER_COLOR};")
+        sep2.setStyleSheet(f"color:{_REQ_BORDER_SOFT};")
         layout.addWidget(sep2)
 
         # Label de resultado
         lbl_result = QLabel("PESO = —")
         lbl_result.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_result.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(14, int(16 * s))}pt;"
-            f"font-weight:bold; padding:{max(8, int(10 * s))}px;"
-            f"background-color:{theme.INPUT_BG}; border:1px solid {theme.BORDER_COLOR};"
-            f"border-radius:8px;"
+            f"color:{_REQ_NEON_PRIMARY}; font-size:{max(14, int(16 * s))}pt;"
+            f"font-weight:800; padding:{max(8, int(10 * s))}px;"
+            f"background-color:{_REQ_SURFACE_BG}; border:1px solid {_rgba(_REQ_NEON_PRIMARY, 92)};"
+            f"border-radius:12px;"
         )
         layout.addWidget(lbl_result)
 
@@ -2798,14 +2898,14 @@ class RequisitionForm(QWidget):
         lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_hint.setWordWrap(True)
         lbl_hint.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8 * s))}pt; font-style:italic;"
+            f"color:{_REQ_TEXT_MUTED}; font-size:{max(7, int(8 * s))}pt; font-style:italic;"
         )
         layout.addWidget(lbl_hint)
 
         # Botão fechar
         btn_fechar = QPushButton("Fechar")
         btn_fechar.setFixedHeight(max(34, int(40 * s)))
-        btn_fechar.setStyleSheet(theme.secondary_btn_style(s))
+        btn_fechar.setStyleSheet(_req_secondary_btn_style(s))
         btn_fechar.clicked.connect(dlg.accept)
         layout.addWidget(btn_fechar, alignment=Qt.AlignmentFlag.AlignRight)
 
@@ -3184,35 +3284,68 @@ class RequisitionForm(QWidget):
         s = self.scale
         bg = theme.CONTENT_BG
         self._page_scroll.setStyleSheet(f"QScrollArea {{ background:{bg}; border:none; }}")
-        self._page_content.setStyleSheet(f"background:{bg};")
-        self.input_ped.setStyleSheet(
-            f"font-size:{max(14,int(18*s))}pt; font-weight:bold; color:{theme.PRIMARY};"
-            f"border:1px solid {theme.BORDER_COLOR}; border-radius:5px; padding:2px 6px;"
-            f"background:{theme.INPUT_BG};"
-        )
-        self.input_obs.setStyleSheet(
-            f"border:1px solid {theme.BORDER_COLOR}; border-radius:6px;"
-            f"font-size:{max(9,int(11*s))}pt; padding:6px; background:{theme.INPUT_BG};"
-        )
-        self.input_obra.setStyleSheet(theme.input_style(s))
-        self.input_prazo.setStyleSheet(theme.input_style(s))
-        self.input_fone.setStyleSheet(theme.input_style(s))
-        self.input_address.setStyleSheet(theme.input_style(s))
-        chk_style = f"color:{theme.TEXT_DARK}; font-size:{max(9,int(11*s))}pt; border:none;"
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+        self._page_content.setStyleSheet(f"QWidget#requisitionFormContent {{ background:{bg}; }}")
+        self.input_ped.setStyleSheet(_req_input_style(s, bold=True, accent=_REQ_NEON_PRIMARY))
+        self.input_obs.setStyleSheet(_req_text_edit_style(s))
+        self.input_obra.setStyleSheet(_req_input_style(s))
+        self.input_prazo.setStyleSheet(_req_input_style(s))
+        self.input_fone.setStyleSheet(_req_input_style(s))
+        self.input_address.setStyleSheet(_req_input_style(s))
+        chk_style = _req_checkbox_style(s)
         self.chk_retirada.setStyleSheet(chk_style)
         self.chk_entrega.setStyleSheet(chk_style)
         self.client_search.apply_theme(s)
+        self.status_badge.apply_theme(s)
         self.item_table.apply_theme()
-        self.btn_calc.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
-        self.btn_production.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
-        self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
-        self.btn_print.setStyleSheet(_emphasized_btn_style(theme.secondary_btn_style(s)))
+        self.btn_calc.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
+        self.btn_production.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
+        self.btn_whatsapp.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
+        self.btn_print.setStyleSheet(_emphasized_btn_style(_req_secondary_btn_style(s)))
         self._update_print_button_visual()
-        self.btn_save.setStyleSheet(_emphasized_btn_style(theme.primary_btn_style(s)))
-        self.btn_canvas.setStyleSheet(theme.secondary_btn_style(s))
-        self.btn_canvas_view.setStyleSheet(theme.secondary_btn_style(s))
+        self.btn_save.setStyleSheet(_emphasized_btn_style(_req_primary_btn_style(s)))
+        self.btn_canvas.setStyleSheet(_req_secondary_btn_style(s))
+        self.btn_canvas_view.setStyleSheet(_req_secondary_btn_style(s))
         if hasattr(self, "btn_sign"):
-            self.btn_sign.setStyleSheet(theme.secondary_btn_style(s))
+            self.btn_sign.setStyleSheet(_req_secondary_btn_style(s))
         if hasattr(self, "btn_clear_signature"):
-            self.btn_clear_signature.setStyleSheet(theme.secondary_btn_style(s))
+            self.btn_clear_signature.setStyleSheet(_req_secondary_btn_style(s))
+        if hasattr(self, "btn_guide"):
+            self.btn_guide.setStyleSheet(_req_round_icon_btn_style(s, self.btn_guide.width()))
+        if hasattr(self, "btn_search_req"):
+            self.btn_search_req.setStyleSheet(_req_round_icon_btn_style(s, self.btn_search_req.width()))
+        if hasattr(self, "lbl_req_title"):
+            self.lbl_req_title.setStyleSheet(
+                f"font-size:{max(10,int(12*s))}pt; font-weight:700; border:none; color:{_REQ_TEXT_MUTED};"
+            )
+        self.lbl_ped_num.setStyleSheet(
+            f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; color:{_REQ_NEON_PRIMARY};"
+        )
+        self.lock_label.setStyleSheet(
+            f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
+        )
+        if hasattr(self, "lbl_preview_title"):
+            self.lbl_preview_title.setStyleSheet(
+                f"color:{_REQ_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
+            )
+        if hasattr(self, "lbl_preview_hint"):
+            self.lbl_preview_hint.setStyleSheet(
+                f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+            )
+        if hasattr(self, "lbl_canvas_info"):
+            self.lbl_canvas_info.setStyleSheet(
+                f"color:{_REQ_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+            )
+        if hasattr(self, "lbl_qr_title"):
+            self.lbl_qr_title.setStyleSheet(
+                f"color:{_REQ_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+            )
+        if hasattr(self, "lbl_qr_contact"):
+            self.lbl_qr_contact.setStyleSheet(
+                f"color:{_REQ_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+            )
+        if hasattr(self, "qr_label"):
+            self.qr_label.setStyleSheet(
+                f"border:1px solid {_rgba(_REQ_NEON_PRIMARY, 96)}; border-radius:10px; background:#fff;"
+            )
         self._refresh_signature_preview()
