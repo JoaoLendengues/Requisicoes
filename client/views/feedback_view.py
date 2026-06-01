@@ -6,6 +6,7 @@ from datetime import datetime
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFrame,
     QGraphicsDropShadowEffect,
@@ -146,13 +147,24 @@ class _FeedbackCard(QFrame):
     """Card visual de um único feedback. Lista usada no estilo "feed"."""
 
     clicked = Signal(int)  # feedback_id
+    react_requested = Signal(int, object)  # (feedback_id, "like"/"dislike"/None)
 
-    def __init__(self, data: dict, scale: float, show_author: bool, parent=None):
+    def __init__(
+        self,
+        data: dict,
+        scale: float,
+        show_author: bool,
+        current_user_id: int = 0,
+        show_reactions: bool = True,
+        parent=None,
+    ):
         super().__init__(parent)
         self.data = data
         self.scale = scale
         self.feedback_id = int(data.get("id") or 0)
         self.is_selected = False
+        self.current_user_id = int(current_user_id or 0)
+        self.show_reactions = show_reactions
         self._build_ui(show_author)
 
     def _build_ui(self, show_author: bool):
@@ -258,9 +270,68 @@ class _FeedbackCard(QFrame):
             bottom_row.addWidget(mark)
 
         bottom_row.addStretch(1)
+
+        # ── Like / Dislike ───────────────────────────────────────────────
+        if self.show_reactions:
+            is_own = self.current_user_id and (self.current_user_id == int(self.data.get("user_id") or 0))
+            my_reaction = self.data.get("my_reaction")
+            likes = int(self.data.get("likes") or 0)
+            dislikes = int(self.data.get("dislikes") or 0)
+
+            btn_like = QPushButton(f"👍  {likes}")
+            btn_like.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_like.setEnabled(not is_own)
+            btn_like.setStyleSheet(self._reaction_btn_style(active=(my_reaction == "like"), kind="like"))
+            btn_like.clicked.connect(
+                lambda _checked=False: self.react_requested.emit(
+                    self.feedback_id, None if my_reaction == "like" else "like"
+                )
+            )
+
+            btn_dislike = QPushButton(f"👎  {dislikes}")
+            btn_dislike.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_dislike.setEnabled(not is_own)
+            btn_dislike.setStyleSheet(self._reaction_btn_style(active=(my_reaction == "dislike"), kind="dislike"))
+            btn_dislike.clicked.connect(
+                lambda _checked=False: self.react_requested.emit(
+                    self.feedback_id, None if my_reaction == "dislike" else "dislike"
+                )
+            )
+
+            bottom_row.addWidget(btn_like)
+            bottom_row.addWidget(btn_dislike)
+
         center.addLayout(bottom_row)
 
         root.addLayout(center, 1)
+
+    def _reaction_btn_style(self, active: bool, kind: str) -> str:
+        s = self.scale
+        accent = theme.SUCCESS if kind == "like" else theme.DANGER
+        if active:
+            return (
+                f"QPushButton {{"
+                f"  background:{_rgba(accent, 35)}; color:{accent};"
+                f"  border:1px solid {_rgba(accent, 80)}; border-radius:999px;"
+                f"  padding:3px 12px; font-weight:700;"
+                f"  font-size:{max(8, int(9 * s))}pt;"
+                f"}}"
+                f"QPushButton:hover {{ background:{_rgba(accent, 55)}; }}"
+                f"QPushButton:disabled {{ color:{theme.TEXT_LIGHT}; background:transparent;"
+                f"  border:1px dashed {theme.BORDER_COLOR}; }}"
+            )
+        return (
+            f"QPushButton {{"
+            f"  background:transparent; color:{theme.TEXT_MEDIUM};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:999px;"
+            f"  padding:3px 12px; font-weight:600;"
+            f"  font-size:{max(8, int(9 * s))}pt;"
+            f"}}"
+            f"QPushButton:hover {{ background:{_rgba(accent, 20)}; color:{accent};"
+            f"  border:1px solid {_rgba(accent, 60)}; }}"
+            f"QPushButton:disabled {{ color:{theme.TEXT_LIGHT}; background:transparent;"
+            f"  border:1px dashed {theme.BORDER_COLOR}; }}"
+        )
 
     def _refresh_style(self, accent_color: str):
         # Selected vs idle vs hover são gerenciados por QSS via property
@@ -300,10 +371,11 @@ class FeedbackView(QWidget):
         self._threads: list[tuple[QThread, object]] = []
         self._admin_rows: list[dict] = []
         self._mine_rows: list[dict] = []
-        # Filtros como chips
+        self._public_rows: list[dict] = []
+        # Filtros como chips (aplicáveis a inbox e public)
         self._active_category = ""   # "" = todas
         self._active_status = ""     # "" = todos
-        # Card selecionado
+        # Card selecionado (admin)
         self._selected_id: int | None = None
         # Cards atuais na lista (pra atualizar seleção/refresh)
         self._cards_in_view: list[_FeedbackCard] = []
@@ -391,6 +463,14 @@ class FeedbackView(QWidget):
         compose_top.addWidget(self.combo_category)
         compose_lay.addLayout(compose_top)
 
+        # Checkbox de publicação
+        public_row = QHBoxLayout()
+        self.chk_public = QCheckBox("Tornar público (visível para todos os usuários)")
+        self.chk_public.setChecked(True)
+        public_row.addWidget(self.chk_public)
+        public_row.addStretch(1)
+        compose_lay.addLayout(public_row)
+
         self.input_feedback = QTextEdit()
         self.input_feedback.setPlaceholderText(
             "Descreva o que aconteceu, em qual tela, o que esperava... (até 1000 caracteres)"
@@ -417,10 +497,14 @@ class FeedbackView(QWidget):
         self.btn_tab_inbox = QPushButton("Caixa de entrada")
         self.btn_tab_inbox.setCheckable(True)
         self.btn_tab_inbox.clicked.connect(lambda: self._switch_tab("inbox"))
+        self.btn_tab_public = QPushButton("Públicos")
+        self.btn_tab_public.setCheckable(True)
+        self.btn_tab_public.clicked.connect(lambda: self._switch_tab("public"))
         self.btn_tab_mine = QPushButton("Meus feedbacks")
         self.btn_tab_mine.setCheckable(True)
         self.btn_tab_mine.clicked.connect(lambda: self._switch_tab("mine"))
         self.tab_row.addWidget(self.btn_tab_inbox)
+        self.tab_row.addWidget(self.btn_tab_public)
         self.tab_row.addWidget(self.btn_tab_mine)
         self.tab_row.addStretch(1)
         # Ação à direita do toggle
@@ -516,9 +600,8 @@ class FeedbackView(QWidget):
         self.root_layout.addWidget(self.action_bar)
 
         # Estado inicial
-        self._current_tab = "inbox" if session.is_admin else "mine"
-        self.btn_tab_inbox.setChecked(self._current_tab == "inbox")
-        self.btn_tab_mine.setChecked(self._current_tab == "mine")
+        self._current_tab = "inbox" if session.is_admin else "public"
+        self._sync_tab_buttons()
         self._apply_role_visibility()
         self._update_chip_styles()
         self.apply_theme()
@@ -656,12 +739,18 @@ class FeedbackView(QWidget):
         is_admin = session.is_admin
         self.metrics_container.setVisible(is_admin)
         self.btn_tab_inbox.setVisible(is_admin)
-        self.action_bar.setVisible(is_admin)
-        # Sem inbox para não-admin → toggle some, só "meus feedbacks"
-        if not is_admin:
-            self._current_tab = "mine"
-        # Chips só fazem sentido no inbox de admin
-        self.chips_container.setVisible(is_admin and self._current_tab == "inbox")
+        # Action bar (mudar status) só faz sentido no inbox do admin
+        self.action_bar.setVisible(is_admin and self._current_tab == "inbox")
+        # Sem inbox para não-admin
+        if not is_admin and self._current_tab == "inbox":
+            self._current_tab = "public"
+        # Chips: inbox (admin) e public (todos)
+        self.chips_container.setVisible(self._current_tab in ("inbox", "public"))
+
+    def _sync_tab_buttons(self):
+        self.btn_tab_inbox.setChecked(self._current_tab == "inbox")
+        self.btn_tab_public.setChecked(self._current_tab == "public")
+        self.btn_tab_mine.setChecked(self._current_tab == "mine")
 
     # ── Compose / envio ───────────────────────────────────────────────────────
     def _on_text_changed(self):
@@ -699,9 +788,10 @@ class FeedbackView(QWidget):
             QMessageBox.warning(self, "Feedbacks", f"O limite é de {MAX_FEEDBACK_LEN} caracteres.")
             return
         category = self.combo_category.currentData() or "sugestao"
+        is_public = bool(self.chk_public.isChecked())
         self.btn_send.setEnabled(False)
         thread, worker = _run_in_thread(
-            api.create_feedback, text, category,
+            api.create_feedback, text, category, is_public,
             on_result=self._on_feedback_sent,
             on_error=self._on_feedback_send_error,
         )
@@ -711,8 +801,10 @@ class FeedbackView(QWidget):
         self.btn_send.setEnabled(True)
         self.input_feedback.clear()
         self.counter.setText(f"0/{MAX_FEEDBACK_LEN}")
+        self.chk_public.setChecked(True)
         QMessageBox.information(self, "Feedbacks", "Feedback enviado com sucesso.")
         self._load_my_feedbacks()
+        self._load_public_feedbacks()
         if session.is_admin:
             self._load_admin_feedbacks()
 
@@ -744,6 +836,37 @@ class FeedbackView(QWidget):
         )
         self._threads.append((thread, worker))
 
+    def _load_public_feedbacks(self):
+        thread, worker = _run_in_thread(
+            api.list_public_feedbacks,
+            on_result=self._on_public_feedbacks_loaded,
+            on_error=lambda msg: QMessageBox.warning(self, "Feedbacks", msg),
+        )
+        self._threads.append((thread, worker))
+
+    def _on_public_feedbacks_loaded(self, rows: list[dict]):
+        self._public_rows = [r for r in (rows or []) if isinstance(r, dict)]
+        if self._current_tab == "public":
+            self._refresh_list()
+
+    def _mark_public_as_read(self):
+        """Marca todos os feedbacks públicos como lidos no servidor."""
+        thread, worker = _run_in_thread(
+            api.mark_feedbacks_read,
+            on_result=lambda _r: self._notify_unread_changed(0),
+            on_error=lambda _msg: None,
+        )
+        self._threads.append((thread, worker))
+
+    def _notify_unread_changed(self, count: int):
+        """Notifica o main_window que o contador mudou (para atualizar o badge no sidebar)."""
+        parent = self.window()
+        if parent is not None and hasattr(parent, "set_feedback_unread_count"):
+            try:
+                parent.set_feedback_unread_count(int(count))
+            except Exception:
+                pass
+
     def _on_admin_feedbacks_loaded(self, rows: list[dict]):
         self._admin_rows = [r for r in (rows or []) if isinstance(r, dict)]
         self._update_metrics()
@@ -761,16 +884,18 @@ class FeedbackView(QWidget):
 
     # ── Lista (cards) ─────────────────────────────────────────────────────────
     def _switch_tab(self, tab: str):
-        if not session.is_admin:
-            tab = "mine"
+        if tab == "inbox" and not session.is_admin:
+            tab = "public"
         self._current_tab = tab
-        self.btn_tab_inbox.setChecked(tab == "inbox")
-        self.btn_tab_mine.setChecked(tab == "mine")
-        self.chips_container.setVisible(session.is_admin and tab == "inbox")
+        self._sync_tab_buttons()
+        self.chips_container.setVisible(tab in ("inbox", "public"))
         self.action_bar.setVisible(session.is_admin and tab == "inbox")
         self._selected_id = None
         self._update_action_bar_state()
         self._refresh_list()
+        # Ao abrir a aba "Públicos", marca tudo como lido e atualiza o badge
+        if tab == "public":
+            self._mark_public_as_read()
 
     def _refresh_list(self):
         # Remove cards atuais (mantém o stretch final)
@@ -784,6 +909,9 @@ class FeedbackView(QWidget):
         if self._current_tab == "inbox":
             rows = self._filtered_admin_rows()
             show_author = True
+        elif self._current_tab == "public":
+            rows = self._filtered_public_rows()
+            show_author = True
         else:
             rows = self._mine_rows
             show_author = False
@@ -793,9 +921,17 @@ class FeedbackView(QWidget):
             self.list_layout.insertWidget(self.list_layout.count() - 1, empty)
             return
 
+        current_uid = int(getattr(session, "user_id", 0) or 0)
         for row in rows:
-            card = _FeedbackCard(row, self.scale, show_author=show_author)
+            card = _FeedbackCard(
+                row,
+                self.scale,
+                show_author=show_author,
+                current_user_id=current_uid,
+                show_reactions=True,
+            )
             card.clicked.connect(self._on_card_clicked)
+            card.react_requested.connect(self._on_react_requested)
             if self._selected_id and card.feedback_id == self._selected_id:
                 card.set_selected(True)
             self._cards_in_view.append(card)
@@ -809,6 +945,32 @@ class FeedbackView(QWidget):
             if (not cat or str(r.get("category") or "") == cat)
             and (not stt or str(r.get("status") or "") == stt)
         ]
+
+    def _filtered_public_rows(self) -> list[dict]:
+        cat = self._active_category
+        stt = self._active_status
+        return [
+            r for r in self._public_rows
+            if (not cat or str(r.get("category") or "") == cat)
+            and (not stt or str(r.get("status") or "") == stt)
+        ]
+
+    def _on_react_requested(self, feedback_id: int, reaction: object):
+        # reaction = "like" | "dislike" | None (toggle off)
+        thread, worker = _run_in_thread(
+            api.react_feedback, int(feedback_id), reaction,
+            on_result=lambda _r: self._reload_current_tab(),
+            on_error=lambda msg: QMessageBox.warning(self, "Feedbacks", msg),
+        )
+        self._threads.append((thread, worker))
+
+    def _reload_current_tab(self):
+        if self._current_tab == "inbox":
+            self._load_admin_feedbacks()
+        elif self._current_tab == "public":
+            self._load_public_feedbacks()
+        else:
+            self._load_my_feedbacks()
 
     def _build_empty_state(self) -> QWidget:
         s = self.scale
@@ -887,8 +1049,12 @@ class FeedbackView(QWidget):
     def refresh(self):
         self._apply_role_visibility()
         self._load_my_feedbacks()
+        self._load_public_feedbacks()
         if session.is_admin:
             self._load_admin_feedbacks()
+        # Marca como lido se a tela aberta no momento for "Públicos"
+        if self._current_tab == "public":
+            self._mark_public_as_read()
 
     def apply_theme(self):
         s = self.scale
@@ -936,10 +1102,21 @@ class FeedbackView(QWidget):
         self.btn_send.setStyleSheet(theme.primary_btn_style(s))
 
         # Toggle tabs
-        for btn, key in ((self.btn_tab_inbox, "inbox"), (self.btn_tab_mine, "mine")):
+        for btn, key in (
+            (self.btn_tab_inbox, "inbox"),
+            (self.btn_tab_public, "public"),
+            (self.btn_tab_mine, "mine"),
+        ):
             active = (self._current_tab == key)
             btn.setStyleSheet(self._chip_style(active, theme.PRIMARY))
             btn.setFixedHeight(max(30, int(34 * s)))
+
+        # Checkbox público
+        self.chk_public.setStyleSheet(
+            f"QCheckBox {{ color:{theme.TEXT_MEDIUM};"
+            f"  font-size:{max(8, int(9 * s))}pt; background:transparent;"
+            f"  spacing:8px; }}"
+        )
 
         self.btn_refresh.setStyleSheet(theme.secondary_btn_style(s))
 

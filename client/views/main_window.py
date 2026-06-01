@@ -729,7 +729,11 @@ class MainWindow(QMainWindow):
         self._notif_timer = QTimer(self)
         self._notif_timer.setInterval(60_000)
         self._notif_timer.timeout.connect(self._sync_badge)
+        self._notif_timer.timeout.connect(self._sync_feedback_badge)
         self._notif_timer.start()
+
+        # Primeira sincronização do badge de feedbacks (logo após o login)
+        QTimer.singleShot(1_500, self._sync_feedback_badge)
 
     def _on_notification(self, data: dict):
         """
@@ -770,6 +774,19 @@ class MainWindow(QMainWindow):
     def _update_badge(self, count: int):
         self._unread_count = count
         self.sidebar.set_notification_count(count)
+
+    def _sync_feedback_badge(self):
+        """Atualiza o badge vermelho ao lado do botão Feedbacks."""
+        thread, worker = _run_in_thread(
+            api.get_feedback_unread_count,
+            on_result=lambda r: self.set_feedback_unread_count(int(r.get("unread", 0) or 0)),
+            on_error=lambda _: None,
+        )
+        self._threads.append((thread, worker))
+
+    def set_feedback_unread_count(self, count: int):
+        """Chamado pela FeedbackView (após mark-read) e pelo poll periódico."""
+        self.sidebar.set_feedback_unread_count(count)
 
     def _show_notification_panel(self):
         thread, worker = _run_in_thread(

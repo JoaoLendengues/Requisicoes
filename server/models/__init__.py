@@ -5,5 +5,5 @@ from .requisition import Requisition, RequisitionItem, CanvasData, StatusHistory
 from .notification import Notification
 from .production_machine import ProductionMachine, MachineOperationalStatus
 from .operator import Operator, OperatorRole
-from .feedback import Feedback
+from .feedback import Feedback, FeedbackReaction, FeedbackRead, FeedbackCategory, FeedbackStatus
 from .audit import AuditLog, LoginAttempt

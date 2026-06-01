@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -53,6 +53,44 @@ class Feedback(Base):
         index=True,
     )
 
+    # Publicação: se True, qualquer usuário pode ver na aba "Públicos"
+    is_public: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true", index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     read_by_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+
+
+class FeedbackReaction(Base):
+    """Reação (like / dislike) de um usuário em um feedback. PK composta."""
+
+    __tablename__ = "feedback_reactions"
+
+    feedback_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("feedbacks.id", ondelete="CASCADE"),
+        primary_key=True, index=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    reaction: Mapped[str] = mapped_column(String(16), nullable=False)  # 'like' | 'dislike'
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class FeedbackRead(Base):
+    """Marca que um usuário já viu um feedback (para o contador 'não lido')."""
+
+    __tablename__ = "feedback_reads"
+
+    feedback_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("feedbacks.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True, index=True,
+    )
+    read_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

@@ -402,15 +402,18 @@ def mark_one_notification_read(notif_id: int) -> dict:
         return _check(client.patch(f"/notifications/{notif_id}/read"))
 
 
-def create_feedback(message: str, category: str = "sugestao") -> dict:
+def create_feedback(message: str, category: str = "sugestao", is_public: bool = True) -> dict:
     with _cli() as client:
         return _check(
-            client.post("/feedbacks/", json={"message": message, "category": category})
+            client.post(
+                "/feedbacks/",
+                json={"message": message, "category": category, "is_public": is_public},
+            )
         )
 
 
 def list_feedbacks() -> list:
-    """Admin: lista todos os feedbacks."""
+    """Admin: lista todos os feedbacks (públicos + privados)."""
     with _cli() as client:
         return _check(client.get("/feedbacks/"))
 
@@ -419,6 +422,35 @@ def list_my_feedbacks() -> list:
     """Qualquer usuário: lista os próprios feedbacks."""
     with _cli() as client:
         return _check(client.get("/feedbacks/mine"))
+
+
+def list_public_feedbacks() -> list:
+    """Qualquer usuário: feed público (feedbacks marcados como públicos)."""
+    with _cli() as client:
+        return _check(client.get("/feedbacks/public"))
+
+
+def react_feedback(feedback_id: int, reaction: str | None) -> dict:
+    """Reage com 'like' / 'dislike'. Passar None remove a reação."""
+    with _cli() as client:
+        return _check(
+            client.post(
+                f"/feedbacks/{feedback_id}/react",
+                json={"reaction": reaction},
+            )
+        )
+
+
+def get_feedback_unread_count() -> dict:
+    """Quantidade de feedbacks públicos que o usuário ainda não leu."""
+    with _cli() as client:
+        return _check(client.get("/feedbacks/unread-count"))
+
+
+def mark_feedbacks_read() -> dict:
+    """Marca todos os feedbacks públicos visíveis como lidos."""
+    with _cli() as client:
+        return _check(client.post("/feedbacks/mark-read"))
 
 
 def update_feedback_status(feedback_id: int, new_status: str) -> dict:

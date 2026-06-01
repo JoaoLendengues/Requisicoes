@@ -86,6 +86,37 @@ def _migrate():
         "CREATE INDEX IF NOT EXISTS idx_feedbacks_status     ON feedbacks (status)",
         "CREATE INDEX IF NOT EXISTS idx_feedbacks_category   ON feedbacks (category)",
         "CREATE INDEX IF NOT EXISTS idx_feedbacks_created_at ON feedbacks (created_at DESC)",
+
+        # ── Feedbacks: campo de publicacao (default TRUE) ──────────────────
+        "ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE",
+        "CREATE INDEX IF NOT EXISTS idx_feedbacks_is_public ON feedbacks (is_public)",
+
+        # ── Feedbacks: tabela de reacoes (like / dislike) ──────────────────
+        "CREATE TABLE IF NOT EXISTS feedback_reactions ("
+        " feedback_id INTEGER NOT NULL,"
+        " user_id     INTEGER NOT NULL,"
+        " reaction    TEXT    NOT NULL CHECK (reaction IN ('like', 'dislike')),"
+        " created_at  TIMESTAMP NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (feedback_id, user_id),"
+        " CONSTRAINT fk_feedback_reactions_feedback FOREIGN KEY (feedback_id)"
+        "     REFERENCES feedbacks(id) ON DELETE CASCADE,"
+        " CONSTRAINT fk_feedback_reactions_user FOREIGN KEY (user_id)"
+        "     REFERENCES users(id) ON DELETE CASCADE"
+        ")",
+        "CREATE INDEX IF NOT EXISTS idx_feedback_reactions_feedback ON feedback_reactions (feedback_id)",
+
+        # ── Feedbacks: leituras por usuario (contador 'nao lido') ───────────
+        "CREATE TABLE IF NOT EXISTS feedback_reads ("
+        " feedback_id INTEGER NOT NULL,"
+        " user_id     INTEGER NOT NULL,"
+        " read_at     TIMESTAMP NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (feedback_id, user_id),"
+        " CONSTRAINT fk_feedback_reads_feedback FOREIGN KEY (feedback_id)"
+        "     REFERENCES feedbacks(id) ON DELETE CASCADE,"
+        " CONSTRAINT fk_feedback_reads_user FOREIGN KEY (user_id)"
+        "     REFERENCES users(id) ON DELETE CASCADE"
+        ")",
+        "CREATE INDEX IF NOT EXISTS idx_feedback_reads_user ON feedback_reads (user_id)",
     ]
     for stmt in stmts:
         try:
