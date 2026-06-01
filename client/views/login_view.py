@@ -311,7 +311,7 @@ class LoginView(QWidget):
         self.input_code.setPlaceholderText("Ex: 1")
         self.input_code.setFixedHeight(max(36, int(42 * self.scale)))
         self.input_code.setStyleSheet(_login_input_style(self.scale))
-        self.input_code.returnPressed.connect(self._do_login)
+        self.input_code.returnPressed.connect(self._focus_password_from_code)
         self.input_code.editingFinished.connect(self._check_first_access_for_code)
         card_layout.addWidget(self.input_code)
 
@@ -427,6 +427,12 @@ class LoginView(QWidget):
         painter.end()
 
     # ── Login ─────────────────────────────────────────────────────────────────
+
+    def _focus_password_from_code(self):
+        # Enter no código apenas avança para a senha; não tenta autenticar.
+        self.error_label.hide()
+        self.input_pass.setFocus()
+        self.input_pass.selectAll()
 
     def _do_login(self):
         code = self.input_code.text().strip()
