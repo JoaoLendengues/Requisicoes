@@ -164,6 +164,18 @@ def _rgba(color: str, alpha: int) -> str:
 
 # ── Helpers de estilo para machine cards (centralizados para permitir
 # re-aplicação rápida em apply_theme sem recriar o widget). ───────────────────
+def _scoped_btn_qss(role: str, fn, s: float) -> str:
+    """Reescreve um QSS de botão pra usar selector property-based.
+
+    Permite que apply_theme defina o estilo de TODOS os botões com
+    productionBtn='<role>' em uma única chamada de setStyleSheet no nível da
+    view, em vez de setStyleSheet individual em cada botão.
+    """
+    raw = fn(s)
+    selector = f"QPushButton[productionBtn='{role}']"
+    return raw.replace("QPushButton ", f"{selector} ").replace("QPushButton:", f"{selector}:")
+
+
 def _machine_accent_style(accent_color: str, s: float) -> str:
     return (
         f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
@@ -432,11 +444,29 @@ class ProductionView(QWidget):
         if self.destination in session.visible_production_destinations:
             self.refresh()
 
+    def _build_view_stylesheet(self, s: float, bg: str) -> str:
+        """QSS view-level: backgrounds + regras property-based dos botões
+        dos cards. Aplicar essa string UMA vez via self.setStyleSheet() faz
+        com que TODOS os botões com property productionBtn=... peguem o
+        estilo via cascata, sem precisar setStyleSheet individual em cada um.
+
+        Usado em _setup_ui (construção inicial) e em apply_theme (troca de tema).
+        """
+        return (
+            f"QWidget#productionView {{ background:{bg}; }}"
+            f"QScrollArea {{ background:{bg}; border:none; }}"
+            + _scoped_btn_qss("secondary", _flat_secondary_btn_style, s)
+            + _scoped_btn_qss("primary",   _primary_action_btn_style, s)
+            + _scoped_btn_qss("danger",    _danger_action_btn_style,  s)
+        )
+
     def _setup_ui(self):
         s = self.scale
         self.setObjectName("productionView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"QWidget#productionView {{ background:{theme.CONTENT_BG}; }}")
+        # QSS completo já na construção: inclui regras dos botões dos cards
+        # (productionBtn property). Cards futuros herdam automaticamente.
+        self.setStyleSheet(self._build_view_stylesheet(s, theme.CONTENT_BG))
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -931,7 +961,9 @@ class ProductionView(QWidget):
         status_combo.setCurrentIndex(combo_index)
         status_button = QPushButton("Atualizar Status")
         status_button.setFixedHeight(max(34, int(38 * s)))
-        status_button.setStyleSheet(_flat_secondary_btn_style(s))
+        # Property-based: estilo aplicado uma única vez no apply_theme da view,
+        # evita 18× setStyleSheet em runtime (1 por card × 18 máquinas).
+        status_button.setProperty("productionBtn", "secondary")
         status_button.clicked.connect(
             lambda checked=False, mid=int(machine["id"]), combo=status_combo: self._update_machine_status(mid, combo)
         )
@@ -951,10 +983,12 @@ class ProductionView(QWidget):
         btn_cancel = QPushButton("Cancelar")
         for btn in (btn_open, btn_finish, btn_prazo, btn_cancel):
             btn.setFixedHeight(max(34, int(38 * s)))
-        btn_open.setStyleSheet(_flat_secondary_btn_style(s))
-        btn_finish.setStyleSheet(_primary_action_btn_style(s))
-        btn_prazo.setStyleSheet(_flat_secondary_btn_style(s))
-        btn_cancel.setStyleSheet(_danger_action_btn_style(s))
+        # Property-based: 4 botões × N cards usavam setStyleSheet individual.
+        # Agora o estilo vem do QSS view-level (1 chamada cobre todos).
+        btn_open.setProperty("productionBtn", "secondary")
+        btn_finish.setProperty("productionBtn", "primary")
+        btn_prazo.setProperty("productionBtn", "secondary")
+        btn_cancel.setProperty("productionBtn", "danger")
         btn_open.clicked.connect(lambda: self._open_selected_machine(int(machine["id"])))
         if is_dobra_source:
             btn_finish.clicked.connect(lambda: self._send_selected_machine_to_dobra(int(machine["id"])))
@@ -1034,16 +1068,11 @@ class ProductionView(QWidget):
             tw["status_label"].setStyleSheet(_machine_status_label_style(s))
         if tw.get("status_combo") is not None:
             tw["status_combo"].setStyleSheet(_machine_combo_style(s))
-        if tw.get("status_button") is not None:
-            tw["status_button"].setStyleSheet(_flat_secondary_btn_style(s))
-        if tw.get("btn_open") is not None:
-            tw["btn_open"].setStyleSheet(_flat_secondary_btn_style(s))
-        if tw.get("btn_finish") is not None:
-            tw["btn_finish"].setStyleSheet(_primary_action_btn_style(s))
-        if tw.get("btn_prazo") is not None:
-            tw["btn_prazo"].setStyleSheet(_flat_secondary_btn_style(s))
-        if tw.get("btn_cancel") is not None:
-            tw["btn_cancel"].setStyleSheet(_danger_action_btn_style(s))
+        # NOTE: status_button, btn_open, btn_finish, btn_prazo, btn_cancel
+        # NAO sao reaplicados aqui — todos tem property productionBtn=... e
+        # recebem estilo do QSS view-level (apply_theme da view). Economizamos
+        # 5 setStyleSheets × N cards = ~50-90 chamadas em runtime.
+        #
         # NOTE: title, operator_summary, stat_titles, stat_values nao sao
         # reaplicados — seus styles nao tem cor (so font-size/weight). A cor
         # vem do palette via property muted='1' / herança.
@@ -2306,11 +2335,9 @@ class ProductionView(QWidget):
         pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.PANEL_TEXT_PRIMARY))
         self.setPalette(pal)
 
-        # Backgrounds combinados (era 3 chamadas antes)
-        self.setStyleSheet(
-            f"QWidget#productionView {{ background:{bg}; }}"
-            f"QScrollArea {{ background:{bg}; border:none; }}"
-        )
+        # QSS view-level: cobre TODOS os ~90 botões dos cards em uma única
+        # chamada (em vez de 4-5 setStyleSheet × N cards = 70-90 chamadas).
+        self.setStyleSheet(self._build_view_stylesheet(s, bg))
         self._page_content.setStyleSheet(f"background:{bg};")
 
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
