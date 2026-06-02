@@ -3,11 +3,12 @@
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRectF, QSize, QThread, Qt, Signal
+from PySide6.QtCore import QDate, QObject, QRectF, QSize, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDateEdit,
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -122,14 +123,15 @@ def _field_style(scale: float) -> str:
     fs = max(8, int(9 * scale))
     radius = max(12, int(14 * scale))
     return (
-        f"QComboBox {{"
+        f"QComboBox, QDateEdit {{"
         f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
         f"  border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 92)}; border-radius:{radius}px;"
         f"  padding:8px 28px 8px 12px; font-size:{fs}pt; font-weight:600;"
         f"}}"
-        f"QComboBox:hover {{ border-color:{_NEON_PERIOD_COLORS['weekly']}; }}"
-        f"QComboBox:focus {{ border-color:{_NEON_PERIOD_COLORS['daily']}; }}"
+        f"QComboBox:hover, QDateEdit:hover {{ border-color:{_NEON_PERIOD_COLORS['weekly']}; }}"
+        f"QComboBox:focus, QDateEdit:focus {{ border-color:{_NEON_PERIOD_COLORS['daily']}; }}"
         f"QComboBox::drop-down {{ border:none; width:24px; }}"
+        f"QDateEdit {{ padding-right:12px; }}"
         f"QComboBox QAbstractItemView {{"
         f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
         f"  border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 92)};"
@@ -205,6 +207,26 @@ def _format_percentage(value: object) -> str:
     except (TypeError, ValueError):
         return "-"
     return f"{percentage:.1f}%".replace(".", ",")
+
+
+def _format_percentage_precise(value: object, decimals: int = 2) -> str:
+    try:
+        percentage = max(0.0, float(value))
+    except (TypeError, ValueError):
+        return "-"
+    return f"{percentage:.{max(0, decimals)}f}%".replace(".", ",")
+
+
+def _iar_color(value: object) -> str:
+    try:
+        percentage = float(value)
+    except (TypeError, ValueError):
+        return theme.PANEL_TEXT_MUTED
+    if percentage >= 90.0:
+        return theme.SUCCESS
+    if percentage >= 75.0:
+        return theme.WARNING
+    return theme.DANGER
 
 
 def _format_weight_kg(value: object) -> str:
@@ -533,14 +555,18 @@ class DashWorker(QObject):
         self,
         ar_period: str,
         industria_period: str,
-        vendor_period: str,
+        performance_period: str,
+        performance_date_start: str | None,
+        performance_date_end: str | None,
         people_period: str,
         people_destination: str,
     ):
         super().__init__()
         self.ar_period = ar_period
         self.industria_period = industria_period
-        self.vendor_period = vendor_period
+        self.performance_period = performance_period
+        self.performance_date_start = performance_date_start
+        self.performance_date_end = performance_date_end
         self.people_period = people_period
         self.people_destination = people_destination
 
@@ -550,7 +576,9 @@ class DashWorker(QObject):
                 api.get_management_dashboard(
                     ar_period=self.ar_period,
                     industria_period=self.industria_period,
-                    vendor_period=self.vendor_period,
+                    performance_period=self.performance_period,
+                    performance_date_start=self.performance_date_start,
+                    performance_date_end=self.performance_date_end,
                     people_period=self.people_period,
                     people_destination=self.people_destination,
                 )
@@ -579,6 +607,20 @@ class DashboardView(QWidget):
             ("Hoje", "today"),
             ("Mês passado", "last_month"),
         ]
+        self._performance_period_options = [
+            ("Hoje", "today"),
+            ("Semana", "week"),
+            ("MÃªs", "month"),
+            ("Ano", "year"),
+            ("PerÃ­odo personalizado", "custom"),
+        ]
+        self._performance_period_options = [
+            ("Hoje", "today"),
+            ("Semana", "week"),
+            ("Mes", "month"),
+            ("Ano", "year"),
+            ("Periodo personalizado", "custom"),
+        ]
         self._production_filter_options = [
             ("Todas as produções", ""),
             ("A&R", "A&R"),
@@ -586,7 +628,15 @@ class DashboardView(QWidget):
         ]
         self.ar_period_combo: QComboBox | None = None
         self.industria_period_combo: QComboBox | None = None
-        self.vendor_period_combo: QComboBox | None = None
+        self.performance_period_combo: QComboBox | None = None
+        self.performance_date_from: QDateEdit | None = None
+        self.performance_date_to: QDateEdit | None = None
+        self.performance_date_wrap: QWidget | None = None
+        self.iar_card: QFrame | None = None
+        self.iar_value_label: QLabel | None = None
+        self.iar_status_chip: QLabel | None = None
+        self.iar_counts_label: QLabel | None = None
+        self.iar_detail_value_labels: dict[str, QLabel] = {}
         self.people_period_combo: QComboBox | None = None
         self.people_destination_combo: QComboBox | None = None
         self._setup_ui()
@@ -706,6 +756,9 @@ class DashboardView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(max(16, int(18 * s)))
 
+        self.iar_card = self._build_iar_card()
+        layout.addWidget(self.iar_card)
+
         metrics = QGridLayout()
         metrics.setHorizontalSpacing(max(12, int(16 * s)))
         metrics.setVerticalSpacing(max(12, int(16 * s)))
@@ -745,11 +798,11 @@ class DashboardView(QWidget):
         secondary_row.setSpacing(max(12, int(16 * s)))
         self.vendors_card = self._build_machine_section_card(
             "VENDEDORES COM MAIS REQUISIÇÕES",
-            "Ranking por volume de requisições emitidas e peso requerido no período.",
+            "Ranking por IAR, prazo, produtividade, cancelamentos e peso requerido no mesmo periodo do KPI principal.",
             self._build_top_vendors_table(),
             theme.PRIMARY,
-            "vendor_period_combo",
-            "30d",
+            None,
+            "",
         )
         self.people_card = self._build_machine_section_card(
             "OPERADORES E AJUDANTES COM MAIS PRODUÇÕES",
@@ -800,6 +853,180 @@ class DashboardView(QWidget):
         )
         layout.addWidget(self.recent_card)
         layout.addStretch()
+
+    def _build_iar_card(self) -> QFrame:
+        s = self.scale
+        today = local_now().date()
+        month_start = QDate(today.year, today.month, 1)
+        today_qdate = QDate(today.year, today.month, today.day)
+
+        card = _make_shadow_card(
+            s,
+            theme.CARD_BG,
+            border_color=theme.SUCCESS,
+            radius=max(20, int(22 * s)),
+            hover_background=theme.CARD_BG,
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(
+            max(18, int(24 * s)),
+            max(16, int(20 * s)),
+            max(18, int(24 * s)),
+            max(16, int(20 * s)),
+        )
+        layout.setSpacing(max(12, int(14 * s)))
+
+        accent = QFrame()
+        accent.setFixedHeight(max(5, int(6 * s)))
+        accent.setStyleSheet(
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(theme.SUCCESS, 240)}, stop:0.5 {_rgba(theme.WARNING, 180)}, stop:1 {_rgba(theme.DANGER, 220)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+
+        title_row = QHBoxLayout()
+        title_row.setSpacing(max(10, int(12 * s)))
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(max(3, int(4 * s)))
+        title_label = QLabel("IAR GERAL")
+        title_label.setStyleSheet(
+            f"font-size:{max(14, int(18 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+        )
+        subtitle_label = QLabel(
+            "KPI principal da operaÃ§Ã£o, calculado por prazo, produtividade e eficiÃªncia de cancelamentos."
+        )
+        subtitle_label.setWordWrap(True)
+        subtitle_label.setProperty("muted", "1")
+        subtitle_label.setStyleSheet(
+            f"font-size:{max(8, int(9 * s))}pt; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        )
+        subtitle_label.setText(
+            "KPI principal da operacao, calculado por prazo, produtividade e eficiencia de cancelamentos."
+        )
+        title_col.addWidget(title_label)
+        title_col.addWidget(subtitle_label)
+
+        filters_row = QHBoxLayout()
+        filters_row.setSpacing(max(8, int(10 * s)))
+
+        self.performance_date_wrap = QWidget()
+        self.performance_date_wrap.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        period_dates_layout = QHBoxLayout(self.performance_date_wrap)
+        period_dates_layout.setContentsMargins(0, 0, 0, 0)
+        period_dates_layout.setSpacing(max(6, int(8 * s)))
+
+        from_label = QLabel("De")
+        from_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        )
+        self.performance_date_from = QDateEdit()
+        self.performance_date_from.setCalendarPopup(True)
+        self.performance_date_from.setDisplayFormat("dd/MM/yyyy")
+        self.performance_date_from.setDate(month_start)
+        self.performance_date_from.setFixedHeight(max(34, int(38 * s)))
+        self.performance_date_from.setMinimumWidth(max(120, int(134 * s)))
+        self.performance_date_from.setStyleSheet(_field_style(s))
+        self.performance_date_from.dateChanged.connect(self._on_performance_date_changed)
+
+        to_label = QLabel("AtÃ©")
+        to_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        )
+        to_label.setText("Ate")
+        self.performance_date_to = QDateEdit()
+        self.performance_date_to.setCalendarPopup(True)
+        self.performance_date_to.setDisplayFormat("dd/MM/yyyy")
+        self.performance_date_to.setDate(today_qdate)
+        self.performance_date_to.setFixedHeight(max(34, int(38 * s)))
+        self.performance_date_to.setMinimumWidth(max(120, int(134 * s)))
+        self.performance_date_to.setStyleSheet(_field_style(s))
+        self.performance_date_to.dateChanged.connect(self._on_performance_date_changed)
+
+        period_dates_layout.addWidget(from_label)
+        period_dates_layout.addWidget(self.performance_date_from)
+        period_dates_layout.addWidget(to_label)
+        period_dates_layout.addWidget(self.performance_date_to)
+
+        self.performance_period_combo = QComboBox()
+        self.performance_period_combo.setFixedHeight(max(34, int(38 * s)))
+        self.performance_period_combo.setMinimumWidth(max(170, int(220 * s)))
+        self.performance_period_combo.setStyleSheet(_field_style(s))
+        for label, value in self._performance_period_options:
+            self.performance_period_combo.addItem(label, value)
+        selected_index = self.performance_period_combo.findData("month")
+        if selected_index >= 0:
+            self.performance_period_combo.setCurrentIndex(selected_index)
+        self.performance_period_combo.currentIndexChanged.connect(self._on_performance_filter_changed)
+
+        filters_row.addWidget(self.performance_date_wrap, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        filters_row.addWidget(self.performance_period_combo, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        title_row.addLayout(title_col, 1)
+        title_row.addLayout(filters_row)
+
+        hero_row = QHBoxLayout()
+        hero_row.setSpacing(max(16, int(20 * s)))
+
+        hero_col = QVBoxLayout()
+        hero_col.setSpacing(max(6, int(8 * s)))
+        self.iar_value_label = QLabel("0,00%")
+        self.iar_value_label.setStyleSheet(
+            f"font-size:{max(26, int(34 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+        )
+        self.iar_status_chip = QLabel("VERMELHO")
+        self.iar_status_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.iar_status_chip.setMinimumWidth(max(90, int(108 * s)))
+        hero_col.addWidget(self.iar_value_label)
+        hero_col.addWidget(self.iar_status_chip, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.iar_counts_label = QLabel("Recebidas: 0 | Finalizadas: 0 | Canceladas: 0")
+        self.iar_counts_label.setProperty("muted", "1")
+        self.iar_counts_label.setStyleSheet(
+            f"font-size:{max(8, int(9 * s))}pt; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        )
+        self.iar_counts_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        hero_row.addLayout(hero_col, 1)
+        hero_row.addWidget(self.iar_counts_label, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        details_row = QHBoxLayout()
+        details_row.setSpacing(max(12, int(14 * s)))
+        details_row.addWidget(self._build_iar_detail_block("Prazo", "prazo_percent"), 1)
+        details_row.addWidget(self._build_iar_detail_block("Produtividade", "produtividade_percent"), 1)
+        details_row.addWidget(self._build_iar_detail_block("Cancelamentos", "cancelamentos_percent"), 1)
+
+        layout.addWidget(accent)
+        layout.addLayout(title_row)
+        layout.addLayout(hero_row)
+        layout.addLayout(details_row)
+
+        self._update_performance_filter_visibility()
+        self._apply_iar_visuals(0.0)
+        return card
+
+    def _build_iar_detail_block(self, title: str, key: str) -> QWidget:
+        s = self.scale
+        wrapper = QFrame()
+        wrapper.setStyleSheet(
+            f"background:{theme.PANEL_SURFACE_BG}; border:1px solid {_rgba(theme.PANEL_BORDER_SOFT, 84)}; border-radius:{max(14, int(16 * s))}px;"
+        )
+        layout = QVBoxLayout(wrapper)
+        layout.setContentsMargins(max(12, int(14 * s)), max(10, int(12 * s)), max(12, int(14 * s)), max(10, int(12 * s)))
+        layout.setSpacing(max(4, int(5 * s)))
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet(
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        )
+        value_label = QLabel("0,00%")
+        value_label.setStyleSheet(
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+        )
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        self.iar_detail_value_labels[key] = value_label
+        return wrapper
 
     def _build_metric_card(
         self,
@@ -938,7 +1165,7 @@ class DashboardView(QWidget):
         subtitle: str,
         body: QWidget,
         accent_color: str,
-        combo_attr: str,
+        combo_attr: str | None,
         default_period: str,
         extra_combo_attr: str | None = None,
         extra_combo_options: list[tuple[str, str]] | None = None,
@@ -978,17 +1205,19 @@ class DashboardView(QWidget):
             f"color:{theme.PANEL_TEXT_PRIMARY};"
         )
 
-        period_combo = QComboBox()
-        period_combo.setFixedHeight(max(34, int(38 * s)))
-        period_combo.setMinimumWidth(max(170, int(210 * s)))
-        period_combo.setStyleSheet(_field_style(s))
-        for label, value in self._machine_period_options:
-            period_combo.addItem(label, value)
-        selected_index = period_combo.findData(default_period)
-        if selected_index >= 0:
-            period_combo.setCurrentIndex(selected_index)
-        period_combo.currentIndexChanged.connect(lambda _=None: self._on_machine_period_changed())
-        setattr(self, combo_attr, period_combo)
+        period_combo: QComboBox | None = None
+        if combo_attr:
+            period_combo = QComboBox()
+            period_combo.setFixedHeight(max(34, int(38 * s)))
+            period_combo.setMinimumWidth(max(170, int(210 * s)))
+            period_combo.setStyleSheet(_field_style(s))
+            for label, value in self._machine_period_options:
+                period_combo.addItem(label, value)
+            selected_index = period_combo.findData(default_period)
+            if selected_index >= 0:
+                period_combo.setCurrentIndex(selected_index)
+            period_combo.currentIndexChanged.connect(lambda _=None: self._on_machine_period_changed())
+            setattr(self, combo_attr, period_combo)
 
         extra_combo: QComboBox | None = None
         if extra_combo_attr:
@@ -1014,13 +1243,96 @@ class DashboardView(QWidget):
         title_row.addWidget(title_label, 1)
         if extra_combo is not None:
             title_row.addWidget(extra_combo, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        title_row.addWidget(period_combo, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if period_combo is not None:
+            title_row.addWidget(period_combo, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         layout.addWidget(accent)
         layout.addLayout(title_row)
         layout.addWidget(subtitle_label)
         layout.addWidget(body, 1)
         return card
+
+    def _update_performance_filter_visibility(self) -> None:
+        is_custom = (
+            str(self.performance_period_combo.currentData() or "month") == "custom"
+            if self.performance_period_combo
+            else False
+        )
+        if self.performance_date_wrap is not None:
+            self.performance_date_wrap.setVisible(is_custom)
+
+    def _on_performance_filter_changed(self) -> None:
+        self._update_performance_filter_visibility()
+        self.refresh()
+
+    def _on_performance_date_changed(self) -> None:
+        if (
+            self.performance_date_from
+            and self.performance_date_to
+            and self.performance_date_from.date() > self.performance_date_to.date()
+        ):
+            changed = self.sender()
+            if changed is self.performance_date_from:
+                self.performance_date_to.setDate(self.performance_date_from.date())
+            else:
+                self.performance_date_from.setDate(self.performance_date_to.date())
+        if self.performance_period_combo and str(self.performance_period_combo.currentData() or "") == "custom":
+            self.refresh()
+
+    def _selected_performance_params(self) -> tuple[str, str | None, str | None]:
+        period_key = (
+            str(self.performance_period_combo.currentData() or "month")
+            if self.performance_period_combo
+            else "month"
+        )
+        if period_key != "custom" or not self.performance_date_from or not self.performance_date_to:
+            return period_key, None, None
+
+        start_date = self.performance_date_from.date().toPython()
+        end_date = self.performance_date_to.date().toPython()
+        return period_key, start_date.isoformat(), end_date.isoformat()
+
+    def _apply_iar_visuals(self, iar_percent: object) -> None:
+        color = _iar_color(iar_percent)
+        try:
+            percentage = float(iar_percent)
+        except (TypeError, ValueError):
+            percentage = 0.0
+        status_text = "VERDE"
+        if percentage < 75.0:
+            status_text = "VERMELHO"
+        elif percentage < 90.0:
+            status_text = "AMARELO"
+
+        if self.iar_value_label is not None:
+            self.iar_value_label.setStyleSheet(
+                f"font-size:{max(26, int(34 * self.scale))}pt; font-weight:900; background:transparent; color:{color};"
+            )
+        if self.iar_status_chip is not None:
+            self.iar_status_chip.setText(status_text)
+            self.iar_status_chip.setStyleSheet(
+                f"background:{_rgba(color, 44)}; color:{color};"
+                f"border:1px solid {_rgba(color, 132)}; border-radius:{max(11, int(13 * self.scale))}px;"
+                f"padding:6px 12px; font-size:{max(8, int(9 * self.scale))}pt; font-weight:900;"
+            )
+
+    def _fill_iar_card(self, iar_general: object) -> None:
+        data = iar_general if isinstance(iar_general, dict) else {}
+        iar_percent = data.get("iar_percent")
+        if self.iar_value_label is not None:
+            self.iar_value_label.setText(_format_percentage_precise(iar_percent))
+        if self.iar_counts_label is not None:
+            self.iar_counts_label.setText(
+                "Recebidas: "
+                f"{int(data.get('received_count') or 0)} | "
+                "Finalizadas: "
+                f"{int(data.get('finalized_count') or 0)} | "
+                "Canceladas: "
+                f"{int(data.get('canceled_count') or 0)}"
+            )
+        for key, label in self.iar_detail_value_labels.items():
+            label.setText(_format_percentage_precise(data.get(key)))
+        self._apply_iar_visuals(iar_percent)
 
     def _build_comparison_insights_body(self) -> QWidget:
         container = QWidget()
@@ -1197,7 +1509,16 @@ class DashboardView(QWidget):
 
     def _build_top_vendors_table(self) -> QTableWidget:
         self.top_vendors_table = self._create_table(
-            ["#", "VENDEDOR", "REQUISIÇÕES", "PESO(KG)", "IGA"],
+            [
+                "#",
+                "VENDEDOR",
+                "REQUISIÇÕES",
+                "PESO(KG)",
+                "PRAZO (%)",
+                "PRODUTIVIDADE (%)",
+                "CANCELAMENTOS (%)",
+                "IAR (%)",
+            ],
             {1},
         )
         self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
@@ -1317,11 +1638,7 @@ class DashboardView(QWidget):
             if self.industria_period_combo
             else "30d"
         )
-        vendor_period = (
-            str(self.vendor_period_combo.currentData() or "30d")
-            if self.vendor_period_combo
-            else "30d"
-        )
+        performance_period, performance_date_start, performance_date_end = self._selected_performance_params()
         people_period = (
             str(self.people_period_combo.currentData() or "30d")
             if self.people_period_combo
@@ -1333,7 +1650,15 @@ class DashboardView(QWidget):
             else ""
         )
 
-        worker = DashWorker(ar_period, industria_period, vendor_period, people_period, people_destination)
+        worker = DashWorker(
+            ar_period,
+            industria_period,
+            performance_period,
+            performance_date_start,
+            performance_date_end,
+            people_period,
+            people_destination,
+        )
         thread = QThread()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
@@ -1356,8 +1681,12 @@ class DashboardView(QWidget):
             self.ar_period_combo.setEnabled(not loading)
         if self.industria_period_combo:
             self.industria_period_combo.setEnabled(not loading)
-        if self.vendor_period_combo:
-            self.vendor_period_combo.setEnabled(not loading)
+        if self.performance_period_combo:
+            self.performance_period_combo.setEnabled(not loading)
+        if self.performance_date_from:
+            self.performance_date_from.setEnabled(not loading)
+        if self.performance_date_to:
+            self.performance_date_to.setEnabled(not loading)
         if self.people_period_combo:
             self.people_period_combo.setEnabled(not loading)
         if self.people_destination_combo:
@@ -1390,6 +1719,7 @@ class DashboardView(QWidget):
         self.date_label.setText(_format_header_date(current))
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
+        self._fill_iar_card(payload.get("iar_general") or {})
         self._fill_comparison_charts(payload.get("insights") or {})
         self._fill_top_vendors_table(payload.get("top_vendors") or [])
         self._fill_top_people_table(
@@ -1460,14 +1790,20 @@ class DashboardView(QWidget):
                 str(row.get("vendor_name") or "-"),
                 str(row.get("requisition_count") or 0),
                 _format_weight_kg(row.get("total_weight_kg")),
-                _format_percentage(row.get("iga_percent")),
+                _format_percentage_precise(row.get("prazo_percent")),
+                _format_percentage_precise(row.get("produtividade_percent")),
+                _format_percentage_precise(row.get("cancelamentos_percent")),
+                _format_percentage_precise(row.get("iar_percent")),
             ]
             sort_values = [
                 index,
                 str(row.get("vendor_name") or "-"),
                 int(row.get("requisition_count") or 0),
                 float(row.get("total_weight_kg") or 0.0),
-                float(row.get("iga_percent") or 0.0),
+                float(row.get("prazo_percent") or 0.0),
+                float(row.get("produtividade_percent") or 0.0),
+                float(row.get("cancelamentos_percent") or 0.0),
+                float(row.get("iar_percent") or 0.0),
             ]
             for col, value in enumerate(values):
                 item = _SortableTableWidgetItem(value, sort_values[col])
@@ -1769,7 +2105,7 @@ class DashboardView(QWidget):
             if tbl is not None:
                 self._apply_table_style(tbl)
         for combo in [
-            getattr(self, "vendor_period_combo", None),
+            getattr(self, "performance_period_combo", None),
             getattr(self, "people_period_combo", None),
             getattr(self, "people_destination_combo", None),
             getattr(self, "ar_period_combo", None),
@@ -1777,6 +2113,12 @@ class DashboardView(QWidget):
         ]:
             if combo is not None:
                 combo.setStyleSheet(_field_style(s))
+        for date_edit in [
+            getattr(self, "performance_date_from", None),
+            getattr(self, "performance_date_to", None),
+        ]:
+            if date_edit is not None:
+                date_edit.setStyleSheet(_field_style(s))
         for btn in self._comparison_period_buttons.values():
             btn.setStyleSheet(_neon_period_chip_style(s))
         for tbl in [
@@ -1790,6 +2132,19 @@ class DashboardView(QWidget):
                 f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
                 f"color:{theme.PANEL_TEXT_PRIMARY};"
             )
+        for lbl in self.iar_detail_value_labels.values():
+            lbl.setStyleSheet(
+                f"font-size:{max(13, int(16 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+            )
+        if self.iar_counts_label is not None:
+            self.iar_counts_label.setStyleSheet(
+                f"font-size:{max(8, int(9 * s))}pt; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+            )
+        self._apply_iar_visuals(
+            self.iar_value_label.text().replace("%", "").replace(".", "").replace(",", ".")
+            if self.iar_value_label is not None
+            else 0.0
+        )
         for chart in [
             getattr(self, "production_destination_chart", None),
             getattr(self, "production_machine_chart", None),

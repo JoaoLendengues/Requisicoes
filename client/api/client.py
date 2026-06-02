@@ -209,21 +209,28 @@ def list_requisitions(
 def get_management_dashboard(
     ar_period: str = "30d",
     industria_period: str = "30d",
-    vendor_period: str = "30d",
+    performance_period: str = "month",
+    performance_date_start: str | None = None,
+    performance_date_end: str | None = None,
     people_period: str = "30d",
     people_destination: str = "",
 ) -> dict:
+    params = {
+        "ar_period": ar_period,
+        "industria_period": industria_period,
+        "performance_period": performance_period,
+        "people_period": people_period,
+        "people_destination": people_destination,
+    }
+    if performance_date_start:
+        params["performance_date_start"] = performance_date_start
+    if performance_date_end:
+        params["performance_date_end"] = performance_date_end
     with _cli() as client:
         return _check(
             client.get(
                 "/requisitions/dashboard/summary",
-                params={
-                    "ar_period": ar_period,
-                    "industria_period": industria_period,
-                    "vendor_period": vendor_period,
-                    "people_period": people_period,
-                    "people_destination": people_destination,
-                },
+                params=params,
             )
         )
 

@@ -17,6 +17,7 @@ from ..models.requisition import (
 )
 from ..models.user import User, Role
 from ..schemas.dashboard import (
+    DashboardIarSummaryItem,
     DashboardCountKgComparisonItem,
     DashboardInsightsResponse,
     DashboardKgComparisonItem,
@@ -106,6 +107,7 @@ _PROD_CANCELED = "CANCELADA"
 _DESTINATION_AR = "A&R"
 _DESTINATION_PINHEIRO = "Pinheiro Indústria"
 _MACHINE_DASHBOARD_PERIODS = {"30d", "7d", "today", "last_month"}
+_PERFORMANCE_DASHBOARD_PERIODS = {"today", "week", "month", "year", "custom"}
 _SHIFT_START_HOUR = 8
 _SHIFT_END_HOUR = 18
 
@@ -164,66 +166,51 @@ def _did_finish_on_time(finished_at: object, delivery_date: date | None) -> bool
     return finished_local.date() <= delivery_date
 
 
-def _did_deliver_on_time(delivered_at: object, delivery_date: date | None) -> bool | None:
-    if delivery_date is None:
+def _request_finished_at(req: Requisition) -> datetime | None:
+    if req.status == RequisitionStatus.CANCELADA:
         return None
-
-    delivered_local = _to_local_datetime(delivered_at)
-    if delivered_local is None:
-        return None
-
-    return delivered_local.date() <= delivery_date
+    return _history_production_finished_at(req)
 
 
-def _has_rework_marker(value: object) -> bool:
-    probe = (
-        _normalize_text(value)
-        .replace(" ", "")
-        .replace("-", "")
-        .replace("_", "")
+def _request_finished_on_time(req: Requisition) -> bool:
+    finished_at = _request_finished_at(req)
+    result = _did_finish_on_time(finished_at, req.delivery_date)
+    return bool(result)
+
+
+def _build_iar_summary_item(
+    *,
+    received_count: int,
+    finalized_count: int,
+    on_time_count: int,
+    canceled_count: int,
+) -> DashboardIarSummaryItem:
+    prazo_percent = 0.0
+    produtividade_percent = 0.0
+    cancelamentos_percent = 0.0
+
+    if finalized_count > 0:
+        prazo_percent = (on_time_count / finalized_count) * 100.0
+    if received_count > 0:
+        produtividade_percent = (finalized_count / received_count) * 100.0
+        cancelamentos_percent = max(0.0, ((received_count - canceled_count) / received_count) * 100.0)
+
+    iar_percent = (
+        (prazo_percent * 0.50)
+        + (produtividade_percent * 0.30)
+        + (cancelamentos_percent * 0.20)
     )
-    return "retrabalho" in probe
 
-
-def _request_meets_deadline(
-    req: Requisition,
-    finished_cycles: list[dict],
-) -> bool | None:
-    delivered_on_time = _did_deliver_on_time(
-        getattr(req, "delivered_at", None),
-        req.delivery_date,
+    return DashboardIarSummaryItem(
+        received_count=int(received_count),
+        finalized_count=int(finalized_count),
+        on_time_count=int(on_time_count),
+        canceled_count=int(canceled_count),
+        prazo_percent=round(prazo_percent, 2),
+        produtividade_percent=round(produtividade_percent, 2),
+        cancelamentos_percent=round(cancelamentos_percent, 2),
+        iar_percent=round(iar_percent, 2),
     )
-    if delivered_on_time is not None:
-        return delivered_on_time
-
-    if not getattr(req, "entrega", False) and finished_cycles:
-        return _did_finish_on_time(
-            finished_cycles[-1].get("finished_at"),
-            req.delivery_date,
-        )
-
-    return None
-
-
-def _request_has_rework(req: Requisition, finished_cycles: list[dict]) -> bool:
-    if len(finished_cycles) > 1:
-        return True
-
-    if _has_rework_marker(getattr(req, "delivery_deadline_change_reason", None)):
-        return True
-
-    if _has_rework_marker(_cancel_reason_for(req)):
-        return True
-
-    for event in _production_events(req):
-        if _has_rework_marker(event.get("reason")):
-            return True
-
-    for entry in _sorted_status_history(req):
-        if _has_rework_marker(entry.note):
-            return True
-
-    return False
 
 
 def _delivery_deadline_changed_at(req: Requisition) -> datetime | None:
@@ -249,6 +236,16 @@ def _normalize_machine_dashboard_period(value: str) -> str:
 
 def _normalize_dashboard_period(value: str) -> str:
     return _normalize_machine_dashboard_period(value)
+
+
+def _normalize_performance_dashboard_period(value: str) -> str:
+    key = str(value or "").strip().casefold() or "month"
+    if key not in _PERFORMANCE_DASHBOARD_PERIODS:
+        raise HTTPException(
+            status_code=400,
+            detail="PerÃ­odo de performance invÃ¡lido. Use today, week, month, year ou custom.",
+        )
+    return key
 
 
 def _month_start(value: datetime) -> datetime:
@@ -281,6 +278,41 @@ def _dashboard_period_bounds(period_key: str, now: datetime | None = None) -> tu
     return _machine_dashboard_period_bounds(period_key, now)
 
 
+def _performance_period_bounds(
+    period_key: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    now: datetime | None = None,
+) -> tuple[datetime, datetime]:
+    local_now = _to_local_datetime(now or datetime.now(_LOCAL_TIMEZONE)) or datetime.now(_LOCAL_TIMEZONE)
+    today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period_key == "today":
+        return today_start, local_now
+    if period_key == "week":
+        week_start = today_start - timedelta(days=today_start.weekday())
+        return week_start, local_now
+    if period_key == "month":
+        return _month_start(local_now), local_now
+    if period_key == "year":
+        return local_now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0), local_now
+
+    if start_date is None or end_date is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Informe a data inicial e final para o perÃ­odo personalizado.",
+        )
+    if end_date < start_date:
+        raise HTTPException(
+            status_code=400,
+            detail="A data final do perÃ­odo personalizado nÃ£o pode ser menor que a inicial.",
+        )
+
+    range_start = datetime.combine(start_date, time.min, _LOCAL_TIMEZONE)
+    range_end = datetime.combine(end_date + timedelta(days=1), time.min, _LOCAL_TIMEZONE)
+    return range_start, range_end
+
+
 def _datetime_in_dashboard_period(
     value: object,
     period_key: str,
@@ -290,6 +322,25 @@ def _datetime_in_dashboard_period(
     if current is None:
         return False
     period_start, period_end = _dashboard_period_bounds(period_key, now)
+    return period_start <= current < period_end
+
+
+def _datetime_in_performance_period(
+    value: object,
+    period_key: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    now: datetime | None = None,
+) -> bool:
+    current = _to_local_datetime(value)
+    if current is None:
+        return False
+    period_start, period_end = _performance_period_bounds(
+        period_key,
+        start_date,
+        end_date,
+        now,
+    )
     return period_start <= current < period_end
 
 
@@ -1660,15 +1711,64 @@ def _build_machine_usage_rows(
     return rows
 
 
+def _build_iar_general(
+    reqs: list[Requisition],
+    period_key: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    now: datetime | None = None,
+) -> DashboardIarSummaryItem:
+    received_count = 0
+    finalized_count = 0
+    on_time_count = 0
+    canceled_count = 0
+
+    for req in reqs:
+        emission_at = _parse_local_emission_datetime(req.emission_date) or _to_local_datetime(req.created_at)
+        if not _datetime_in_performance_period(
+            emission_at,
+            period_key,
+            start_date,
+            end_date,
+            now,
+        ):
+            continue
+
+        received_count += 1
+        if req.status == RequisitionStatus.CANCELADA:
+            canceled_count += 1
+            continue
+
+        if _request_finished_at(req) is not None:
+            finalized_count += 1
+            if _request_finished_on_time(req):
+                on_time_count += 1
+
+    return _build_iar_summary_item(
+        received_count=received_count,
+        finalized_count=finalized_count,
+        on_time_count=on_time_count,
+        canceled_count=canceled_count,
+    )
+
+
 def _build_top_vendor_rows(
     reqs: list[Requisition],
     period_key: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
     now: datetime | None = None,
 ) -> list[DashboardVendorItem]:
     stats: dict[tuple[int, str], dict[str, object]] = {}
     for req in reqs:
         emission_at = _parse_local_emission_datetime(req.emission_date) or _to_local_datetime(req.created_at)
-        if not _datetime_in_dashboard_period(emission_at, period_key, now):
+        if not _datetime_in_performance_period(
+            emission_at,
+            period_key,
+            start_date,
+            end_date,
+            now,
+        ):
             continue
         vendor_name = (req.vendor_name or "").strip() or "Sem vendedor"
         vendor_key = (int(req.vendor_id or 0), vendor_name)
@@ -1676,53 +1776,48 @@ def _build_top_vendor_rows(
             vendor_key,
             {
                 "vendor_name": vendor_name,
-                "requisition_count": 0,
-                "total_weight_kg": 0.0,
+                "received_count": 0,
+                "finalized_count": 0,
                 "on_time_count": 0,
-                "finished_count": 0,
-                "no_rework_count": 0,
+                "canceled_count": 0,
+                "total_weight_kg": 0.0,
             },
         )
-        entry["requisition_count"] = int(entry["requisition_count"] or 0) + 1
+        entry["received_count"] = int(entry["received_count"] or 0) + 1
         entry["total_weight_kg"] = float(entry["total_weight_kg"] or 0.0) + float(req.weight or 0.0)
 
-        finished_cycles = _all_finished_cycles(req)
-        if _request_meets_deadline(req, finished_cycles):
-            entry["on_time_count"] = int(entry["on_time_count"] or 0) + 1
+        if req.status == RequisitionStatus.CANCELADA:
+            entry["canceled_count"] = int(entry["canceled_count"] or 0) + 1
+            continue
 
-        if finished_cycles:
-            entry["finished_count"] = int(entry["finished_count"] or 0) + 1
-            if not _request_has_rework(req, finished_cycles):
-                entry["no_rework_count"] = int(entry["no_rework_count"] or 0) + 1
+        if _request_finished_at(req) is not None:
+            entry["finalized_count"] = int(entry["finalized_count"] or 0) + 1
+            if _request_finished_on_time(req):
+                entry["on_time_count"] = int(entry["on_time_count"] or 0) + 1
 
-    rows = [
-        DashboardVendorItem(
-            vendor_name=str(data["vendor_name"] or "Sem vendedor"),
-            requisition_count=int(data["requisition_count"] or 0),
-            total_weight_kg=round(float(data["total_weight_kg"] or 0.0), 2),
-            iga_percent=round(
-                (
-                    (
-                        int(data["on_time_count"] or 0)
-                        / max(1, int(data["requisition_count"] or 0))
-                    )
-                    * (
-                        int(data["finished_count"] or 0)
-                        / max(1, int(data["requisition_count"] or 0))
-                    )
-                    * (
-                        int(data["no_rework_count"] or 0)
-                        / max(1, int(data["finished_count"] or 0))
-                    )
-                )
-                * 100.0,
-                2,
-            ),
+    rows: list[DashboardVendorItem] = []
+    for data in stats.values():
+        iar = _build_iar_summary_item(
+            received_count=int(data["received_count"] or 0),
+            finalized_count=int(data["finalized_count"] or 0),
+            on_time_count=int(data["on_time_count"] or 0),
+            canceled_count=int(data["canceled_count"] or 0),
         )
-        for data in stats.values()
-    ]
+        rows.append(
+            DashboardVendorItem(
+                vendor_name=str(data["vendor_name"] or "Sem vendedor"),
+                requisition_count=int(data["received_count"] or 0),
+                total_weight_kg=round(float(data["total_weight_kg"] or 0.0), 2),
+                prazo_percent=iar.prazo_percent,
+                produtividade_percent=iar.produtividade_percent,
+                cancelamentos_percent=iar.cancelamentos_percent,
+                iar_percent=iar.iar_percent,
+            )
+        )
+
     rows.sort(
         key=lambda item: (
+            -item.iar_percent,
             -item.requisition_count,
             -item.total_weight_kg,
             _normalize_text(item.vendor_name),
@@ -2002,7 +2097,9 @@ def _build_management_dashboard(
     *,
     ar_period: str = "30d",
     industria_period: str = "30d",
-    vendor_period: str = "30d",
+    performance_period: str = "month",
+    performance_date_start: date | None = None,
+    performance_date_end: date | None = None,
     people_period: str = "30d",
     people_destination: str = "",
 ) -> ManagementDashboardResponse:
@@ -2092,7 +2189,20 @@ def _build_management_dashboard(
             )
         )
 
-    top_vendors = _build_top_vendor_rows(reqs, vendor_period, now)
+    iar_general = _build_iar_general(
+        reqs,
+        performance_period,
+        performance_date_start,
+        performance_date_end,
+        now,
+    )
+    top_vendors = _build_top_vendor_rows(
+        reqs,
+        performance_period,
+        performance_date_start,
+        performance_date_end,
+        now,
+    )
     top_operators, top_helpers = _build_top_production_people_rows(
         reqs,
         people_period,
@@ -2141,6 +2251,7 @@ def _build_management_dashboard(
             pedidos_sem_confirmacao_1h=len(receipt_alerts),
             tempo_medio_finalizacao_segundos=average_seconds,
         ),
+        iar_general=iar_general,
         insights=insights,
         top_vendors=top_vendors,
         top_operators=top_operators,
@@ -2413,7 +2524,9 @@ def _check_invoice_alerts(db: Session) -> None:
 def get_management_dashboard(
     ar_period: str = Query("30d"),
     industria_period: str = Query("30d"),
-    vendor_period: str = Query("30d"),
+    performance_period: str = Query("month"),
+    performance_date_start: date | None = Query(None),
+    performance_date_end: date | None = Query(None),
     people_period: str = Query("30d"),
     people_destination: str = Query(""),
     db: Session = Depends(get_db),
@@ -2422,7 +2535,7 @@ def get_management_dashboard(
     _check_invoice_alerts(db)
     normalized_ar_period = _normalize_dashboard_period(ar_period)
     normalized_industria_period = _normalize_dashboard_period(industria_period)
-    normalized_vendor_period = _normalize_dashboard_period(vendor_period)
+    normalized_performance_period = _normalize_performance_dashboard_period(performance_period)
     normalized_people_period = _normalize_dashboard_period(people_period)
     normalized_people_destination = _normalize_dashboard_destination(people_destination)
 
@@ -2446,7 +2559,9 @@ def get_management_dashboard(
         machines,
         ar_period=normalized_ar_period,
         industria_period=normalized_industria_period,
-        vendor_period=normalized_vendor_period,
+        performance_period=normalized_performance_period,
+        performance_date_start=performance_date_start,
+        performance_date_end=performance_date_end,
         people_period=normalized_people_period,
         people_destination=normalized_people_destination,
     )
