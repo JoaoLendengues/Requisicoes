@@ -593,6 +593,7 @@ def _compose_production_note(
     reason: str = "",
     operators: list[str] | None = None,
     helpers: list[str] | None = None,
+    transfer: bool = False,
 ) -> str:
     parts = [_PROD_NOTE_PREFIX, action, _canonical_destination(target)]
     machine_name = _normalize_machine_name(machine) if machine else ""
@@ -604,6 +605,8 @@ def _compose_production_note(
         parts.append(f"helpers={';'.join(_clean_operator_names(helpers))}")
     if reason.strip():
         parts.append(f"reason={reason.strip()}")
+    if transfer:
+        parts.append("transfer=1")
     return "|".join(parts)
 
 
@@ -622,6 +625,7 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
         "reason": "",
         "operators": [],
         "helpers": [],
+        "transfer": False,
     }
 
     for raw_segment in parts[3:]:
@@ -644,6 +648,14 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
                 continue
             if normalized_key == "helpers":
                 data["helpers"] = _parse_operator_names(normalized_value)
+                continue
+            if normalized_key == "transfer":
+                data["transfer"] = normalized_value.strip().casefold() in {
+                    "1",
+                    "true",
+                    "sim",
+                    "yes",
+                }
                 continue
 
         if not data["machine"] and data["action"] in (
@@ -1712,6 +1724,119 @@ def _build_production_summary(
         waiting_receipt=waiting_receipt,
         waiting_queue=waiting_queue,
         machines=machine_cards,
+    )
+
+
+def _load_production_pending_summary(
+    db: Session,
+    current_user: User,
+    destination: str,
+) -> ProductionDestinationSummaryResponse:
+    normalized_destination = _canonical_destination(destination)
+    reqs = (
+        db.query(Requisition)
+        .options(*_LOAD_OPTS)
+        .order_by(Requisition.created_at.asc(), Requisition.id.asc())
+        .all()
+    )
+    visible = _filter_requisitions_for_user(reqs, current_user)
+    return _build_production_summary(visible, [], normalized_destination)
+
+
+def _production_fifo_anchor_text(item: ProductionItemResponse) -> str:
+    anchor = item.waiting_since or item.created_at or item.emission_date
+    if not isinstance(anchor, datetime):
+        return ""
+    return anchor.strftime("%d/%m/%Y %H:%M")
+
+
+def _production_fifo_matches(
+    item: ProductionItemResponse,
+    *,
+    requisition_id: int | None = None,
+    split_id: int | None = None,
+) -> bool:
+    if split_id is not None:
+        return int(item.production_split_id or 0) == int(split_id)
+    if requisition_id is None:
+        return False
+    item_requisition_id = int(item.source_requisition_id or item.id or 0)
+    return item.production_split_id in (None, 0) and item_requisition_id == int(requisition_id)
+
+
+def _ensure_production_fifo_item(
+    first_item: ProductionItemResponse | None,
+    *,
+    stage: str,
+    requisition_id: int | None = None,
+    split_id: int | None = None,
+) -> None:
+    if first_item is None:
+        return
+    if _production_fifo_matches(
+        first_item,
+        requisition_id=requisition_id,
+        split_id=split_id,
+    ):
+        return
+
+    waiting_text = _production_fifo_anchor_text(first_item)
+    when_text = f" enviada em {waiting_text}" if waiting_text else ""
+    if stage == "waiting_receipt":
+        detail = (
+            f"Atenda primeiro a requisicao PED {first_item.ped_number}{when_text} "
+            "antes de responder outra em aguardando recebimento."
+        )
+    else:
+        detail = (
+            f"Atenda primeiro a requisicao PED {first_item.ped_number}{when_text} "
+            "antes de iniciar outra requisicao na fila."
+        )
+    raise HTTPException(status_code=400, detail=detail)
+
+
+def _ensure_waiting_receipt_fifo(
+    db: Session,
+    current_user: User,
+    destination: str,
+    requisition_id: int,
+) -> None:
+    summary = _load_production_pending_summary(db, current_user, destination)
+    first_item = summary.waiting_receipt[0] if summary.waiting_receipt else None
+    _ensure_production_fifo_item(
+        first_item,
+        stage="waiting_receipt",
+        requisition_id=requisition_id,
+    )
+
+
+def _ensure_waiting_queue_fifo_for_requisition(
+    db: Session,
+    current_user: User,
+    destination: str,
+    requisition_id: int,
+) -> None:
+    summary = _load_production_pending_summary(db, current_user, destination)
+    first_item = summary.waiting_queue[0] if summary.waiting_queue else None
+    _ensure_production_fifo_item(
+        first_item,
+        stage="waiting_queue",
+        requisition_id=requisition_id,
+    )
+
+
+def _ensure_waiting_queue_fifo_for_split(
+    db: Session,
+    current_user: User,
+    destination: str,
+    split_id: int,
+) -> None:
+    summary = _load_production_pending_summary(db, current_user, destination)
+    first_item = summary.waiting_queue[0] if summary.waiting_queue else None
+    _ensure_production_fifo_item(
+        first_item,
+        stage="waiting_queue",
+        split_id=split_id,
     )
 
 
@@ -3596,6 +3721,25 @@ def create_production_split(
     if not operators:
         raise HTTPException(status_code=400, detail="Selecione pelo menos um operador")
 
+    if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+        _ensure_waiting_receipt_fifo(
+            db,
+            current_user,
+            normalized_destination,
+            req.id,
+        )
+    elif req.status == RequisitionStatus.AGUARDANDO_NA_FILA or (
+        req.status == RequisitionStatus.EM_PRODUCAO
+        and _has_production_splits(req)
+        and _remaining_requisition_weight(req) > 0
+    ):
+        _ensure_waiting_queue_fifo_for_requisition(
+            db,
+            current_user,
+            normalized_destination,
+            req.id,
+        )
+
     split = RequisitionProductionSplit(
         requisition=req,
         sequence=max((int(item.sequence or 0) for item in _sorted_requisition_splits(req)), default=0) + 1,
@@ -3676,6 +3820,7 @@ def update_production_split_status(
     old_status = split.status
     action = prod_event["action"]
     machine_name = _normalize_machine_name(prod_event.get("machine"))
+    bypass_fifo = bool(prod_event.get("transfer"))
 
     if action == _PROD_STARTED:
         if requested_status != RequisitionStatus.EM_PRODUCAO:
@@ -3688,6 +3833,13 @@ def update_production_split_status(
         helpers = _clean_operator_names(prod_event.get("helpers") or [])
         if not operators:
             raise HTTPException(status_code=400, detail="Selecione pelo menos um operador")
+        if split.status == RequisitionStatus.AGUARDANDO_NA_FILA and not bypass_fifo:
+            _ensure_waiting_queue_fifo_for_split(
+                db,
+                current_user,
+                normalized_destination,
+                split.id,
+            )
         split.status = RequisitionStatus.EM_PRODUCAO
         split.production_machine = machine_name
     elif action == _PROD_RETURNED_QUEUE:
@@ -3946,6 +4098,33 @@ def update_status(
     if is_sending_to_production:
         _ensure_unique_ped_number(db, req.ped_number, exclude_req_id=req.id)
     if prod:
+        action = prod["action"]
+        normalized_destination = _canonical_destination(
+            prod.get("target") or req.production_destination or ""
+        )
+        bypass_fifo = bool(prod.get("transfer"))
+        if old_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO and action in (
+            _PROD_RECEIVED,
+            _PROD_QUEUED,
+            _PROD_STARTED,
+        ):
+            _ensure_waiting_receipt_fifo(
+                db,
+                current_user,
+                normalized_destination,
+                req.id,
+            )
+        elif (
+            old_status == RequisitionStatus.AGUARDANDO_NA_FILA
+            and action == _PROD_STARTED
+            and not bypass_fifo
+        ):
+            _ensure_waiting_queue_fifo_for_requisition(
+                db,
+                current_user,
+                normalized_destination,
+                req.id,
+            )
         _apply_production_transition(req, data)
     else:
         _apply_manual_status_transition(req, data.status)

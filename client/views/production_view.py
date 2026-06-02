@@ -321,6 +321,7 @@ def _build_production_note(
     reason: str = "",
     operators: list[str] | None = None,
     helpers: list[str] | None = None,
+    transfer: bool = False,
 ) -> str:
     parts = [PROD_NOTE_PREFIX, action, destination]
     if machine:
@@ -347,6 +348,8 @@ def _build_production_note(
         helper_names.append(normalized)
     if helper_names:
         parts.append(f"helpers={';'.join(helper_names)}")
+    if transfer:
+        parts.append("transfer=1")
     return "|".join(parts)
 
 
@@ -1165,6 +1168,51 @@ class ProductionView(QWidget):
     def _is_split_row(self, req: dict) -> bool:
         return self._row_split_id(req) is not None
 
+    def _stage_for_row(self, req: dict) -> str | None:
+        req_id = self._row_requisition_id(req)
+        split_id = self._row_split_id(req)
+        for stage in (WAITING_RECEIPT_STAGE, WAITING_QUEUE_STAGE):
+            for row in self._stage_rows.get(stage, []):
+                if self._row_requisition_id(row) != req_id:
+                    continue
+                if self._row_split_id(row) != split_id:
+                    continue
+                return stage
+        return None
+
+    def _fifo_stage_message(self, stage: str, first_row: dict) -> str:
+        ped = str(first_row.get("ped_number") or "-")
+        anchor = (
+            _parse_datetime(first_row.get("waiting_since"))
+            or _parse_datetime(first_row.get("created_at"))
+            or _parse_datetime(first_row.get("emission_date"))
+        )
+        when_text = f" enviada em {_format_datetime(anchor)}" if anchor else ""
+        if stage == WAITING_RECEIPT_STAGE:
+            return (
+                f"Atenda primeiro a requisicao PED {ped}{when_text} "
+                "antes de responder outra em aguardando recebimento."
+            )
+        return (
+            f"Atenda primeiro a requisicao PED {ped}{when_text} "
+            "antes de iniciar outra requisicao na fila."
+        )
+
+    def _ensure_fifo_stage_row(self, req: dict, stage: str) -> bool:
+        rows = self._stage_rows.get(stage, [])
+        if not rows:
+            return True
+
+        first_row = rows[0]
+        if (
+            self._row_requisition_id(first_row) == self._row_requisition_id(req)
+            and self._row_split_id(first_row) == self._row_split_id(req)
+        ):
+            return True
+
+        self._show_info(self._fifo_stage_message(stage, first_row))
+        return False
+
     def _ask_partial_weight(self, req: dict) -> float | None:
         remaining_weight = float(req.get("weight") or 0.0)
         total_weight = float(req.get("total_weight") or remaining_weight)
@@ -1288,6 +1336,9 @@ class ProductionView(QWidget):
         self.open_requisition.emit(self._row_requisition_id(req))
 
     def _start_production_selection(self, req: dict):
+        stage = self._stage_for_row(req)
+        if stage and not self._ensure_fifo_stage_row(req, stage):
+            return
         machine = self._pick_machine_for_production(req)
         if not machine:
             return
@@ -1518,6 +1569,10 @@ class ProductionView(QWidget):
             )
             return
 
+        stage = self._stage_for_row(req)
+        if stage and not self._ensure_fifo_stage_row(req, stage):
+            return
+
         card = self._machine_cards.get(machine_id)
         if not card:
             self._show_error("Não foi possível localizar o card da máquina selecionada.")
@@ -1529,6 +1584,9 @@ class ProductionView(QWidget):
         req = self._selected_stage_row(WAITING_RECEIPT_STAGE)
         if not req:
             self._show_info("Selecione uma requisição em aguardando recebimento.")
+            return
+
+        if not self._ensure_fifo_stage_row(req, WAITING_RECEIPT_STAGE):
             return
 
         box = QMessageBox(self)
@@ -1559,6 +1617,8 @@ class ProductionView(QWidget):
             self._cancel_to_progress(req)
 
     def _move_to_queue(self, req: dict):
+        if not self._ensure_fifo_stage_row(req, WAITING_RECEIPT_STAGE):
+            return
         self._run_action(
             api.update_status,
             self._row_requisition_id(req),
@@ -2026,6 +2086,7 @@ class ProductionView(QWidget):
             machine=target_machine,
             operators=selected_team.get("operators") or [],
             helpers=selected_team.get("helpers") or [],
+            transfer=True,
         )
         if is_split:
             api.update_production_split_status(req_id, "aguardando_na_fila", queue_note)

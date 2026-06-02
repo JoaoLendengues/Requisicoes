@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from fastapi import HTTPException
+
 from server.models.client import Client
 from server.models.production_machine import MachineOperationalStatus, ProductionMachine
 from server.models.requisition import (
@@ -15,12 +17,14 @@ from server.models.requisition import (
     StatusHistory,
 )
 from server.models.user import Role, User
+from server.schemas.production import ProductionItemResponse
 from server.routers.requisitions import (
     _DESTINATION_AR,
     _PROD_SEND,
     _PROD_STARTED,
     _build_order_center,
     _build_production_summary,
+    _ensure_production_fifo_item,
 )
 
 
@@ -153,6 +157,32 @@ def _partial_req() -> tuple[Requisition, ProductionMachine]:
     return req, machine
 
 
+def _production_response_item(
+    *,
+    item_id: int,
+    ped_number: str,
+    waiting_since: datetime,
+    source_requisition_id: int | None = None,
+    split_id: int | None = None,
+) -> ProductionItemResponse:
+    return ProductionItemResponse(
+        id=item_id,
+        source_requisition_id=source_requisition_id,
+        production_split_id=split_id,
+        ped_number=ped_number,
+        client_name="CLIENTE A",
+        vendor_name="ALICE",
+        obra="OBRA A",
+        weight=10.0,
+        total_weight=10.0,
+        status=RequisitionStatus.AGUARDANDO_NA_FILA.value,
+        emission_date=waiting_since,
+        created_at=waiting_since,
+        destination=_DESTINATION_AR,
+        waiting_since=waiting_since,
+    )
+
+
 def test_build_production_summary_keeps_remaining_weight_pending():
     req, machine = _partial_req()
 
@@ -196,3 +226,66 @@ def test_build_order_center_lists_split_and_remaining_rows():
     assert split_row.machine_name == "LASER 01"
     assert split_row.operator_names == ["JOAO"]
     assert split_row.helper_names == ["MARIO"]
+
+
+def test_production_fifo_blocks_newer_waiting_receipt_requisition():
+    now = datetime.utcnow().replace(microsecond=0)
+    first_item = _production_response_item(
+        item_id=1,
+        source_requisition_id=1,
+        ped_number="1001",
+        waiting_since=now - timedelta(days=2),
+    )
+
+    try:
+        _ensure_production_fifo_item(
+            first_item,
+            stage="waiting_receipt",
+            requisition_id=2,
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "PED 1001" in str(exc.detail)
+        assert "aguardando recebimento" in str(exc.detail)
+    else:
+        raise AssertionError("Era esperado bloquear a requisicao mais nova em aguardando recebimento.")
+
+
+def test_production_fifo_blocks_newer_waiting_queue_split():
+    now = datetime.utcnow().replace(microsecond=0)
+    first_item = _production_response_item(
+        item_id=101,
+        source_requisition_id=1,
+        split_id=101,
+        ped_number="1001/P01",
+        waiting_since=now - timedelta(hours=5),
+    )
+
+    try:
+        _ensure_production_fifo_item(
+            first_item,
+            stage="waiting_queue",
+            split_id=202,
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "PED 1001/P01" in str(exc.detail)
+        assert "na fila" in str(exc.detail)
+    else:
+        raise AssertionError("Era esperado bloquear a parcela mais nova em aguardando na fila.")
+
+
+def test_production_fifo_allows_oldest_waiting_queue_requisition():
+    now = datetime.utcnow().replace(microsecond=0)
+    first_item = _production_response_item(
+        item_id=1,
+        source_requisition_id=1,
+        ped_number="1001",
+        waiting_since=now - timedelta(hours=3),
+    )
+
+    _ensure_production_fifo_item(
+        first_item,
+        stage="waiting_queue",
+        requisition_id=1,
+    )
