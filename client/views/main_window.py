@@ -245,7 +245,7 @@ class MainWindow(QMainWindow):
             on_result=self._apply_session_profile,
             on_error=lambda _msg: None,
         )
-        self._threads.append((thread, worker))
+        self._track_thread(thread, worker)
 
     def _apply_session_profile(self, data: dict):
         session.update_profile(data)
@@ -614,7 +614,7 @@ class MainWindow(QMainWindow):
                 ),
                 on_error=self._on_save_error,
             )
-        self._threads.append((thread, worker))
+        self._track_thread(thread, worker)
 
     def _after_save(self, req: dict, canvas_json: str,
                     client: dict | None = None, obs: str = "",
@@ -707,7 +707,7 @@ class MainWindow(QMainWindow):
             on_result=lambda data, current_source=source: self._load_req_into_form(data, current_source),
             on_error=lambda msg: QMessageBox.critical(self, "Erro", msg),
         )
-        self._threads.append((thread, worker))
+        self._track_thread(thread, worker)
 
     def _load_req_into_form(self, data: dict, source: str = "history"):
         self.form_view.load_requisition(
@@ -777,7 +777,7 @@ class MainWindow(QMainWindow):
             on_result=lambda r: self._update_badge(r.get("count", 0)),
             on_error=lambda _: None,
         )
-        self._threads.append((thread, worker))
+        self._track_thread(thread, worker)
 
     def _update_badge(self, count: int):
         self._unread_count = count
@@ -790,7 +790,7 @@ class MainWindow(QMainWindow):
             on_result=lambda r: self.set_feedback_unread_count(int(r.get("unread", 0) or 0)),
             on_error=lambda _: None,
         )
-        self._threads.append((thread, worker))
+        self._track_thread(thread, worker)
 
     def set_feedback_unread_count(self, count: int):
         """Chamado pela FeedbackView (após mark-read) e pelo poll periódico."""
@@ -802,7 +802,7 @@ class MainWindow(QMainWindow):
             on_result=self._open_notification_drawer,
             on_error=lambda msg: QMessageBox.warning(self, "Erro", msg),
         )
-        self._threads.append((thread, worker))
+        self._track_thread(thread, worker)
 
     def _open_notification_drawer(self, notifications: list):
         drawer = NotificationDrawer(notifications, self._central)
@@ -817,7 +817,7 @@ class MainWindow(QMainWindow):
             on_result=lambda _: self._reset_badge(),
             on_error=lambda _: None,
         )
-        self._threads.append((thread, worker))
+        self._track_thread(thread, worker)
 
     def _mark_one_read(self, notif_id: int):
         thread, worker = _run_in_thread(
@@ -826,7 +826,7 @@ class MainWindow(QMainWindow):
             on_result=lambda _: self._sync_badge(),
             on_error=lambda _: None,
         )
-        self._threads.append((thread, worker))
+        self._track_thread(thread, worker)
 
     def _reset_badge(self):
         self._unread_count = 0
@@ -1075,6 +1075,27 @@ class MainWindow(QMainWindow):
         self._theme_transition_anim = anim
         anim.start()
 
+    def _track_thread(self, thread: "QThread", worker: "QObject") -> None:
+        """Rastreia (thread, worker) em self._threads e agenda a remocao
+        automatica quando o thread terminar.
+
+        Substitui o padrao antigo `self._threads.append((t, w))`, que nunca
+        removia nada da lista — causava acumulo de tuplas referenciando objetos
+        ja deletados pelo cleanup do _run_in_thread. Em sessoes longas
+        (vendedor com app aberto o dia inteiro), a lista podia crescer com
+        centenas de entradas mortas.
+        """
+        pair = (thread, worker)
+        self._threads.append(pair)
+
+        def _drop():
+            try:
+                self._threads.remove(pair)
+            except ValueError:
+                pass
+
+        thread.finished.connect(_drop)
+
     def _get_current_view(self):
         """Retorna a view visível no stack, ou None."""
         views = [
@@ -1225,7 +1246,8 @@ class MainWindow(QMainWindow):
         cover = self._show_frozen_overlay(old_pixmap)
         QApplication.processEvents()
 
-        res.save(dark_mode=dark)
+        # res.save() escreve no disco — adiado para depois do cross-fade
+        # para nao adicionar I/O ao caminho critico da animacao.
         theme.set_dark(dark)
 
         # Aplica tema na view atual + sidebar + global (cover ainda visível)
@@ -1239,6 +1261,10 @@ class MainWindow(QMainWindow):
         # e sem flicker observável).
         new_pixmap = self._grab_without_overlay(cover)
         self._start_cross_fade(cover, old_pixmap, new_pixmap, duration_ms=120)
+
+        # I/O da preferencia: depois do toggle visual terminar.
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(200, lambda d=dark: res.save(dark_mode=d))
 
     def _grab_without_overlay(self, overlay):
         """Captura um pixmap da janela sem o overlay aparecer.
