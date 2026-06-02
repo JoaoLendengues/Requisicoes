@@ -3671,7 +3671,7 @@ class DrawingCanvas(QWidget):
         row_props.setSpacing(4)
 
         # Cor
-        self.btn_color = QPushButton("Cor")
+        self.btn_color = QPushButton("")
         self.btn_color.setFixedSize(fh, fh)
         self.btn_color.setToolTip("Cor do traço")
         self.btn_color.setStyleSheet(self._color_swatch_style())
@@ -4044,12 +4044,15 @@ class DrawingCanvas(QWidget):
         )
 
     def _color_swatch_style(self) -> str:
+        radius = max(8, int(9 * self.scale))
         return (
             f"QPushButton {{"
-            f" background:{self.color}; border-radius:12px; border:2px solid {theme.rgba(theme.PRIMARY, 96)};"
-            f" color:{theme.TEXT_WHITE}; font-weight:700;"
+            f" background:{self.color}; min-width:0px; min-height:0px;"
+            f" border-radius:{radius}px; border:1px solid {theme.rgba(theme.PRIMARY, 110)};"
+            f" padding:0px; margin:0px;"
             f"}}"
-            f"QPushButton:hover {{ border-color:{theme.PRIMARY}; }}"
+            f"QPushButton:hover {{ border-color:{theme.PRIMARY}; background:{self.color}; }}"
+            f"QPushButton:pressed {{ border-color:{theme.PRIMARY_HOVER}; background:{self.color}; }}"
         )
 
     def _toolbar_section_style(self) -> str:
