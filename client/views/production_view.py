@@ -1006,12 +1006,21 @@ class ProductionView(QWidget):
         }
 
     def _apply_theme_to_machine_card(self, card_data: dict) -> None:
-        """Re-aplica os QSS dependentes do tema em um card de máquina existente.
+        """Re-aplica APENAS o QSS dependente do tema em um card de máquina existente.
 
         Substitui o caminho antigo (destruir e recriar TODOS os 12-18 cards),
-        que custava ~500ms+ em A&R / Pinheiro Indústria. Reaplicação in-place
-        custa ~10x menos pois evita o overhead de destruir QGraphicsDropShadow
-        e re-instanciar dezenas de widgets por máquina.
+        que custava ~500ms+ em A&R / Pinheiro Indústria.
+
+        Otimização extra (Jun/2026): widgets cujo QSS é puramente geométrico
+        (font-size, weight — sem cor) NAO precisam ser reaplicados aqui:
+          - title, operator_summary: sem cor (herda do palette via property)
+          - stat_titles, stat_values: sem cor
+
+        So reaplicamos o que de fato depende de cores do tema:
+          - accent (gradient com accent_color)
+          - status_label (color: TEXT_MEDIUM)
+          - status_combo, botoes (hover/background dependem do tema)
+          - table (helper centralizado)
         """
         s = self.scale
         tw = card_data.get("_theme_widgets") or {}
@@ -1021,10 +1030,6 @@ class ProductionView(QWidget):
         accent_color = tw.get("accent_color") or theme.PRIMARY
         if tw.get("accent") is not None:
             tw["accent"].setStyleSheet(_machine_accent_style(accent_color, s))
-        if tw.get("title") is not None:
-            tw["title"].setStyleSheet(_machine_title_style(s))
-        if tw.get("operator_summary") is not None:
-            tw["operator_summary"].setStyleSheet(_machine_subtitle_style(s))
         if tw.get("status_label") is not None:
             tw["status_label"].setStyleSheet(_machine_status_label_style(s))
         if tw.get("status_combo") is not None:
@@ -1039,10 +1044,9 @@ class ProductionView(QWidget):
             tw["btn_prazo"].setStyleSheet(_flat_secondary_btn_style(s))
         if tw.get("btn_cancel") is not None:
             tw["btn_cancel"].setStyleSheet(_danger_action_btn_style(s))
-        for lbl in tw.get("stat_titles", []):
-            lbl.setStyleSheet(_machine_stat_title_style(s))
-        for lbl in tw.get("stat_values", []):
-            lbl.setStyleSheet(_machine_stat_value_style(s))
+        # NOTE: title, operator_summary, stat_titles, stat_values nao sao
+        # reaplicados — seus styles nao tem cor (so font-size/weight). A cor
+        # vem do palette via property muted='1' / herança.
         if card_data.get("table") is not None:
             self._apply_table_style(card_data["table"])
 
@@ -2277,22 +2281,50 @@ class ProductionView(QWidget):
         theme.apply_neon_table_palette(table)
 
     def apply_theme(self) -> None:
+        """Reaplica tema na ProductionView (A&R / Pinheiro Indústria).
+
+        Otimizado em duas frentes:
+        1) QPalette no root cascateia cores fundamentais (Window, Text,
+           Highlight, etc.) para os ~200-360 widgets filhos em microssegundos,
+           sem regerar setStyleSheet em cada um.
+        2) _apply_theme_to_machine_card pula widgets cujo QSS nao depende do
+           tema (title/subtitle/stat_titles/stat_values — sao font-size only).
+
+        Backgrounds combinados em uma unica chamada de setStyleSheet.
+        """
         s = self.scale
         bg = theme.CONTENT_BG
-        self.setStyleSheet(f"QWidget#productionView {{ background:{bg}; }}")
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ background:{bg}; border:none; }}")
+
+        # QPalette no root — cores base cascateiam para filhos sem palette propria
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window,          QColor(bg))
+        pal.setColor(QPalette.ColorRole.WindowText,      QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Text,            QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(theme.TEXT_MEDIUM))
+        pal.setColor(QPalette.ColorRole.Base,            QColor(theme.PANEL_SURFACE_BG))
+        pal.setColor(QPalette.ColorRole.Highlight,       QColor(theme.PANEL_NEON_PRIMARY))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.PANEL_TEXT_PRIMARY))
+        self.setPalette(pal)
+
+        # Backgrounds combinados (era 3 chamadas antes)
+        self.setStyleSheet(
+            f"QWidget#productionView {{ background:{bg}; }}"
+            f"QScrollArea {{ background:{bg}; border:none; }}"
+        )
         self._page_content.setStyleSheet(f"background:{bg};")
+
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         for panel in (self.waiting_receipt_panel, self.waiting_queue_panel):
             self._apply_table_style(panel["table"])
 
         # Re-estiliza os machine_cards EXISTENTES (sem destruir + recriar).
-        # A versão antiga chamava _populate_machine_cards() aqui — recriava
-        # 12-18 cards, ~200-360 widgets total + QGraphicsDropShadow novos.
-        # Custava ~500ms+ por toggle. Agora usamos refs em "_theme_widgets"
-        # para reaplicar QSS in-place (~50ms).
+        # A versão antiga chamava _populate_machine_cards() — recriava 12-18
+        # cards, ~200-360 widgets + QGraphicsDropShadow novos (~500ms+).
+        # Agora usamos refs em "_theme_widgets" para reaplicar QSS in-place.
         for card_data in self._machine_cards.values():
             self._apply_theme_to_machine_card(card_data)
+
+        self.update()
 
 
 
