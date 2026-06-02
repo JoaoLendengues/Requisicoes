@@ -407,27 +407,42 @@ def _make_card(parent=None) -> QFrame:
     return card
 
 
+def _field_label_style(scale: float) -> str:
+    """Estilo do label de TÍTULO de campo (DATA, VENDEDOR, STATUS etc.).
+    Mantido como função para o apply_theme reaplicar com as cores do tema atual."""
+    return (
+        f"font-size:{max(7, int(8*scale))}pt; background:transparent;"
+        f"font-weight:700; text-transform:uppercase; border:none;"
+        f"color:{theme.PANEL_NEON_PRIMARY};"
+    )
+
+
+def _value_label_style(scale: float) -> str:
+    """Estilo do label de VALOR (01/06/2026, JOÃO PEDRO etc.).
+    Usa PANEL_TEXT_PRIMARY que muda entre claro/escuro."""
+    return (
+        f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none;"
+        f"background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+    )
+
+
 def _field_label(text: str, scale: float) -> QLabel:
     lbl = QLabel(text)
+    # Propriedade usada por apply_theme() pra reaplicar a cor ao trocar de tema.
+    lbl.setProperty("req_field_label", "1")
+    # Mantém accent='1' para a regra global QLabel[accent='1'] continuar valendo.
     lbl.setProperty("accent", "1")
     lbl.setFrameStyle(QFrame.Shape.NoFrame)
-    # background:transparent é OBRIGATÓRIO aqui: quando o widget recebe um
-    # stylesheet inline, o Qt para de herdar o background do QSS global, e
-    # o QLabel passa a pintar com a cor padrão (escura no tema dark).
-    lbl.setStyleSheet(
-        f"font-size:{max(7, int(8*scale))}pt; background:transparent;"
-        f"font-weight:700; text-transform:uppercase; border:none; color:{theme.PANEL_TEXT_MUTED};"
-    )
+    lbl.setStyleSheet(_field_label_style(scale))
     return lbl
 
 
 def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     lbl = QLabel(text)
+    # Propriedade usada por apply_theme() pra reaplicar a cor ao trocar de tema.
+    lbl.setProperty("req_value_label", "1")
     lbl.setFrameStyle(QFrame.Shape.NoFrame)
-    lbl.setStyleSheet(
-        f"font-size:{max(9, int(11*scale))}pt; font-weight:800; border:none;"
-        f"background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
-    )
+    lbl.setStyleSheet(_value_label_style(scale))
     return lbl
 
 
@@ -3336,6 +3351,16 @@ class RequisitionForm(QWidget):
         self.lbl_ped_num.setStyleSheet(
             f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; background:transparent; color:{theme.PANEL_NEON_PRIMARY};"
         )
+        # Reaplicar TODOS os QLabels marcados como titulo/valor de campo.
+        # Necessario porque o stylesheet inline congela a cor no momento da
+        # construcao; ao trocar o tema, sem este loop os textos sumiriam.
+        field_style = _field_label_style(s)
+        value_style = _value_label_style(s)
+        for lbl in self.findChildren(QLabel):
+            if lbl.property("req_field_label") == "1":
+                lbl.setStyleSheet(field_style)
+            elif lbl.property("req_value_label") == "1":
+                lbl.setStyleSheet(value_style)
         self.lock_label.setStyleSheet(
             f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
         )
