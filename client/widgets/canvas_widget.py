@@ -3741,6 +3741,16 @@ class DrawingCanvas(QWidget):
         self.spin_font.valueChanged.connect(self._on_font_size_changed)
         row_props.addWidget(self.spin_font)
 
+        row_props.addSpacing(8)
+
+        self.btn_desenho = QPushButton("Desenho")
+        self.btn_desenho.setFixedHeight(fh)
+        self.btn_desenho.setToolTip("Escolher categoria de desenho pré-definido")
+        self.btn_desenho.clicked.connect(self._open_desenho_popup)
+        self.btn_desenho.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_desenho)
+        row_props.addWidget(self.btn_desenho)
+
         row_props.addStretch()
         toolbar_stack.addWidget(props_frame)
 
@@ -4885,6 +4895,40 @@ class DrawingCanvas(QWidget):
         if not ok or not selected:
             return
         self._insert_3d_preset(str(selected).strip().lower())
+
+    def _open_desenho_popup(self):
+        options = [
+            "Pingadeira",
+            "Rufo",
+            "Calhas",
+            "Bandeja",
+            "Cantoneira",
+            "Chapas",
+            "Perfil",
+        ]
+        selected, ok = self._prompt_item(
+            "Desenho",
+            "Escolha a categoria do desenho:",
+            options,
+            current=0,
+            ok_text="Abrir",
+        )
+        if not ok or not selected:
+            return
+
+        selected_key = str(selected).strip().lower()
+        handlers = {
+            "pingadeira": self._open_pingadeira_popup,
+            "rufo": self._open_rufo_popup,
+            "calhas": self._open_calha_popup,
+            "bandeja": self._open_bandeja_popup,
+            "cantoneira": self._open_cantoneira_popup,
+            "chapas": self._open_chapa_popup,
+            "perfil": self._open_perfil_popup,
+        }
+        handler = handlers.get(selected_key)
+        if handler is not None:
+            handler()
 
     def _base_insert_pos(self) -> QPointF:
         if self._last_click_scene_pos is not None:
