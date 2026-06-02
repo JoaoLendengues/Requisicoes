@@ -395,7 +395,10 @@ def _make_card(parent=None) -> QFrame:
         f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 82)};"
         f"  border-radius:18px;"
         f"}}"
-        f"QFrame#reqCard:hover {{ border-color:{_rgba(theme.PANEL_NEON_SECONDARY, 180)}; }}"
+        # Hover: mesma cor azul da borda normal, so que mais intensa
+        # (alpha 82 -> alpha cheio). Antes era PANEL_NEON_SECONDARY (vermelho),
+        # criando aquele piscar de cor ao passar o mouse.
+        f"QFrame#reqCard:hover {{ border-color:{theme.PANEL_NEON_PRIMARY}; }}"
     )
     shadow = QGraphicsDropShadowEffect()
     shadow.setBlurRadius(28)
@@ -3403,7 +3406,8 @@ class RequisitionForm(QWidget):
             f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 82)};"
             f"  border-radius:18px;"
             f"}}"
-            f"QFrame#reqCard:hover {{ border-color:{_rgba(theme.PANEL_NEON_SECONDARY, 180)}; }}"
+            # Hover: borda azul mais forte (mesma cor da borda normal, full alpha).
+            f"QFrame#reqCard:hover {{ border-color:{theme.PANEL_NEON_PRIMARY}; }}"
         )
         for card in self.findChildren(QFrame, "reqCard"):
             card.setStyleSheet(card_qss)
