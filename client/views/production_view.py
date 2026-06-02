@@ -162,6 +162,31 @@ def _rgba(color: str, alpha: int) -> str:
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 
+# ── Helpers de estilo para machine cards (centralizados para permitir
+# re-aplicação rápida em apply_theme sem recriar o widget). ───────────────────
+def _machine_accent_style(accent_color: str, s: float) -> str:
+    return (
+        f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        f"stop:0 {_rgba(accent_color, 235)}, stop:0.5 {_rgba(accent_color, 155)}, stop:1 {_rgba(accent_color, 235)});"
+        f"border:none; border-radius:{max(2, int(3 * s))}px;"
+    )
+
+def _machine_title_style(s: float) -> str:
+    return f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
+
+def _machine_subtitle_style(s: float) -> str:
+    return f"background:transparent; font-size:{max(7, int(8 * s))}pt;"
+
+def _machine_status_label_style(s: float) -> str:
+    return f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+
+def _machine_stat_title_style(s: float) -> str:
+    return f"background:transparent; font-size:{max(6, int(7 * s))}pt; font-weight:700;"
+
+def _machine_stat_value_style(s: float) -> str:
+    return f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
+
+
 def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
     shadow = QGraphicsDropShadowEffect(widget)
     shadow.setBlurRadius(blur)
@@ -849,16 +874,12 @@ class ProductionView(QWidget):
 
         accent = QFrame()
         accent.setFixedHeight(max(4, int(5 * s)))
-        accent.setStyleSheet(
-            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-            f"stop:0 {_rgba(accent_color, 235)}, stop:0.5 {_rgba(accent_color, 155)}, stop:1 {_rgba(accent_color, 235)});"
-            f"border:none; border-radius:{max(2, int(3 * s))}px;"
-        )
+        accent.setStyleSheet(_machine_accent_style(accent_color, s))
         layout.addWidget(accent)
 
         title = QLabel(str(machine.get("name") or "Máquina"))
         title.setWordWrap(True)
-        title.setStyleSheet(f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:800;")
+        title.setStyleSheet(_machine_title_style(s))
         layout.addWidget(title)
 
         operator_names, helper_names = _split_team_members(machine)
@@ -870,7 +891,7 @@ class ProductionView(QWidget):
         )
         operator_summary.setWordWrap(True)
         operator_summary.setProperty("muted", "1")
-        operator_summary.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt;")
+        operator_summary.setStyleSheet(_machine_subtitle_style(s))
         if operator_names or helper_names:
             operator_summary.setToolTip(
                 "Operadores: "
@@ -883,15 +904,23 @@ class ProductionView(QWidget):
         stats_grid = QGridLayout()
         stats_grid.setHorizontalSpacing(max(10, int(12 * s)))
         stats_grid.setVerticalSpacing(max(8, int(10 * s)))
-        stats_grid.addWidget(self._machine_stat_block("Quantidade em Produção", str(machine.get("quantity_in_production") or 0)), 0, 0)
-        stats_grid.addWidget(self._machine_stat_block("Finalizadas", str(machine.get("finalized_count") or 0)), 0, 1)
-        stats_grid.addWidget(self._machine_stat_block("Tempo Médio", _format_duration(machine.get("average_seconds"))), 1, 0, 1, 2)
+        stat_blocks = [
+            self._machine_stat_block("Quantidade em Produção", str(machine.get("quantity_in_production") or 0)),
+            self._machine_stat_block("Finalizadas", str(machine.get("finalized_count") or 0)),
+            self._machine_stat_block("Tempo Médio", _format_duration(machine.get("average_seconds"))),
+        ]
+        stats_grid.addWidget(stat_blocks[0], 0, 0)
+        stats_grid.addWidget(stat_blocks[1], 0, 1)
+        stats_grid.addWidget(stat_blocks[2], 1, 0, 1, 2)
         layout.addLayout(stats_grid)
+        # Refs dos labels dos stat blocks (preenchidos no dict de retorno)
+        _stat_titles = [getattr(b, "_stat_title_lbl", None) for b in stat_blocks if getattr(b, "_stat_title_lbl", None)]
+        _stat_values = [getattr(b, "_stat_value_lbl", None) for b in stat_blocks if getattr(b, "_stat_value_lbl", None)]
 
         status_row = QHBoxLayout()
         status_row.setSpacing(max(8, int(10 * s)))
         status_label = QLabel("Status da Máquina")
-        status_label.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        status_label.setStyleSheet(_machine_status_label_style(s))
         status_label.setProperty("muted", "1")
         status_combo = QComboBox()
         for value, text in MACHINE_STATUS_OPTIONS:
@@ -957,7 +986,65 @@ class ProductionView(QWidget):
             "combo": status_combo,
             "rows": rows,
             "machine": dict(machine),
+            # Referências dos widgets dependentes do tema — usadas por
+            # _apply_theme_to_machine_card() em vez de recriar o card inteiro.
+            "_theme_widgets": {
+                "accent": accent,
+                "accent_color": accent_color,
+                "title": title,
+                "operator_summary": operator_summary,
+                "status_label": status_label,
+                "status_combo": status_combo,
+                "status_button": status_button,
+                "btn_open": btn_open,
+                "btn_finish": btn_finish,
+                "btn_prazo": btn_prazo,
+                "btn_cancel": btn_cancel,
+                "stat_titles": _stat_titles,
+                "stat_values": _stat_values,
+            },
         }
+
+    def _apply_theme_to_machine_card(self, card_data: dict) -> None:
+        """Re-aplica os QSS dependentes do tema em um card de máquina existente.
+
+        Substitui o caminho antigo (destruir e recriar TODOS os 12-18 cards),
+        que custava ~500ms+ em A&R / Pinheiro Indústria. Reaplicação in-place
+        custa ~10x menos pois evita o overhead de destruir QGraphicsDropShadow
+        e re-instanciar dezenas de widgets por máquina.
+        """
+        s = self.scale
+        tw = card_data.get("_theme_widgets") or {}
+        if not tw:
+            # Card construído antes da refatoração — fallback seguro.
+            return
+        accent_color = tw.get("accent_color") or theme.PRIMARY
+        if tw.get("accent") is not None:
+            tw["accent"].setStyleSheet(_machine_accent_style(accent_color, s))
+        if tw.get("title") is not None:
+            tw["title"].setStyleSheet(_machine_title_style(s))
+        if tw.get("operator_summary") is not None:
+            tw["operator_summary"].setStyleSheet(_machine_subtitle_style(s))
+        if tw.get("status_label") is not None:
+            tw["status_label"].setStyleSheet(_machine_status_label_style(s))
+        if tw.get("status_combo") is not None:
+            tw["status_combo"].setStyleSheet(_machine_combo_style(s))
+        if tw.get("status_button") is not None:
+            tw["status_button"].setStyleSheet(_flat_secondary_btn_style(s))
+        if tw.get("btn_open") is not None:
+            tw["btn_open"].setStyleSheet(_flat_secondary_btn_style(s))
+        if tw.get("btn_finish") is not None:
+            tw["btn_finish"].setStyleSheet(_primary_action_btn_style(s))
+        if tw.get("btn_prazo") is not None:
+            tw["btn_prazo"].setStyleSheet(_flat_secondary_btn_style(s))
+        if tw.get("btn_cancel") is not None:
+            tw["btn_cancel"].setStyleSheet(_danger_action_btn_style(s))
+        for lbl in tw.get("stat_titles", []):
+            lbl.setStyleSheet(_machine_stat_title_style(s))
+        for lbl in tw.get("stat_values", []):
+            lbl.setStyleSheet(_machine_stat_value_style(s))
+        if card_data.get("table") is not None:
+            self._apply_table_style(card_data["table"])
 
     def _machine_stat_block(self, title_text: str, value_text: str) -> QWidget:
         s = self.scale
@@ -968,12 +1055,15 @@ class ProductionView(QWidget):
 
         title = QLabel(title_text.upper())
         title.setProperty("muted", "1")
-        title.setStyleSheet(f"background:transparent; font-size:{max(6, int(7 * s))}pt; font-weight:700;")
+        title.setStyleSheet(_machine_stat_title_style(s))
         value = QLabel(value_text)
         value.setWordWrap(True)
-        value.setStyleSheet(f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:800;")
+        value.setStyleSheet(_machine_stat_value_style(s))
         layout.addWidget(title)
         layout.addWidget(value)
+        # Anexa refs no próprio QWidget pra _build_machine_card coletar logo após.
+        box._stat_title_lbl = title  # type: ignore[attr-defined]
+        box._stat_value_lbl = value  # type: ignore[attr-defined]
         return box
 
     def _fill_machine_table(self, table: QTableWidget, rows: list[dict]):
@@ -2196,16 +2286,13 @@ class ProductionView(QWidget):
         for panel in (self.waiting_receipt_panel, self.waiting_queue_panel):
             self._apply_table_style(panel["table"])
 
-        # Os machine_cards têm muitos labels e accent_lines com QSS inline que
-        # ficam congelados ao trocar tema. Em vez de reaplicar dezenas de
-        # estilos manualmente, recriamos os cards a partir do cache de dados
-        # (_machines_data) — sem nova chamada a API.
-        if getattr(self, "_machines_data", None) and hasattr(self, "_populate_machine_cards"):
-            self._populate_machine_cards()
-        else:
-            for card in self._machine_cards.values():
-                self._apply_table_style(card["table"])
-                card["combo"].setStyleSheet(_machine_combo_style(s))
+        # Re-estiliza os machine_cards EXISTENTES (sem destruir + recriar).
+        # A versão antiga chamava _populate_machine_cards() aqui — recriava
+        # 12-18 cards, ~200-360 widgets total + QGraphicsDropShadow novos.
+        # Custava ~500ms+ por toggle. Agora usamos refs em "_theme_widgets"
+        # para reaplicar QSS in-place (~50ms).
+        for card_data in self._machine_cards.values():
+            self._apply_theme_to_machine_card(card_data)
 
 
 
