@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import or_, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
@@ -3510,7 +3510,7 @@ def get_production_summary(
         db.query(ProductionMachine)
         .options(selectinload(ProductionMachine.operators))
         .filter(ProductionMachine.destination == normalized_destination)
-        .order_by(ProductionMachine.sort_order.asc(), ProductionMachine.id.asc())
+        .order_by(func.lower(ProductionMachine.name).asc(), ProductionMachine.id.asc())
         .all()
     )
     return _build_production_summary(visible, machines, normalized_destination)
@@ -3526,7 +3526,7 @@ def list_production_machines(
     machines = (
         db.query(ProductionMachine)
         .filter(ProductionMachine.destination == normalized_destination)
-        .order_by(ProductionMachine.sort_order.asc(), ProductionMachine.id.asc())
+        .order_by(func.lower(ProductionMachine.name).asc(), ProductionMachine.id.asc())
         .all()
     )
     return [
