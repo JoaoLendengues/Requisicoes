@@ -265,7 +265,7 @@ class HistoryWorker(QObject):
     def run(self):
         try:
             self.result.emit(
-                api.list_requisitions(
+                api.list_requisition_history_rows(
                     self.status,
                     self.search,
                     limit=100,
@@ -1085,7 +1085,7 @@ class HistoryView(QWidget):
                         except (TypeError, ValueError):
                             sort_key = 0
                         item = SortableItem(value, sort_key=sort_key)
-                        req_id = req.get("id")
+                        req_id = req.get("source_requisition_id") or req.get("id")
                         if req_id is not None:
                             item.setData(Qt.ItemDataRole.UserRole, int(req_id))
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1131,7 +1131,7 @@ class HistoryView(QWidget):
                 self.open_requisition.emit(int(req_id))
                 return
         if 0 <= row < len(self._reqs):
-            req_id = self._reqs[row].get("id")
+            req_id = self._reqs[row].get("source_requisition_id") or self._reqs[row].get("id")
             if req_id is not None:
                 self.open_requisition.emit(int(req_id))
 

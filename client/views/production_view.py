@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QDialog,
+    QDoubleSpinBox,
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -1029,6 +1030,99 @@ class ProductionView(QWidget):
             return rows[row], card["machine"]
         return None, card["machine"]
 
+    def _row_requisition_id(self, req: dict) -> int:
+        return int(req.get("source_requisition_id") or req["id"])
+
+    def _row_split_id(self, req: dict) -> int | None:
+        split_id = req.get("production_split_id")
+        if split_id in (None, ""):
+            return None
+        return int(split_id)
+
+    def _is_split_row(self, req: dict) -> bool:
+        return self._row_split_id(req) is not None
+
+    def _ask_partial_weight(self, req: dict) -> float | None:
+        remaining_weight = float(req.get("weight") or 0.0)
+        total_weight = float(req.get("total_weight") or remaining_weight)
+        if remaining_weight <= 0:
+            self._show_info("Nao ha saldo pendente para encaminhar.")
+            return None
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Quantidade para Producao")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(max(8, int(10 * self.scale)))
+
+        ped = str(req.get("ped_number") or "-")
+        header = QLabel(f"Requisicao PED #{ped}")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        layout.addWidget(header)
+
+        question = QLabel("QUANTOS KG VOCE DESEJA PRODUZIR?")
+        question.setWordWrap(True)
+        question.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(10 * self.scale))}pt;")
+        layout.addWidget(question)
+
+        total_label = QLabel(f"KG total da requisicao: {_format_weight_kg(total_weight)}")
+        pending_label = QLabel(f"KG pendente para encaminhar: {_format_weight_kg(remaining_weight)}")
+        total_label.setProperty("muted", "1")
+        pending_label.setProperty("muted", "1")
+        total_label.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
+        pending_label.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
+        layout.addWidget(total_label)
+        layout.addWidget(pending_label)
+
+        spin = QDoubleSpinBox()
+        spin.setDecimals(3)
+        spin.setMinimum(0.001)
+        spin.setMaximum(remaining_weight)
+        spin.setValue(remaining_weight)
+        spin.setSingleStep(0.100)
+        spin.setFixedHeight(max(38, int(44 * self.scale)))
+        spin.setStyleSheet(_machine_combo_style(self.scale))
+        layout.addWidget(spin)
+
+        error_lbl = QLabel("")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setVisible(False)
+        layout.addWidget(error_lbl)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok = QPushButton("Confirmar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_ok)
+        layout.addLayout(buttons)
+
+        def _confirm():
+            selected_weight = round(float(spin.value() or 0.0), 3)
+            if selected_weight <= 0 or selected_weight > remaining_weight:
+                error_lbl.setText("Informe um peso valido dentro do saldo pendente.")
+                error_lbl.setVisible(True)
+                return
+            dlg.setProperty("_selected_weight", selected_weight)
+            dlg.accept()
+
+        btn_ok.clicked.connect(_confirm)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return float(dlg.property("_selected_weight") or 0.0)
+
     def _show_error(self, msg: str):
         self.updated_label.setText("Falha ao atualizar")
         friendly = str(msg or "").strip()
@@ -1046,7 +1140,7 @@ class ProductionView(QWidget):
     def _open_stage_row(self, stage: str, row: int):
         rows = self._stage_rows.get(stage, [])
         if 0 <= row < len(rows):
-            self.open_requisition.emit(int(rows[row]["id"]))
+            self.open_requisition.emit(self._row_requisition_id(rows[row]))
 
     def _open_machine_row(self, machine_id: int, row: int):
         card = self._machine_cards.get(machine_id)
@@ -1054,21 +1148,21 @@ class ProductionView(QWidget):
             return
         rows = card["rows"]
         if 0 <= row < len(rows):
-            self.open_requisition.emit(int(rows[row]["id"]))
+            self.open_requisition.emit(self._row_requisition_id(rows[row]))
 
     def _open_selected_stage(self, stage: str):
         req = self._selected_stage_row(stage)
         if not req:
             self._show_info("Selecione uma requisição primeiro.")
             return
-        self.open_requisition.emit(int(req["id"]))
+        self.open_requisition.emit(self._row_requisition_id(req))
 
     def _open_selected_machine(self, machine_id: int):
         req, _machine = self._selected_machine_row(machine_id)
         if not req:
             self._show_info("Selecione uma requisição no card da máquina.")
             return
-        self.open_requisition.emit(int(req["id"]))
+        self.open_requisition.emit(self._row_requisition_id(req))
 
     def _start_production_selection(self, req: dict):
         machine = self._pick_machine_for_production(req)
@@ -1344,7 +1438,7 @@ class ProductionView(QWidget):
     def _move_to_queue(self, req: dict):
         self._run_action(
             api.update_status,
-            int(req["id"]),
+            self._row_requisition_id(req),
             "aguardando_na_fila",
             _build_production_note(PROD_QUEUED, self.destination),
             success_message="Requisição movida para aguardando na fila.",
@@ -1422,18 +1516,39 @@ class ProductionView(QWidget):
         if not selected_team:
             return
 
+        split_id = self._row_split_id(req)
+        note = _build_production_note(
+            PROD_STARTED,
+            self.destination,
+            machine=machine_name,
+            operators=selected_team["operators"],
+            helpers=selected_team["helpers"],
+        )
+        if split_id is not None:
+            self._run_action(
+                api.update_production_split_status,
+                split_id,
+                "em_producao",
+                note,
+                success_message=f"Parcela enviada para {machine_name}.",
+            )
+            return
+
+        selected_weight = self._ask_partial_weight(req)
+        if selected_weight is None:
+            return
+
         self._run_action(
-            api.update_status,
-            int(req["id"]),
-            "em_producao",
-            _build_production_note(
-                PROD_STARTED,
-                self.destination,
-                machine=machine_name,
-                operators=selected_team["operators"],
-                helpers=selected_team["helpers"],
-            ),
-            success_message=f"Requisição enviada para {machine_name}.",
+            api.create_production_split,
+            self._row_requisition_id(req),
+            {
+                "weight": selected_weight,
+                "destination": self.destination,
+                "machine_name": machine_name,
+                "operators": selected_team["operators"],
+                "helpers": selected_team["helpers"],
+            },
+            success_message=f"Parcela de {_format_weight_kg(selected_weight)} enviada para {machine_name}.",
         )
 
     def _pick_machine_for_production(self, req: dict) -> dict | None:
@@ -1689,13 +1804,19 @@ class ProductionView(QWidget):
         self._cancel_to_progress(req)
 
     def _cancel_to_progress(self, req: dict):
+        if self._is_split_row(req):
+            self._show_info(
+                "Parcelas desmembradas nao podem ser canceladas por esta acao.\n\n"
+                "Use a requisicao principal para cancelar o saldo pendente."
+            )
+            return
         reason = self._ask_cancel_reason()
         if reason is None:
             return
 
         self._run_action(
             api.update_status,
-            int(req["id"]),
+            self._row_requisition_id(req),
             "cancelada",
             _build_production_note(PROD_CANCELED, self.destination, reason=reason),
             success_message="Requisição cancelada.",
@@ -1716,11 +1837,13 @@ class ProductionView(QWidget):
             return
 
         machine_name = str(machine.get("name") or "")
+        split_id = self._row_split_id(req)
         self._run_action(
             self._finalize_and_invoice_requisition,
-            int(req["id"]),
+            split_id if split_id is not None else self._row_requisition_id(req),
             machine_name,
-            success_message="Requisição finalizada e faturada.",
+            split_id is not None,
+            success_message="Parcela finalizada." if split_id is not None else "Requisição finalizada e faturada.",
         )
 
     def _send_selected_machine_to_dobra(self, machine_id: int):
@@ -1754,35 +1877,45 @@ class ProductionView(QWidget):
         if not selected_team:
             return
 
+        split_id = self._row_split_id(req)
         self._run_action(
             self._transfer_machine_requisition,
-            int(req["id"]),
+            split_id if split_id is not None else self._row_requisition_id(req),
             source_machine,
             target_machine,
             selected_team,
-            success_message=f"Requisição enviada para dobra na máquina {target_machine}.",
+            split_id is not None,
+            success_message=f"Parcela enviada para dobra na máquina {target_machine}." if split_id is not None else f"Requisição enviada para dobra na máquina {target_machine}.",
         )
 
-    def _transfer_machine_requisition(self, req_id: int, source_machine: str, target_machine: str, selected_team: dict[str, list[str]]):
-        api.update_status(
-            req_id,
-            "aguardando_na_fila",
-            _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=source_machine),
+    def _transfer_machine_requisition(
+        self,
+        req_id: int,
+        source_machine: str,
+        target_machine: str,
+        selected_team: dict[str, list[str]],
+        is_split: bool = False,
+    ):
+        queue_note = _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=source_machine)
+        start_note = _build_production_note(
+            PROD_STARTED,
+            self.destination,
+            machine=target_machine,
+            operators=selected_team.get("operators") or [],
+            helpers=selected_team.get("helpers") or [],
         )
-        api.update_status(
-            req_id,
-            "em_producao",
-            _build_production_note(
-                PROD_STARTED,
-                self.destination,
-                machine=target_machine,
-                operators=selected_team.get("operators") or [],
-                helpers=selected_team.get("helpers") or [],
-            ),
-        )
+        if is_split:
+            api.update_production_split_status(req_id, "aguardando_na_fila", queue_note)
+            api.update_production_split_status(req_id, "em_producao", start_note)
+            return
+        api.update_status(req_id, "aguardando_na_fila", queue_note)
+        api.update_status(req_id, "em_producao", start_note)
 
-    def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str):
+    def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str, is_split: bool = False):
         note = _build_production_note(PROD_FINISHED, self.destination, machine=machine_name)
+        if is_split:
+            api.update_production_split_status(req_id, "faturado", note)
+            return
         api.update_status(req_id, "em_andamento", note)
 
         # Compatibilidade: servidores antigos ainda deixam em aguardando faturamento
@@ -1813,12 +1946,13 @@ class ProductionView(QWidget):
         ):
             return
 
+        is_split = self._is_split_row(req)
         self._run_action(
-            api.update_status,
-            int(req["id"]),
+            api.update_production_split_status if is_split else api.update_status,
+            self._row_split_id(req) if is_split else self._row_requisition_id(req),
             "aguardando_na_fila",
             _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=str(machine.get("name") or "")),
-            success_message="Requisição devolvida para aguardando na fila.",
+            success_message="Parcela devolvida para aguardando na fila." if is_split else "Requisição devolvida para aguardando na fila.",
         )
 
     def _update_machine_status(self, machine_id: int, combo: QComboBox):
@@ -1857,7 +1991,7 @@ class ProductionView(QWidget):
         new_date, reason = result
         self._run_action(
             self._update_delivery_date_and_waiting_receipt,
-            int(req["id"]),
+            self._row_requisition_id(req),
             new_date,
             reason,
             success_message=(

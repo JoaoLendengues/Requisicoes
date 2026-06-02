@@ -47,6 +47,20 @@ def _migrate():
         "ALTER TABLE operators ADD COLUMN role TEXT DEFAULT 'operador'",
         "ALTER TABLE requisition_items ADD COLUMN product_code TEXT",
         "ALTER TABLE requisition_items ADD COLUMN product_name TEXT",
+        "CREATE TABLE IF NOT EXISTS requisition_production_splits ("
+        " id SERIAL PRIMARY KEY,"
+        " requisition_id INTEGER NOT NULL REFERENCES requisitions(id) ON DELETE CASCADE,"
+        " sequence INTEGER NOT NULL DEFAULT 1,"
+        " weight DOUBLE PRECISION NOT NULL DEFAULT 0,"
+        " status TEXT NOT NULL DEFAULT 'em_producao',"
+        " destination TEXT,"
+        " production_machine TEXT,"
+        " created_at TIMESTAMP NOT NULL DEFAULT NOW(),"
+        " updated_at TIMESTAMP NOT NULL DEFAULT NOW(),"
+        " CONSTRAINT uq_req_prod_split_sequence UNIQUE (requisition_id, sequence)"
+        ")",
+        "ALTER TABLE status_history ADD COLUMN IF NOT EXISTS production_split_id INTEGER "
+        "REFERENCES requisition_production_splits(id) ON DELETE CASCADE",
         "UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL",
         "UPDATE users SET role = 'industria' WHERE role = 'entrega'",
         "UPDATE operators SET role = 'operador' WHERE role IS NULL OR TRIM(role) = ''",
@@ -73,7 +87,10 @@ def _migrate():
         "CREATE INDEX IF NOT EXISTS idx_requisitions_created_at      ON requisitions (created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_requisitions_prod_destination ON requisitions (production_destination)",
         "CREATE INDEX IF NOT EXISTS idx_req_items_requisition_id     ON requisition_items (requisition_id)",
+        "CREATE INDEX IF NOT EXISTS idx_req_prod_splits_req_id       ON requisition_production_splits (requisition_id)",
+        "CREATE INDEX IF NOT EXISTS idx_req_prod_splits_status       ON requisition_production_splits (status)",
         "CREATE INDEX IF NOT EXISTS idx_status_history_requisition_id ON status_history (requisition_id)",
+        "CREATE INDEX IF NOT EXISTS idx_status_history_split_id      ON status_history (production_split_id)",
         "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread    ON notifications (user_id, read)",
 
         # ── Feedbacks: novas colunas (category/status) + mensagem ate 1000 ──

@@ -15,11 +15,16 @@ class ProductionMachineStatusUpdate(BaseModel):
 
 class ProductionItemResponse(BaseModel):
     id: int
+    source_requisition_id: Optional[int] = None
+    production_split_id: Optional[int] = None
+    split_sequence: Optional[int] = None
+    is_partial_split: bool = False
     ped_number: str
     client_name: Optional[str] = None
     vendor_name: Optional[str] = None
     obra: Optional[str] = None
     weight: Optional[float] = None
+    total_weight: Optional[float] = None
     status: str
     emission_date: datetime
     created_at: datetime
@@ -30,6 +35,19 @@ class ProductionItemResponse(BaseModel):
     helper_names: list[str] = Field(default_factory=list)
     waiting_since: Optional[datetime] = None
     production_started_at: Optional[datetime] = None
+
+
+class ProductionSplitCreateRequest(BaseModel):
+    weight: float
+    destination: str
+    machine_name: str
+    operators: list[str] = Field(default_factory=list)
+    helpers: list[str] = Field(default_factory=list)
+
+
+class ProductionSplitStatusUpdate(BaseModel):
+    status: str
+    note: Optional[str] = None
 
 
 class ProductionTeamMemberResponse(BaseModel):
