@@ -1296,11 +1296,7 @@ class DrawingScene(QGraphicsScene):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(vr)
 
-<<<<<<< HEAD
         # Handles (cantos + laterais) - oculta quando o item 3D ja teve resize finalizado.
-=======
-        # Handles (cantos + laterais) — oculta quando o item 3D jÃ¡ teve resize finalizado.
->>>>>>> 5df5599e4d2b9ec7ec4b0e902677bc4aa1d98720
         if self._ft_resize_allowed_for_current_selection():
             hs = self.FT_HANDLE_SIZE
             painter.setPen(QPen(QColor("#1A73E8"), 1.5))
@@ -2848,11 +2844,7 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.CURVE:
-<<<<<<< HEAD
             # Fase 1: inicio - define ponto inicial da linha base
-=======
-            # Fase 1: inÃ­cio — define ponto inicial da linha base
->>>>>>> 5df5599e4d2b9ec7ec4b0e902677bc4aa1d98720
             self._curve_draw_phase = 1
             self._curve_bend_count = 0
             self._curve_dragging = True
@@ -3751,11 +3743,7 @@ class DrawingCanvas(QWidget):
 
         row2.addSpacing(8)
 
-<<<<<<< HEAD
-        btn_img = QPushButton("Imagem")
-=======
-        btn_img = QPushButton("🖼️ Imagem")
->>>>>>> 5df5599e4d2b9ec7ec4b0e902677bc4aa1d98720
+        btn_img = QPushButton("🖼️ Imagem")
         btn_img.setFixedHeight(fh)
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
@@ -3965,15 +3953,9 @@ class DrawingCanvas(QWidget):
         for btn in self.findChildren(QPushButton):
             if btn in special_btns:
                 continue
-<<<<<<< HEAD
             # Mantém botões com estilo custom (ex.: que tenham background:transparent
             # no QSS atual) - re-aplicar o estilo padrao a TODOS da um look uniforme,
             # que é o que queremos quando troca o tema.
-=======
-            # MantÃ©m botÃµes com estilo custom (ex.: que tenham background:transparent
-            # no QSS atual) — re-aplicar o estilo padrÃ£o a TODOS dÃ¡ um look uniforme,
-            # que Ã© o que queremos quando troca o tema.
->>>>>>> 5df5599e4d2b9ec7ec4b0e902677bc4aa1d98720
             btn.setStyleSheet(tool_style)
 
         # Labels: detecta o título (cor PRIMARY/bold/maior) e re-estiliza
@@ -6289,11 +6271,7 @@ class CanvasPreview(QGraphicsView):
     def set_json(self, data: str):
         self._last_result = load_canvas_scene(self._scene, data, selectable=False)
         if self._last_result["items"] == 0:
-<<<<<<< HEAD
-            placeholder = self._scene.addText("Nenhum desenho salvo")
-=======
-            placeholder = self._scene.addText("🖼️ Nenhum desenho salvo")
->>>>>>> 5df5599e4d2b9ec7ec4b0e902677bc4aa1d98720
+            placeholder = self._scene.addText("🖼️ Nenhum desenho salvo")
             placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
             font = QFont(theme.FONT_PRIMARY, max(9, int(10 * self.scale_factor)))
             placeholder.setFont(font)
@@ -6311,19 +6289,11 @@ class CanvasPreview(QGraphicsView):
         self.fitInView(rect.adjusted(-10, -10, 10, 10), Qt.AspectRatioMode.KeepAspectRatio)
 
     def apply_theme(self) -> None:
-<<<<<<< HEAD
-        """Reaplica o tema corrente - chamado pela view quando troca claro/escuro."""
-        self.setStyleSheet(
-            f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
-        )
-        # Atualiza o placeholder "Nenhum desenho salvo" se estiver presente.
-=======
         """Reaplica o tema corrente — chamado pela view quando troca claro/escuro."""
         self.setStyleSheet(
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
-        # Atualiza o placeholder "🖼️ Nenhum desenho salvo" se estiver presente.
->>>>>>> 5df5599e4d2b9ec7ec4b0e902677bc4aa1d98720
+        # Atualiza o placeholder "🖼️ Nenhum desenho salvo" se estiver presente.
         for item in self._scene.items():
             try:
                 from PySide6.QtWidgets import QGraphicsTextItem
