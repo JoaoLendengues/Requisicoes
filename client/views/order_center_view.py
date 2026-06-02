@@ -550,7 +550,10 @@ class OrderCenterView(QWidget):
     # ── Chip style ───────────────────────────────────────────────────────────
     def _chip_style(self, scale: float) -> str:
         fs = max(8, int(9 * scale))
-        radius = max(16, int(18 * scale))
+        # Pill total: usa metade da altura fixa do chip (32*scale).
+        # Garante cantos totalmente arredondados em qualquer escala.
+        chip_h = max(28, int(32 * scale))
+        radius = chip_h // 2
         return (
             f"QPushButton {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_MEDIUM};"
