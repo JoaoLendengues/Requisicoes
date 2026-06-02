@@ -85,6 +85,8 @@ _PINGADEIRA_PRESET_LABELS = {
 _CALHA_PRESET_LABELS = {
     "calha_aba_esq": "Calha com Aba Esq",
     "calha_aba_dir": "Calha com Aba Dir",
+    "calha_suporte_esq": "Calha com Suporte Esq",
+    "calha_suporte_dir": "Calha com Suporte Dir",
     "calha_2_aba": "Calha com 2 Aba",
     "calha_abas_dobrada": "Calha com Abas Dobrada",
     "calha_modulada": "Calha Modulada",
@@ -107,6 +109,8 @@ _CANTONEIRA_PRESET_LABELS = {
     "cantoneira_5": "Cantoneira 5",
     "cantoneira_7": "Cantoneira 7",
     "cantoneira_8": "Cantoneira 8",
+    "cantoneira_9": "Cantoneira 9",
+    "cantoneira_10": "Cantoneira 10",
 }
 _CHAPA_PRESET_LABELS = {
     "chapa_1": "Corte de Chapa 1",
@@ -4974,6 +4978,22 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(right_inner_x, bottom_y))
             path.lineTo(QPointF(right_inner_x, top_y))
             path.lineTo(QPointF(170.0, top_y))
+        elif preset == "calha_suporte_esq":
+            support_bottom_y = -8.0
+            path.moveTo(QPointF(-170.0, support_bottom_y))
+            path.lineTo(QPointF(-170.0, top_y))
+            path.lineTo(QPointF(left_inner_x, top_y))
+            path.lineTo(QPointF(left_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, top_y))
+        elif preset == "calha_suporte_dir":
+            support_bottom_y = -8.0
+            path.moveTo(QPointF(left_inner_x, top_y))
+            path.lineTo(QPointF(left_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, top_y))
+            path.lineTo(QPointF(170.0, top_y))
+            path.lineTo(QPointF(170.0, support_bottom_y))
         elif preset == "calha_2_aba":
             path.moveTo(QPointF(-170.0, top_y))
             path.lineTo(QPointF(left_inner_x, top_y))
@@ -5123,6 +5143,8 @@ class DrawingCanvas(QWidget):
         for key in (
             "calha_aba_esq",
             "calha_aba_dir",
+            "calha_suporte_esq",
+            "calha_suporte_dir",
             "calha_2_aba",
             "calha_abas_dobrada",
             "calha_modulada",
@@ -5419,6 +5441,21 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(-110.0, -30.0))
             path.lineTo(QPointF(110.0, -30.0))
             path.lineTo(QPointF(110.0, 80.0))
+        elif preset == "cantoneira_9":
+            path.moveTo(QPointF(-170.0, -110.0))
+            path.lineTo(QPointF(-170.0, -30.0))
+            path.lineTo(QPointF(-40.0, 35.0))
+            path.lineTo(QPointF(-40.0, 120.0))
+            path.lineTo(QPointF(140.0, 120.0))
+            path.lineTo(QPointF(250.0, 175.0))
+        elif preset == "cantoneira_10":
+            path.moveTo(QPointF(-150.0, -110.0))
+            path.lineTo(QPointF(-150.0, -45.0))
+            path.lineTo(QPointF(-20.0, 20.0))
+            path.lineTo(QPointF(-20.0, 120.0))
+            path.lineTo(QPointF(220.0, 120.0))
+            path.lineTo(QPointF(220.0, 55.0))
+            path.lineTo(QPointF(130.0, 55.0))
 
         return path
 
@@ -5469,6 +5506,8 @@ class DrawingCanvas(QWidget):
             "cantoneira_5",
             "cantoneira_7",
             "cantoneira_8",
+            "cantoneira_9",
+            "cantoneira_10",
         ):
             item = QListWidgetItem(_CANTONEIRA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
