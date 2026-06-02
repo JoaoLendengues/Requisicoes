@@ -2812,7 +2812,11 @@ class DrawingScene(QGraphicsScene):
             return
 
         if tool == Tool.TEXT:
-            text, ok = QInputDialog.getText(self.cw, "Texto", "Digite o texto:")
+            text, ok = self.cw._prompt_text(
+                "Texto",
+                "Digite o texto:",
+                ok_text="Inserir",
+            )
             text = normalize_upper_text(text).strip()
             if ok and text:
                 item = QGraphicsTextItem(text)
@@ -4003,6 +4007,48 @@ class DrawingCanvas(QWidget):
             f"QPushButton:disabled {{ color:{theme.TEXT_LIGHT}; border-color:{theme.BORDER_COLOR}; }}"
         )
 
+    def _popup_dialog_style(self) -> str:
+        fs = max(9, int(10 * self.scale))
+        small = max(8, int(9 * self.scale))
+        radius = max(14, int(16 * self.scale))
+        return (
+            f"QDialog, QMessageBox, QInputDialog {{"
+            f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"}}"
+            f"QLabel {{"
+            f" background:transparent; color:{theme.TEXT_MEDIUM};"
+            f" font-size:{fs}pt;"
+            f"}}"
+            f"QListWidget, QListView {{"
+            f" background:{theme.INPUT_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 56)};"
+            f" border-radius:{radius}px; outline:none; padding:6px;"
+            f" selection-background-color:{theme.SELECTION_BG};"
+            f"}}"
+            f"QListWidget::item, QListView::item {{"
+            f" padding:6px 10px; margin:1px 2px; border-radius:10px;"
+            f"}}"
+            f"QListWidget::item:hover, QListView::item:hover {{"
+            f" background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
+            f"}}"
+            f"QListWidget::item:selected, QListView::item:selected {{"
+            f" background:{theme.SELECTION_BG}; color:{theme.PRIMARY}; font-weight:700;"
+            f"}}"
+            f"QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{"
+            f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 60)};"
+            f" border-radius:{max(12, int(14 * self.scale))}px;"
+            f" padding:8px 12px; font-size:{small}pt; font-weight:600;"
+            f"}}"
+            f"QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{"
+            f" border-color:{theme.PRIMARY_LIGHT}; background:{theme.SURFACE_SOFT};"
+            f"}}"
+            f"QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{"
+            f" border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QComboBox::drop-down {{ border:none; width:24px; }}"
+        )
+
     def _danger_tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
         radius = max(10, int(12 * self.scale))
@@ -4078,6 +4124,12 @@ class DrawingCanvas(QWidget):
             f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:800;"
         )
 
+    def _popup_section_title_style(self) -> str:
+        fs = max(9, int(10 * self.scale))
+        return (
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:700;"
+        )
+
     def _create_toolbar_section(self) -> tuple[QFrame, QHBoxLayout]:
         frame = QFrame(self)
         frame.setStyleSheet(self._toolbar_section_style())
@@ -4086,6 +4138,91 @@ class DrawingCanvas(QWidget):
         layout.setSpacing(6)
         self._toolbar_sections.append(frame)
         return frame, layout
+
+    def _prepare_popup_dialog(self, dialog: QDialog | QMessageBox | QInputDialog) -> None:
+        dialog.setStyleSheet(self._popup_dialog_style())
+
+    def _style_popup_dialog_buttons(self, dialog: QDialog | QMessageBox | QInputDialog) -> None:
+        for btn in dialog.findChildren(QPushButton):
+            label = (btn.text() or "").replace("&", "").strip().lower()
+            if label in {"inserir", "ok", "sim", "aplicar"}:
+                btn.setStyleSheet(theme.primary_btn_style(self.scale))
+            elif label in {"limpar", "excluir"}:
+                btn.setStyleSheet(theme.danger_btn_style(self.scale))
+            else:
+                btn.setStyleSheet(theme.secondary_btn_style(self.scale))
+
+    def _prompt_text(
+        self,
+        title: str,
+        label: str,
+        default: str = "",
+        *,
+        ok_text: str = "OK",
+    ) -> tuple[str, bool]:
+        dialog = QInputDialog(self)
+        dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        dialog.setWindowTitle(title)
+        dialog.setLabelText(label)
+        dialog.setTextValue(default)
+        dialog.setOkButtonText(ok_text)
+        dialog.setCancelButtonText("Cancelar")
+        self._prepare_popup_dialog(dialog)
+        self._style_popup_dialog_buttons(dialog)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return "", False
+        return dialog.textValue(), True
+
+    def _prompt_item(
+        self,
+        title: str,
+        label: str,
+        options: list[str],
+        *,
+        current: int = 0,
+        ok_text: str = "OK",
+    ) -> tuple[str, bool]:
+        dialog = QInputDialog(self)
+        dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        dialog.setWindowTitle(title)
+        dialog.setLabelText(label)
+        dialog.setComboBoxItems(options)
+        dialog.setComboBoxEditable(False)
+        dialog.setTextValue(options[current] if options else "")
+        dialog.setOption(QInputDialog.InputDialogOption.UseListViewForComboBoxItems, True)
+        dialog.setOkButtonText(ok_text)
+        dialog.setCancelButtonText("Cancelar")
+        self._prepare_popup_dialog(dialog)
+        self._style_popup_dialog_buttons(dialog)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return "", False
+        return dialog.textValue(), True
+
+    def _prompt_double(
+        self,
+        title: str,
+        label: str,
+        value: float,
+        minimum: float,
+        maximum: float,
+        decimals: int = 1,
+        *,
+        ok_text: str = "OK",
+    ) -> tuple[float, bool]:
+        dialog = QInputDialog(self)
+        dialog.setInputMode(QInputDialog.InputMode.DoubleInput)
+        dialog.setWindowTitle(title)
+        dialog.setLabelText(label)
+        dialog.setDoubleValue(value)
+        dialog.setDoubleRange(minimum, maximum)
+        dialog.setDoubleDecimals(decimals)
+        dialog.setOkButtonText(ok_text)
+        dialog.setCancelButtonText("Cancelar")
+        self._prepare_popup_dialog(dialog)
+        self._style_popup_dialog_buttons(dialog)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return value, False
+        return float(dialog.doubleValue()), True
 
     def apply_theme(self) -> None:
         """Reaplica o tema corrente em todos os controles do editor de desenho.
@@ -4272,11 +4409,11 @@ class DrawingCanvas(QWidget):
                 break
 
         default_value = target_text.toPlainText() if target_text else "Ø 12 mm"
-        text, ok = QInputDialog.getText(
-            self,
+        text, ok = self._prompt_text(
             "Cota manual",
             "Informe a cota (ex.: Ø 12 mm, 350 mm, 1.20 m):",
-            text=default_value,
+            default_value,
+            ok_text="Aplicar",
         )
         if not ok:
             return
@@ -4294,13 +4431,12 @@ class DrawingCanvas(QWidget):
         self.scene.begin_manual_dimension(label)
 
     def _ask_angle_mode_config(self) -> tuple[float, str, str] | None:
-        preset, ok = QInputDialog.getItem(
-            self,
-            "Angulo",
+        preset, ok = self._prompt_item(
+            "Ângulo",
             "Selecione o valor do ângulo:",
             ["90°", "180°", "Personalizado..."],
-            0,
-            False,
+            current=0,
+            ok_text="OK",
         )
         if not ok:
             return None
@@ -4310,14 +4446,14 @@ class DrawingCanvas(QWidget):
         elif preset == "180°":
             degrees = 180.0
         else:
-            value, ok = QInputDialog.getDouble(
-                self,
-                "Angulo personalizado",
+            value, ok = self._prompt_double(
+                "Ângulo personalizado",
                 "Informe o valor em graus:",
                 45.0,
                 0.1,
                 359.9,
                 1,
+                ok_text="OK",
             )
             if not ok:
                 return None
@@ -4730,13 +4866,12 @@ class DrawingCanvas(QWidget):
             "prisma",
             "cilindro",
         ]
-        selected, ok = QInputDialog.getItem(
-            self,
+        selected, ok = self._prompt_item(
             "Inserir 3D",
             "Escolha um desenho pre-definido:",
             options,
-            0,
-            False,
+            current=0,
+            ok_text="Inserir",
         )
         if not ok or not selected:
             return
@@ -5029,11 +5164,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Pingadeira")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de pingadeira:"))
+        prompt = QLabel("Escolha um modelo de pingadeira:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -5066,7 +5204,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5091,6 +5229,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -5256,11 +5395,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Rufo")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de rufo:"))
+        prompt = QLabel("Escolha um modelo de rufo:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -5294,7 +5436,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5319,6 +5461,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -5525,11 +5668,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Calha")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de calha:"))
+        prompt = QLabel("Escolha um modelo de calha:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -5558,7 +5704,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5583,6 +5729,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -5714,11 +5861,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Bandeja")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de bandeja:"))
+        prompt = QLabel("Escolha um modelo de bandeja:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -5736,7 +5886,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5761,6 +5911,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -5883,11 +6034,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Cantoneira")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de cantoneira:"))
+        prompt = QLabel("Escolha um modelo de cantoneira:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -5915,7 +6069,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5940,6 +6094,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -6207,11 +6362,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Chapa")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de chapa:"))
+        prompt = QLabel("Escolha um modelo de chapa:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -6254,7 +6412,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -6279,6 +6437,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -6371,11 +6530,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Perfil")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de perfil:"))
+        prompt = QLabel("Escolha um modelo de perfil:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -6397,7 +6559,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -6422,6 +6584,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -6501,6 +6664,8 @@ class DrawingCanvas(QWidget):
         btn_nao = box.addButton("Não", QMessageBox.ButtonRole.NoRole)
         box.setDefaultButton(btn_nao)
         box.setEscapeButton(btn_nao)
+        self._prepare_popup_dialog(box)
+        self._style_popup_dialog_buttons(box)
         box.exec()
         if box.clickedButton() is not btn_sim:
             return
