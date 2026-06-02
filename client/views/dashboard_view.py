@@ -105,7 +105,8 @@ def _restore_table_sorting(table: QTableWidget) -> None:
     allow_sorting = bool(table.property("allowSorting"))
     header = table.horizontalHeader()
     header.setSectionsClickable(allow_sorting)
-    sort_column = int(table.property("sortColumn") or -1)
+    sort_column_prop = table.property("sortColumn")
+    sort_column = -1 if sort_column_prop is None else int(sort_column_prop)
     if allow_sorting and sort_column >= 0:
         sort_order = (
             Qt.SortOrder.DescendingOrder
@@ -113,10 +114,33 @@ def _restore_table_sorting(table: QTableWidget) -> None:
             else Qt.SortOrder.AscendingOrder
         )
         table.sortItems(sort_column, sort_order)
+        _refresh_rank_column(table)
         header.setSortIndicator(sort_column, sort_order)
         header.setSortIndicatorShown(True)
         return
     header.setSortIndicatorShown(False)
+
+
+def _refresh_rank_column(table: QTableWidget) -> None:
+    if bool(table.property("showingEmptyMessage")):
+        return
+
+    rank_column_prop = table.property("rankColumn")
+    rank_column = -1 if rank_column_prop is None else int(rank_column_prop)
+    if rank_column < 0:
+        return
+
+    for row_index in range(table.rowCount()):
+        rank_text = str(row_index + 1)
+        item = table.item(row_index, rank_column)
+        if item is None:
+            item = _SortableTableWidgetItem(rank_text, row_index + 1)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row_index, rank_column, item)
+            continue
+        item.setText(rank_text)
+        if isinstance(item, _SortableTableWidgetItem):
+            item._sort_value = row_index + 1
 
 
 def _make_shadow_card(
@@ -1586,7 +1610,8 @@ class DashboardView(QWidget):
         if section in blocked_columns:
             return
 
-        current_column = int(table.property("sortColumn") or -1)
+        current_column_prop = table.property("sortColumn")
+        current_column = -1 if current_column_prop is None else int(current_column_prop)
         current_order = (
             Qt.SortOrder.DescendingOrder
             if str(table.property("sortOrder") or "asc") == "desc"
@@ -1606,6 +1631,7 @@ class DashboardView(QWidget):
             "desc" if next_order == Qt.SortOrder.DescendingOrder else "asc",
         )
         table.sortItems(section, next_order)
+        _refresh_rank_column(table)
         header = table.horizontalHeader()
         header.setSortIndicator(section, next_order)
         header.setSortIndicatorShown(True)
@@ -1617,6 +1643,7 @@ class DashboardView(QWidget):
         *,
         sortable: bool = True,
         blocked_sort_columns: set[int] | None = None,
+        rank_column: int | None = None,
     ) -> QTableWidget:
         s = self.scale
         table = QTableWidget(0, len(headers))
@@ -1644,8 +1671,10 @@ class DashboardView(QWidget):
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
         table.setProperty("blockedSortColumns", sorted(blocked_sort_columns or set()))
         table.setProperty("allowSorting", sortable)
+        table.setProperty("rankColumn", -1 if rank_column is None else rank_column)
         table.setProperty("sortColumn", -1)
         table.setProperty("sortOrder", "asc")
+        table.setProperty("showingEmptyMessage", False)
         table.setSortingEnabled(False)
         header.setSectionsClickable(sortable)
         if sortable:
@@ -1696,6 +1725,7 @@ class DashboardView(QWidget):
             ],
             {1},
             blocked_sort_columns={0},
+            rank_column=0,
         )
         self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_vendors_table
@@ -1730,6 +1760,7 @@ class DashboardView(QWidget):
             ["#", "OPERADOR", "PRODUÇÕES", "PESO(KG)"],
             {1},
             blocked_sort_columns={0},
+            rank_column=0,
         )
         self.top_operators_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_operators_table
@@ -1739,6 +1770,7 @@ class DashboardView(QWidget):
             ["#", "AJUDANTE", "PRODUÇÕES", "PESO(KG)"],
             {1},
             blocked_sort_columns={0},
+            rank_column=0,
         )
         self.top_helpers_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_helpers_table
@@ -1774,6 +1806,7 @@ class DashboardView(QWidget):
             ],
             {1},
             blocked_sort_columns={0},
+            rank_column=0,
         )
         header = self.top_machines_ar_table.horizontalHeader()
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
@@ -1797,6 +1830,7 @@ class DashboardView(QWidget):
             ],
             {1},
             blocked_sort_columns={0},
+            rank_column=0,
         )
         header = self.top_machines_industria_table.horizontalHeader()
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
@@ -1961,6 +1995,7 @@ class DashboardView(QWidget):
         table.setSortingEnabled(False)
         table.clearSpans()
         table.setRowCount(0)
+        table.setProperty("showingEmptyMessage", False)
         items = rows if isinstance(rows, list) else []
 
         if not items:
@@ -2003,6 +2038,7 @@ class DashboardView(QWidget):
         table.setSortingEnabled(False)
         table.clearSpans()
         table.setRowCount(0)
+        table.setProperty("showingEmptyMessage", False)
         items = rows if isinstance(rows, list) else []
 
         if not items:
@@ -2038,6 +2074,7 @@ class DashboardView(QWidget):
         table.setSortingEnabled(False)
         table.clearSpans()
         table.setRowCount(0)
+        table.setProperty("showingEmptyMessage", False)
         items = rows if isinstance(rows, list) else []
 
         if not items:
@@ -2077,6 +2114,7 @@ class DashboardView(QWidget):
         table.setSortingEnabled(False)
         table.clearSpans()
         table.setRowCount(0)
+        table.setProperty("showingEmptyMessage", False)
         items = rows if isinstance(rows, list) else []
 
         if not items:
@@ -2138,6 +2176,7 @@ class DashboardView(QWidget):
         table.setSortingEnabled(False)
         table.clearSpans()
         table.setRowCount(0)
+        table.setProperty("showingEmptyMessage", False)
         items = rows if isinstance(rows, list) else []
 
         if not items:
@@ -2199,6 +2238,7 @@ class DashboardView(QWidget):
         _restore_table_sorting(table)
 
     def _set_empty_message(self, table: QTableWidget, message: str):
+        table.setProperty("showingEmptyMessage", True)
         table.setRowCount(1)
         table.setSpan(0, 0, 1, table.columnCount())
         item = QTableWidgetItem(message)
