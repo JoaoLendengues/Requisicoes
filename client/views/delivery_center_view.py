@@ -955,32 +955,60 @@ class DeliveryCenterView(QWidget):
         return reason or None
 
     def apply_theme(self) -> None:
+        """Reaplica o tema na view.
+
+        Otimizado: em vez de findChildren(QWidget) + unpolish/polish em todos
+        os widgets (~30-40 ms para ~80 widgets), confiamos no QApplication
+        que ja reinvalida o stylesheet global ao trocar tema, e propagamos
+        as cores via QPalette no root (filhos herdam automaticamente).
+
+        Mantemos setStyleSheet apenas onde o conteudo realmente depende do
+        tema E nao cabe na palette: gradients (botoes), borders com alpha,
+        background do error_label com cores DANGER.
+        """
         s = self.scale
         bg = theme.CONTENT_BG
-        self.setStyleSheet(f"QWidget#deliveryCenterView {{ background:{bg}; }}")
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
-        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
-        self._page_content.setStyleSheet(
-            f"QWidget#deliveryCenterContent {{ background:{bg}; }}"
+
+        # QPalette no root — cascateia automaticamente para todos os filhos
+        # que nao tem palette propria. Cobre cor de texto base, fundos,
+        # placeholder e seleção. Custa ~10us, vs ~30ms do polish loop.
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window,          QColor(bg))
+        pal.setColor(QPalette.ColorRole.WindowText,      QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Text,            QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(theme.TEXT_MEDIUM))
+        pal.setColor(QPalette.ColorRole.Base,            QColor(theme.PANEL_SURFACE_BG))
+        pal.setColor(QPalette.ColorRole.Highlight,       QColor(theme.PANEL_NEON_PRIMARY))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.PANEL_TEXT_PRIMARY))
+        self.setPalette(pal)
+
+        # Backgrounds combinados em uma unica chamada (era 4 antes)
+        self.setStyleSheet(
+            f"QWidget#deliveryCenterView, QWidget#deliveryCenterContent {{ background:{bg}; }}"
+            f"QScrollArea {{ border:none; background:{bg}; }}"
         )
+        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
+
+        # Botoes — QSS depende de tema (cores PRIMARY/hover/border)
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_change_deadline.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_mark_delivered.setStyleSheet(_primary_action_btn_style(s))
         if hasattr(self, "btn_cancel_delivered"):
             self.btn_cancel_delivered.setStyleSheet(_flat_secondary_btn_style(s))
+
+        # Error label — cores DANGER (alpha) precisam ser regeneradas
         self.error_label.setStyleSheet(
             f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
             f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
+
+        # Tabelas — helper centralizado (theme.neon_table_qss + apply_neon_table_palette)
         self._apply_table_style(self.table)
         self._apply_table_style(self.completed_table)
 
-        # Re-polish em todos os widgets filhos. Isso força o Qt a reaplicar
-        # o QSS global (que ja foi atualizado em theme.global_style()) sobre
-        # widgets que tem setStyleSheet inline sem cor — caso dos labels
-        # de metric cards desta tela.
-        from PySide6.QtWidgets import QWidget
-        for w in self.findChildren(QWidget):
-            w.style().unpolish(w)
-            w.style().polish(w)
+        # Repaint pontual — substitui o loop polish que custava 30-40ms.
+        # O QApplication.setStyleSheet(global) ja foi atualizado no
+        # _on_theme_toggle do main_window, entao os property selectors do QSS
+        # global (QLabel[muted='1'], QFrame[theme_bg='card']) ja sao re-resolvidos.
+        self.update()
