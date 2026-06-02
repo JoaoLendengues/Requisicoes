@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsTextItem,
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
-    QSizePolicy, QFrame, QComboBox, QApplication, QDialog,
+    QSizePolicy, QFrame, QComboBox, QApplication, QDialog, QMessageBox,
     QListWidget, QListWidgetItem,
 )
 from ..core import theme
@@ -6331,6 +6331,16 @@ class DrawingCanvas(QWidget):
 
     # Limpar
     def _clear(self):
+        reply = QMessageBox.question(
+            self,
+            "Confirmar limpeza",
+            "Deseja realmente limpar todo o desenho?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
         self.scene.cancel_angle_mode()
         self.scene.cancel_mirror_axis()
         self.scene.cancel_manual_dimension()
