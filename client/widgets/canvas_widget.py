@@ -4012,8 +4012,14 @@ class DrawingCanvas(QWidget):
         small = max(8, int(9 * self.scale))
         radius = max(14, int(16 * self.scale))
         return (
-            f"QDialog, QMessageBox, QInputDialog {{"
-            f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"QDialog#canvasPopupDialog, QMessageBox#canvasPopupDialog, QInputDialog#canvasPopupDialog {{"
+            f" background:{theme.CONTENT_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 42)};"
+            f" border-radius:{radius}px;"
+            f"}}"
+            f"QWidget#canvasPopupDialog {{ background:{theme.CONTENT_BG}; }}"
+            f"QDialog#canvasPopupDialog QWidget, QMessageBox#canvasPopupDialog QWidget, QInputDialog#canvasPopupDialog QWidget {{"
+            f" background:transparent;"
             f"}}"
             f"QLabel {{"
             f" background:transparent; color:{theme.TEXT_MEDIUM};"
@@ -4140,6 +4146,9 @@ class DrawingCanvas(QWidget):
         return frame, layout
 
     def _prepare_popup_dialog(self, dialog: QDialog | QMessageBox | QInputDialog) -> None:
+        dialog.setObjectName("canvasPopupDialog")
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dialog.setAutoFillBackground(True)
         dialog.setStyleSheet(self._popup_dialog_style())
 
     def _style_popup_dialog_buttons(self, dialog: QDialog | QMessageBox | QInputDialog) -> None:
