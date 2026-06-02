@@ -281,10 +281,17 @@ def set_dark(dark: bool) -> None:
     Alterna entre modo escuro e claro.
     Após chamar, faça um soft-restart da MainWindow para reconstruir os widgets.
     """
-    global is_dark
+    global is_dark, _global_style_cache
     is_dark = dark
     _apply_palette(_DARK if dark else _LIGHT)
     _sync_external_panel_tokens()
+    # Invalida o cache do global_style — paleta nova exige regeneração da string.
+    _global_style_cache = None
+
+
+# Cache do global_style(): a string CSS é gigante (~30 KB) e era regerada a cada
+# chamada. Como a paleta só muda em set_dark(), basta invalidar lá.
+_global_style_cache: str | None = None
 
 
 # Aplica paleta clara como padrão ao importar o módulo
@@ -437,8 +444,13 @@ def apply_neon_table_palette(table) -> None:
 
 
 def global_style() -> str:
+    """QSS aplicado ao QApplication. Resultado cacheado por paleta — invalidado
+    automaticamente em set_dark(). Chamadas adicionais retornam a string memoizada."""
+    global _global_style_cache
+    if _global_style_cache is not None:
+        return _global_style_cache
     table_header_fg = TEXT_WHITE if not is_dark else PANEL_TEXT_PRIMARY  # noqa: F821
-    return (
+    _global_style_cache = (
         f"QMainWindow {{"
         f"  background:{CONTENT_BG}; color:{TEXT_DARK};"  # noqa: F821
         f"  font-family:'{FONT_PRIMARY}', '{FONT_FALLBACK}', 'Segoe UI';"
@@ -599,7 +611,7 @@ def global_style() -> str:
         f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
         f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 56)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"
-        f"QCheckBox {{ spacing:8px; }}"
+        f"QCheckBox {{ spacing:8px; background:transparent; }}"
         f"QCheckBox::indicator {{"
         f"  width:16px; height:16px; border-radius:4px; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
         f"  background:{PANEL_SURFACE_BG};"  # noqa: F821
@@ -636,3 +648,4 @@ def global_style() -> str:
         f"QLabel[muted='1'] {{ color:{TEXT_MEDIUM}; background:transparent; }}"  # noqa: F821
         f"QLabel[accent='1'] {{ color:{PANEL_NEON_PRIMARY}; background:transparent; }}"  # noqa: F821
     )
+    return _global_style_cache

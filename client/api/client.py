@@ -206,24 +206,67 @@ def list_requisitions(
         return _check(client.get("/requisitions/", params=params))
 
 
+def list_requisition_history_rows(
+    status: str = "",
+    search: str = "",
+    vendor_search: str = "",
+    skip: int = 0,
+    limit: int = 100,
+    emission_date_start: str = "",
+    emission_date_end: str = "",
+    production_destination: str = "",
+    production_machine: str = "",
+    production_operator: str = "",
+    invoiced: bool | None = None,
+) -> list:
+    with _cli() as client:
+        params: dict = {"skip": skip, "limit": limit}
+        if status:
+            params["status"] = status
+        if search:
+            params["search"] = search
+        if vendor_search:
+            params["vendor_search"] = vendor_search
+        if emission_date_start:
+            params["emission_date_start"] = emission_date_start
+        if emission_date_end:
+            params["emission_date_end"] = emission_date_end
+        if production_destination:
+            params["production_destination"] = production_destination
+        if production_machine:
+            params["production_machine"] = production_machine
+        if production_operator:
+            params["production_operator"] = production_operator
+        if invoiced is not None:
+            params["invoiced"] = invoiced
+        return _check(client.get("/requisitions/history/rows", params=params))
+
+
 def get_management_dashboard(
     ar_period: str = "30d",
     industria_period: str = "30d",
-    vendor_period: str = "30d",
+    performance_period: str = "month",
+    performance_date_start: str | None = None,
+    performance_date_end: str | None = None,
     people_period: str = "30d",
     people_destination: str = "",
 ) -> dict:
+    params = {
+        "ar_period": ar_period,
+        "industria_period": industria_period,
+        "performance_period": performance_period,
+        "people_period": people_period,
+        "people_destination": people_destination,
+    }
+    if performance_date_start:
+        params["performance_date_start"] = performance_date_start
+    if performance_date_end:
+        params["performance_date_end"] = performance_date_end
     with _cli() as client:
         return _check(
             client.get(
                 "/requisitions/dashboard/summary",
-                params={
-                    "ar_period": ar_period,
-                    "industria_period": industria_period,
-                    "vendor_period": vendor_period,
-                    "people_period": people_period,
-                    "people_destination": people_destination,
-                },
+                params=params,
             )
         )
 
@@ -329,6 +372,21 @@ def update_status(req_id: int, status: str, note: str = "") -> dict:
             f"/requisitions/{req_id}/status",
             json={"status": status, "note": note},
         ))
+
+
+def create_production_split(req_id: int, data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.post(f"/requisitions/{req_id}/production-splits", json=data))
+
+
+def update_production_split_status(split_id: int, status: str, note: str = "") -> dict:
+    with _cli() as client:
+        return _check(
+            client.patch(
+                f"/requisitions/production-splits/{split_id}/status",
+                json={"status": status, "note": note},
+            )
+        )
 
 
 def update_delivery_date(req_id: int, delivery_date: str, reason: str) -> dict:

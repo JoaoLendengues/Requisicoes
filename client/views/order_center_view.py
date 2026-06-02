@@ -350,7 +350,7 @@ class OrderCenterView(QWidget):
 
         title = QLabel("Central de Pedidos")
         title.setStyleSheet(
-            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Acompanhamento operacional dos pedidos por etapa, ritmo e pendências da produção."
@@ -358,7 +358,7 @@ class OrderCenterView(QWidget):
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"font-size:{max(8, int(10 * s))}pt;"
+            f"background:transparent; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -550,7 +550,10 @@ class OrderCenterView(QWidget):
     # ── Chip style ───────────────────────────────────────────────────────────
     def _chip_style(self, scale: float) -> str:
         fs = max(8, int(9 * scale))
-        radius = max(16, int(18 * scale))
+        # Pill total: usa metade da altura fixa do chip (32*scale).
+        # Garante cantos totalmente arredondados em qualquer escala.
+        chip_h = max(28, int(32 * scale))
+        radius = chip_h // 2
         return (
             f"QPushButton {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_MEDIUM};"
@@ -892,7 +895,7 @@ class OrderCenterView(QWidget):
             self.avg_finished_label = QLabel("Tempo médio: -")
             self.avg_finished_label.setProperty("muted", "1")
             self.avg_finished_label.setStyleSheet(
-                f"font-size:{max(7, int(8 * s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(7, int(8 * s))}pt; font-weight:600;"
             )
             layout.addWidget(self.avg_finished_label)
             if key != "faturados":
@@ -1234,14 +1237,16 @@ class OrderCenterView(QWidget):
     def _open_row(self, key: str, row_index: int):
         rows = self._rows.get(key, [])
         if 0 <= row_index < len(rows):
-            self.open_requisition.emit(int(rows[row_index]["id"]))
+            req_id = rows[row_index].get("source_requisition_id") or rows[row_index].get("id")
+            self.open_requisition.emit(int(req_id))
 
     def _open_selected(self, key: str):
         row = self._selected_row(key)
         if not row:
             QMessageBox.information(self, "Central de pedidos", "Selecione um pedido primeiro.")
             return
-        self.open_requisition.emit(int(row["id"]))
+        req_id = row.get("source_requisition_id") or row.get("id")
+        self.open_requisition.emit(int(req_id))
 
     def _open_selected_pdf(self, key: str):
         row = self._selected_row(key)
@@ -1253,7 +1258,7 @@ class OrderCenterView(QWidget):
             )
             return
 
-        req_id = int(row["id"])
+        req_id = int(row.get("source_requisition_id") or row["id"])
         thread, worker = _run_in_thread(
             api.get_requisition,
             req_id,
@@ -1337,7 +1342,7 @@ class OrderCenterView(QWidget):
         note: str,
         success_message: str,
     ):
-        req_id = int(row["id"])
+        req_id = int(row.get("source_requisition_id") or row["id"])
         thread, worker = _run_in_thread(
             api.update_status,
             req_id,

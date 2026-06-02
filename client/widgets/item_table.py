@@ -90,7 +90,7 @@ class ItemTable(QWidget):
         self.title_label = QLabel("ITENS DA REQUISIÇÃO")
         fs_title = max(9, int(11 * self.scale))
         self.title_label.setStyleSheet(
-            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{fs_title}pt; font-weight:800;"
+            f"background:transparent; color:{theme.PANEL_NEON_PRIMARY}; font-size:{fs_title}pt; font-weight:800;"
         )
         layout.addWidget(self.title_label)
 
@@ -128,11 +128,11 @@ class ItemTable(QWidget):
 
         self.peso_label = QLabel("PESO TOTAL:")
         self.peso_label.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(10 * self.scale))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(10 * self.scale))}pt; font-weight:700;"
         )
         self.total_label = QLabel("0,00")
         self.total_label.setStyleSheet(
-            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:800;"
+            f"background:transparent; color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:800;"
         )
         footer.addWidget(self.peso_label)
         footer.addWidget(self.total_label)
@@ -162,6 +162,17 @@ class ItemTable(QWidget):
             f"}}"
             f"QTableWidget::item:alternate {{ background:{theme.PANEL_SURFACE_ALT}; color:{theme.PANEL_TEXT_PRIMARY}; }}"
             f"QTableWidget::item:selected {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 56)}; color:{theme.PANEL_TEXT_PRIMARY}; }}"
+            # Editor temporario da celula: o QLineEdit global tem padding e
+            # border-radius generosos que empurram o texto para fora da area
+            # visivel da celula durante a edicao. Aqui resetamos para o texto
+            # aparecer enquanto o usuario digita (antes do Enter).
+            f"QTableWidget QLineEdit {{"
+            f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)}; border-radius:2px;"
+            f"  padding:2px 4px; margin:0px;"
+            f"  selection-background-color:{_rgba(theme.PANEL_NEON_PRIMARY, 90)};"
+            f"  selection-color:{theme.PANEL_TEXT_PRIMARY};"
+            f"}}"
         )
         self.table.viewport().setStyleSheet(f"background:{theme.PANEL_SURFACE_BG};")
 
@@ -177,13 +188,13 @@ class ItemTable(QWidget):
         self._apply_table_stylesheet()
         self._apply_table_palette()
         self.title_label.setStyleSheet(
-            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
+            f"background:transparent; color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
         )
         self.peso_label.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(10 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(10 * s))}pt; font-weight:700;"
         )
         self.total_label.setStyleSheet(
-            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"background:transparent; color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(10, int(12 * s))}pt; font-weight:800;"
         )
         self.btn_add.setStyleSheet(_secondary_btn_style(s))
         self.btn_clear_selected.setStyleSheet(_secondary_btn_style(s))

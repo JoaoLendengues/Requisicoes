@@ -21,6 +21,21 @@ class DashboardVendorItem(BaseModel):
     vendor_name: str
     requisition_count: int
     total_weight_kg: float = 0.0
+    prazo_percent: float = 0.0
+    produtividade_percent: float = 0.0
+    cancelamentos_percent: float = 0.0
+    iar_percent: float = 0.0
+
+
+class DashboardIarSummaryItem(BaseModel):
+    received_count: int = 0
+    finalized_count: int = 0
+    on_time_count: int = 0
+    canceled_count: int = 0
+    prazo_percent: float = 0.0
+    produtividade_percent: float = 0.0
+    cancelamentos_percent: float = 0.0
+    iar_percent: float = 0.0
 
 
 class DashboardProductionPersonItem(BaseModel):
@@ -89,6 +104,7 @@ class DashboardInsightsResponse(BaseModel):
 class ManagementDashboardResponse(BaseModel):
     generated_at: datetime
     stats: DashboardStatsResponse
+    iar_general: DashboardIarSummaryItem
     insights: DashboardInsightsResponse
     top_vendors: list[DashboardVendorItem]
     top_operators: list[DashboardProductionPersonItem]

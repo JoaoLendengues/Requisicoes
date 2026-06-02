@@ -1,4 +1,4 @@
-"""
+﻿"""
 Canvas de desenho técnico com suporte a:
 - Ferramentas: Seleção, Caneta livre, Linha, Retângulo, Elipse, Texto
 - Shift: trava linha em 0°/45°/90°
@@ -70,22 +70,91 @@ _PINGADEIRA_PRESET_LABELS = {
     "direita": "Pingadeira Direita",
     "esquerda": "Pingadeira Esquerda",
     "dupla": "Pingadeira Dupla",
+    "pingadeira_4": "Pingadeira 4",
+    "pingadeira_5": "Pingadeira 5",
+    "pingadeira_6": "Pingadeira 6",
+    "pingadeira_7": "Pingadeira 7",
+    "pingadeira_10": "Pingadeira 10",
+    "pingadeira_11": "Pingadeira 11",
+    "pingadeira_12": "Pingadeira 12",
+    "pingadeira_13": "Pingadeira 13",
+    "pingadeira_14": "Pingadeira 14",
     "pingadeira_rufo": "Pingadeira + Rufo",
     "pingadeira_rufo_2": "Pingadeira + Rufo 2",
+}
+_RUFO_PRESET_LABELS = {
+    "rufo_1": "Rufo 1",
+    "rufo_2": "Rufo 2",
+    "rufo_3": "Rufo 3",
+    "rufo_4": "Rufo 4",
+    "rufo_5": "Rufo 5",
+    "rufo_6": "Rufo 6",
+    "rufo_7": "Rufo 7",
+    "rufo_8": "Rufo 8",
+    "rufo_9": "Rufo 9",
+    "rufo_10": "Rufo 10",
+    "rufo_11": "Rufo 11",
+    "rufo_12": "Rufo 12",
+    "rufo_13": "Rufo 13",
+    "rufo_14": "Rufo 14",
+    "rufo_15": "Rufo 15",
 }
 _CALHA_PRESET_LABELS = {
     "calha_aba_esq": "Calha com Aba Esq",
     "calha_aba_dir": "Calha com Aba Dir",
+    "calha_suporte_esq": "Calha com Suporte Esq",
+    "calha_suporte_dir": "Calha com Suporte Dir",
     "calha_2_aba": "Calha com 2 Aba",
     "calha_abas_dobrada": "Calha com Abas Dobrada",
     "calha_modulada": "Calha Modulada",
+    "calha_com_angulo": "Calha com Angulo",
+    "calha_dobrada": "Calha Dobrada",
+    "calha_sem_aba": "Calha Sem Aba",
+    "calha_3d": "Calha 3D",
+}
+_BANDEJA_PRESET_LABELS = {
+    "bandeja_1": "Bandeja 1",
+    "bandeja_2": "Bandeja 2",
+    "bandeja_3": "Bandeja 3",
+    "bandeja_4": "Bandeja 4",
+}
+_CANTONEIRA_PRESET_LABELS = {
+    "cantoneira_1": "Cantoneira 1",
+    "cantoneira_2": "Cantoneira 2",
+    "cantoneira_3": "Cantoneira 3",
+    "cantoneira_4": "Cantoneira 4",
+    "cantoneira_5": "Cantoneira 5",
+    "cantoneira_7": "Cantoneira 7",
+    "cantoneira_8": "Cantoneira 8",
+    "cantoneira_9": "Cantoneira 9",
+    "cantoneira_10": "Cantoneira 10",
+}
+_CHAPA_PRESET_LABELS = {
+    "chapa_1": "Corte de Chapa 1",
+    "chapa_3": "Corte em Chapa 3",
+    "chapa_4": "Corte em Chapa 4",
+    "chapa_5": "Corte em Chapa 5",
+    "chapa_6": "Corte em Chapa 6",
+    "chapa_7": "Corte em Chapa 7",
+    "chapa_8": "Corte em Chapa 8",
+    "chapa_9": "Corte em Chapa 9",
+    "chapa_10": "Corte em Chapa 10",
+    "chapa_11": "Corte em Chapa 11",
+    "chapa_12": "Corte em Chapa 12",
+    "chapa_13": "Corte em Chapa 13",
+    "chapa_14": "Corte em Chapa 14",
+}
+_PERFIL_PRESET_LABELS = {
+    "perfil_u": "Perfil U",
+    "perfil_1": "Perfil 1",
+    "perfil_2": "Perfil 2",
 }
 
 
 # Limita a maior dimensão de imagens inseridas/coladas no canvas antes de
 # serializar para base64. Evita que prints/fotos inflem o JSON do desenho
 # (que é persistido no banco). 1600px fica acima da resolução que o PDF
-# consome (o desenho inteiro é rasterizado a ≤2400px), então não há perda
+# consome (o desenho inteiro e rasterizado a <=2400px), entao nao ha perda
 # perceptível no documento final.
 _MAX_EMBEDDED_IMAGE_SIDE = 1600
 
@@ -295,9 +364,24 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         pingadeira_name = str(d.get("preset_pingadeira_name") or "").strip().lower()
         if pingadeira_name in _PINGADEIRA_PRESET_LABELS:
             path_meta["preset_pingadeira_name"] = pingadeira_name
+        rufo_name = str(d.get("preset_rufo_name") or "").strip().lower()
+        if rufo_name in _RUFO_PRESET_LABELS:
+            path_meta["preset_rufo_name"] = rufo_name
         calha_name = str(d.get("preset_calha_name") or "").strip().lower()
         if calha_name in _CALHA_PRESET_LABELS:
             path_meta["preset_calha_name"] = calha_name
+        bandeja_name = str(d.get("preset_bandeja_name") or "").strip().lower()
+        if bandeja_name in _BANDEJA_PRESET_LABELS:
+            path_meta["preset_bandeja_name"] = bandeja_name
+        cantoneira_name = str(d.get("preset_cantoneira_name") or "").strip().lower()
+        if cantoneira_name in _CANTONEIRA_PRESET_LABELS:
+            path_meta["preset_cantoneira_name"] = cantoneira_name
+        chapa_name = str(d.get("preset_chapa_name") or "").strip().lower()
+        if chapa_name in _CHAPA_PRESET_LABELS:
+            path_meta["preset_chapa_name"] = chapa_name
+        perfil_name = str(d.get("preset_perfil_name") or "").strip().lower()
+        if perfil_name in _PERFIL_PRESET_LABELS:
+            path_meta["preset_perfil_name"] = perfil_name
         vector_nodes = d.get("vector_pen_nodes")
         if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
             path_meta["vector_pen_nodes"] = vector_nodes
@@ -684,7 +768,7 @@ class DrawingScene(QGraphicsScene):
         if not self._ft_items:
             return True
         # Regra especial apenas para presets 3D:
-        # se houver qualquer item NÃO-3D na seleção, mantém resize normal.
+        # se houver qualquer item NAO-3D na selecao, mantem resize normal.
         if any(not self._is_3d_preset_item(item) for item in self._ft_items):
             return True
         for item in self._ft_items:
@@ -933,7 +1017,7 @@ class DrawingScene(QGraphicsScene):
                     self.cw.spin_font.blockSignals(False)
                 break
 
-        # Free Transform NÃO ativa automaticamente na seleção.
+        # Free Transform NAO ativa automaticamente na selecao.
         # Só deve aparecer quando o usuário acionar Ctrl+T.
         if self._ft_active:
             selected_items = self.selectedItems()
@@ -1243,7 +1327,7 @@ class DrawingScene(QGraphicsScene):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(vr)
 
-        # Handles (cantos + laterais) — oculta quando o item 3D já teve resize finalizado.
+        # Handles (cantos + laterais) - oculta quando o item 3D ja teve resize finalizado.
         if self._ft_resize_allowed_for_current_selection():
             hs = self.FT_HANDLE_SIZE
             painter.setPen(QPen(QColor("#1A73E8"), 1.5))
@@ -2042,8 +2126,8 @@ class DrawingScene(QGraphicsScene):
         """
         Posiciona o texto da cota evitando sobreposição com outros elementos.
 
-        Linha vertical  → padrão à direita; se houver colisão, vai à esquerda.
-        Linha horizontal→ padrão acima;    se houver colisão, vai abaixo.
+        Linha vertical -> padrao a direita; se houver colisao, vai a esquerda.
+        Linha horizontal -> padrao acima; se houver colisao, vai abaixo.
         """
         mid_x = (start.x() + end.x()) / 2.0
         mid_y = (start.y() + end.y()) / 2.0
@@ -2057,11 +2141,11 @@ class DrawingScene(QGraphicsScene):
         gap = max(8, int(fs * 1.3))
 
         if dy > dx:
-            # Linha mais vertical → padrão: texto à DIREITA
+            # Linha mais vertical -> padrao: texto a DIREITA
             def_x, def_y = mid_x + gap,          mid_y - th / 2
             alt_x, alt_y = mid_x - gap - tw,     mid_y - th / 2
         else:
-            # Linha mais horizontal → padrão: texto ACIMA
+            # Linha mais horizontal -> padrao: texto ACIMA
             def_x, def_y = mid_x - tw / 2,  mid_y - gap - th
             alt_x, alt_y = mid_x - tw / 2,  mid_y + gap
 
@@ -2791,7 +2875,7 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.CURVE:
-            # Fase 1: início — define ponto inicial da linha base
+            # Fase 1: inicio - define ponto inicial da linha base
             self._curve_draw_phase = 1
             self._curve_bend_count = 0
             self._curve_dragging = True
@@ -3178,7 +3262,7 @@ class DrawingScene(QGraphicsScene):
             self._ruler_commit_on_release = False
 
         elif tool == Tool.CURVE and self._curve_draw_phase == 1:
-            # Fim do drag da linha base → transita para fase 2
+            # Fim do drag da linha base -> transita para fase 2
             if (self._curve_draw_start and
                     math.hypot(pos.x() - self._curve_draw_start.x(),
                                pos.y() - self._curve_draw_start.y()) < 3):
@@ -3512,10 +3596,10 @@ class DrawingCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        title = QLabel("🎨 DESENHO / REFERÊNCIA")
+        title = QLabel("DESENHO / REFERENCIA")
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
         )
         layout.addWidget(title)
 
@@ -3534,21 +3618,21 @@ class DrawingCanvas(QWidget):
         self._tool_btns: dict[Tool, QPushButton] = {}
 
         tools = [
-            (Tool.SELECT,   "🖱️ Selec.",   "S"),
-            (Tool.PEN,      "✏️ Caneta",   "P"),
-            (Tool.VECTOR_PEN, "✒ Vetor",   "V"),
-            (Tool.ERASER,   "🧹 Borracha", "X"),
-            (Tool.LINE,     "📏 Linha",    "L"),
-            (Tool.ESQUADRO, "📐 Esquadro", "Q"),
-            (Tool.ANGLE,    "∠ Ângulo",    "U"),
-            (Tool.ARROW,    "➡ Seta",      "A"),
-            (Tool.CURVE,    "〰 Curva",    "C"),
-            (Tool.TRIANGLE, "△ Triang.",  "G"),
-            (Tool.PENTAGON, "⬟ Penta",    "N"),
-            (Tool.HEXAGON,  "⬢ Hexa",     "H"),
-            (Tool.RECT,     "⬛ Ret.",     "R"),
-            (Tool.ELLIPSE,  "⭕ Elipse",   "E"),
-            (Tool.TEXT,     "T Texto",     "T"),
+            (Tool.SELECT, "Selec.", "S"),
+            (Tool.PEN, "Caneta", "P"),
+            (Tool.VECTOR_PEN, "Vetor", "V"),
+            (Tool.ERASER, "Borracha", "X"),
+            (Tool.LINE, "Linha", "L"),
+            (Tool.ESQUADRO, "Esquadro", "Q"),
+            (Tool.ANGLE, "Angulo", "U"),
+            (Tool.ARROW, "Seta", "A"),
+            (Tool.CURVE, "Curva", "C"),
+            (Tool.TRIANGLE, "Triang.", "G"),
+            (Tool.PENTAGON, "Penta", "N"),
+            (Tool.HEXAGON, "Hexa", "H"),
+            (Tool.RECT, "Ret.", "R"),
+            (Tool.ELLIPSE, "Elipse", "E"),
+            (Tool.TEXT, "Texto", "T"),
         ]
 
         # Linha 1a: Ferramentas (separado das propriedades para não cortar nomes)
@@ -3571,7 +3655,7 @@ class DrawingCanvas(QWidget):
         row_props.setSpacing(4)
 
         # Cor
-        self.btn_color = QPushButton("🎨")
+        self.btn_color = QPushButton("Cor")
         self.btn_color.setFixedSize(fh, fh)
         self.btn_color.setToolTip("Cor do traço")
         self.btn_color.setStyleSheet(
@@ -3600,7 +3684,7 @@ class DrawingCanvas(QWidget):
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
         self.combo_style.setFixedWidth(max(126, int(152 * s)))
-        self.combo_style.addItem("─── Sólida",     Qt.PenStyle.SolidLine)
+        self.combo_style.addItem("___ Solida", Qt.PenStyle.SolidLine)
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
         self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
         self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
@@ -3643,12 +3727,12 @@ class DrawingCanvas(QWidget):
         row2 = QHBoxLayout()
         row2.setSpacing(4)
 
-        btn_undo = QPushButton("↩️ Desfazer")
+        btn_undo = QPushButton("Desfazer")
         btn_undo.setFixedHeight(fh)
         btn_undo.clicked.connect(self._undo)
         btn_undo.setStyleSheet(self._tool_btn_style())
 
-        btn_redo = QPushButton("↪️ Refazer")
+        btn_redo = QPushButton("Refazer")
         btn_redo.setFixedHeight(fh)
         btn_redo.clicked.connect(self._redo)
         btn_redo.setStyleSheet(self._tool_btn_style())
@@ -3658,7 +3742,7 @@ class DrawingCanvas(QWidget):
         row2.addSpacing(8)
 
         # Rotação via toolbar (mantida para precisão numérica)
-        row2.addWidget(_lbl("↻ Girar:"))
+        row2.addWidget(_lbl("Girar:"))
         self.spin_rotate = QDoubleSpinBox()
         self.spin_rotate.setRange(-360, 360)
         self.spin_rotate.setValue(45)
@@ -3695,7 +3779,7 @@ class DrawingCanvas(QWidget):
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
 
-        btn_pdf = QPushButton("📎 PDF")
+        btn_pdf = QPushButton("PDF")
         btn_pdf.setFixedHeight(fh)
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
@@ -3716,19 +3800,44 @@ class DrawingCanvas(QWidget):
         btn_pingadeira.setToolTip("Inserir modelo de pingadeira")
         btn_pingadeira.clicked.connect(self._open_pingadeira_popup)
         btn_pingadeira.setStyleSheet(self._tool_btn_style())
+        btn_rufo = QPushButton("Rufo")
+        btn_rufo.setFixedHeight(fh)
+        btn_rufo.setToolTip("Inserir modelo de rufo")
+        btn_rufo.clicked.connect(self._open_rufo_popup)
+        btn_rufo.setStyleSheet(self._tool_btn_style())
         btn_calhas = QPushButton("Calhas")
         btn_calhas.setFixedHeight(fh)
         btn_calhas.setToolTip("Inserir modelo de calha")
         btn_calhas.clicked.connect(self._open_calha_popup)
         btn_calhas.setStyleSheet(self._tool_btn_style())
+        btn_bandeja = QPushButton("Bandeja")
+        btn_bandeja.setFixedHeight(fh)
+        btn_bandeja.setToolTip("Inserir modelo de bandeja")
+        btn_bandeja.clicked.connect(self._open_bandeja_popup)
+        btn_bandeja.setStyleSheet(self._tool_btn_style())
+        btn_cantoneira = QPushButton("Cantoneira")
+        btn_cantoneira.setFixedHeight(fh)
+        btn_cantoneira.setToolTip("Inserir modelo de cantoneira")
+        btn_cantoneira.clicked.connect(self._open_cantoneira_popup)
+        btn_cantoneira.setStyleSheet(self._tool_btn_style())
+        btn_chapas = QPushButton("Chapas")
+        btn_chapas.setFixedHeight(fh)
+        btn_chapas.setToolTip("Inserir modelo de chapa")
+        btn_chapas.clicked.connect(self._open_chapa_popup)
+        btn_chapas.setStyleSheet(self._tool_btn_style())
+        btn_perfil = QPushButton("Perfil")
+        btn_perfil.setFixedHeight(fh)
+        btn_perfil.setToolTip("Inserir modelo de perfil")
+        btn_perfil.clicked.connect(self._open_perfil_popup)
+        btn_perfil.setStyleSheet(self._tool_btn_style())
 
-        btn_dim = QPushButton("📏 MM")
+        btn_dim = QPushButton("MM")
         btn_dim.setFixedHeight(fh)
         btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
         btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
         btn_dim.setStyleSheet(self._tool_btn_style())
 
-        btn_clear = QPushButton("🗑️ Limpar")
+        btn_clear = QPushButton("Limpar")
         btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
         btn_clear.setStyleSheet(
@@ -3742,7 +3851,12 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_attachments)
         row2.addWidget(btn_3d)
         row2.addWidget(btn_pingadeira)
+        row2.addWidget(btn_rufo)
         row2.addWidget(btn_calhas)
+        row2.addWidget(btn_bandeja)
+        row2.addWidget(btn_cantoneira)
+        row2.addWidget(btn_chapas)
+        row2.addWidget(btn_perfil)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
@@ -3750,7 +3864,7 @@ class DrawingCanvas(QWidget):
 
         # Dica de teclado
         hint = QLabel(
-            "✨ Shift = traço reto  |  V = pen vetorial  |  Q = esquadro (ângulo guiado)  |  U = ângulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triângulo  |  N = pentágono  |  H = hexágono  |  Del = apagar  |  Scroll = zoom  |  "
+            "Shift = traco reto  |  V = pen vetorial  |  Q = esquadro (angulo guiado)  |  U = angulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
             "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
             "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
@@ -3759,7 +3873,7 @@ class DrawingCanvas(QWidget):
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
+            f"background:transparent; color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
 
@@ -3794,15 +3908,15 @@ class DrawingCanvas(QWidget):
         pdf_layout = QHBoxLayout(self.pdf_panel)
         pdf_layout.setContentsMargins(10, 6, 10, 6)
         self.pdf_label = QLabel("Nenhum PDF anexado")
-        self.pdf_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
-        btn_open_pdf = QPushButton("📂 Abrir")
+        self.pdf_label.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
+        btn_open_pdf = QPushButton("Abrir")
         btn_open_pdf.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_pdf.clicked.connect(self._open_pdf)
         btn_rm_pdf = QPushButton("X")
         btn_rm_pdf.setFixedWidth(28)
         btn_rm_pdf.setStyleSheet(theme.danger_btn_style(self.scale))
         btn_rm_pdf.clicked.connect(self._remove_pdf)
-        pdf_layout.addWidget(QLabel("📎 PDF"))
+        pdf_layout.addWidget(QLabel("PDF"))
         pdf_layout.addWidget(self.pdf_label, 1)
         pdf_layout.addWidget(btn_open_pdf)
         pdf_layout.addWidget(btn_rm_pdf)
@@ -3817,7 +3931,7 @@ class DrawingCanvas(QWidget):
         attachment_layout = QHBoxLayout(self.attachment_panel)
         attachment_layout.setContentsMargins(10, 6, 10, 6)
         self.attachment_label = QLabel("Nenhum anexo DWG")
-        self.attachment_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
+        self.attachment_label.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
         btn_open_attachment = QPushButton("Abrir")
         btn_open_attachment.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_attachment.clicked.connect(self._open_dwg)
@@ -3883,7 +3997,7 @@ class DrawingCanvas(QWidget):
             if btn in special_btns:
                 continue
             # Mantém botões com estilo custom (ex.: que tenham background:transparent
-            # no QSS atual) — re-aplicar o estilo padrão a TODOS dá um look uniforme,
+            # no QSS atual) - re-aplicar o estilo padrao a TODOS da um look uniforme,
             # que é o que queremos quando troca o tema.
             btn.setStyleSheet(tool_style)
 
@@ -3892,10 +4006,10 @@ class DrawingCanvas(QWidget):
             current = lbl.styleSheet() or ""
             if "font-weight:bold" in current.replace(" ", ""):
                 lbl.setStyleSheet(
-                    f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
+                    f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
                 )
             else:
-                lbl.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
+                lbl.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
 
     def _setup_shortcuts(self):
         shortcuts = {
@@ -4037,7 +4151,7 @@ class DrawingCanvas(QWidget):
     def _ask_angle_mode_config(self) -> tuple[float, str, str] | None:
         preset, ok = QInputDialog.getItem(
             self,
-            "Ângulo",
+            "Angulo",
             "Selecione o valor do ângulo:",
             ["90°", "180°", "Personalizado..."],
             0,
@@ -4053,7 +4167,7 @@ class DrawingCanvas(QWidget):
         else:
             value, ok = QInputDialog.getDouble(
                 self,
-                "Ângulo personalizado",
+                "Angulo personalizado",
                 "Informe o valor em graus:",
                 45.0,
                 0.1,
@@ -4665,6 +4779,83 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(150.0, 128.0))
             path.moveTo(QPointF(-150.0, 70.0))
             path.lineTo(QPointF(-88.0, 10.0))
+        elif preset == "pingadeira_4":
+            path = QPainterPath()
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(left_x, -82.0))
+            path.lineTo(QPointF(6.0, -82.0))
+            path.moveTo(QPointF(right_x, -82.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+            path.lineTo(QPointF(left_x, bottom_y))
+        elif preset == "pingadeira_5":
+            path = QPainterPath()
+            path.moveTo(QPointF(-6.0, -82.0))
+            path.lineTo(QPointF(right_x, -82.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+            path.lineTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(left_x, -82.0))
+        elif preset == "pingadeira_6":
+            path = QPainterPath()
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(left_x, -82.0))
+            path.lineTo(QPointF(right_x, -82.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+            path.lineTo(QPointF(0.0, bottom_y))
+        elif preset == "pingadeira_7":
+            path = QPainterPath()
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(left_x, -82.0))
+            path.lineTo(QPointF(right_x, -82.0))
+            path.lineTo(QPointF(right_x, bottom_y))
+            path.moveTo(QPointF(left_x, bottom_y))
+            path.lineTo(QPointF(0.0, bottom_y))
+        elif preset == "pingadeira_10":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, 78.0))
+            path.lineTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(20.0, -80.0))
+            path.lineTo(QPointF(20.0, 78.0))
+            path.lineTo(QPointF(150.0, 128.0))
+        elif preset == "pingadeira_11":
+            path = QPainterPath()
+            path.moveTo(QPointF(-40.0, -80.0))
+            path.lineTo(QPointF(40.0, -80.0))
+            path.lineTo(QPointF(40.0, 18.0))
+            path.lineTo(QPointF(150.0, 126.0))
+            path.moveTo(QPointF(-40.0, -80.0))
+            path.lineTo(QPointF(-40.0, 18.0))
+            path.lineTo(QPointF(-150.0, 126.0))
+        elif preset == "pingadeira_12":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+            path.moveTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+        elif preset == "pingadeira_13":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-150.0, -8.0))
+            path.lineTo(QPointF(-76.0, -82.0))
+            path.lineTo(QPointF(76.0, -82.0))
+            path.lineTo(QPointF(150.0, -8.0))
+            path.lineTo(QPointF(150.0, 80.0))
+            path.moveTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-76.0, 80.0))
+            path.moveTo(QPointF(76.0, 80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+        elif preset == "pingadeira_14":
+            path = QPainterPath()
+            path.moveTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+            path.lineTo(QPointF(95.0, 80.0))
+            path.lineTo(QPointF(95.0, 22.0))
+            path.moveTo(QPointF(-95.0, 22.0))
+            path.lineTo(QPointF(-95.0, 80.0))
+            path.lineTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(-150.0, -80.0))
 
         return path
 
@@ -4707,7 +4898,22 @@ class DrawingCanvas(QWidget):
         list_widget.viewport().setMouseTracking(True)
         list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
 
-        for key in ("direita", "esquerda", "dupla", "pingadeira_rufo", "pingadeira_rufo_2"):
+        for key in (
+            "direita",
+            "esquerda",
+            "dupla",
+            "pingadeira_4",
+            "pingadeira_5",
+            "pingadeira_6",
+            "pingadeira_7",
+            "pingadeira_rufo",
+            "pingadeira_rufo_2",
+            "pingadeira_10",
+            "pingadeira_11",
+            "pingadeira_12",
+            "pingadeira_13",
+            "pingadeira_14",
+        ):
             item = QListWidgetItem(_PINGADEIRA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
             list_widget.addItem(item)
@@ -4781,6 +4987,234 @@ class DrawingCanvas(QWidget):
         self._redo_stack.clear()
         self.changed.emit()
 
+    def _build_rufo_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+
+        if preset == "rufo_1":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-120.0, -80.0))
+            path.lineTo(QPointF(-78.0, 70.0))
+            path.lineTo(QPointF(170.0, 70.0))
+        elif preset == "rufo_2":
+            path.moveTo(QPointF(-160.0, -110.0))
+            path.lineTo(QPointF(-160.0, 0.0))
+            path.lineTo(QPointF(120.0, 0.0))
+            path.lineTo(QPointF(120.0, 125.0))
+        elif preset == "rufo_3":
+            path.moveTo(QPointF(-160.0, -110.0))
+            path.lineTo(QPointF(-160.0, 0.0))
+            path.lineTo(QPointF(70.0, 0.0))
+            path.lineTo(QPointF(170.0, 58.0))
+        elif preset == "rufo_4":
+            path.moveTo(QPointF(-180.0, -82.0))
+            path.lineTo(QPointF(-60.0, 0.0))
+            path.lineTo(QPointF(120.0, 0.0))
+            path.lineTo(QPointF(260.0, 98.0))
+        elif preset == "rufo_5":
+            path.moveTo(QPointF(-60.0, -88.0))
+            path.lineTo(QPointF(40.0, -88.0))
+            path.lineTo(QPointF(40.0, 122.0))
+        elif preset == "rufo_6":
+            path.moveTo(QPointF(-170.0, 0.0))
+            path.lineTo(QPointF(-20.0, -142.0))
+            path.lineTo(QPointF(110.0, -68.0))
+            path.lineTo(QPointF(250.0, 118.0))
+            path.lineTo(QPointF(62.0, 308.0))
+            path.lineTo(QPointF(-64.0, 58.0))
+            path.lineTo(QPointF(-170.0, 0.0))
+            path.moveTo(QPointF(-64.0, 58.0))
+            path.lineTo(QPointF(110.0, -68.0))
+        elif preset == "rufo_7":
+            path.moveTo(QPointF(-170.0, -90.0))
+            path.lineTo(QPointF(-170.0, 70.0))
+            path.lineTo(QPointF(160.0, 70.0))
+        elif preset == "rufo_8":
+            path.moveTo(QPointF(-160.0, 70.0))
+            path.lineTo(QPointF(170.0, 70.0))
+            path.lineTo(QPointF(170.0, -90.0))
+        elif preset == "rufo_9":
+            path.moveTo(QPointF(-170.0, 110.0))
+            path.lineTo(QPointF(-82.0, 10.0))
+            path.lineTo(QPointF(92.0, 10.0))
+            path.lineTo(QPointF(180.0, -92.0))
+        elif preset == "rufo_10":
+            path.moveTo(QPointF(-140.0, -82.0))
+            path.lineTo(QPointF(120.0, -82.0))
+            path.lineTo(QPointF(120.0, 44.0))
+            path.moveTo(QPointF(-140.0, -82.0))
+            path.lineTo(QPointF(-140.0, 44.0))
+            path.moveTo(QPointF(-140.0, 44.0))
+            path.lineTo(QPointF(-70.0, -18.0))
+            path.moveTo(QPointF(120.0, 44.0))
+            path.lineTo(QPointF(68.0, 98.0))
+        elif preset == "rufo_11":
+            path.moveTo(QPointF(-140.0, -82.0))
+            path.lineTo(QPointF(118.0, -82.0))
+            path.lineTo(QPointF(118.0, 42.0))
+            path.lineTo(QPointF(210.0, 72.0))
+            path.lineTo(QPointF(270.0, 132.0))
+            path.moveTo(QPointF(-140.0, -82.0))
+            path.lineTo(QPointF(-140.0, 42.0))
+            path.moveTo(QPointF(-140.0, 42.0))
+            path.lineTo(QPointF(-70.0, -18.0))
+        elif preset == "rufo_12":
+            path.moveTo(QPointF(-120.0, -100.0))
+            path.lineTo(QPointF(-120.0, -10.0))
+            path.lineTo(QPointF(170.0, 132.0))
+        elif preset == "rufo_13":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-112.0, -80.0))
+            path.lineTo(QPointF(-42.0, 78.0))
+            path.lineTo(QPointF(160.0, 78.0))
+        elif preset == "rufo_14":
+            path.moveTo(QPointF(-140.0, -90.0))
+            path.lineTo(QPointF(70.0, -90.0))
+            path.lineTo(QPointF(70.0, 34.0))
+            path.lineTo(QPointF(250.0, 74.0))
+            path.moveTo(QPointF(-140.0, -90.0))
+            path.lineTo(QPointF(-140.0, 34.0))
+            path.moveTo(QPointF(-140.0, 34.0))
+            path.lineTo(QPointF(-76.0, -24.0))
+        elif preset == "rufo_15":
+            path.moveTo(QPointF(-80.0, -82.0))
+            path.lineTo(QPointF(80.0, -82.0))
+            path.lineTo(QPointF(80.0, 40.0))
+            path.lineTo(QPointF(220.0, 182.0))
+            path.moveTo(QPointF(-80.0, -82.0))
+            path.lineTo(QPointF(-80.0, 40.0))
+            path.lineTo(QPointF(-220.0, 182.0))
+
+        return path
+
+    def _rufo_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_rufo_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_rufo_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Rufo")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de rufo:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "rufo_1",
+            "rufo_2",
+            "rufo_3",
+            "rufo_4",
+            "rufo_5",
+            "rufo_6",
+            "rufo_7",
+            "rufo_8",
+            "rufo_9",
+            "rufo_10",
+            "rufo_11",
+            "rufo_12",
+            "rufo_13",
+            "rufo_14",
+            "rufo_15",
+        ):
+            item = QListWidgetItem(_RUFO_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._rufo_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_rufo_preset(preset)
+
+    def _insert_rufo_preset(self, preset: str):
+        if preset not in _RUFO_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_rufo_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_rufo_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
     def _build_calha_path(self, preset: str) -> QPainterPath:
         path = QPainterPath()
         left_inner_x, right_inner_x = -105.0, 105.0
@@ -4798,6 +5232,22 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(right_inner_x, bottom_y))
             path.lineTo(QPointF(right_inner_x, top_y))
             path.lineTo(QPointF(170.0, top_y))
+        elif preset == "calha_suporte_esq":
+            support_bottom_y = -8.0
+            path.moveTo(QPointF(-170.0, support_bottom_y))
+            path.lineTo(QPointF(-170.0, top_y))
+            path.lineTo(QPointF(left_inner_x, top_y))
+            path.lineTo(QPointF(left_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, top_y))
+        elif preset == "calha_suporte_dir":
+            support_bottom_y = -8.0
+            path.moveTo(QPointF(left_inner_x, top_y))
+            path.lineTo(QPointF(left_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, bottom_y))
+            path.lineTo(QPointF(right_inner_x, top_y))
+            path.lineTo(QPointF(170.0, top_y))
+            path.lineTo(QPointF(170.0, support_bottom_y))
         elif preset == "calha_2_aba":
             path.moveTo(QPointF(-170.0, top_y))
             path.lineTo(QPointF(left_inner_x, top_y))
@@ -4829,6 +5279,79 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(120.0, -52.0))
             path.lineTo(QPointF(10.0, -52.0))
             path.lineTo(QPointF(10.0, -8.0))
+        elif preset == "calha_com_angulo":
+            path.moveTo(QPointF(-170.0, -56.0))
+            path.lineTo(QPointF(-20.0, -8.0))
+            path.lineTo(QPointF(-20.0, 72.0))
+            path.lineTo(QPointF(120.0, 72.0))
+            path.lineTo(QPointF(120.0, -8.0))
+            path.lineTo(QPointF(270.0, -56.0))
+        elif preset == "calha_dobrada":
+            path.moveTo(QPointF(-170.0, -96.0))
+            path.lineTo(QPointF(-170.0, -8.0))
+            path.lineTo(QPointF(-20.0, 72.0))
+            path.lineTo(QPointF(120.0, 72.0))
+            path.lineTo(QPointF(270.0, -8.0))
+            path.lineTo(QPointF(270.0, -96.0))
+        elif preset == "calha_sem_aba":
+            path.moveTo(QPointF(-170.0, 72.0))
+            path.lineTo(QPointF(-170.0, -8.0))
+            path.lineTo(QPointF(-20.0, -108.0))
+            path.lineTo(QPointF(-20.0, -18.0))
+            path.lineTo(QPointF(-170.0, 72.0))
+
+            path.moveTo(QPointF(20.0, 72.0))
+            path.lineTo(QPointF(20.0, -8.0))
+            path.lineTo(QPointF(170.0, -108.0))
+            path.lineTo(QPointF(170.0, -18.0))
+            path.lineTo(QPointF(20.0, 72.0))
+
+            path.moveTo(QPointF(-20.0, -18.0))
+            path.lineTo(QPointF(170.0, -18.0))
+            path.moveTo(QPointF(-170.0, 72.0))
+            path.lineTo(QPointF(20.0, 72.0))
+        elif preset in {"calha_foto", "calha_3d"}:
+            # Perfil conforme a foto enviada: dois planos inclinados e ponte superior.
+            left_bottom = QPointF(-170.0, 72.0)
+            left_vertical_top = QPointF(-170.0, -8.0)
+            center_peak = QPointF(20.0, -108.0)
+            bridge_left = QPointF(20.0, -18.0)
+            center_bottom = QPointF(20.0, 72.0)
+            right_peak = QPointF(170.0, -104.0)
+            bridge_right = QPointF(170.0, -18.0)
+
+            path.moveTo(left_bottom)
+            path.lineTo(left_vertical_top)
+            path.lineTo(center_peak)
+            path.lineTo(bridge_left)
+            path.lineTo(left_bottom)
+            path.lineTo(center_bottom)
+            path.lineTo(right_peak)
+            path.lineTo(bridge_right)
+            path.lineTo(center_bottom)
+            path.moveTo(bridge_left)
+            path.lineTo(bridge_right)
+        elif preset == "calha_1_aba_3d":
+            # Perfil 3D com aba lateral única e linhas internas de reforço.
+            path.moveTo(QPointF(-180.0, 70.0))
+            path.lineTo(QPointF(-180.0, -30.0))
+            path.lineTo(QPointF(130.0, -110.0))
+            path.lineTo(QPointF(130.0, -10.0))
+            path.lineTo(QPointF(-180.0, 70.0))
+
+            path.moveTo(QPointF(-180.0, 70.0))
+            path.lineTo(QPointF(-20.0, 70.0))
+            path.lineTo(QPointF(220.0, -10.0))
+
+            path.moveTo(QPointF(-20.0, 0.0))
+            path.lineTo(QPointF(220.0, -80.0))
+            path.moveTo(QPointF(-20.0, 0.0))
+            path.lineTo(QPointF(-20.0, 70.0))
+
+            path.moveTo(QPointF(130.0, -10.0))
+            path.lineTo(QPointF(220.0, -10.0))
+            path.lineTo(QPointF(220.0, -80.0))
+            path.lineTo(QPointF(130.0, -10.0))
 
         return path
 
@@ -4874,9 +5397,14 @@ class DrawingCanvas(QWidget):
         for key in (
             "calha_aba_esq",
             "calha_aba_dir",
+            "calha_suporte_esq",
+            "calha_suporte_dir",
             "calha_2_aba",
             "calha_abas_dobrada",
             "calha_modulada",
+            "calha_com_angulo",
+            "calha_dobrada",
+            "calha_sem_aba",
         ):
             item = QListWidgetItem(_CALHA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
@@ -4943,6 +5471,750 @@ class DrawingCanvas(QWidget):
             {
                 "type": "path",
                 "preset_calha_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
+    def _build_bandeja_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+        mid_y = 0.0
+        top_y = -82.0
+        bottom_y = 82.0
+
+        if preset == "bandeja_1":
+            # Eixo central + abas nas duas pontas da base + dobra inferior à direita.
+            axis_x = 0.0
+            left_x, right_x = -150.0, 150.0
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(right_x, mid_y))
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(left_x, -26.0))
+            path.moveTo(QPointF(right_x, mid_y))
+            path.lineTo(QPointF(right_x, -26.0))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(axis_x, bottom_y))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(66.0, top_y))
+            path.moveTo(QPointF(axis_x, bottom_y))
+            path.lineTo(QPointF(66.0, bottom_y))
+        elif preset == "bandeja_2":
+            # Eixo central + base com queda vertical na ponta direita.
+            axis_x = 0.0
+            left_x, right_x = -150.0, 130.0
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(right_x, mid_y))
+            path.moveTo(QPointF(right_x, mid_y))
+            path.lineTo(QPointF(right_x, 38.0))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(axis_x, bottom_y))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(64.0, top_y))
+        elif preset == "bandeja_3":
+            # Eixo central + base com queda vertical na ponta esquerda.
+            axis_x = 0.0
+            left_x, right_x = -130.0, 130.0
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(right_x, mid_y))
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(left_x, 38.0))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(axis_x, bottom_y))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(64.0, top_y))
+        elif preset == "bandeja_4":
+            # Versão espelhada da bandeja 1 com eixo deslocado para a direita.
+            axis_x = 54.0
+            left_x, right_x = -150.0, 150.0
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(right_x, mid_y))
+            path.moveTo(QPointF(left_x, mid_y))
+            path.lineTo(QPointF(left_x, -26.0))
+            path.moveTo(QPointF(right_x, mid_y))
+            path.lineTo(QPointF(right_x, -26.0))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(axis_x, bottom_y))
+            path.moveTo(QPointF(axis_x, top_y))
+            path.lineTo(QPointF(-12.0, top_y))
+            path.moveTo(QPointF(axis_x, bottom_y))
+            path.lineTo(QPointF(-12.0, bottom_y))
+
+        return path
+
+    def _bandeja_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_bandeja_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_bandeja_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Bandeja")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de bandeja:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in ("bandeja_1", "bandeja_2", "bandeja_3", "bandeja_4"):
+            item = QListWidgetItem(_BANDEJA_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._bandeja_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_bandeja_preset(preset)
+
+    def _insert_bandeja_preset(self, preset: str):
+        if preset not in _BANDEJA_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_bandeja_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_bandeja_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
+    def _build_cantoneira_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+
+        if preset == "cantoneira_1":
+            path.moveTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(130.0, 80.0))
+        elif preset == "cantoneira_2":
+            path.moveTo(QPointF(-130.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+        elif preset == "cantoneira_3":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-170.0, 80.0))
+            path.lineTo(QPointF(-20.0, 80.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(130.0, -10.0))
+        elif preset == "cantoneira_4":
+            path.moveTo(QPointF(-130.0, -10.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(20.0, 80.0))
+            path.lineTo(QPointF(170.0, 80.0))
+            path.lineTo(QPointF(170.0, -80.0))
+        elif preset == "cantoneira_5":
+            path.moveTo(QPointF(90.0, -80.0))
+            path.lineTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(90.0, 80.0))
+        elif preset == "cantoneira_7":
+            path.moveTo(QPointF(-90.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+            path.lineTo(QPointF(-90.0, 80.0))
+        elif preset == "cantoneira_8":
+            path.moveTo(QPointF(-110.0, 80.0))
+            path.lineTo(QPointF(-110.0, -30.0))
+            path.lineTo(QPointF(110.0, -30.0))
+            path.lineTo(QPointF(110.0, 80.0))
+        elif preset == "cantoneira_9":
+            path.moveTo(QPointF(-170.0, -110.0))
+            path.lineTo(QPointF(-170.0, -30.0))
+            path.lineTo(QPointF(-40.0, 35.0))
+            path.lineTo(QPointF(-40.0, 120.0))
+            path.lineTo(QPointF(140.0, 120.0))
+            path.lineTo(QPointF(250.0, 175.0))
+        elif preset == "cantoneira_10":
+            path.moveTo(QPointF(-150.0, -110.0))
+            path.lineTo(QPointF(-150.0, -45.0))
+            path.lineTo(QPointF(-20.0, 20.0))
+            path.lineTo(QPointF(-20.0, 120.0))
+            path.lineTo(QPointF(220.0, 120.0))
+            path.lineTo(QPointF(220.0, 55.0))
+            path.lineTo(QPointF(130.0, 55.0))
+
+        return path
+
+    def _cantoneira_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_cantoneira_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_cantoneira_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Cantoneira")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de cantoneira:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "cantoneira_1",
+            "cantoneira_2",
+            "cantoneira_3",
+            "cantoneira_4",
+            "cantoneira_5",
+            "cantoneira_7",
+            "cantoneira_8",
+            "cantoneira_9",
+            "cantoneira_10",
+        ):
+            item = QListWidgetItem(_CANTONEIRA_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._cantoneira_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_cantoneira_preset(preset)
+
+    def _insert_cantoneira_preset(self, preset: str):
+        if preset not in _CANTONEIRA_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_cantoneira_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_cantoneira_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
+    def _build_chapa_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+
+        if preset == "chapa_1":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-90.0, -80.0))
+            path.lineTo(QPointF(170.0, -10.0))
+            path.lineTo(QPointF(170.0, 90.0))
+            path.lineTo(QPointF(-90.0, 130.0))
+            path.lineTo(QPointF(-90.0, -80.0))
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(60.0, -10.0))
+            path.lineTo(QPointF(170.0, -10.0))
+        elif preset == "chapa_2":
+            # Ajustada para seguir a referencia "CHAPA DOBRADA 2".
+            left_bottom = QPointF(-170.0, 170.0)
+            left_top = QPointF(-170.0, 20.0)
+            center_notch = QPointF(-35.0, 24.0)
+            center_inner = QPointF(-35.0, 58.0)
+            mid_top = QPointF(90.0, -150.0)
+            mid_inner = QPointF(90.0, -70.0)
+            mid_lower = QPointF(90.0, 20.0)
+            right_top = QPointF(185.0, -148.0)
+            right_drop = QPointF(185.0, -118.0)
+
+            path.moveTo(left_bottom)
+            path.lineTo(left_top)
+            path.lineTo(center_notch)
+
+            path.moveTo(left_bottom)
+            path.lineTo(mid_top)
+
+            path.moveTo(center_notch)
+            path.lineTo(mid_top)
+            path.lineTo(right_top)
+            path.lineTo(right_drop)
+            path.lineTo(mid_lower)
+
+            path.moveTo(center_notch)
+            path.lineTo(mid_inner)
+            path.lineTo(mid_lower)
+            path.lineTo(center_inner)
+            path.lineTo(center_notch)
+        elif preset == "chapa_3":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-20.0, 10.0))
+            path.lineTo(QPointF(-20.0, 130.0))
+        elif preset == "chapa_4":
+            path.moveTo(QPointF(-20.0, 130.0))
+            path.lineTo(QPointF(-20.0, 10.0))
+            path.lineTo(QPointF(130.0, -80.0))
+        elif preset == "chapa_5":
+            path.moveTo(QPointF(80.0, -80.0))
+            path.lineTo(QPointF(80.0, 20.0))
+            path.lineTo(QPointF(-90.0, 130.0))
+        elif preset == "chapa_6":
+            path.moveTo(QPointF(-80.0, -80.0))
+            path.lineTo(QPointF(-80.0, 20.0))
+            path.lineTo(QPointF(90.0, 130.0))
+        elif preset == "chapa_7":
+            path.moveTo(QPointF(-40.0, -10.0))
+            path.lineTo(QPointF(-40.0, 90.0))
+            path.lineTo(QPointF(60.0, 190.0))
+            path.moveTo(QPointF(-40.0, -10.0))
+            path.lineTo(QPointF(60.0, -110.0))
+        elif preset == "chapa_8":
+            path.moveTo(QPointF(-100.0, 40.0))
+            path.lineTo(QPointF(100.0, 40.0))
+            path.lineTo(QPointF(180.0, 120.0))
+            path.moveTo(QPointF(-100.0, 40.0))
+            path.lineTo(QPointF(-180.0, 120.0))
+        elif preset == "chapa_9":
+            path.moveTo(QPointF(40.0, -10.0))
+            path.lineTo(QPointF(40.0, 90.0))
+            path.lineTo(QPointF(-60.0, 190.0))
+            path.moveTo(QPointF(40.0, -10.0))
+            path.lineTo(QPointF(-60.0, -110.0))
+        elif preset == "chapa_10":
+            path.moveTo(QPointF(-180.0, -40.0))
+            path.lineTo(QPointF(-100.0, 40.0))
+            path.lineTo(QPointF(100.0, 40.0))
+            path.lineTo(QPointF(180.0, -40.0))
+        elif preset == "chapa_11":
+            path.moveTo(QPointF(80.0, -120.0))
+            path.lineTo(QPointF(180.0, -120.0))
+            path.lineTo(QPointF(180.0, 120.0))
+            path.lineTo(QPointF(-20.0, 120.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(80.0, -10.0))
+            path.lineTo(QPointF(80.0, -120.0))
+        elif preset == "chapa_12":
+            path.moveTo(QPointF(-180.0, -120.0))
+            path.lineTo(QPointF(-80.0, -120.0))
+            path.lineTo(QPointF(-80.0, -10.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(20.0, 120.0))
+            path.lineTo(QPointF(-180.0, 120.0))
+            path.lineTo(QPointF(-180.0, -120.0))
+        elif preset == "chapa_13":
+            path.moveTo(QPointF(-180.0, -120.0))
+            path.lineTo(QPointF(20.0, -120.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(-80.0, -10.0))
+            path.lineTo(QPointF(-80.0, 120.0))
+            path.lineTo(QPointF(-180.0, 120.0))
+            path.lineTo(QPointF(-180.0, -120.0))
+        elif preset == "chapa_14":
+            path.moveTo(QPointF(180.0, -120.0))
+            path.lineTo(QPointF(-20.0, -120.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(80.0, -10.0))
+            path.lineTo(QPointF(80.0, 120.0))
+            path.lineTo(QPointF(180.0, 120.0))
+            path.lineTo(QPointF(180.0, -120.0))
+
+        return path
+
+    def _chapa_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_chapa_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_chapa_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Chapa")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de chapa:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "chapa_1",
+            "chapa_3",
+            "chapa_4",
+            "chapa_5",
+            "chapa_6",
+            "chapa_7",
+            "chapa_8",
+            "chapa_9",
+            "chapa_10",
+            "chapa_11",
+            "chapa_12",
+            "chapa_13",
+            "chapa_14",
+        ):
+            item = QListWidgetItem(_CHAPA_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._chapa_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_chapa_preset(preset)
+
+    def _insert_chapa_preset(self, preset: str):
+        if preset not in _CHAPA_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_chapa_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_chapa_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
+    def _build_perfil_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+
+        if preset == "perfil_u":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-170.0, 80.0))
+            path.lineTo(QPointF(170.0, 80.0))
+            path.lineTo(QPointF(170.0, -80.0))
+        elif preset == "perfil_1":
+            path.moveTo(QPointF(-180.0, -80.0))
+            path.lineTo(QPointF(-60.0, -80.0))
+            path.lineTo(QPointF(-60.0, 60.0))
+            path.lineTo(QPointF(60.0, 60.0))
+            path.lineTo(QPointF(60.0, -80.0))
+            path.lineTo(QPointF(180.0, -80.0))
+        elif preset == "perfil_2":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-30.0, -80.0))
+            path.moveTo(QPointF(30.0, -80.0))
+            path.lineTo(QPointF(170.0, -80.0))
+            path.lineTo(QPointF(170.0, 90.0))
+            path.lineTo(QPointF(-170.0, 90.0))
+            path.lineTo(QPointF(-170.0, -80.0))
+
+        return path
+
+    def _perfil_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_perfil_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_perfil_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Perfil")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de perfil:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "perfil_u",
+            "perfil_1",
+            "perfil_2",
+        ):
+            item = QListWidgetItem(_PERFIL_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._perfil_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_perfil_preset(preset)
+
+    def _insert_perfil_preset(self, preset: str):
+        if preset not in _PERFIL_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_perfil_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_perfil_name": preset,
             },
         )
         item.setPos(self._base_insert_pos())
@@ -5369,9 +6641,24 @@ class DrawingCanvas(QWidget):
                 pingadeira_name = str(meta.get("preset_pingadeira_name") or "").strip().lower()
                 if pingadeira_name in _PINGADEIRA_PRESET_LABELS:
                     payload["preset_pingadeira_name"] = pingadeira_name
+                rufo_name = str(meta.get("preset_rufo_name") or "").strip().lower()
+                if rufo_name in _RUFO_PRESET_LABELS:
+                    payload["preset_rufo_name"] = rufo_name
                 calha_name = str(meta.get("preset_calha_name") or "").strip().lower()
                 if calha_name in _CALHA_PRESET_LABELS:
                     payload["preset_calha_name"] = calha_name
+                bandeja_name = str(meta.get("preset_bandeja_name") or "").strip().lower()
+                if bandeja_name in _BANDEJA_PRESET_LABELS:
+                    payload["preset_bandeja_name"] = bandeja_name
+                cantoneira_name = str(meta.get("preset_cantoneira_name") or "").strip().lower()
+                if cantoneira_name in _CANTONEIRA_PRESET_LABELS:
+                    payload["preset_cantoneira_name"] = cantoneira_name
+                chapa_name = str(meta.get("preset_chapa_name") or "").strip().lower()
+                if chapa_name in _CHAPA_PRESET_LABELS:
+                    payload["preset_chapa_name"] = chapa_name
+                perfil_name = str(meta.get("preset_perfil_name") or "").strip().lower()
+                if perfil_name in _PERFIL_PRESET_LABELS:
+                    payload["preset_perfil_name"] = perfil_name
                 vector_nodes = meta.get("vector_pen_nodes")
                 if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
                     payload["vector_pen_nodes"] = vector_nodes
@@ -5484,3 +6771,4 @@ class CanvasPreview(QGraphicsView):
                     item.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
             except Exception:
                 pass
+

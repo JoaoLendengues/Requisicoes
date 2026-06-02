@@ -13,10 +13,16 @@ from ..models.client import Client
 from ..models.operator import OperatorRole
 from ..models.production_machine import ProductionMachine
 from ..models.requisition import (
-    Requisition, RequisitionItem, CanvasData, StatusHistory, RequisitionStatus,
+    Requisition,
+    RequisitionItem,
+    CanvasData,
+    RequisitionProductionSplit,
+    StatusHistory,
+    RequisitionStatus,
 )
 from ..models.user import User, Role
 from ..schemas.dashboard import (
+    DashboardIarSummaryItem,
     DashboardCountKgComparisonItem,
     DashboardInsightsResponse,
     DashboardKgComparisonItem,
@@ -47,6 +53,8 @@ from ..schemas.production import (
     ProductionMachineCardResponse,
     ProductionMachineStatusResponse,
     ProductionMachineStatusUpdate,
+    ProductionSplitCreateRequest,
+    ProductionSplitStatusUpdate,
     ProductionSummaryStatsResponse,
 )
 from ..schemas.requisition import (
@@ -80,6 +88,7 @@ router = APIRouter(prefix="/requisitions", tags=["Requisições"])
 _LOAD_OPTS = [
     selectinload(Requisition.items),
     selectinload(Requisition.status_history),
+    selectinload(Requisition.production_splits).selectinload(RequisitionProductionSplit.status_history),
     selectinload(Requisition.canvas),
     selectinload(Requisition.client),
     selectinload(Requisition.vendor),
@@ -89,6 +98,7 @@ _LOAD_OPTS = [
 # necessário só para derivar os campos de produção. Carrega o mínimo.
 _LIST_LOAD_OPTS = [
     selectinload(Requisition.status_history),
+    selectinload(Requisition.production_splits).selectinload(RequisitionProductionSplit.status_history),
     selectinload(Requisition.client),
     selectinload(Requisition.vendor),
 ]
@@ -106,6 +116,7 @@ _PROD_CANCELED = "CANCELADA"
 _DESTINATION_AR = "A&R"
 _DESTINATION_PINHEIRO = "Pinheiro Indústria"
 _MACHINE_DASHBOARD_PERIODS = {"30d", "7d", "today", "last_month"}
+_PERFORMANCE_DASHBOARD_PERIODS = {"today", "week", "month", "year", "custom"}
 _SHIFT_START_HOUR = 8
 _SHIFT_END_HOUR = 18
 
@@ -164,6 +175,53 @@ def _did_finish_on_time(finished_at: object, delivery_date: date | None) -> bool
     return finished_local.date() <= delivery_date
 
 
+def _request_finished_at(req: Requisition) -> datetime | None:
+    if req.status == RequisitionStatus.CANCELADA:
+        return None
+    return _history_production_finished_at(req)
+
+
+def _request_finished_on_time(req: Requisition) -> bool:
+    finished_at = _request_finished_at(req)
+    result = _did_finish_on_time(finished_at, req.delivery_date)
+    return bool(result)
+
+
+def _build_iar_summary_item(
+    *,
+    received_count: int,
+    finalized_count: int,
+    on_time_count: int,
+    canceled_count: int,
+) -> DashboardIarSummaryItem:
+    prazo_percent = 0.0
+    produtividade_percent = 0.0
+    cancelamentos_percent = 0.0
+
+    if finalized_count > 0:
+        prazo_percent = (on_time_count / finalized_count) * 100.0
+    if received_count > 0:
+        produtividade_percent = (finalized_count / received_count) * 100.0
+        cancelamentos_percent = max(0.0, ((received_count - canceled_count) / received_count) * 100.0)
+
+    iar_percent = (
+        (prazo_percent * 0.50)
+        + (produtividade_percent * 0.30)
+        + (cancelamentos_percent * 0.20)
+    )
+
+    return DashboardIarSummaryItem(
+        received_count=int(received_count),
+        finalized_count=int(finalized_count),
+        on_time_count=int(on_time_count),
+        canceled_count=int(canceled_count),
+        prazo_percent=round(prazo_percent, 2),
+        produtividade_percent=round(produtividade_percent, 2),
+        cancelamentos_percent=round(cancelamentos_percent, 2),
+        iar_percent=round(iar_percent, 2),
+    )
+
+
 def _delivery_deadline_changed_at(req: Requisition) -> datetime | None:
     changed_at = getattr(req, "delivery_deadline_changed_at", None)
     if isinstance(changed_at, datetime):
@@ -187,6 +245,16 @@ def _normalize_machine_dashboard_period(value: str) -> str:
 
 def _normalize_dashboard_period(value: str) -> str:
     return _normalize_machine_dashboard_period(value)
+
+
+def _normalize_performance_dashboard_period(value: str) -> str:
+    key = str(value or "").strip().casefold() or "month"
+    if key not in _PERFORMANCE_DASHBOARD_PERIODS:
+        raise HTTPException(
+            status_code=400,
+            detail="PerÃ­odo de performance invÃ¡lido. Use today, week, month, year ou custom.",
+        )
+    return key
 
 
 def _month_start(value: datetime) -> datetime:
@@ -219,6 +287,41 @@ def _dashboard_period_bounds(period_key: str, now: datetime | None = None) -> tu
     return _machine_dashboard_period_bounds(period_key, now)
 
 
+def _performance_period_bounds(
+    period_key: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    now: datetime | None = None,
+) -> tuple[datetime, datetime]:
+    local_now = _to_local_datetime(now or datetime.now(_LOCAL_TIMEZONE)) or datetime.now(_LOCAL_TIMEZONE)
+    today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period_key == "today":
+        return today_start, local_now
+    if period_key == "week":
+        week_start = today_start - timedelta(days=today_start.weekday())
+        return week_start, local_now
+    if period_key == "month":
+        return _month_start(local_now), local_now
+    if period_key == "year":
+        return local_now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0), local_now
+
+    if start_date is None or end_date is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Informe a data inicial e final para o perÃ­odo personalizado.",
+        )
+    if end_date < start_date:
+        raise HTTPException(
+            status_code=400,
+            detail="A data final do perÃ­odo personalizado nÃ£o pode ser menor que a inicial.",
+        )
+
+    range_start = datetime.combine(start_date, time.min, _LOCAL_TIMEZONE)
+    range_end = datetime.combine(end_date + timedelta(days=1), time.min, _LOCAL_TIMEZONE)
+    return range_start, range_end
+
+
 def _datetime_in_dashboard_period(
     value: object,
     period_key: str,
@@ -228,6 +331,25 @@ def _datetime_in_dashboard_period(
     if current is None:
         return False
     period_start, period_end = _dashboard_period_bounds(period_key, now)
+    return period_start <= current < period_end
+
+
+def _datetime_in_performance_period(
+    value: object,
+    period_key: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    now: datetime | None = None,
+) -> bool:
+    current = _to_local_datetime(value)
+    if current is None:
+        return False
+    period_start, period_end = _performance_period_bounds(
+        period_key,
+        start_date,
+        end_date,
+        now,
+    )
     return period_start <= current < period_end
 
 
@@ -352,6 +474,26 @@ def _get_or_404(db: Session, req_id: int) -> Requisition:
     return req
 
 
+def _get_split_or_404(db: Session, split_id: int) -> RequisitionProductionSplit:
+    split = (
+        db.query(RequisitionProductionSplit)
+        .options(
+            selectinload(RequisitionProductionSplit.status_history),
+            selectinload(RequisitionProductionSplit.requisition)
+            .selectinload(Requisition.production_splits)
+            .selectinload(RequisitionProductionSplit.status_history),
+            selectinload(RequisitionProductionSplit.requisition).selectinload(Requisition.status_history),
+            selectinload(RequisitionProductionSplit.requisition).selectinload(Requisition.client),
+            selectinload(RequisitionProductionSplit.requisition).selectinload(Requisition.vendor),
+        )
+        .filter(RequisitionProductionSplit.id == split_id)
+        .first()
+    )
+    if not split:
+        raise HTTPException(status_code=404, detail="Parcela de producao nao encontrada")
+    return split
+
+
 def _find_duplicate_ped_number(
     db: Session,
     ped_number: str,
@@ -441,6 +583,28 @@ def _parse_operator_names(raw: object) -> list[str]:
     if raw is None:
         return []
     return _clean_operator_names(str(raw).split(";"))
+
+
+def _compose_production_note(
+    action: str,
+    target: str,
+    *,
+    machine: str = "",
+    reason: str = "",
+    operators: list[str] | None = None,
+    helpers: list[str] | None = None,
+) -> str:
+    parts = [_PROD_NOTE_PREFIX, action, _canonical_destination(target)]
+    machine_name = _normalize_machine_name(machine) if machine else ""
+    if machine_name:
+        parts.append(f"machine={machine_name}")
+    if operators:
+        parts.append(f"operators={';'.join(_clean_operator_names(operators))}")
+    if helpers:
+        parts.append(f"helpers={';'.join(_clean_operator_names(helpers))}")
+    if reason.strip():
+        parts.append(f"reason={reason.strip()}")
+    return "|".join(parts)
 
 
 def _parse_production_note(note: Optional[str]) -> dict | None:
@@ -701,8 +865,218 @@ def _apply_manual_status_transition(
     req.status = new_status
 
 
+def _sorted_split_status_history(split: RequisitionProductionSplit) -> list[StatusHistory]:
+    history = list(split.status_history or [])
+    return sorted(history, key=lambda entry: (entry.changed_at or datetime.min, entry.id or 0))
+
+
+def _split_production_events(split: RequisitionProductionSplit) -> list[dict]:
+    events: list[dict] = []
+    for entry in _sorted_split_status_history(split):
+        parsed = _parse_production_note(entry.note)
+        if not parsed:
+            continue
+        events.append(
+            {
+                "action": parsed["action"],
+                "target": _canonical_destination(parsed.get("target")),
+                "machine": _normalize_machine_name(parsed.get("machine", "")),
+                "reason": parsed["reason"],
+                "operators": list(parsed.get("operators") or []),
+                "helpers": list(parsed.get("helpers") or []),
+                "changed_at": entry.changed_at,
+            }
+        )
+    return events
+
+
+def _split_latest_production_event(split: RequisitionProductionSplit, *actions: str) -> dict | None:
+    for event in reversed(_split_production_events(split)):
+        if event["action"] in actions:
+            return event
+    return None
+
+
+def _split_destination(split: RequisitionProductionSplit) -> str:
+    if split.destination:
+        return _canonical_destination(split.destination)
+    for event in reversed(_split_production_events(split)):
+        target = _canonical_destination(event.get("target"))
+        if target:
+            return target
+    return ""
+
+
+def _split_current_machine(split: RequisitionProductionSplit) -> str:
+    if split.production_machine:
+        return _normalize_machine_name(split.production_machine)
+    if split.status != RequisitionStatus.EM_PRODUCAO:
+        return ""
+    for event in reversed(_split_production_events(split)):
+        machine = _normalize_machine_name(event.get("machine"))
+        if machine:
+            return machine
+    return ""
+
+
+def _split_all_finished_cycles(split: RequisitionProductionSplit) -> list[dict]:
+    cycles: list[dict] = []
+    started_at: datetime | None = None
+    started_target: str | None = None
+    started_machine: str | None = None
+    started_operators: list[str] = []
+    started_helpers: list[str] = []
+
+    for event in _split_production_events(split):
+        changed_at = event["changed_at"]
+        if changed_at is None:
+            continue
+
+        action = event["action"]
+        machine = str(event.get("machine") or "").strip() or None
+        target = event.get("target") or None
+
+        if action in (_PROD_RECEIVED, _PROD_STARTED):
+            started_at = changed_at
+            started_target = target
+            started_machine = machine
+            started_operators = list(event.get("operators") or [])
+            started_helpers = list(event.get("helpers") or [])
+            continue
+
+        if action == _PROD_FINISHED:
+            if started_at is not None:
+                cycles.append(
+                    {
+                        "received_at": started_at,
+                        "finished_at": changed_at,
+                        "target": started_target,
+                        "machine": started_machine,
+                        "operators": list(started_operators),
+                        "helpers": list(started_helpers),
+                        "production_time_seconds": max(
+                            0,
+                            int((changed_at - started_at).total_seconds()),
+                        ),
+                    }
+                )
+            started_at = None
+            started_target = None
+            started_machine = None
+            started_operators = []
+            started_helpers = []
+            continue
+
+        if action in (
+            _PROD_SEND,
+            _PROD_QUEUED,
+            _PROD_RETURNED_QUEUE,
+            _PROD_CANCELED,
+        ):
+            started_at = None
+            started_target = None
+            started_machine = None
+            started_operators = []
+            started_helpers = []
+
+    return cycles
+
+
+def _sorted_requisition_splits(req: Requisition) -> list[RequisitionProductionSplit]:
+    return sorted(
+        list(req.production_splits or []),
+        key=lambda split: (split.sequence or 0, split.id or 0),
+    )
+
+
+def _has_production_splits(req: Requisition) -> bool:
+    return bool(req.production_splits)
+
+
+def _total_allocated_split_weight(req: Requisition) -> float:
+    return sum(max(0.0, float(split.weight or 0.0)) for split in _sorted_requisition_splits(req))
+
+
+def _remaining_requisition_weight(req: Requisition) -> float:
+    remaining = float(req.weight or 0.0) - _total_allocated_split_weight(req)
+    return round(max(0.0, remaining), 3)
+
+
+def _split_display_ped_number(req: Requisition, split: RequisitionProductionSplit) -> str:
+    return f"{req.ped_number}/P{int(split.sequence or 0):02d}"
+
+
+def _coerce_requisition_status(value: object) -> RequisitionStatus:
+    try:
+        return RequisitionStatus(str(value or "").strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Status operacional invalido") from exc
+
+
+def _sync_requisition_after_splits(
+    req: Requisition,
+    db: Session,
+    current_user: User,
+    *,
+    note: str,
+) -> RequisitionStatus:
+    if req.status == RequisitionStatus.CANCELADA or not _has_production_splits(req):
+        return req.status
+
+    splits = _sorted_requisition_splits(req)
+    remaining_weight = _remaining_requisition_weight(req)
+    statuses = [split.status for split in splits]
+    latest_destination = next(
+        (
+            destination
+            for destination in reversed([_split_destination(split) for split in splits])
+            if destination
+        ),
+        "",
+    )
+    if latest_destination:
+        req.production_destination = latest_destination
+
+    if remaining_weight > 0:
+        desired_status = RequisitionStatus.AGUARDANDO_NA_FILA
+    elif any(status_value == RequisitionStatus.EM_PRODUCAO for status_value in statuses):
+        desired_status = RequisitionStatus.EM_PRODUCAO
+    elif any(status_value in (RequisitionStatus.AGUARDANDO_RECEBIMENTO, RequisitionStatus.AGUARDANDO_NA_FILA) for status_value in statuses):
+        desired_status = RequisitionStatus.AGUARDANDO_NA_FILA
+    elif statuses and all(status_value == RequisitionStatus.FATURADO for status_value in statuses):
+        desired_status = RequisitionStatus.FATURADO
+    else:
+        desired_status = req.status
+
+    old_status = req.status
+    req.status = desired_status
+    req.production_machine = None
+    if desired_status in (
+        RequisitionStatus.AGUARDANDO_NA_FILA,
+        RequisitionStatus.EM_PRODUCAO,
+        RequisitionStatus.FATURADO,
+    ):
+        req.finalized_at = req.finalized_at or datetime.utcnow()
+
+    if desired_status != old_status:
+        db.add(
+            StatusHistory(
+                requisition_id=req.id,
+                old_status=old_status,
+                new_status=desired_status,
+                changed_by_id=current_user.id,
+                note=note,
+            )
+        )
+    return desired_status
+
+
 def _sorted_status_history(req: Requisition) -> list[StatusHistory]:
-    history = list(req.status_history or [])
+    history = [
+        entry
+        for entry in (req.status_history or [])
+        if getattr(entry, "production_split_id", None) in (None, 0)
+    ]
     return sorted(history, key=lambda entry: (entry.changed_at or datetime.min, entry.id or 0))
 
 
@@ -912,6 +1286,23 @@ def _latest_status_changed_at(req: Requisition, status_value: str) -> datetime |
 
 
 def _all_finished_cycles(req: Requisition) -> list[dict]:
+    if _has_production_splits(req):
+        cycles: list[dict] = []
+        for split in _sorted_requisition_splits(req):
+            for cycle in _split_all_finished_cycles(split):
+                cycle_with_weight = dict(cycle)
+                cycle_with_weight["weight"] = float(split.weight or 0.0)
+                cycle_with_weight["split_id"] = split.id
+                cycle_with_weight["split_sequence"] = split.sequence
+                cycles.append(cycle_with_weight)
+        cycles.sort(
+            key=lambda cycle: (
+                cycle.get("finished_at") or datetime.min,
+                int(cycle.get("split_sequence") or 0),
+            )
+        )
+        return cycles
+
     cycles: list[dict] = []
     started_at: datetime | None = None
     started_target: str | None = None
@@ -1049,11 +1440,13 @@ def _production_item(
     status_value = getattr(req.status, "value", req.status)
     return ProductionItemResponse(
         id=req.id,
+        source_requisition_id=req.id,
         ped_number=req.ped_number,
         client_name=req.client_name,
         vendor_name=req.vendor_name,
         obra=req.obra,
         weight=req.weight,
+        total_weight=req.weight,
         status=str(status_value),
         emission_date=req.emission_date,
         created_at=req.created_at,
@@ -1065,6 +1458,57 @@ def _production_item(
         waiting_since=waiting_since,
         production_started_at=production_started_at,
     )
+
+
+def _production_split_item(
+    req: Requisition,
+    split: RequisitionProductionSplit,
+    *,
+    waiting_since: datetime | None = None,
+    production_started_at: datetime | None = None,
+    machine_name: str | None = None,
+    operator_names: list[str] | None = None,
+    helper_names: list[str] | None = None,
+) -> ProductionItemResponse:
+    status_value = getattr(split.status, "value", split.status)
+    return ProductionItemResponse(
+        id=split.id,
+        source_requisition_id=req.id,
+        production_split_id=split.id,
+        split_sequence=split.sequence,
+        is_partial_split=True,
+        ped_number=_split_display_ped_number(req, split),
+        client_name=req.client_name,
+        vendor_name=req.vendor_name,
+        obra=req.obra,
+        weight=float(split.weight or 0.0),
+        total_weight=float(req.weight or 0.0),
+        status=str(status_value),
+        emission_date=req.emission_date,
+        created_at=split.created_at or req.created_at,
+        delivery_date=req.delivery_date,
+        destination=_split_destination(split) or _current_production_destination(req) or None,
+        machine_name=_normalize_machine_name(machine_name) or None,
+        operator_names=_clean_operator_names(operator_names or []),
+        helper_names=_clean_operator_names(helper_names or []),
+        waiting_since=waiting_since,
+        production_started_at=production_started_at,
+    )
+
+
+def _production_remaining_item(
+    req: Requisition,
+    remaining_weight: float,
+    *,
+    waiting_since: datetime | None = None,
+) -> ProductionItemResponse:
+    item = _production_item(
+        req,
+        waiting_since=waiting_since,
+    )
+    item.weight = float(remaining_weight or 0.0)
+    item.total_weight = float(req.weight or 0.0)
+    return item
 
 
 def _build_production_summary(
@@ -1086,6 +1530,85 @@ def _build_production_summary(
 
     for req in reqs:
         current_destination = _current_production_destination(req)
+        if _has_production_splits(req):
+            remaining_weight = _remaining_requisition_weight(req)
+            if current_destination != normalized_destination and not any(
+                _split_destination(split) == normalized_destination
+                for split in _sorted_requisition_splits(req)
+            ):
+                continue
+
+            if remaining_weight > 0:
+                if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+                    sent_event = _latest_production_event(req, _PROD_SEND)
+                    waiting_receipt.append(
+                        _production_remaining_item(
+                            req,
+                            remaining_weight,
+                            waiting_since=sent_event["changed_at"] if sent_event else None,
+                        )
+                    )
+                elif req.status in (
+                    RequisitionStatus.AGUARDANDO_NA_FILA,
+                    RequisitionStatus.EM_PRODUCAO,
+                ):
+                    queue_event = _latest_production_event(
+                        req,
+                        _PROD_QUEUED,
+                        _PROD_RETURNED_QUEUE,
+                        _PROD_SEND,
+                    )
+                    waiting_queue.append(
+                        _production_remaining_item(
+                            req,
+                            remaining_weight,
+                            waiting_since=queue_event["changed_at"] if queue_event else None,
+                        )
+                    )
+
+            for split in _sorted_requisition_splits(req):
+                split_destination = _split_destination(split) or current_destination
+                if split_destination != normalized_destination:
+                    continue
+
+                if split.status == RequisitionStatus.AGUARDANDO_NA_FILA:
+                    queue_event = _split_latest_production_event(
+                        split,
+                        _PROD_QUEUED,
+                        _PROD_RETURNED_QUEUE,
+                        _PROD_SEND,
+                        _PROD_STARTED,
+                    )
+                    waiting_queue.append(
+                        _production_split_item(
+                            req,
+                            split,
+                            waiting_since=(queue_event or {}).get("changed_at") or split.updated_at,
+                        )
+                    )
+
+                split_machine = _split_current_machine(split)
+                if split.status == RequisitionStatus.EM_PRODUCAO and split_machine in machine_rows:
+                    started_event = _split_latest_production_event(split, _PROD_STARTED, _PROD_RECEIVED)
+                    machine_rows[split_machine].append(
+                        _production_split_item(
+                            req,
+                            split,
+                            machine_name=split_machine,
+                            operator_names=(started_event or {}).get("operators") or [],
+                            helper_names=(started_event or {}).get("helpers") or [],
+                            production_started_at=(started_event or {}).get("changed_at"),
+                        )
+                    )
+
+                for cycle in _split_all_finished_cycles(split):
+                    if cycle.get("target") != normalized_destination:
+                        continue
+                    machine_name = _normalize_machine_name(cycle.get("machine"))
+                    if machine_name in machine_cycles:
+                        machine_cycles[machine_name].append(cycle)
+            continue
+
         if current_destination != normalized_destination:
             continue
 
@@ -1219,6 +1742,184 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
             and bool(latest_event)
             and latest_event.get("action") == _PROD_CANCELED
         )
+
+        if _has_production_splits(req):
+            remaining_weight = _remaining_requisition_weight(req)
+            if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO and remaining_weight > 0:
+                waiting_minutes = None
+                if sent_to_production_at:
+                    waiting_minutes = max(
+                        0,
+                        int((now - sent_to_production_at).total_seconds() // 60),
+                    )
+                waiting_rows.append(
+                    OrderCenterItemResponse(
+                        id=req.id,
+                        source_requisition_id=req.id,
+                        ped_number=req.ped_number,
+                        client_name=req.client_name,
+                        vendor_name=req.vendor_name,
+                        weight=remaining_weight,
+                        total_weight=weight_value,
+                        status=req.status,
+                        emission_date=req.emission_date,
+                        delivery_date=req.delivery_date,
+                        destination=destination,
+                        waiting_minutes=waiting_minutes,
+                        sent_to_production_at=sent_to_production_at,
+                    )
+                )
+
+            if remaining_weight > 0 and req.status in (
+                RequisitionStatus.AGUARDANDO_NA_FILA,
+                RequisitionStatus.EM_PRODUCAO,
+            ):
+                production_rows.append(
+                    OrderCenterItemResponse(
+                        id=req.id,
+                        source_requisition_id=req.id,
+                        ped_number=req.ped_number,
+                        client_name=req.client_name,
+                        vendor_name=req.vendor_name,
+                        weight=remaining_weight,
+                        total_weight=weight_value,
+                        status=req.status,
+                        emission_date=req.emission_date,
+                        delivery_date=req.delivery_date,
+                        destination=destination,
+                        received_at=None,
+                        machine_name=None,
+                        operator_names=[],
+                        helper_names=[],
+                    )
+                )
+
+            for split in _sorted_requisition_splits(req):
+                split_destination = _split_destination(split) or destination
+                split_machine_name = _split_current_machine(split) or None
+                split_weight_value = float(split.weight or 0.0)
+                started_event = _split_latest_production_event(split, _PROD_STARTED)
+                received_event = started_event or _split_latest_production_event(split, _PROD_RECEIVED)
+                current_people_event = received_event or _split_latest_production_event(split, _PROD_FINISHED)
+                split_operator_names = _clean_operator_names((current_people_event or {}).get("operators") or [])
+                split_helper_names = _clean_operator_names((current_people_event or {}).get("helpers") or [])
+                split_ped_number = _split_display_ped_number(req, split)
+                split_cycles = _split_all_finished_cycles(split)
+                latest_split_finished = split_cycles[-1] if split_cycles else None
+
+                if latest_split_finished:
+                    production_durations.append(latest_split_finished["production_time_seconds"])
+
+                if split.status in (
+                    RequisitionStatus.AGUARDANDO_NA_FILA,
+                    RequisitionStatus.EM_PRODUCAO,
+                ):
+                    production_rows.append(
+                        OrderCenterItemResponse(
+                            id=split.id,
+                            source_requisition_id=req.id,
+                            production_split_id=split.id,
+                            split_sequence=split.sequence,
+                            is_partial_split=True,
+                            ped_number=split_ped_number,
+                            client_name=req.client_name,
+                            vendor_name=req.vendor_name,
+                            weight=split_weight_value,
+                            total_weight=weight_value,
+                            status=str(getattr(split.status, "value", split.status) or ""),
+                            emission_date=req.emission_date,
+                            delivery_date=req.delivery_date,
+                            destination=split_destination,
+                            received_at=received_event["changed_at"] if received_event else None,
+                            machine_name=split_machine_name,
+                            operator_names=split_operator_names,
+                            helper_names=split_helper_names,
+                        )
+                    )
+
+                if split.status == RequisitionStatus.FATURADO and latest_split_finished:
+                    billed_rows.append(
+                        OrderCenterItemResponse(
+                            id=split.id,
+                            source_requisition_id=req.id,
+                            production_split_id=split.id,
+                            split_sequence=split.sequence,
+                            is_partial_split=True,
+                            ped_number=split_ped_number,
+                            client_name=req.client_name,
+                            vendor_name=req.vendor_name,
+                            weight=split_weight_value,
+                            total_weight=weight_value,
+                            status=RequisitionStatus.FATURADO.value,
+                            emission_date=req.emission_date,
+                            delivery_date=req.delivery_date,
+                            destination=latest_split_finished["target"] or split_destination,
+                            sent_to_production_at=sent_to_production_at,
+                            received_at=latest_split_finished["received_at"],
+                            finished_at=latest_split_finished["finished_at"],
+                            invoiced_at=latest_split_finished["finished_at"],
+                            machine_name=_normalize_machine_name(latest_split_finished.get("machine")) or split_machine_name,
+                            operator_names=[
+                                str(name).strip()
+                                for name in (latest_split_finished.get("operators") or split_operator_names)
+                                if str(name).strip()
+                            ],
+                            helper_names=[
+                                str(name).strip()
+                                for name in (latest_split_finished.get("helpers") or split_helper_names)
+                                if str(name).strip()
+                            ],
+                            production_time_seconds=latest_split_finished["production_time_seconds"],
+                            deadline_met=_did_finish_on_time(latest_split_finished["finished_at"], req.delivery_date),
+                        )
+                    )
+
+                if req.delivery_date and req.delivery_date < today and split.status in (
+                    RequisitionStatus.AGUARDANDO_NA_FILA,
+                    RequisitionStatus.EM_PRODUCAO,
+                ):
+                    delayed_rows.append(
+                        OrderCenterItemResponse(
+                            id=split.id,
+                            source_requisition_id=req.id,
+                            production_split_id=split.id,
+                            split_sequence=split.sequence,
+                            is_partial_split=True,
+                            ped_number=split_ped_number,
+                            client_name=req.client_name,
+                            vendor_name=req.vendor_name,
+                            weight=split_weight_value,
+                            total_weight=weight_value,
+                            status=str(getattr(split.status, "value", split.status) or ""),
+                            emission_date=req.emission_date,
+                            delivery_date=req.delivery_date,
+                            destination=split_destination,
+                            machine_name=split_machine_name,
+                            operator_names=split_operator_names,
+                            helper_names=split_helper_names,
+                            delay_days=max(0, (today - req.delivery_date).days),
+                        )
+                    )
+
+            if req.status == RequisitionStatus.CANCELADA:
+                canceled_rows.append(
+                    OrderCenterItemResponse(
+                        id=req.id,
+                        source_requisition_id=req.id,
+                        ped_number=req.ped_number,
+                        client_name=req.client_name,
+                        vendor_name=req.vendor_name,
+                        weight=remaining_weight if remaining_weight > 0 else weight_value,
+                        total_weight=weight_value,
+                        status=RequisitionStatus.CANCELADA.value,
+                        emission_date=req.emission_date,
+                        delivery_date=req.delivery_date,
+                        destination=destination,
+                        canceled_at=_latest_status_changed_at(req, RequisitionStatus.CANCELADA),
+                        cancel_reason=_cancel_reason_for(req),
+                    )
+                )
+            continue
 
         if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
             waiting_minutes = None
@@ -1379,6 +2080,127 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         cancelados=canceled_rows[:100],
         atrasados=delayed_rows[:100],
     )
+
+
+def _history_row_from_requisition(
+    req: Requisition,
+    *,
+    weight_value: float | None = None,
+    include_production_details: bool = True,
+) -> dict:
+    status_value = getattr(req.status, "value", req.status)
+    operator_names = _history_production_operator_names(req) if include_production_details else []
+    helper_names = _history_production_helper_names(req) if include_production_details else []
+    production_machine = _history_production_machine(req) if include_production_details else None
+    return {
+        "id": int(req.id),
+        "source_requisition_id": int(req.id),
+        "production_split_id": None,
+        "split_sequence": None,
+        "is_partial_split": False,
+        "ped_number": req.ped_number,
+        "emission_date": req.emission_date,
+        "delivery_date": req.delivery_date,
+        "os_number": req.os_number,
+        "vendor_id": req.vendor_id,
+        "vendor_name": req.vendor_name,
+        "vendor_code": req.vendor_code,
+        "client_id": req.client_id,
+        "client_code": req.client_code,
+        "client_name": req.client_name,
+        "obra": req.obra,
+        "nf_attachment": req.nf_attachment,
+        "retirada": bool(req.retirada),
+        "entrega": bool(req.entrega),
+        "delivery_address": req.delivery_address,
+        "phone": req.phone,
+        "weight": float(weight_value if weight_value is not None else (req.weight or 0.0)),
+        "total_weight": float(req.weight or 0.0),
+        "obs": req.obs,
+        "status": status_value,
+        "production_destination": _current_production_destination(req) or None,
+        "production_destination_display": _current_production_destination(req) or None,
+        "production_machine": production_machine or None,
+        "production_machine_display": production_machine or None,
+        "production_status": _history_production_status(req) if include_production_details else str(status_value or ""),
+        "production_operator_names": operator_names,
+        "production_operator_display": ", ".join(operator_names) or None,
+        "production_helper_names": helper_names,
+        "production_helper_display": ", ".join(helper_names) or None,
+        "production_sent_at": _history_production_sent_at(req),
+        "production_finished_at": _history_production_finished_at(req) if include_production_details else None,
+        "cancel_reason": _cancel_reason_for(req),
+        "invoiced": req.status == RequisitionStatus.FATURADO,
+        "delivered_at": req.delivered_at,
+        "finalized_at": req.finalized_at,
+        "created_at": req.created_at,
+        "updated_at": req.updated_at,
+    }
+
+
+def _history_row_from_split(req: Requisition, split: RequisitionProductionSplit) -> dict:
+    latest_started = _split_latest_production_event(split, _PROD_STARTED, _PROD_RECEIVED)
+    latest_finished = _split_all_finished_cycles(split)
+    latest_cycle = latest_finished[-1] if latest_finished else None
+    operator_names = _clean_operator_names(
+        (latest_started or latest_cycle or {}).get("operators") or []
+    )
+    helper_names = _clean_operator_names(
+        (latest_started or latest_cycle or {}).get("helpers") or []
+    )
+    production_machine = (
+        _split_current_machine(split)
+        or _normalize_machine_name((latest_cycle or {}).get("machine"))
+        or None
+    )
+    split_status = getattr(split.status, "value", split.status)
+    production_status = str(split_status or "")
+    if split.status == RequisitionStatus.FATURADO:
+        production_status = "finalizada_producao"
+    return {
+        "id": int(split.id),
+        "source_requisition_id": int(req.id),
+        "production_split_id": int(split.id),
+        "split_sequence": int(split.sequence or 0),
+        "is_partial_split": True,
+        "ped_number": _split_display_ped_number(req, split),
+        "emission_date": req.emission_date,
+        "delivery_date": req.delivery_date,
+        "os_number": req.os_number,
+        "vendor_id": req.vendor_id,
+        "vendor_name": req.vendor_name,
+        "vendor_code": req.vendor_code,
+        "client_id": req.client_id,
+        "client_code": req.client_code,
+        "client_name": req.client_name,
+        "obra": req.obra,
+        "nf_attachment": req.nf_attachment,
+        "retirada": bool(req.retirada),
+        "entrega": bool(req.entrega),
+        "delivery_address": req.delivery_address,
+        "phone": req.phone,
+        "weight": float(split.weight or 0.0),
+        "total_weight": float(req.weight or 0.0),
+        "obs": req.obs,
+        "status": str(split_status or ""),
+        "production_destination": _split_destination(split) or _current_production_destination(req) or None,
+        "production_destination_display": _split_destination(split) or _current_production_destination(req) or None,
+        "production_machine": production_machine,
+        "production_machine_display": production_machine,
+        "production_status": production_status,
+        "production_operator_names": operator_names,
+        "production_operator_display": ", ".join(operator_names) or None,
+        "production_helper_names": helper_names,
+        "production_helper_display": ", ".join(helper_names) or None,
+        "production_sent_at": split.created_at,
+        "production_finished_at": (latest_cycle or {}).get("finished_at"),
+        "cancel_reason": None,
+        "invoiced": split.status == RequisitionStatus.FATURADO,
+        "delivered_at": req.delivered_at,
+        "finalized_at": req.finalized_at,
+        "created_at": split.created_at,
+        "updated_at": split.updated_at,
+    }
 
 
 def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
@@ -1598,15 +2420,64 @@ def _build_machine_usage_rows(
     return rows
 
 
+def _build_iar_general(
+    reqs: list[Requisition],
+    period_key: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    now: datetime | None = None,
+) -> DashboardIarSummaryItem:
+    received_count = 0
+    finalized_count = 0
+    on_time_count = 0
+    canceled_count = 0
+
+    for req in reqs:
+        emission_at = _parse_local_emission_datetime(req.emission_date) or _to_local_datetime(req.created_at)
+        if not _datetime_in_performance_period(
+            emission_at,
+            period_key,
+            start_date,
+            end_date,
+            now,
+        ):
+            continue
+
+        received_count += 1
+        if req.status == RequisitionStatus.CANCELADA:
+            canceled_count += 1
+            continue
+
+        if _request_finished_at(req) is not None:
+            finalized_count += 1
+            if _request_finished_on_time(req):
+                on_time_count += 1
+
+    return _build_iar_summary_item(
+        received_count=received_count,
+        finalized_count=finalized_count,
+        on_time_count=on_time_count,
+        canceled_count=canceled_count,
+    )
+
+
 def _build_top_vendor_rows(
     reqs: list[Requisition],
     period_key: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
     now: datetime | None = None,
 ) -> list[DashboardVendorItem]:
     stats: dict[tuple[int, str], dict[str, object]] = {}
     for req in reqs:
         emission_at = _parse_local_emission_datetime(req.emission_date) or _to_local_datetime(req.created_at)
-        if not _datetime_in_dashboard_period(emission_at, period_key, now):
+        if not _datetime_in_performance_period(
+            emission_at,
+            period_key,
+            start_date,
+            end_date,
+            now,
+        ):
             continue
         vendor_name = (req.vendor_name or "").strip() or "Sem vendedor"
         vendor_key = (int(req.vendor_id or 0), vendor_name)
@@ -1614,23 +2485,48 @@ def _build_top_vendor_rows(
             vendor_key,
             {
                 "vendor_name": vendor_name,
-                "requisition_count": 0,
+                "received_count": 0,
+                "finalized_count": 0,
+                "on_time_count": 0,
+                "canceled_count": 0,
                 "total_weight_kg": 0.0,
             },
         )
-        entry["requisition_count"] = int(entry["requisition_count"] or 0) + 1
+        entry["received_count"] = int(entry["received_count"] or 0) + 1
         entry["total_weight_kg"] = float(entry["total_weight_kg"] or 0.0) + float(req.weight or 0.0)
 
-    rows = [
-        DashboardVendorItem(
-            vendor_name=str(data["vendor_name"] or "Sem vendedor"),
-            requisition_count=int(data["requisition_count"] or 0),
-            total_weight_kg=round(float(data["total_weight_kg"] or 0.0), 2),
+        if req.status == RequisitionStatus.CANCELADA:
+            entry["canceled_count"] = int(entry["canceled_count"] or 0) + 1
+            continue
+
+        if _request_finished_at(req) is not None:
+            entry["finalized_count"] = int(entry["finalized_count"] or 0) + 1
+            if _request_finished_on_time(req):
+                entry["on_time_count"] = int(entry["on_time_count"] or 0) + 1
+
+    rows: list[DashboardVendorItem] = []
+    for data in stats.values():
+        iar = _build_iar_summary_item(
+            received_count=int(data["received_count"] or 0),
+            finalized_count=int(data["finalized_count"] or 0),
+            on_time_count=int(data["on_time_count"] or 0),
+            canceled_count=int(data["canceled_count"] or 0),
         )
-        for data in stats.values()
-    ]
+        rows.append(
+            DashboardVendorItem(
+                vendor_name=str(data["vendor_name"] or "Sem vendedor"),
+                requisition_count=int(data["received_count"] or 0),
+                total_weight_kg=round(float(data["total_weight_kg"] or 0.0), 2),
+                prazo_percent=iar.prazo_percent,
+                produtividade_percent=iar.produtividade_percent,
+                cancelamentos_percent=iar.cancelamentos_percent,
+                iar_percent=iar.iar_percent,
+            )
+        )
+
     rows.sort(
         key=lambda item: (
+            -item.iar_percent,
             -item.requisition_count,
             -item.total_weight_kg,
             _normalize_text(item.vendor_name),
@@ -1910,7 +2806,9 @@ def _build_management_dashboard(
     *,
     ar_period: str = "30d",
     industria_period: str = "30d",
-    vendor_period: str = "30d",
+    performance_period: str = "month",
+    performance_date_start: date | None = None,
+    performance_date_end: date | None = None,
     people_period: str = "30d",
     people_destination: str = "",
 ) -> ManagementDashboardResponse:
@@ -2000,7 +2898,20 @@ def _build_management_dashboard(
             )
         )
 
-    top_vendors = _build_top_vendor_rows(reqs, vendor_period, now)
+    iar_general = _build_iar_general(
+        reqs,
+        performance_period,
+        performance_date_start,
+        performance_date_end,
+        now,
+    )
+    top_vendors = _build_top_vendor_rows(
+        reqs,
+        performance_period,
+        performance_date_start,
+        performance_date_end,
+        now,
+    )
     top_operators, top_helpers = _build_top_production_people_rows(
         reqs,
         people_period,
@@ -2049,6 +2960,7 @@ def _build_management_dashboard(
             pedidos_sem_confirmacao_1h=len(receipt_alerts),
             tempo_medio_finalizacao_segundos=average_seconds,
         ),
+        iar_general=iar_general,
         insights=insights,
         top_vendors=top_vendors,
         top_operators=top_operators,
@@ -2308,6 +3220,134 @@ def list_requisitions(
     return paginated
 
 
+@router.get("/history/rows", response_model=List[RequisitionListItem])
+def list_requisition_history_rows(
+    req_status: Optional[RequisitionStatus] = Query(None, alias="status"),
+    client_id: Optional[int] = None,
+    vendor_id: Optional[int] = None,
+    vendor_search: Optional[str] = None,
+    production_destination: Optional[str] = None,
+    production_machine: Optional[str] = None,
+    production_operator: Optional[str] = None,
+    invoiced: Optional[bool] = None,
+    emission_date_start: Optional[date] = None,
+    emission_date_end: Optional[date] = None,
+    search: Optional[str] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, le=300),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    q = db.query(Requisition).options(*_LIST_LOAD_OPTS)
+
+    if client_id:
+        q = q.filter(Requisition.client_id == client_id)
+    if vendor_id:
+        q = q.filter(Requisition.vendor_id == vendor_id)
+    if vendor_search and vendor_search.strip():
+        vendor_term = f"%{vendor_search.strip()}%"
+        q = q.join(Requisition.vendor).filter(
+            or_(
+                User.name.ilike(vendor_term),
+                User.code.ilike(vendor_term),
+            )
+        )
+    if search:
+        search_term = f"%{search.strip()}%"
+        q = q.join(Requisition.client).filter(
+            or_(
+                Requisition.ped_number.ilike(search_term),
+                Requisition.obra.ilike(search_term),
+                Client.name.ilike(search_term),
+                Client.code.ilike(search_term),
+            )
+        )
+
+    reqs = q.order_by(Requisition.emission_date.desc(), Requisition.created_at.desc()).all()
+    visible = _filter_requisitions_for_user(reqs, current_user)
+
+    rows: list[dict] = []
+    for req in visible:
+        if _has_production_splits(req):
+            remaining_weight = _remaining_requisition_weight(req)
+            if remaining_weight > 0 or req.status == RequisitionStatus.CANCELADA:
+                rows.append(
+                    _history_row_from_requisition(
+                        req,
+                        weight_value=remaining_weight if remaining_weight > 0 else float(req.weight or 0.0),
+                        include_production_details=False,
+                    )
+                )
+            rows.extend(
+                _history_row_from_split(req, split)
+                for split in _sorted_requisition_splits(req)
+            )
+        else:
+            rows.append(_history_row_from_requisition(req))
+
+    if req_status:
+        expected_status = getattr(req_status, "value", req_status)
+        rows = [row for row in rows if str(row.get("status") or "") == str(expected_status)]
+
+    if emission_date_start or emission_date_end:
+        rows = [
+            row
+            for row in rows
+            if (
+                (local_dt := _parse_local_emission_datetime(row.get("emission_date"))) is not None
+                and (not emission_date_start or local_dt.date() >= emission_date_start)
+                and (not emission_date_end or local_dt.date() <= emission_date_end)
+            )
+        ]
+
+    if production_destination:
+        normalized_destination = _canonical_destination(production_destination)
+        rows = [
+            row
+            for row in rows
+            if _canonical_destination(
+                row.get("production_destination_display") or row.get("production_destination") or ""
+            ) == normalized_destination
+        ]
+
+    if production_machine:
+        machine_key = _normalize_text(production_machine)
+        rows = [
+            row
+            for row in rows
+            if _normalize_text(
+                row.get("production_machine_display") or row.get("production_machine") or ""
+            ) == machine_key
+        ]
+
+    if production_operator:
+        operator_key = _normalize_text(production_operator)
+        rows = [
+            row
+            for row in rows
+            if any(
+                _normalize_text(name) == operator_key
+                for name in (
+                    list(row.get("production_operator_names") or [])
+                    + list(row.get("production_helper_names") or [])
+                )
+            )
+        ]
+
+    if invoiced is not None:
+        rows = [row for row in rows if bool(row.get("invoiced")) == invoiced]
+
+    rows.sort(
+        key=lambda row: (
+            row.get("emission_date") or datetime.min,
+            row.get("created_at") or datetime.min,
+            int(row.get("split_sequence") or 0),
+        ),
+        reverse=True,
+    )
+    return rows[skip:skip + limit]
+
+
 def _check_invoice_alerts(db: Session) -> None:
     """Verifica alertas de faturamento pendentes e envia notificações SSE."""
     notifications = ensure_pending_invoice_notifications(db)
@@ -2321,7 +3361,9 @@ def _check_invoice_alerts(db: Session) -> None:
 def get_management_dashboard(
     ar_period: str = Query("30d"),
     industria_period: str = Query("30d"),
-    vendor_period: str = Query("30d"),
+    performance_period: str = Query("month"),
+    performance_date_start: date | None = Query(None),
+    performance_date_end: date | None = Query(None),
     people_period: str = Query("30d"),
     people_destination: str = Query(""),
     db: Session = Depends(get_db),
@@ -2330,7 +3372,7 @@ def get_management_dashboard(
     _check_invoice_alerts(db)
     normalized_ar_period = _normalize_dashboard_period(ar_period)
     normalized_industria_period = _normalize_dashboard_period(industria_period)
-    normalized_vendor_period = _normalize_dashboard_period(vendor_period)
+    normalized_performance_period = _normalize_performance_dashboard_period(performance_period)
     normalized_people_period = _normalize_dashboard_period(people_period)
     normalized_people_destination = _normalize_dashboard_destination(people_destination)
 
@@ -2354,7 +3396,9 @@ def get_management_dashboard(
         machines,
         ar_period=normalized_ar_period,
         industria_period=normalized_industria_period,
-        vendor_period=normalized_vendor_period,
+        performance_period=normalized_performance_period,
+        performance_date_start=performance_date_start,
+        performance_date_end=performance_date_end,
         people_period=normalized_people_period,
         people_destination=normalized_people_destination,
     )
@@ -2436,6 +3480,229 @@ def list_production_machines(
         for machine in machines
         if _normalize_machine_name(machine.name)
     ]
+
+
+@router.post(
+    "/{req_id}/production-splits",
+    response_model=ProductionItemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_production_split(
+    req_id: int,
+    data: ProductionSplitCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    req = _get_or_404(db, req_id)
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
+
+    if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FATURADO):
+        raise HTTPException(status_code=400, detail="A requisicao nao permite novo desmembramento")
+    if req.status not in (
+        RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+        RequisitionStatus.AGUARDANDO_NA_FILA,
+        RequisitionStatus.EM_PRODUCAO,
+    ):
+        raise HTTPException(status_code=400, detail="A requisicao nao esta disponivel para envio a maquina")
+    if (
+        not _has_production_splits(req)
+        and req.status == RequisitionStatus.EM_PRODUCAO
+        and _current_production_machine(req)
+    ):
+        raise HTTPException(status_code=400, detail="A requisicao inteira ja esta vinculada a uma maquina")
+
+    normalized_destination = _canonical_destination(data.destination)
+    _ensure_destination_access(current_user, normalized_destination)
+
+    current_destination = _current_production_destination(req)
+    if current_destination and current_destination != normalized_destination:
+        raise HTTPException(
+            status_code=400,
+            detail="A requisicao ja esta vinculada a outra producao",
+        )
+
+    weight_value = round(float(data.weight or 0.0), 3)
+    if weight_value <= 0:
+        raise HTTPException(status_code=400, detail="Informe um peso maior que zero")
+
+    remaining_weight = _remaining_requisition_weight(req) if _has_production_splits(req) else round(float(req.weight or 0.0), 3)
+    if weight_value > remaining_weight:
+        raise HTTPException(
+            status_code=400,
+            detail=f"O peso informado excede o saldo pendente de {remaining_weight:.3f} kg",
+        )
+
+    machine_name = _normalize_machine_name(data.machine_name)
+    if not machine_name:
+        raise HTTPException(status_code=400, detail="Informe a maquina de destino")
+
+    operators = _clean_operator_names(data.operators)
+    helpers = _clean_operator_names(data.helpers)
+    if not operators:
+        raise HTTPException(status_code=400, detail="Selecione pelo menos um operador")
+
+    split = RequisitionProductionSplit(
+        requisition=req,
+        sequence=max((int(item.sequence or 0) for item in _sorted_requisition_splits(req)), default=0) + 1,
+        weight=weight_value,
+        status=RequisitionStatus.EM_PRODUCAO,
+        destination=normalized_destination,
+        production_machine=machine_name,
+    )
+    db.add(split)
+    db.flush()
+
+    note = _compose_production_note(
+        _PROD_STARTED,
+        normalized_destination,
+        machine=machine_name,
+        operators=operators,
+        helpers=helpers,
+    )
+    db.add(
+        StatusHistory(
+            requisition_id=req.id,
+            production_split_id=split.id,
+            old_status=RequisitionStatus.AGUARDANDO_NA_FILA.value,
+            new_status=RequisitionStatus.EM_PRODUCAO.value,
+            changed_by_id=current_user.id,
+            note=note,
+        )
+    )
+
+    req.production_destination = normalized_destination
+    parent_new_status = _sync_requisition_after_splits(
+        req,
+        db,
+        current_user,
+        note=f"Desmembramento {split.sequence:02d} criado para {weight_value:.3f} kg.",
+    )
+
+    notifications: list = []
+    if parent_new_status == RequisitionStatus.FATURADO:
+        notifications.extend(build_vendor_event(db, req, "faturado"))
+
+    db.commit()
+    push_all(notifications)
+    return _production_split_item(
+        req,
+        split,
+        machine_name=machine_name,
+        operator_names=operators,
+        helper_names=helpers,
+        production_started_at=datetime.utcnow(),
+    )
+
+
+@router.patch(
+    "/production-splits/{split_id}/status",
+    response_model=ProductionItemResponse,
+)
+def update_production_split_status(
+    split_id: int,
+    data: ProductionSplitStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    split = _get_split_or_404(db, split_id)
+    req = split.requisition
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
+
+    requested_status = _coerce_requisition_status(data.status)
+    prod_event = _parse_production_note(data.note)
+    if not prod_event:
+        raise HTTPException(status_code=400, detail="Informe o evento operacional da parcela")
+
+    normalized_destination = _canonical_destination(prod_event.get("target") or split.destination or req.production_destination or "")
+    _ensure_destination_access(current_user, normalized_destination)
+    split.destination = normalized_destination
+
+    old_status = split.status
+    action = prod_event["action"]
+    machine_name = _normalize_machine_name(prod_event.get("machine"))
+
+    if action == _PROD_STARTED:
+        if requested_status != RequisitionStatus.EM_PRODUCAO:
+            raise HTTPException(status_code=400, detail="Status invalido para iniciar a parcela")
+        if split.status not in (RequisitionStatus.AGUARDANDO_NA_FILA, RequisitionStatus.EM_PRODUCAO):
+            raise HTTPException(status_code=400, detail="A parcela nao pode voltar para producao")
+        if not machine_name:
+            raise HTTPException(status_code=400, detail="Informe a maquina de destino")
+        operators = _clean_operator_names(prod_event.get("operators") or [])
+        helpers = _clean_operator_names(prod_event.get("helpers") or [])
+        if not operators:
+            raise HTTPException(status_code=400, detail="Selecione pelo menos um operador")
+        split.status = RequisitionStatus.EM_PRODUCAO
+        split.production_machine = machine_name
+    elif action == _PROD_RETURNED_QUEUE:
+        if requested_status != RequisitionStatus.AGUARDANDO_NA_FILA:
+            raise HTTPException(status_code=400, detail="Status invalido para devolver a parcela")
+        if split.status != RequisitionStatus.EM_PRODUCAO:
+            raise HTTPException(status_code=400, detail="Somente parcelas em producao podem voltar para fila")
+        operators = []
+        helpers = []
+        split.status = RequisitionStatus.AGUARDANDO_NA_FILA
+        split.production_machine = None
+    elif action == _PROD_FINISHED:
+        if requested_status != RequisitionStatus.FATURADO:
+            raise HTTPException(status_code=400, detail="Status invalido para finalizar a parcela")
+        if split.status != RequisitionStatus.EM_PRODUCAO:
+            raise HTTPException(status_code=400, detail="Somente parcelas em producao podem ser finalizadas")
+        operators = []
+        helpers = []
+        split.status = RequisitionStatus.FATURADO
+        split.production_machine = None
+    else:
+        raise HTTPException(status_code=400, detail="Evento operacional da parcela nao suportado")
+
+    db.add(
+        StatusHistory(
+            requisition_id=req.id,
+            production_split_id=split.id,
+            old_status=getattr(old_status, "value", old_status),
+            new_status=getattr(split.status, "value", split.status),
+            changed_by_id=current_user.id,
+            note=data.note,
+        )
+    )
+
+    parent_old_status = req.status
+    parent_new_status = _sync_requisition_after_splits(
+        req,
+        db,
+        current_user,
+        note=f"Desmembramento {split.sequence:02d} atualizado para {getattr(split.status, 'value', split.status)}.",
+    )
+
+    notifications: list = []
+    if parent_old_status != RequisitionStatus.FATURADO and parent_new_status == RequisitionStatus.FATURADO:
+        notifications.extend(build_vendor_event(db, req, "faturado"))
+
+    db.commit()
+    push_all(notifications)
+
+    response_machine = machine_name or _split_current_machine(split)
+    started_event = _split_latest_production_event(split, _PROD_STARTED, _PROD_RECEIVED)
+    if action == _PROD_STARTED:
+        response_operators = operators
+        response_helpers = helpers
+    else:
+        latest_cycle = _split_all_finished_cycles(split)
+        latest_finished = latest_cycle[-1] if latest_cycle else None
+        response_operators = list((latest_finished or {}).get("operators") or (started_event or {}).get("operators") or [])
+        response_helpers = list((latest_finished or {}).get("helpers") or (started_event or {}).get("helpers") or [])
+
+    return _production_split_item(
+        req,
+        split,
+        waiting_since=datetime.utcnow() if split.status == RequisitionStatus.AGUARDANDO_NA_FILA else None,
+        machine_name=response_machine,
+        operator_names=response_operators,
+        helper_names=response_helpers,
+        production_started_at=(started_event or {}).get("changed_at"),
+    )
 
 
 @router.patch(

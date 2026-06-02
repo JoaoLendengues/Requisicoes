@@ -16,10 +16,15 @@ class OrderCenterStatsResponse(BaseModel):
 
 class OrderCenterItemResponse(BaseModel):
     id: int
+    source_requisition_id: Optional[int] = None
+    production_split_id: Optional[int] = None
+    split_sequence: Optional[int] = None
+    is_partial_split: bool = False
     ped_number: str
     client_name: Optional[str] = None
     vendor_name: Optional[str] = None
     weight: Optional[float] = None
+    total_weight: Optional[float] = None
     status: str
     emission_date: Optional[datetime] = None
     delivery_date: Optional[date] = None

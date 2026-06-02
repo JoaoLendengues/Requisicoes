@@ -201,7 +201,7 @@ class UserCenterView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Central de Usuários")
         title.setStyleSheet(
-            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Importe usuários, ajuste níveis de acesso e mantenha senhas e cadastros em dia."
@@ -209,7 +209,7 @@ class UserCenterView(QWidget):
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"font-size:{max(8, int(10 * s))}pt;"
+            f"background:transparent; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -407,7 +407,7 @@ class UserCenterView(QWidget):
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
         helper.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; font-size:{max(7, int(8 * s))}pt;"
         )
         layout.addWidget(title)
         layout.addWidget(helper)
@@ -419,7 +419,7 @@ class UserCenterView(QWidget):
         self.form_status = QLabel("Novo usuário")
         self.form_status.setProperty("accent", "1")
         self.form_status.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:700;"
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:700;"
         )
         layout.addWidget(self.form_status)
 
@@ -438,7 +438,7 @@ class UserCenterView(QWidget):
         self.check_active = QCheckBox("Usuário ativo")
         self.check_active.setChecked(True)
         self.check_active.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt;"
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt;"
         )
 
         self.combo_role = QComboBox()
@@ -500,6 +500,7 @@ class UserCenterView(QWidget):
         label.setProperty("muted", "1")
         label.setStyleSheet(
             f"font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
+            f"background:transparent;"
         )
         return label
 
@@ -779,6 +780,6 @@ class UserCenterView(QWidget):
             self.input_sector, self.input_password, self.input_password_confirm,
         ):
             inp.setStyleSheet(_field_style(s))
-        self.check_active.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
+        self.check_active.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt;")
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_disable.setStyleSheet(_danger_action_btn_style(s))

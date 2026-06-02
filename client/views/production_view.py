@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QDialog,
+    QDoubleSpinBox,
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -159,6 +160,43 @@ def _is_ar_dobra_source_machine(destination: str, machine_name: str) -> bool:
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
+
+
+# ── Helpers de estilo para machine cards (centralizados para permitir
+# re-aplicação rápida em apply_theme sem recriar o widget). ───────────────────
+def _scoped_btn_qss(role: str, fn, s: float) -> str:
+    """Reescreve um QSS de botão pra usar selector property-based.
+
+    Permite que apply_theme defina o estilo de TODOS os botões com
+    productionBtn='<role>' em uma única chamada de setStyleSheet no nível da
+    view, em vez de setStyleSheet individual em cada botão.
+    """
+    raw = fn(s)
+    selector = f"QPushButton[productionBtn='{role}']"
+    return raw.replace("QPushButton ", f"{selector} ").replace("QPushButton:", f"{selector}:")
+
+
+def _machine_accent_style(accent_color: str, s: float) -> str:
+    return (
+        f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        f"stop:0 {_rgba(accent_color, 235)}, stop:0.5 {_rgba(accent_color, 155)}, stop:1 {_rgba(accent_color, 235)});"
+        f"border:none; border-radius:{max(2, int(3 * s))}px;"
+    )
+
+def _machine_title_style(s: float) -> str:
+    return f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
+
+def _machine_subtitle_style(s: float) -> str:
+    return f"background:transparent; font-size:{max(7, int(8 * s))}pt;"
+
+def _machine_status_label_style(s: float) -> str:
+    return f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+
+def _machine_stat_title_style(s: float) -> str:
+    return f"background:transparent; font-size:{max(6, int(7 * s))}pt; font-weight:700;"
+
+def _machine_stat_value_style(s: float) -> str:
+    return f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
 
 
 def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
@@ -406,11 +444,29 @@ class ProductionView(QWidget):
         if self.destination in session.visible_production_destinations:
             self.refresh()
 
+    def _build_view_stylesheet(self, s: float, bg: str) -> str:
+        """QSS view-level: backgrounds + regras property-based dos botões
+        dos cards. Aplicar essa string UMA vez via self.setStyleSheet() faz
+        com que TODOS os botões com property productionBtn=... peguem o
+        estilo via cascata, sem precisar setStyleSheet individual em cada um.
+
+        Usado em _setup_ui (construção inicial) e em apply_theme (troca de tema).
+        """
+        return (
+            f"QWidget#productionView {{ background:{bg}; }}"
+            f"QScrollArea {{ background:{bg}; border:none; }}"
+            + _scoped_btn_qss("secondary", _flat_secondary_btn_style, s)
+            + _scoped_btn_qss("primary",   _primary_action_btn_style, s)
+            + _scoped_btn_qss("danger",    _danger_action_btn_style,  s)
+        )
+
     def _setup_ui(self):
         s = self.scale
         self.setObjectName("productionView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"QWidget#productionView {{ background:{theme.CONTENT_BG}; }}")
+        # QSS completo já na construção: inclui regras dos botões dos cards
+        # (productionBtn property). Cards futuros herdam automaticamente.
+        self.setStyleSheet(self._build_view_stylesheet(s, theme.CONTENT_BG))
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -436,11 +492,11 @@ class ProductionView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
 
         title = QLabel(self.page_title)
-        title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;")
         subtitle = QLabel(self.page_subtitle)
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
+        subtitle.setStyleSheet(f"background:transparent; font-size:{max(8, int(10 * s))}pt;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
@@ -455,12 +511,12 @@ class ProductionView(QWidget):
 
         date_hint = QLabel("DATA ATUAL")
         date_hint.setProperty("muted", "1")
-        date_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        date_hint.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
         self.date_label = QLabel(_format_header_date())
-        self.date_label.setStyleSheet(f"font-size:{max(13, int(16 * s))}pt; font-weight:800;")
+        self.date_label.setStyleSheet(f"background:transparent; font-size:{max(13, int(16 * s))}pt; font-weight:800;")
         self.updated_label = QLabel("Atualizando dados...")
         self.updated_label.setProperty("muted", "1")
-        self.updated_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        self.updated_label.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt;")
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
         info_layout.addWidget(self.updated_label)
@@ -531,11 +587,11 @@ class ProductionView(QWidget):
         machine_title_col.setSpacing(max(3, int(4 * s)))
 
         machine_title = QLabel("Máquinas")
-        machine_title.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(12, int(14 * s))}pt; font-weight:800;")
+        machine_title.setStyleSheet(f"background:transparent; color:{theme.TEXT_DARK}; font-size:{max(12, int(14 * s))}pt; font-weight:800;")
         machine_subtitle = QLabel("Selecione a requisição de cada card para finalizar ou devolver para a fila.")
         machine_subtitle.setWordWrap(True)
         machine_subtitle.setProperty("muted", "1")
-        machine_subtitle.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        machine_subtitle.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt;")
         machine_title_col.addWidget(machine_title)
         machine_title_col.addWidget(machine_subtitle)
         machine_subtitle.setText(
@@ -594,18 +650,18 @@ class ProductionView(QWidget):
 
         value_label = QLabel("0")
         value_label.setStyleSheet(
-            f"font-size:{max(20, int(26 * s))}pt; font-weight:800;"
+            f"background:transparent; font-size:{max(20, int(26 * s))}pt; font-weight:800;"
         )
         title_label = QLabel(title_text)
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            f"font-size:{max(9, int(11 * s))}pt; font-weight:700;"
+            f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:700;"
         )
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
         helper_label.setProperty("muted", "1")
         helper_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; font-size:{max(7, int(8 * s))}pt;"
         )
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
@@ -643,7 +699,7 @@ class ProductionView(QWidget):
 
         title_row = QHBoxLayout()
         title = QLabel(title_text)
-        title.setStyleSheet(f"font-size:{max(12, int(14 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(12, int(14 * s))}pt; font-weight:800;")
         count = QLabel("0")
         count.setAlignment(Qt.AlignmentFlag.AlignCenter)
         count.setMinimumWidth(max(28, int(34 * s)))
@@ -658,7 +714,7 @@ class ProductionView(QWidget):
         subtitle = QLabel(subtitle_text)
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"font-size:{max(9, int(10 * s))}pt;")
+        subtitle.setStyleSheet(f"background:transparent; font-size:{max(9, int(10 * s))}pt;")
         layout.addLayout(title_row)
         layout.addWidget(subtitle)
 
@@ -818,7 +874,7 @@ class ProductionView(QWidget):
 
         if not self._machines_data:
             empty = QLabel("Nenhuma máquina cadastrada para este destino.")
-            empty.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:600;")
+            empty.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:600;")
             empty.setProperty("muted", "1")
             self.machines_grid.addWidget(empty, 0, 0)
             return
@@ -848,16 +904,12 @@ class ProductionView(QWidget):
 
         accent = QFrame()
         accent.setFixedHeight(max(4, int(5 * s)))
-        accent.setStyleSheet(
-            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
-            f"stop:0 {_rgba(accent_color, 235)}, stop:0.5 {_rgba(accent_color, 155)}, stop:1 {_rgba(accent_color, 235)});"
-            f"border:none; border-radius:{max(2, int(3 * s))}px;"
-        )
+        accent.setStyleSheet(_machine_accent_style(accent_color, s))
         layout.addWidget(accent)
 
         title = QLabel(str(machine.get("name") or "Máquina"))
         title.setWordWrap(True)
-        title.setStyleSheet(f"font-size:{max(9, int(11 * s))}pt; font-weight:800;")
+        title.setStyleSheet(_machine_title_style(s))
         layout.addWidget(title)
 
         operator_names, helper_names = _split_team_members(machine)
@@ -869,7 +921,7 @@ class ProductionView(QWidget):
         )
         operator_summary.setWordWrap(True)
         operator_summary.setProperty("muted", "1")
-        operator_summary.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        operator_summary.setStyleSheet(_machine_subtitle_style(s))
         if operator_names or helper_names:
             operator_summary.setToolTip(
                 "Operadores: "
@@ -882,15 +934,23 @@ class ProductionView(QWidget):
         stats_grid = QGridLayout()
         stats_grid.setHorizontalSpacing(max(10, int(12 * s)))
         stats_grid.setVerticalSpacing(max(8, int(10 * s)))
-        stats_grid.addWidget(self._machine_stat_block("Quantidade em Produção", str(machine.get("quantity_in_production") or 0)), 0, 0)
-        stats_grid.addWidget(self._machine_stat_block("Finalizadas", str(machine.get("finalized_count") or 0)), 0, 1)
-        stats_grid.addWidget(self._machine_stat_block("Tempo Médio", _format_duration(machine.get("average_seconds"))), 1, 0, 1, 2)
+        stat_blocks = [
+            self._machine_stat_block("Quantidade em Produção", str(machine.get("quantity_in_production") or 0)),
+            self._machine_stat_block("Finalizadas", str(machine.get("finalized_count") or 0)),
+            self._machine_stat_block("Tempo Médio", _format_duration(machine.get("average_seconds"))),
+        ]
+        stats_grid.addWidget(stat_blocks[0], 0, 0)
+        stats_grid.addWidget(stat_blocks[1], 0, 1)
+        stats_grid.addWidget(stat_blocks[2], 1, 0, 1, 2)
         layout.addLayout(stats_grid)
+        # Refs dos labels dos stat blocks (preenchidos no dict de retorno)
+        _stat_titles = [getattr(b, "_stat_title_lbl", None) for b in stat_blocks if getattr(b, "_stat_title_lbl", None)]
+        _stat_values = [getattr(b, "_stat_value_lbl", None) for b in stat_blocks if getattr(b, "_stat_value_lbl", None)]
 
         status_row = QHBoxLayout()
         status_row.setSpacing(max(8, int(10 * s)))
         status_label = QLabel("Status da Máquina")
-        status_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        status_label.setStyleSheet(_machine_status_label_style(s))
         status_label.setProperty("muted", "1")
         status_combo = QComboBox()
         for value, text in MACHINE_STATUS_OPTIONS:
@@ -901,7 +961,9 @@ class ProductionView(QWidget):
         status_combo.setCurrentIndex(combo_index)
         status_button = QPushButton("Atualizar Status")
         status_button.setFixedHeight(max(34, int(38 * s)))
-        status_button.setStyleSheet(_flat_secondary_btn_style(s))
+        # Property-based: estilo aplicado uma única vez no apply_theme da view,
+        # evita 18× setStyleSheet em runtime (1 por card × 18 máquinas).
+        status_button.setProperty("productionBtn", "secondary")
         status_button.clicked.connect(
             lambda checked=False, mid=int(machine["id"]), combo=status_combo: self._update_machine_status(mid, combo)
         )
@@ -921,10 +983,12 @@ class ProductionView(QWidget):
         btn_cancel = QPushButton("Cancelar")
         for btn in (btn_open, btn_finish, btn_prazo, btn_cancel):
             btn.setFixedHeight(max(34, int(38 * s)))
-        btn_open.setStyleSheet(_flat_secondary_btn_style(s))
-        btn_finish.setStyleSheet(_primary_action_btn_style(s))
-        btn_prazo.setStyleSheet(_flat_secondary_btn_style(s))
-        btn_cancel.setStyleSheet(_danger_action_btn_style(s))
+        # Property-based: 4 botões × N cards usavam setStyleSheet individual.
+        # Agora o estilo vem do QSS view-level (1 chamada cobre todos).
+        btn_open.setProperty("productionBtn", "secondary")
+        btn_finish.setProperty("productionBtn", "primary")
+        btn_prazo.setProperty("productionBtn", "secondary")
+        btn_cancel.setProperty("productionBtn", "danger")
         btn_open.clicked.connect(lambda: self._open_selected_machine(int(machine["id"])))
         if is_dobra_source:
             btn_finish.clicked.connect(lambda: self._send_selected_machine_to_dobra(int(machine["id"])))
@@ -956,7 +1020,64 @@ class ProductionView(QWidget):
             "combo": status_combo,
             "rows": rows,
             "machine": dict(machine),
+            # Referências dos widgets dependentes do tema — usadas por
+            # _apply_theme_to_machine_card() em vez de recriar o card inteiro.
+            "_theme_widgets": {
+                "accent": accent,
+                "accent_color": accent_color,
+                "title": title,
+                "operator_summary": operator_summary,
+                "status_label": status_label,
+                "status_combo": status_combo,
+                "status_button": status_button,
+                "btn_open": btn_open,
+                "btn_finish": btn_finish,
+                "btn_prazo": btn_prazo,
+                "btn_cancel": btn_cancel,
+                "stat_titles": _stat_titles,
+                "stat_values": _stat_values,
+            },
         }
+
+    def _apply_theme_to_machine_card(self, card_data: dict) -> None:
+        """Re-aplica APENAS o QSS dependente do tema em um card de máquina existente.
+
+        Substitui o caminho antigo (destruir e recriar TODOS os 12-18 cards),
+        que custava ~500ms+ em A&R / Pinheiro Indústria.
+
+        Otimização extra (Jun/2026): widgets cujo QSS é puramente geométrico
+        (font-size, weight — sem cor) NAO precisam ser reaplicados aqui:
+          - title, operator_summary: sem cor (herda do palette via property)
+          - stat_titles, stat_values: sem cor
+
+        So reaplicamos o que de fato depende de cores do tema:
+          - accent (gradient com accent_color)
+          - status_label (color: TEXT_MEDIUM)
+          - status_combo, botoes (hover/background dependem do tema)
+          - table (helper centralizado)
+        """
+        s = self.scale
+        tw = card_data.get("_theme_widgets") or {}
+        if not tw:
+            # Card construído antes da refatoração — fallback seguro.
+            return
+        accent_color = tw.get("accent_color") or theme.PRIMARY
+        if tw.get("accent") is not None:
+            tw["accent"].setStyleSheet(_machine_accent_style(accent_color, s))
+        if tw.get("status_label") is not None:
+            tw["status_label"].setStyleSheet(_machine_status_label_style(s))
+        if tw.get("status_combo") is not None:
+            tw["status_combo"].setStyleSheet(_machine_combo_style(s))
+        # NOTE: status_button, btn_open, btn_finish, btn_prazo, btn_cancel
+        # NAO sao reaplicados aqui — todos tem property productionBtn=... e
+        # recebem estilo do QSS view-level (apply_theme da view). Economizamos
+        # 5 setStyleSheets × N cards = ~50-90 chamadas em runtime.
+        #
+        # NOTE: title, operator_summary, stat_titles, stat_values nao sao
+        # reaplicados — seus styles nao tem cor (so font-size/weight). A cor
+        # vem do palette via property muted='1' / herança.
+        if card_data.get("table") is not None:
+            self._apply_table_style(card_data["table"])
 
     def _machine_stat_block(self, title_text: str, value_text: str) -> QWidget:
         s = self.scale
@@ -967,12 +1088,15 @@ class ProductionView(QWidget):
 
         title = QLabel(title_text.upper())
         title.setProperty("muted", "1")
-        title.setStyleSheet(f"font-size:{max(6, int(7 * s))}pt; font-weight:700;")
+        title.setStyleSheet(_machine_stat_title_style(s))
         value = QLabel(value_text)
         value.setWordWrap(True)
-        value.setStyleSheet(f"font-size:{max(9, int(11 * s))}pt; font-weight:800;")
+        value.setStyleSheet(_machine_stat_value_style(s))
         layout.addWidget(title)
         layout.addWidget(value)
+        # Anexa refs no próprio QWidget pra _build_machine_card coletar logo após.
+        box._stat_title_lbl = title  # type: ignore[attr-defined]
+        box._stat_value_lbl = value  # type: ignore[attr-defined]
         return box
 
     def _fill_machine_table(self, table: QTableWidget, rows: list[dict]):
@@ -1029,6 +1153,99 @@ class ProductionView(QWidget):
             return rows[row], card["machine"]
         return None, card["machine"]
 
+    def _row_requisition_id(self, req: dict) -> int:
+        return int(req.get("source_requisition_id") or req["id"])
+
+    def _row_split_id(self, req: dict) -> int | None:
+        split_id = req.get("production_split_id")
+        if split_id in (None, ""):
+            return None
+        return int(split_id)
+
+    def _is_split_row(self, req: dict) -> bool:
+        return self._row_split_id(req) is not None
+
+    def _ask_partial_weight(self, req: dict) -> float | None:
+        remaining_weight = float(req.get("weight") or 0.0)
+        total_weight = float(req.get("total_weight") or remaining_weight)
+        if remaining_weight <= 0:
+            self._show_info("Nao ha saldo pendente para encaminhar.")
+            return None
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Quantidade para Producao")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(max(8, int(10 * self.scale)))
+
+        ped = str(req.get("ped_number") or "-")
+        header = QLabel(f"Requisicao PED #{ped}")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        layout.addWidget(header)
+
+        question = QLabel("QUANTOS KG VOCE DESEJA PRODUZIR?")
+        question.setWordWrap(True)
+        question.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(10 * self.scale))}pt;")
+        layout.addWidget(question)
+
+        total_label = QLabel(f"KG total da requisicao: {_format_weight_kg(total_weight)}")
+        pending_label = QLabel(f"KG pendente para encaminhar: {_format_weight_kg(remaining_weight)}")
+        total_label.setProperty("muted", "1")
+        pending_label.setProperty("muted", "1")
+        total_label.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
+        pending_label.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
+        layout.addWidget(total_label)
+        layout.addWidget(pending_label)
+
+        spin = QDoubleSpinBox()
+        spin.setDecimals(3)
+        spin.setMinimum(0.001)
+        spin.setMaximum(remaining_weight)
+        spin.setValue(remaining_weight)
+        spin.setSingleStep(0.100)
+        spin.setFixedHeight(max(38, int(44 * self.scale)))
+        spin.setStyleSheet(_machine_combo_style(self.scale))
+        layout.addWidget(spin)
+
+        error_lbl = QLabel("")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setVisible(False)
+        layout.addWidget(error_lbl)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok = QPushButton("Confirmar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_ok)
+        layout.addLayout(buttons)
+
+        def _confirm():
+            selected_weight = round(float(spin.value() or 0.0), 3)
+            if selected_weight <= 0 or selected_weight > remaining_weight:
+                error_lbl.setText("Informe um peso valido dentro do saldo pendente.")
+                error_lbl.setVisible(True)
+                return
+            dlg.setProperty("_selected_weight", selected_weight)
+            dlg.accept()
+
+        btn_ok.clicked.connect(_confirm)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return float(dlg.property("_selected_weight") or 0.0)
+
     def _show_error(self, msg: str):
         self.updated_label.setText("Falha ao atualizar")
         friendly = str(msg or "").strip()
@@ -1046,7 +1263,7 @@ class ProductionView(QWidget):
     def _open_stage_row(self, stage: str, row: int):
         rows = self._stage_rows.get(stage, [])
         if 0 <= row < len(rows):
-            self.open_requisition.emit(int(rows[row]["id"]))
+            self.open_requisition.emit(self._row_requisition_id(rows[row]))
 
     def _open_machine_row(self, machine_id: int, row: int):
         card = self._machine_cards.get(machine_id)
@@ -1054,21 +1271,21 @@ class ProductionView(QWidget):
             return
         rows = card["rows"]
         if 0 <= row < len(rows):
-            self.open_requisition.emit(int(rows[row]["id"]))
+            self.open_requisition.emit(self._row_requisition_id(rows[row]))
 
     def _open_selected_stage(self, stage: str):
         req = self._selected_stage_row(stage)
         if not req:
             self._show_info("Selecione uma requisição primeiro.")
             return
-        self.open_requisition.emit(int(req["id"]))
+        self.open_requisition.emit(self._row_requisition_id(req))
 
     def _open_selected_machine(self, machine_id: int):
         req, _machine = self._selected_machine_row(machine_id)
         if not req:
             self._show_info("Selecione uma requisição no card da máquina.")
             return
-        self.open_requisition.emit(int(req["id"]))
+        self.open_requisition.emit(self._row_requisition_id(req))
 
     def _start_production_selection(self, req: dict):
         machine = self._pick_machine_for_production(req)
@@ -1102,13 +1319,13 @@ class ProductionView(QWidget):
 
         ped = str(req.get("ped_number") or "-")
         header = QLabel(f"Requisicao PED #{ped}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         helper = QLabel("Clique na maquina que sera usada nesta producao.")
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
         layout.addWidget(helper)
 
         scroll = QScrollArea()
@@ -1212,14 +1429,14 @@ class ProductionView(QWidget):
         layout.setSpacing(max(8, int(10 * self.scale)))
 
         header = QLabel(f"Máquina: {str(machine.get('name') or '').strip() or '-'}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
         header.setText(f"Maquina: {str(machine.get('name') or '').strip() or '-'}")
 
         helper = QLabel("Marque quais operadores cadastrados nesta maquina irao trabalhar nesta requisicao.")
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
         layout.addWidget(helper)
 
         selection_row = QHBoxLayout()
@@ -1249,14 +1466,14 @@ class ProductionView(QWidget):
         for name in operator_names:
             checkbox = QCheckBox(name)
             checkbox.setChecked(True)
-            checkbox.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+            checkbox.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
             content_layout.addWidget(checkbox)
             checkboxes.append(checkbox)
         content_layout.addStretch()
         layout.addWidget(scroll)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 
@@ -1344,7 +1561,7 @@ class ProductionView(QWidget):
     def _move_to_queue(self, req: dict):
         self._run_action(
             api.update_status,
-            int(req["id"]),
+            self._row_requisition_id(req),
             "aguardando_na_fila",
             _build_production_note(PROD_QUEUED, self.destination),
             success_message="Requisição movida para aguardando na fila.",
@@ -1422,18 +1639,39 @@ class ProductionView(QWidget):
         if not selected_team:
             return
 
+        split_id = self._row_split_id(req)
+        note = _build_production_note(
+            PROD_STARTED,
+            self.destination,
+            machine=machine_name,
+            operators=selected_team["operators"],
+            helpers=selected_team["helpers"],
+        )
+        if split_id is not None:
+            self._run_action(
+                api.update_production_split_status,
+                split_id,
+                "em_producao",
+                note,
+                success_message=f"Parcela enviada para {machine_name}.",
+            )
+            return
+
+        selected_weight = self._ask_partial_weight(req)
+        if selected_weight is None:
+            return
+
         self._run_action(
-            api.update_status,
-            int(req["id"]),
-            "em_producao",
-            _build_production_note(
-                PROD_STARTED,
-                self.destination,
-                machine=machine_name,
-                operators=selected_team["operators"],
-                helpers=selected_team["helpers"],
-            ),
-            success_message=f"Requisição enviada para {machine_name}.",
+            api.create_production_split,
+            self._row_requisition_id(req),
+            {
+                "weight": selected_weight,
+                "destination": self.destination,
+                "machine_name": machine_name,
+                "operators": selected_team["operators"],
+                "helpers": selected_team["helpers"],
+            },
+            success_message=f"Parcela de {_format_weight_kg(selected_weight)} enviada para {machine_name}.",
         )
 
     def _pick_machine_for_production(self, req: dict) -> dict | None:
@@ -1462,13 +1700,13 @@ class ProductionView(QWidget):
 
         ped = str(req.get("ped_number") or "-")
         header = QLabel(f"Requisicao PED #{ped}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         helper = QLabel("Clique na maquina que sera usada nesta producao.")
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
         layout.addWidget(helper)
 
         scroll = QScrollArea()
@@ -1568,7 +1806,7 @@ class ProductionView(QWidget):
 
         machine_name = str(machine.get("name") or "").strip() or "-"
         header = QLabel(f"Maquina: {machine_name}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         helper = QLabel(
@@ -1576,7 +1814,7 @@ class ProductionView(QWidget):
         )
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
         layout.addWidget(helper)
 
         selection_row = QHBoxLayout()
@@ -1607,14 +1845,14 @@ class ProductionView(QWidget):
             role_label = WORKER_ROLE_LABELS.get(member["role"], "OPERADOR")
             checkbox = QCheckBox(f"{member['name']} ({role_label})")
             checkbox.setChecked(True)
-            checkbox.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+            checkbox.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
             content_layout.addWidget(checkbox)
             checkboxes.append((checkbox, member["name"], member["role"]))
         content_layout.addStretch()
         layout.addWidget(scroll)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 
@@ -1689,13 +1927,19 @@ class ProductionView(QWidget):
         self._cancel_to_progress(req)
 
     def _cancel_to_progress(self, req: dict):
+        if self._is_split_row(req):
+            self._show_info(
+                "Parcelas desmembradas nao podem ser canceladas por esta acao.\n\n"
+                "Use a requisicao principal para cancelar o saldo pendente."
+            )
+            return
         reason = self._ask_cancel_reason()
         if reason is None:
             return
 
         self._run_action(
             api.update_status,
-            int(req["id"]),
+            self._row_requisition_id(req),
             "cancelada",
             _build_production_note(PROD_CANCELED, self.destination, reason=reason),
             success_message="Requisição cancelada.",
@@ -1716,11 +1960,13 @@ class ProductionView(QWidget):
             return
 
         machine_name = str(machine.get("name") or "")
+        split_id = self._row_split_id(req)
         self._run_action(
             self._finalize_and_invoice_requisition,
-            int(req["id"]),
+            split_id if split_id is not None else self._row_requisition_id(req),
             machine_name,
-            success_message="Requisição finalizada e faturada.",
+            split_id is not None,
+            success_message="Parcela finalizada." if split_id is not None else "Requisição finalizada e faturada.",
         )
 
     def _send_selected_machine_to_dobra(self, machine_id: int):
@@ -1754,35 +2000,45 @@ class ProductionView(QWidget):
         if not selected_team:
             return
 
+        split_id = self._row_split_id(req)
         self._run_action(
             self._transfer_machine_requisition,
-            int(req["id"]),
+            split_id if split_id is not None else self._row_requisition_id(req),
             source_machine,
             target_machine,
             selected_team,
-            success_message=f"Requisição enviada para dobra na máquina {target_machine}.",
+            split_id is not None,
+            success_message=f"Parcela enviada para dobra na máquina {target_machine}." if split_id is not None else f"Requisição enviada para dobra na máquina {target_machine}.",
         )
 
-    def _transfer_machine_requisition(self, req_id: int, source_machine: str, target_machine: str, selected_team: dict[str, list[str]]):
-        api.update_status(
-            req_id,
-            "aguardando_na_fila",
-            _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=source_machine),
+    def _transfer_machine_requisition(
+        self,
+        req_id: int,
+        source_machine: str,
+        target_machine: str,
+        selected_team: dict[str, list[str]],
+        is_split: bool = False,
+    ):
+        queue_note = _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=source_machine)
+        start_note = _build_production_note(
+            PROD_STARTED,
+            self.destination,
+            machine=target_machine,
+            operators=selected_team.get("operators") or [],
+            helpers=selected_team.get("helpers") or [],
         )
-        api.update_status(
-            req_id,
-            "em_producao",
-            _build_production_note(
-                PROD_STARTED,
-                self.destination,
-                machine=target_machine,
-                operators=selected_team.get("operators") or [],
-                helpers=selected_team.get("helpers") or [],
-            ),
-        )
+        if is_split:
+            api.update_production_split_status(req_id, "aguardando_na_fila", queue_note)
+            api.update_production_split_status(req_id, "em_producao", start_note)
+            return
+        api.update_status(req_id, "aguardando_na_fila", queue_note)
+        api.update_status(req_id, "em_producao", start_note)
 
-    def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str):
+    def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str, is_split: bool = False):
         note = _build_production_note(PROD_FINISHED, self.destination, machine=machine_name)
+        if is_split:
+            api.update_production_split_status(req_id, "faturado", note)
+            return
         api.update_status(req_id, "em_andamento", note)
 
         # Compatibilidade: servidores antigos ainda deixam em aguardando faturamento
@@ -1813,12 +2069,13 @@ class ProductionView(QWidget):
         ):
             return
 
+        is_split = self._is_split_row(req)
         self._run_action(
-            api.update_status,
-            int(req["id"]),
+            api.update_production_split_status if is_split else api.update_status,
+            self._row_split_id(req) if is_split else self._row_requisition_id(req),
             "aguardando_na_fila",
             _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=str(machine.get("name") or "")),
-            success_message="Requisição devolvida para aguardando na fila.",
+            success_message="Parcela devolvida para aguardando na fila." if is_split else "Requisição devolvida para aguardando na fila.",
         )
 
     def _update_machine_status(self, machine_id: int, combo: QComboBox):
@@ -1857,7 +2114,7 @@ class ProductionView(QWidget):
         new_date, reason = result
         self._run_action(
             self._update_delivery_date_and_waiting_receipt,
-            int(req["id"]),
+            self._row_requisition_id(req),
             new_date,
             reason,
             success_message=(
@@ -1888,7 +2145,7 @@ class ProductionView(QWidget):
 
         ped = str(req.get("ped_number") or "")
         header = QLabel(f"Requisição PED #{ped}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         lbl_date = QLabel("Novo prazo de entrega:")
@@ -1913,7 +2170,7 @@ class ProductionView(QWidget):
         layout.addWidget(input_reason)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 
@@ -1982,7 +2239,7 @@ class ProductionView(QWidget):
         layout.addWidget(input_reason)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 
@@ -2053,25 +2310,48 @@ class ProductionView(QWidget):
         theme.apply_neon_table_palette(table)
 
     def apply_theme(self) -> None:
+        """Reaplica tema na ProductionView (A&R / Pinheiro Indústria).
+
+        Otimizado em duas frentes:
+        1) QPalette no root cascateia cores fundamentais (Window, Text,
+           Highlight, etc.) para os ~200-360 widgets filhos em microssegundos,
+           sem regerar setStyleSheet em cada um.
+        2) _apply_theme_to_machine_card pula widgets cujo QSS nao depende do
+           tema (title/subtitle/stat_titles/stat_values — sao font-size only).
+
+        Backgrounds combinados em uma unica chamada de setStyleSheet.
+        """
         s = self.scale
         bg = theme.CONTENT_BG
-        self.setStyleSheet(f"QWidget#productionView {{ background:{bg}; }}")
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ background:{bg}; border:none; }}")
+
+        # QPalette no root — cores base cascateiam para filhos sem palette propria
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window,          QColor(bg))
+        pal.setColor(QPalette.ColorRole.WindowText,      QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Text,            QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(theme.TEXT_MEDIUM))
+        pal.setColor(QPalette.ColorRole.Base,            QColor(theme.PANEL_SURFACE_BG))
+        pal.setColor(QPalette.ColorRole.Highlight,       QColor(theme.PANEL_NEON_PRIMARY))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.PANEL_TEXT_PRIMARY))
+        self.setPalette(pal)
+
+        # QSS view-level: cobre TODOS os ~90 botões dos cards em uma única
+        # chamada (em vez de 4-5 setStyleSheet × N cards = 70-90 chamadas).
+        self.setStyleSheet(self._build_view_stylesheet(s, bg))
         self._page_content.setStyleSheet(f"background:{bg};")
+
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         for panel in (self.waiting_receipt_panel, self.waiting_queue_panel):
             self._apply_table_style(panel["table"])
 
-        # Os machine_cards têm muitos labels e accent_lines com QSS inline que
-        # ficam congelados ao trocar tema. Em vez de reaplicar dezenas de
-        # estilos manualmente, recriamos os cards a partir do cache de dados
-        # (_machines_data) — sem nova chamada a API.
-        if getattr(self, "_machines_data", None) and hasattr(self, "_populate_machine_cards"):
-            self._populate_machine_cards()
-        else:
-            for card in self._machine_cards.values():
-                self._apply_table_style(card["table"])
-                card["combo"].setStyleSheet(_machine_combo_style(s))
+        # Re-estiliza os machine_cards EXISTENTES (sem destruir + recriar).
+        # A versão antiga chamava _populate_machine_cards() — recriava 12-18
+        # cards, ~200-360 widgets + QGraphicsDropShadow novos (~500ms+).
+        # Agora usamos refs em "_theme_widgets" para reaplicar QSS in-place.
+        for card_data in self._machine_cards.values():
+            self._apply_theme_to_machine_card(card_data)
+
+        self.update()
 
 
 
