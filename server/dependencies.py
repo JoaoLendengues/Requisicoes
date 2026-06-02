@@ -54,13 +54,18 @@ def require_order_center_access(current_user: User = Depends(get_current_user)) 
 
 
 def require_creator(current_user: User = Depends(get_current_user)) -> User:
+    # Roles autorizados a criar/editar requisicoes:
+    #   - ADMIN, GERENTE: gestao plena
+    #   - VENDEDOR: cria pedidos comerciais (caso comum)
+    #   - PRODUCAO: cria pedidos de compra para o diretor comercial autorizar
+    # Roles REMOVIDOS (Jun/2026):
+    #   - INDUSTRIA: so recebe requisicoes ja criadas para fabricar
+    #   - ENTREGA: so recebe requisicoes marcadas como "entrega" no form
     if current_user.role not in (
         Role.ADMIN,
         Role.VENDEDOR,
         Role.GERENTE,
         Role.PRODUCAO,
-        Role.INDUSTRIA,
-        Role.ENTREGA,
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
