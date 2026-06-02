@@ -3412,14 +3412,12 @@ class RequisitionForm(QWidget):
         for card in self.findChildren(QFrame, "reqCard"):
             card.setStyleSheet(card_qss)
 
-        # Reaplica labels de campo (têm property "accent" = "1") com a cor
-        # PANEL_TEXT_MUTED do tema atual. Sem isso eles ficam com a cor antiga.
-        for lbl in self.findChildren(QLabel):
-            if lbl.property("accent") == "1":
-                lbl.setStyleSheet(
-                    f"font-size:{max(7, int(8*s))}pt; font-weight:700;"
-                    f" text-transform:uppercase; border:none;"
-                    f" color:{theme.PANEL_TEXT_MUTED};"
-                )
+        # NOTA: havia aqui um segundo loop que reaplicava
+        # color:PANEL_TEXT_MUTED em todo QLabel com accent='1', o que
+        # sobrescrevia o color:PANEL_NEON_PRIMARY (ciano/azul) que o loop
+        # de req_field_label acima acabara de aplicar. Isso fazia os rótulos
+        # CLIENTE/OBRA/FONE/ENDEREÇO/PRAZO/VENDEDOR/STATUS/PED perderem a
+        # cor neon ao trocar de tema. O loop foi removido — accent='1'
+        # semanticamente é destaque, não muted.
 
         self._refresh_signature_preview()
