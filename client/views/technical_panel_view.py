@@ -107,7 +107,7 @@ class TechnicalPanelView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Painel Técnico")
         title.setStyleSheet(
-            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Monitoramento rápido da aplicação, do banco de dados e da disponibilidade operacional."
@@ -115,7 +115,7 @@ class TechnicalPanelView(QWidget):
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"font-size:{max(8, int(10 * s))}pt;"
+            f"background:transparent; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)

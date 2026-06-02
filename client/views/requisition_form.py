@@ -234,7 +234,8 @@ def _req_checkbox_style(scale: float) -> str:
     fs = max(9, int(11 * scale))
     size = max(16, int(18 * scale))
     return (
-        f"QCheckBox {{ color:{theme.PANEL_TEXT_PRIMARY}; font-size:{fs}pt; border:none; spacing:8px; }}"
+        f"QCheckBox {{ color:{theme.PANEL_TEXT_PRIMARY}; font-size:{fs}pt; border:none; spacing:8px;"
+        f"  background:transparent; }}"
         f"QCheckBox::indicator {{"
         f"  width:{size}px; height:{size}px; border-radius:5px;"
         f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)}; background:{theme.PANEL_SURFACE_BG};"
@@ -891,7 +892,7 @@ class CanvasViewerDialog(QDialog):
         toolbar = QHBoxLayout()
         helper = QLabel("Visualização somente leitura. Use Ctrl + rolagem para zoom.")
         helper.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9 * scale))}pt;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9 * scale))}pt;"
         )
         toolbar.addWidget(helper)
         toolbar.addStretch()
@@ -1150,7 +1151,7 @@ class SignatureDialog(QDialog):
 
         hint = QLabel("Desenhe a assinatura abaixo com mouse ou caneta da mesa digitalizadora.")
         hint.setWordWrap(True)
-        hint.setStyleSheet(f"font-size:{max(8, int(9 * scale))}pt; color:{theme.PANEL_TEXT_MUTED};")
+        hint.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * scale))}pt; color:{theme.PANEL_TEXT_MUTED};")
         layout.addWidget(hint)
 
         self.pad = SignaturePad(scale, self)
@@ -1316,7 +1317,7 @@ class RequisitionForm(QWidget):
         self.lock_label.setVisible(False)
         self.lock_label.setWordWrap(True)
         self.lock_label.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
         )
         layout.addWidget(self.lock_label)
 
@@ -1487,7 +1488,7 @@ class RequisitionForm(QWidget):
 
         lbl = QLabel("Digite o número do PED:")
         lbl.setStyleSheet(
-            f"font-size:{max(8, int(10 * self.scale))}pt; font-weight:700; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"background:transparent; font-size:{max(8, int(10 * self.scale))}pt; font-weight:700; color:{theme.PANEL_TEXT_PRIMARY};"
         )
         layout.addWidget(lbl)
 
@@ -1612,7 +1613,7 @@ class RequisitionForm(QWidget):
 
         lbl = QLabel("BUSCA POR PED, CLIENTE OU OBRA")
         lbl.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
         )
         search = QLineEdit()
         search.setPlaceholderText("Ex.: nome do cliente, obra ou 123456")
@@ -1623,7 +1624,7 @@ class RequisitionForm(QWidget):
 
         vendor_label = QLabel("VENDEDOR")
         vendor_label.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
         )
         vendor_search = QLineEdit()
         vendor_search.setPlaceholderText("Nome ou código do vendedor")
@@ -1635,7 +1636,7 @@ class RequisitionForm(QWidget):
 
         period_label = QLabel("Período de emissão")
         period_label.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
         )
         layout.addWidget(period_label)
 
@@ -1644,13 +1645,13 @@ class RequisitionForm(QWidget):
         )
         shortcuts.setWordWrap(True)
         shortcuts.setStyleSheet(
-            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         layout.addWidget(shortcuts)
 
         period_hint = QLabel("Filtro opcional. Use Delete para limpar a data do campo selecionado.")
         period_hint.setProperty("muted", "1")
-        period_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; color:{theme.PANEL_TEXT_MUTED};")
+        period_hint.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt; color:{theme.PANEL_TEXT_MUTED};")
         layout.addWidget(period_hint)
 
         today = local_now().date()
@@ -1688,7 +1689,7 @@ class RequisitionForm(QWidget):
 
         until_label = QLabel("ATÉ")
         until_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; color:{theme.PANEL_TEXT_MUTED};"
+            f"background:transparent; font-size:{max(7, int(8 * s))}pt; font-weight:700; color:{theme.PANEL_TEXT_MUTED};"
         )
         until_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -1741,7 +1742,7 @@ class RequisitionForm(QWidget):
 
         hint = QLabel("Digite ao menos 2 caracteres na busca principal, filtre por vendedor e/ou informe um período.")
         hint.setProperty("muted", "1")
-        hint.setStyleSheet(f"font-size:{max(7, int(9 * s))}pt; color:{theme.PANEL_TEXT_MUTED};")
+        hint.setStyleSheet(f"background:transparent; font-size:{max(7, int(9 * s))}pt; color:{theme.PANEL_TEXT_MUTED};")
         layout.addWidget(hint)
 
         buttons = QHBoxLayout()
@@ -2168,7 +2169,7 @@ class RequisitionForm(QWidget):
 
         lbl_preview = QLabel("🎨 EDITOR DE DESENHO")
         lbl_preview.setStyleSheet(
-            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
+            f"background:transparent; color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
         )
         preview_layout.addWidget(lbl_preview)
         self.lbl_preview_title = lbl_preview
@@ -2176,7 +2177,7 @@ class RequisitionForm(QWidget):
         lbl_preview_hint = QLabel("Prévia do desenho salvo na requisição.")
         lbl_preview_hint.setWordWrap(True)
         lbl_preview_hint.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
         )
         preview_layout.addWidget(lbl_preview_hint)
         self.lbl_preview_hint = lbl_preview_hint
@@ -2187,7 +2188,7 @@ class RequisitionForm(QWidget):
         self.lbl_canvas_info = QLabel("Nenhum desenho salvo ainda.")
         self.lbl_canvas_info.setWordWrap(True)
         self.lbl_canvas_info.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
         )
         preview_layout.addWidget(self.lbl_canvas_info)
         self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
@@ -2285,14 +2286,14 @@ class RequisitionForm(QWidget):
         lbl_qr_txt = QLabel("🔳 QR CODE\nVendedor")
         lbl_qr_txt.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_qr_txt.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
         self.lbl_qr_title = lbl_qr_txt
         self.lbl_qr_contact = QLabel("")
         self.lbl_qr_contact.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_qr_contact.setWordWrap(True)
         self.lbl_qr_contact.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
         )
         qr_col.addWidget(self.qr_label)
         qr_col.addWidget(lbl_qr_txt)
@@ -2832,7 +2833,7 @@ class RequisitionForm(QWidget):
         # Título
         lbl_title = QLabel("⚖️  Calculadora de Peso")
         lbl_title.setStyleSheet(
-            f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:800;"
+            f"background:transparent; color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(11, int(13 * s))}pt; font-weight:800;"
         )
         layout.addWidget(lbl_title)
 
@@ -2910,7 +2911,7 @@ class RequisitionForm(QWidget):
         lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_hint.setWordWrap(True)
         lbl_hint.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7, int(8 * s))}pt; font-style:italic;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7, int(8 * s))}pt; font-style:italic;"
         )
         layout.addWidget(lbl_hint)
 
@@ -3336,27 +3337,27 @@ class RequisitionForm(QWidget):
             f"font-size:{max(16,int(20*s))}pt; font-weight:800; border:none; background:transparent; color:{theme.PANEL_NEON_PRIMARY};"
         )
         self.lock_label.setStyleSheet(
-            f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; font-style:italic; border:none;"
         )
         if hasattr(self, "lbl_preview_title"):
             self.lbl_preview_title.setStyleSheet(
-                f"color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
+                f"background:transparent; color:{theme.PANEL_NEON_PRIMARY}; font-size:{max(9, int(11*s))}pt; font-weight:800; border:none;"
             )
         if hasattr(self, "lbl_preview_hint"):
             self.lbl_preview_hint.setStyleSheet(
-                f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+                f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
             )
         if hasattr(self, "lbl_canvas_info"):
             self.lbl_canvas_info.setStyleSheet(
-                f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
+                f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(8, int(9*s))}pt; border:none;"
             )
         if hasattr(self, "lbl_qr_title"):
             self.lbl_qr_title.setStyleSheet(
-                f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+                f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
             )
         if hasattr(self, "lbl_qr_contact"):
             self.lbl_qr_contact.setStyleSheet(
-                f"color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
+                f"background:transparent; color:{theme.PANEL_TEXT_MUTED}; font-size:{max(7,int(8*s))}pt; border:none;"
             )
         if hasattr(self, "qr_label"):
             self.qr_label.setStyleSheet(

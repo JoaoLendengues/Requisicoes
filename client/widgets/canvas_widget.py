@@ -3568,7 +3568,7 @@ class DrawingCanvas(QWidget):
         title = QLabel("DESENHO / REFERENCIA")
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
         )
         layout.addWidget(title)
 
@@ -3830,7 +3830,7 @@ class DrawingCanvas(QWidget):
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
+            f"background:transparent; color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
 
@@ -3865,7 +3865,7 @@ class DrawingCanvas(QWidget):
         pdf_layout = QHBoxLayout(self.pdf_panel)
         pdf_layout.setContentsMargins(10, 6, 10, 6)
         self.pdf_label = QLabel("Nenhum PDF anexado")
-        self.pdf_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
+        self.pdf_label.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
         btn_open_pdf = QPushButton("Abrir")
         btn_open_pdf.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_pdf.clicked.connect(self._open_pdf)
@@ -3888,7 +3888,7 @@ class DrawingCanvas(QWidget):
         attachment_layout = QHBoxLayout(self.attachment_panel)
         attachment_layout.setContentsMargins(10, 6, 10, 6)
         self.attachment_label = QLabel("Nenhum anexo DWG")
-        self.attachment_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
+        self.attachment_label.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
         btn_open_attachment = QPushButton("Abrir")
         btn_open_attachment.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_attachment.clicked.connect(self._open_dwg)
@@ -3963,10 +3963,10 @@ class DrawingCanvas(QWidget):
             current = lbl.styleSheet() or ""
             if "font-weight:bold" in current.replace(" ", ""):
                 lbl.setStyleSheet(
-                    f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
+                    f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
                 )
             else:
-                lbl.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
+                lbl.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
 
     def _setup_shortcuts(self):
         shortcuts = {

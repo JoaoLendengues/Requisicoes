@@ -354,7 +354,7 @@ class HistoryView(QWidget):
 
         title = QLabel("Histórico / Busca")
         title.setStyleSheet(
-            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Consulta operacional de requisições por status, pedido, cliente, obra e vendedor."
@@ -362,7 +362,7 @@ class HistoryView(QWidget):
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"font-size:{max(8, int(10 * s))}pt;"
+            f"background:transparent; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -470,7 +470,7 @@ class HistoryView(QWidget):
         status_label = QLabel("STATUS")
         status_label.setProperty("muted", "1")
         status_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         self.combo_status = QComboBox()
         self.combo_status.addItem("Todos os status", "")
@@ -485,7 +485,7 @@ class HistoryView(QWidget):
         period_col.setSpacing(max(6, int(8 * s)))
         period_label = QLabel("PERÍODO")
         period_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         period_row = QHBoxLayout()
         period_row.setSpacing(max(6, int(8 * s)))
@@ -511,7 +511,7 @@ class HistoryView(QWidget):
         until_label = QLabel("ATÉ")
         until_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         until_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
 
         self.input_date_to = PeriodDateEdit(ALL_DATES_SENTINEL)
@@ -542,7 +542,7 @@ class HistoryView(QWidget):
         operator_col.setSpacing(max(6, int(8 * s)))
         operator_label = QLabel("OPERADOR / AJUDANTE")
         operator_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         self.combo_operator = QComboBox()
         self.combo_operator.setFixedHeight(max(38, int(44 * s)))
@@ -554,7 +554,7 @@ class HistoryView(QWidget):
         production_col.setSpacing(max(6, int(8 * s)))
         production_label = QLabel("PRODUÇÃO")
         production_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         self.combo_production = QComboBox()
         for label, value in PRODUCTION_OPTIONS:
@@ -569,7 +569,7 @@ class HistoryView(QWidget):
         machine_col.setSpacing(max(6, int(8 * s)))
         machine_label = QLabel("MÁQUINA")
         machine_label.setStyleSheet(
-            f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         self.combo_machine = QComboBox()
         self.combo_machine.setFixedHeight(max(38, int(44 * s)))
@@ -582,7 +582,7 @@ class HistoryView(QWidget):
         search_label = QLabel("BUSCA")
         search_label.setProperty("muted", "1")
         search_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
         )
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("Buscar por PED, cliente ou obra...")

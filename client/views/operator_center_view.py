@@ -128,7 +128,7 @@ class OperatorCenterView(QWidget):
 
         self.result_hint = QLabel("")
         self.result_hint.setProperty("muted", "1")
-        self.result_hint.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
+        self.result_hint.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt;")
         hdr.addWidget(self.result_hint)
 
         new_btn = QPushButton("NOVO")
@@ -176,18 +176,18 @@ class OperatorCenterView(QWidget):
         )
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt;")
         lay.addWidget(title)
         lay.addWidget(helper)
 
         self.form_status = QLabel("Novo operador")
         self.form_status.setProperty("accent", "1")
-        self.form_status.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:700;")
+        self.form_status.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:700;")
         lay.addWidget(self.form_status)
 
         name_lbl = QLabel("NOME")
         name_lbl.setProperty("muted", "1")
-        name_lbl.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        name_lbl.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
         self.input_name = QLineEdit()
         self.input_name.setFixedHeight(max(38, int(44 * s)))
         self.input_name.setStyleSheet(_field_style(s))
@@ -199,7 +199,7 @@ class OperatorCenterView(QWidget):
 
         role_lbl = QLabel("FUNÇÃO")
         role_lbl.setProperty("muted", "1")
-        role_lbl.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        role_lbl.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
         self.combo_role = QComboBox()
         self.combo_role.setFixedHeight(max(38, int(44 * s)))
         self.combo_role.setStyleSheet(_field_style(s))

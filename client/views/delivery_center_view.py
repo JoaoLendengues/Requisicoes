@@ -165,13 +165,13 @@ class DeliveryCenterView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
 
         title = QLabel("Entregas")
-        title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;")
         subtitle = QLabel(
             "Agenda operacional de entregas com acompanhamento de prazos, status e conclusao."
         )
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
+        subtitle.setStyleSheet(f"background:transparent; font-size:{max(8, int(10 * s))}pt;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
@@ -181,12 +181,12 @@ class DeliveryCenterView(QWidget):
         self.date_label = QLabel(_format_header_date())
         self.date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.date_label.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:700; color:{theme.TEXT_MEDIUM};"
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:700; color:{theme.TEXT_MEDIUM};"
         )
         self.updated_label = QLabel("Atualizado em -")
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.updated_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM};"
+            f"background:transparent; font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM};"
         )
         self.refresh_btn = QPushButton("ATUALIZAR")
         self.refresh_btn.setFixedHeight(max(34, int(38 * s)))
@@ -796,7 +796,7 @@ class DeliveryCenterView(QWidget):
 
         ped = str(req.get("ped_number") or "")
         header = QLabel(f"Pedido PED #{ped}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         lbl_date = QLabel("Novo prazo de entrega:")
@@ -840,7 +840,7 @@ class DeliveryCenterView(QWidget):
         layout.addWidget(reason_combo)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 
@@ -903,13 +903,13 @@ class DeliveryCenterView(QWidget):
 
         ped = str(req.get("ped_number") or "")
         header = QLabel(f"Pedido PED #{ped}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         info = QLabel("Selecione o motivo para cancelar a entrega e retornar para a agenda.")
         info.setWordWrap(True)
         info.setProperty("muted", "1")
-        info.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        info.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
         layout.addWidget(info)
 
         combo = QComboBox()
@@ -922,7 +922,7 @@ class DeliveryCenterView(QWidget):
         layout.addWidget(combo)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 

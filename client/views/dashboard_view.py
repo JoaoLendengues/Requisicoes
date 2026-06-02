@@ -609,12 +609,12 @@ class DashboardView(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Painel de Produção")
-        title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;")
         subtitle = QLabel(
             "Visão executiva da operação industrial com indicadores, alertas e ritmo de produção."
         )
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
+        subtitle.setStyleSheet(f"background:transparent; font-size:{max(8, int(10 * s))}pt;")
         subtitle.setWordWrap(True)
         title_col.addWidget(title)
         title_col.addWidget(subtitle)

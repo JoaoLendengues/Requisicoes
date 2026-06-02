@@ -418,7 +418,7 @@ class Sidebar(QWidget):
         else:
             logo_label.setText("PINHEIRO FERRAGENS")
             logo_label.setStyleSheet(
-                f"color:{theme.TEXT_WHITE}; font-size:{max(11, int(13 * self.scale))}pt; font-weight:bold;"
+                f"background:transparent; color:{theme.TEXT_WHITE}; font-size:{max(11, int(13 * self.scale))}pt; font-weight:bold;"
             )
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_layout.addWidget(logo_label)
@@ -476,7 +476,7 @@ class Sidebar(QWidget):
 
         self.user_label = QLabel(f"USUÁRIO: {session.user_name}")
         self.user_label.setStyleSheet(
-            f"color:rgba(255,255,255,0.78); font-size:{max(8, int(9 * self.scale))}pt;"
+            f"background:transparent; color:rgba(255,255,255,0.78); font-size:{max(8, int(9 * self.scale))}pt;"
         )
         self.user_label.setWordWrap(True)
         user_layout.addWidget(self.user_label, 1)

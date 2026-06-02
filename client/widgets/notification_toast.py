@@ -149,20 +149,20 @@ class NotificationToast(QFrame):
         header.setContentsMargins(0, 0, 0, 0)
 
         icon_lbl = QLabel(_ICONS.get(data.get("type", ""), "🔔"))
-        icon_lbl.setStyleSheet(f"font-size: {self._sc(17)}px;")
+        icon_lbl.setStyleSheet(f"background:transparent; font-size: {self._sc(17)}px;")
         icon_lbl.setFixedWidth(self._sc(26))
         header.addWidget(icon_lbl)
 
         title_lbl = QLabel(data.get("title", "Notificação"))
         title_lbl.setStyleSheet(
-            f"color: {theme.TOAST_TITLE}; font-size: {self._pt(10)}pt; font-weight: 700;"
+            f"background:transparent; color: {theme.TOAST_TITLE}; font-size: {self._pt(10)}pt; font-weight: 700;"
         )
         title_lbl.setWordWrap(True)
         header.addWidget(title_lbl, 1)
 
         ts_lbl = QLabel("agora")
         ts_lbl.setStyleSheet(
-            f"color: {theme.TOAST_MUTED}; font-size: {self._pt(8)}pt; font-weight: 400;"
+            f"background:transparent; color: {theme.TOAST_MUTED}; font-size: {self._pt(8)}pt; font-weight: 400;"
         )
         header.addWidget(ts_lbl)
 

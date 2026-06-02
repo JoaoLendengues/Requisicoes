@@ -65,7 +65,7 @@ class UpdateAvailableDialog(QDialog):
         # Changelog
         changelog_header = QLabel("O que há de novo:")
         changelog_header.setStyleSheet(
-            f"font-size: 9pt; font-weight: 700; color: {theme.TEXT_MEDIUM};"
+            f"background:transparent; font-size: 9pt; font-weight: 700; color: {theme.TEXT_MEDIUM};"
         )
         layout.addWidget(changelog_header)
 
@@ -84,7 +84,7 @@ class UpdateAvailableDialog(QDialog):
             "O aplicativo será fechado para aplicar a atualização e reabrirá automaticamente."
         )
         aviso.setWordWrap(True)
-        aviso.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_MEDIUM};")
+        aviso.setStyleSheet(f"background:transparent; font-size: 9pt; color: {theme.TEXT_MEDIUM};")
         layout.addWidget(aviso)
 
         # Separador
@@ -114,7 +114,7 @@ class UpdateAvailableDialog(QDialog):
         # Progresso (oculto até o download começar)
         self._progress_label = QLabel("Baixando atualização...")
         self._progress_label.setStyleSheet(
-            f"font-size: 9pt; color: {theme.TEXT_MEDIUM};"
+            f"background:transparent; font-size: 9pt; color: {theme.TEXT_MEDIUM};"
         )
         self._progress_label.setVisible(False)
         layout.addWidget(self._progress_label)

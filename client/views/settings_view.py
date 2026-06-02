@@ -61,7 +61,7 @@ def _section(title: str, scale: float) -> QLabel:
     cleaned = title.lstrip("⚙️🌐🎨📥📦 ").strip()
     lbl = QLabel(cleaned)
     lbl.setStyleSheet(
-        f"font-size:{max(10,int(12*scale))}pt; font-weight:800; padding-top:4px;"
+        f"background:transparent; font-size:{max(10,int(12*scale))}pt; font-weight:800; padding-top:4px;"
     )
     return lbl
 
@@ -133,7 +133,8 @@ def _checkbox_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     sz = max(14, int(16 * scale))
     return (
-        f"QCheckBox {{ font-size:{fs}pt; color:{theme.TEXT_DARK}; spacing:8px; }}"
+        f"QCheckBox {{ font-size:{fs}pt; color:{theme.TEXT_DARK}; spacing:8px;"
+        f"  background:transparent; }}"
         f"QCheckBox::indicator {{"
         f"  width:{sz}px; height:{sz}px;"
         f"  border:1.5px solid {theme.BORDER_COLOR}; border-radius:4px;"
@@ -228,11 +229,11 @@ class SettingsView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
 
         title = QLabel("Configurações")
-        title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;")
         subtitle = QLabel("Preferências e configurações do sistema.")
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
+        subtitle.setStyleSheet(f"background:transparent; font-size:{max(8, int(10 * s))}pt;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
@@ -430,7 +431,7 @@ class SettingsView(QWidget):
             f"DPI: {res.dpi:.0f}  |  Recomendado: {res.recommended_label}"
         )
         self.screen_info.setProperty("muted", "1")
-        self.screen_info.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        self.screen_info.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         lay_ap.addWidget(self.screen_info)
 
         lay_ap.addWidget(_section("Tamanho de Fonte", s))
@@ -458,7 +459,7 @@ class SettingsView(QWidget):
             "Aumenta ou reduz apenas os textos, mantendo o layout da interface."
         )
         font_size_hint.setProperty("muted", "1")
-        font_size_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        font_size_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         lay_ap.addWidget(font_size_hint)
 
         _add_tab("Aparência", _wrap(card_ap))
@@ -511,7 +512,7 @@ class SettingsView(QWidget):
         self._btn_change_pwd.clicked.connect(self._on_change_password)
         pwd_action_row.addWidget(self._btn_change_pwd)
         self._lbl_pwd_status = QLabel("")
-        self._lbl_pwd_status.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        self._lbl_pwd_status.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         pwd_action_row.addWidget(self._lbl_pwd_status)
         pwd_action_row.addStretch()
         lay_ct.addLayout(pwd_action_row)
@@ -535,7 +536,7 @@ class SettingsView(QWidget):
             update_row.setSpacing(max(8, int(10 * s)))
             self._version_label = QLabel(f"Versão atual: v{_CURRENT_VERSION}")
             self._version_label.setProperty("muted", "1")
-            self._version_label.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            self._version_label.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
             update_row.addWidget(self._version_label)
             update_row.addStretch()
             self.btn_check_update = QPushButton("Verificar atualizações")
@@ -547,7 +548,7 @@ class SettingsView(QWidget):
             self._update_status_label = QLabel("")
             self._update_status_label.setProperty("muted", "1")
             self._update_status_label.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             lay_sis.addWidget(self._update_status_label)
 
@@ -578,7 +579,7 @@ class SettingsView(QWidget):
             self.lbl_conn_status = QLabel("")
             self.lbl_conn_status.setProperty("muted", "1")
             self.lbl_conn_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             conn_grid.addWidget(self.lbl_conn_status, 1, 1, 1, 2)
             conn_vl.addLayout(conn_grid)
@@ -611,7 +612,7 @@ class SettingsView(QWidget):
             )
             self.operational_status.setProperty("muted", "1")
             self.operational_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             billing_vl.addWidget(self.operational_status)
 
@@ -639,7 +640,7 @@ class SettingsView(QWidget):
             )
             min_deliv_hint.setWordWrap(True)
             min_deliv_hint.setProperty("muted", "1")
-            min_deliv_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            min_deliv_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
             billing_vl.addWidget(min_deliv_hint)
 
             lay_sis.addWidget(self._billing_section)
@@ -684,7 +685,7 @@ class SettingsView(QWidget):
             self.cancel_reason_status = QLabel("Sincronizando motivos com o servidor...")
             self.cancel_reason_status.setProperty("muted", "1")
             self.cancel_reason_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             cancel_actions_row.addWidget(self.cancel_reason_status, 1)
             cancel_vl.addLayout(cancel_actions_row)
@@ -709,7 +710,7 @@ class SettingsView(QWidget):
             )
             cancel_hint.setWordWrap(True)
             cancel_hint.setProperty("muted", "1")
-            cancel_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            cancel_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
             cancel_vl.addWidget(cancel_hint)
             self._cancel_reasons_section.setVisible(session.settings_show_billing)
 
@@ -752,7 +753,7 @@ class SettingsView(QWidget):
             self.delivery_cancel_reason_status = QLabel("Sincronizando motivos com o servidor...")
             self.delivery_cancel_reason_status.setProperty("muted", "1")
             self.delivery_cancel_reason_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             delivery_cancel_actions_row.addWidget(self.delivery_cancel_reason_status, 1)
             delivery_cancel_vl.addLayout(delivery_cancel_actions_row)
@@ -777,7 +778,7 @@ class SettingsView(QWidget):
             )
             delivery_cancel_hint.setWordWrap(True)
             delivery_cancel_hint.setProperty("muted", "1")
-            delivery_cancel_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            delivery_cancel_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
             delivery_cancel_vl.addWidget(delivery_cancel_hint)
             self._delivery_cancel_reasons_section.setVisible(session.settings_show_billing)
 
@@ -820,7 +821,7 @@ class SettingsView(QWidget):
             self.delivery_deadline_reason_status = QLabel("Sincronizando motivos com o servidor...")
             self.delivery_deadline_reason_status.setProperty("muted", "1")
             self.delivery_deadline_reason_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             deadline_actions_row.addWidget(self.delivery_deadline_reason_status, 1)
             deadline_vl.addLayout(deadline_actions_row)
@@ -845,7 +846,7 @@ class SettingsView(QWidget):
             )
             deadline_hint.setWordWrap(True)
             deadline_hint.setProperty("muted", "1")
-            deadline_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            deadline_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
             deadline_vl.addWidget(deadline_hint)
             self._delivery_deadline_reasons_section.setVisible(session.settings_show_billing)
 
@@ -968,7 +969,7 @@ class SettingsView(QWidget):
             self._lbl_bg_folder_status = QLabel("")
             self._lbl_bg_folder_status.setWordWrap(True)
             self._lbl_bg_folder_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             lay_bg.addWidget(self._lbl_bg_folder_status)
 
@@ -978,7 +979,7 @@ class SettingsView(QWidget):
             )
             bg_folder_hint.setWordWrap(True)
             bg_folder_hint.setProperty("muted", "1")
-            bg_folder_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            bg_folder_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
             lay_bg.addWidget(bg_folder_hint)
 
             self._bg_table = QTableWidget(0, 1)
@@ -1020,7 +1021,7 @@ class SettingsView(QWidget):
             )
             bg_hint.setWordWrap(True)
             bg_hint.setProperty("muted", "1")
-            bg_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            bg_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
             lay_bg.addWidget(bg_hint)
 
             # A listagem lê uma pasta de REDE (UNC) — deferir para a 1ª abertura
@@ -1064,7 +1065,7 @@ class SettingsView(QWidget):
 
             sched_title = QLabel("Agendamento:")
             sched_title.setStyleSheet(
-                f"font-size:{max(9,int(10*s))}pt; font-weight:700; padding-top:6px;"
+                f"background:transparent; font-size:{max(9,int(10*s))}pt; font-weight:700; padding-top:6px;"
             )
             lay_bk.addWidget(sched_title)
 
@@ -1159,7 +1160,7 @@ class SettingsView(QWidget):
             save_sched_row.addWidget(self._btn_save_backup_settings)
             self._lbl_sched_status = QLabel("")
             self._lbl_sched_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             save_sched_row.addWidget(self._lbl_sched_status)
             save_sched_row.addStretch()
@@ -1185,7 +1186,7 @@ class SettingsView(QWidget):
             self._lbl_backup_status = QLabel("")
             self._lbl_backup_status.setWordWrap(True)
             self._lbl_backup_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
             lay_bk.addWidget(self._lbl_backup_status)
 
@@ -1223,7 +1224,7 @@ class SettingsView(QWidget):
             )
             backup_hint.setWordWrap(True)
             backup_hint.setProperty("muted", "1")
-            backup_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+            backup_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
             lay_bk.addWidget(backup_hint)
 
             self._start_api_worker("get_backup_settings")
@@ -1293,7 +1294,7 @@ class SettingsView(QWidget):
         guide_row.setSpacing(max(8, int(10 * s)))
         guide_hint = QLabel("Precisa relembrar alguma funcionalidade?")
         guide_hint.setProperty("muted", "1")
-        guide_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        guide_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         guide_row.addWidget(guide_hint)
         guide_row.addStretch()
         self.btn_show_guide = QPushButton("📖  Ver Guia Rápido")
@@ -1335,7 +1336,7 @@ class SettingsView(QWidget):
         )
         notif_size_hint.setWordWrap(True)
         notif_size_hint.setProperty("muted", "1")
-        notif_size_hint.setStyleSheet(f"font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        notif_size_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         notif_test_row.addWidget(notif_size_hint, 1)
         self._btn_test_notification = QPushButton("🔔  Testar")
         self._btn_test_notification.setFixedHeight(max(38, int(44 * s)))
@@ -1405,7 +1406,7 @@ class SettingsView(QWidget):
         if not code or not reason:
             self.cancel_reason_status.setText("Informe código e motivo para salvar.")
             self.cancel_reason_status.setStyleSheet(
-                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+                f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
             )
             return
 
@@ -1427,7 +1428,7 @@ class SettingsView(QWidget):
         self.input_cancel_reason_text.clear()
         self.cancel_reason_status.setText("Motivo pronto para salvar nas configurações.")
         self.cancel_reason_status.setStyleSheet(
-            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+            f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
         )
 
     def _remove_selected_cancel_reason(self) -> None:
@@ -1435,7 +1436,7 @@ class SettingsView(QWidget):
         if row < 0:
             self.cancel_reason_status.setText("Selecione um motivo para remover.")
             self.cancel_reason_status.setStyleSheet(
-                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+                f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
             )
             return
         self.cancel_reason_table.removeRow(row)
@@ -1443,7 +1444,7 @@ class SettingsView(QWidget):
         self.input_cancel_reason_text.clear()
         self.cancel_reason_status.setText("Motivo removido da lista local. Salve para confirmar.")
         self.cancel_reason_status.setStyleSheet(
-            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+            f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
         )
 
     def _populate_delivery_cancel_reason_table(self, rows: list[dict[str, str]]) -> None:
@@ -1489,7 +1490,7 @@ class SettingsView(QWidget):
         if not code or not reason:
             self.delivery_cancel_reason_status.setText("Informe codigo e motivo para salvar.")
             self.delivery_cancel_reason_status.setStyleSheet(
-                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+                f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
             )
             return
 
@@ -1513,7 +1514,7 @@ class SettingsView(QWidget):
             "Motivo de entrega pronto para salvar nas configuracoes."
         )
         self.delivery_cancel_reason_status.setStyleSheet(
-            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+            f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
         )
 
     def _remove_selected_delivery_cancel_reason(self) -> None:
@@ -1521,7 +1522,7 @@ class SettingsView(QWidget):
         if row < 0:
             self.delivery_cancel_reason_status.setText("Selecione um motivo de entrega para remover.")
             self.delivery_cancel_reason_status.setStyleSheet(
-                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+                f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
             )
             return
         self.delivery_cancel_reason_table.removeRow(row)
@@ -1531,7 +1532,7 @@ class SettingsView(QWidget):
             "Motivo de entrega removido da lista local. Salve para confirmar."
         )
         self.delivery_cancel_reason_status.setStyleSheet(
-            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+            f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
         )
 
     def _populate_delivery_deadline_reason_table(self, rows: list[dict[str, str]]) -> None:
@@ -1577,7 +1578,7 @@ class SettingsView(QWidget):
         if not code or not reason:
             self.delivery_deadline_reason_status.setText("Informe codigo e motivo para salvar.")
             self.delivery_deadline_reason_status.setStyleSheet(
-                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+                f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
             )
             return
 
@@ -1601,7 +1602,7 @@ class SettingsView(QWidget):
             "Motivo de prazo pronto para salvar nas configuracoes."
         )
         self.delivery_deadline_reason_status.setStyleSheet(
-            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+            f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
         )
 
     def _remove_selected_delivery_deadline_reason(self) -> None:
@@ -1609,7 +1610,7 @@ class SettingsView(QWidget):
         if row < 0:
             self.delivery_deadline_reason_status.setText("Selecione um motivo de prazo para remover.")
             self.delivery_deadline_reason_status.setStyleSheet(
-                f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+                f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
             )
             return
         self.delivery_deadline_reason_table.removeRow(row)
@@ -1619,7 +1620,7 @@ class SettingsView(QWidget):
             "Motivo de prazo removido da lista local. Salve para confirmar."
         )
         self.delivery_deadline_reason_status.setStyleSheet(
-            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
+            f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.SUCCESS};"
         )
 
     def refresh_operational_settings(self, silent: bool = False):
@@ -1705,7 +1706,7 @@ class SettingsView(QWidget):
                     f"Backup concluído: {filename}  ({size_kb} KB)"
                 )
                 self._lbl_backup_status.setStyleSheet(
-                    f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
+                    f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
                 )
                 # Refresca a tabela automaticamente após backup bem-sucedido
                 self._on_refresh_backup_table()
@@ -1713,7 +1714,7 @@ class SettingsView(QWidget):
                 error = data.get("error", "Erro desconhecido")
                 self._lbl_backup_status.setText(f"Falha no backup: {error}")
                 self._lbl_backup_status.setStyleSheet(
-                    f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
+                    f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
                 )
 
         if action == "list_backups":
@@ -1731,7 +1732,7 @@ class SettingsView(QWidget):
             s = self.scale
             self._lbl_pwd_status.setText("Senha alterada com sucesso!")
             self._lbl_pwd_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
             )
 
         if action == "get_backup_settings":
@@ -1750,7 +1751,7 @@ class SettingsView(QWidget):
             s = self.scale
             self._lbl_sched_status.setText("Agendamento salvo!")
             self._lbl_sched_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.SUCCESS};"
             )
 
     def _on_api_error(self, action: str, message: str):
@@ -1772,7 +1773,7 @@ class SettingsView(QWidget):
             s = self.scale
             self._lbl_backup_status.setText(f"Erro ao executar backup: {message}")
             self._lbl_backup_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
             )
 
         if action == "list_backups":
@@ -1785,7 +1786,7 @@ class SettingsView(QWidget):
             s = self.scale
             self._lbl_pwd_status.setText(f"Erro: {message}")
             self._lbl_pwd_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
             )
 
         if action == "get_backup_settings":
@@ -1797,7 +1798,7 @@ class SettingsView(QWidget):
             s = self.scale
             self._lbl_sched_status.setText(f"Erro: {message}")
             self._lbl_sched_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.DANGER};"
             )
 
     def _set_save_busy(self, busy: bool):
@@ -1961,12 +1962,12 @@ class SettingsView(QWidget):
         if ok:
             self.lbl_conn_status.setText("Servidor online e respondendo")
             self.lbl_conn_status.setStyleSheet(
-                f"color:{theme.SUCCESS}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; color:{theme.SUCCESS}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
         else:
             self.lbl_conn_status.setText("Não foi possível conectar ao servidor")
             self.lbl_conn_status.setStyleSheet(
-                f"color:{theme.DANGER}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
+                f"background:transparent; color:{theme.DANGER}; font-size:{max(8,int(9*s))}pt; font-weight:600;"
             )
         self.btn_test.setEnabled(True)
         self.btn_test.setText("Testar conexão")
@@ -2008,7 +2009,7 @@ class SettingsView(QWidget):
                 QMessageBox.warning(self, "Configurações", str(exc))
                 self.cancel_reason_status.setText(str(exc))
                 self.cancel_reason_status.setStyleSheet(
-                    f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
+                    f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{theme.DANGER};"
                 )
                 return
             res.save(**save_kwargs,
@@ -2117,7 +2118,7 @@ class SettingsView(QWidget):
     def _set_bg_folder_status(self, message: str, color: str) -> None:
         self._lbl_bg_folder_status.setText(message)
         self._lbl_bg_folder_status.setStyleSheet(
-            f"font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{color};"
+            f"background:transparent; font-size:{max(8,int(9*self.scale))}pt; font-weight:600; color:{color};"
         )
 
     def _refresh_bg_table(self) -> None:
@@ -2157,7 +2158,7 @@ class SettingsView(QWidget):
         def _set_status(msg: str, color: str):
             self._lbl_pwd_status.setText(msg)
             self._lbl_pwd_status.setStyleSheet(
-                f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{color};"
+                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600; color:{color};"
             )
 
         if not current:
@@ -2201,7 +2202,7 @@ class SettingsView(QWidget):
         self._btn_run_backup.setText("Executando...")
         self._lbl_backup_status.setText("Aguardando o servidor concluir o backup...")
         self._lbl_backup_status.setStyleSheet(
-            f"font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.TEXT_MEDIUM};"
+            f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600; color:{theme.TEXT_MEDIUM};"
         )
         self._start_api_worker("trigger_backup")
 

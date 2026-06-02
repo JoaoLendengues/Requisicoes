@@ -436,11 +436,11 @@ class ProductionView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
 
         title = QLabel(self.page_title)
-        title.setStyleSheet(f"font-size:{max(18, int(24 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;")
         subtitle = QLabel(self.page_subtitle)
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"font-size:{max(8, int(10 * s))}pt;")
+        subtitle.setStyleSheet(f"background:transparent; font-size:{max(8, int(10 * s))}pt;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
@@ -455,12 +455,12 @@ class ProductionView(QWidget):
 
         date_hint = QLabel("DATA ATUAL")
         date_hint.setProperty("muted", "1")
-        date_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        date_hint.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
         self.date_label = QLabel(_format_header_date())
-        self.date_label.setStyleSheet(f"font-size:{max(13, int(16 * s))}pt; font-weight:800;")
+        self.date_label.setStyleSheet(f"background:transparent; font-size:{max(13, int(16 * s))}pt; font-weight:800;")
         self.updated_label = QLabel("Atualizando dados...")
         self.updated_label.setProperty("muted", "1")
-        self.updated_label.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        self.updated_label.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt;")
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
         info_layout.addWidget(self.updated_label)
@@ -531,11 +531,11 @@ class ProductionView(QWidget):
         machine_title_col.setSpacing(max(3, int(4 * s)))
 
         machine_title = QLabel("Máquinas")
-        machine_title.setStyleSheet(f"color:{theme.TEXT_DARK}; font-size:{max(12, int(14 * s))}pt; font-weight:800;")
+        machine_title.setStyleSheet(f"background:transparent; color:{theme.TEXT_DARK}; font-size:{max(12, int(14 * s))}pt; font-weight:800;")
         machine_subtitle = QLabel("Selecione a requisição de cada card para finalizar ou devolver para a fila.")
         machine_subtitle.setWordWrap(True)
         machine_subtitle.setProperty("muted", "1")
-        machine_subtitle.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        machine_subtitle.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt;")
         machine_title_col.addWidget(machine_title)
         machine_title_col.addWidget(machine_subtitle)
         machine_subtitle.setText(
@@ -594,18 +594,18 @@ class ProductionView(QWidget):
 
         value_label = QLabel("0")
         value_label.setStyleSheet(
-            f"font-size:{max(20, int(26 * s))}pt; font-weight:800;"
+            f"background:transparent; font-size:{max(20, int(26 * s))}pt; font-weight:800;"
         )
         title_label = QLabel(title_text)
         title_label.setWordWrap(True)
         title_label.setStyleSheet(
-            f"font-size:{max(9, int(11 * s))}pt; font-weight:700;"
+            f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:700;"
         )
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
         helper_label.setProperty("muted", "1")
         helper_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; font-size:{max(7, int(8 * s))}pt;"
         )
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
@@ -643,7 +643,7 @@ class ProductionView(QWidget):
 
         title_row = QHBoxLayout()
         title = QLabel(title_text)
-        title.setStyleSheet(f"font-size:{max(12, int(14 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(12, int(14 * s))}pt; font-weight:800;")
         count = QLabel("0")
         count.setAlignment(Qt.AlignmentFlag.AlignCenter)
         count.setMinimumWidth(max(28, int(34 * s)))
@@ -658,7 +658,7 @@ class ProductionView(QWidget):
         subtitle = QLabel(subtitle_text)
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"font-size:{max(9, int(10 * s))}pt;")
+        subtitle.setStyleSheet(f"background:transparent; font-size:{max(9, int(10 * s))}pt;")
         layout.addLayout(title_row)
         layout.addWidget(subtitle)
 
@@ -818,7 +818,7 @@ class ProductionView(QWidget):
 
         if not self._machines_data:
             empty = QLabel("Nenhuma máquina cadastrada para este destino.")
-            empty.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:600;")
+            empty.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:600;")
             empty.setProperty("muted", "1")
             self.machines_grid.addWidget(empty, 0, 0)
             return
@@ -857,7 +857,7 @@ class ProductionView(QWidget):
 
         title = QLabel(str(machine.get("name") or "Máquina"))
         title.setWordWrap(True)
-        title.setStyleSheet(f"font-size:{max(9, int(11 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:800;")
         layout.addWidget(title)
 
         operator_names, helper_names = _split_team_members(machine)
@@ -869,7 +869,7 @@ class ProductionView(QWidget):
         )
         operator_summary.setWordWrap(True)
         operator_summary.setProperty("muted", "1")
-        operator_summary.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        operator_summary.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt;")
         if operator_names or helper_names:
             operator_summary.setToolTip(
                 "Operadores: "
@@ -890,7 +890,7 @@ class ProductionView(QWidget):
         status_row = QHBoxLayout()
         status_row.setSpacing(max(8, int(10 * s)))
         status_label = QLabel("Status da Máquina")
-        status_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
+        status_label.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;")
         status_label.setProperty("muted", "1")
         status_combo = QComboBox()
         for value, text in MACHINE_STATUS_OPTIONS:
@@ -967,10 +967,10 @@ class ProductionView(QWidget):
 
         title = QLabel(title_text.upper())
         title.setProperty("muted", "1")
-        title.setStyleSheet(f"font-size:{max(6, int(7 * s))}pt; font-weight:700;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(6, int(7 * s))}pt; font-weight:700;")
         value = QLabel(value_text)
         value.setWordWrap(True)
-        value.setStyleSheet(f"font-size:{max(9, int(11 * s))}pt; font-weight:800;")
+        value.setStyleSheet(f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:800;")
         layout.addWidget(title)
         layout.addWidget(value)
         return box
@@ -1102,13 +1102,13 @@ class ProductionView(QWidget):
 
         ped = str(req.get("ped_number") or "-")
         header = QLabel(f"Requisicao PED #{ped}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         helper = QLabel("Clique na maquina que sera usada nesta producao.")
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
         layout.addWidget(helper)
 
         scroll = QScrollArea()
@@ -1212,14 +1212,14 @@ class ProductionView(QWidget):
         layout.setSpacing(max(8, int(10 * self.scale)))
 
         header = QLabel(f"Máquina: {str(machine.get('name') or '').strip() or '-'}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
         header.setText(f"Maquina: {str(machine.get('name') or '').strip() or '-'}")
 
         helper = QLabel("Marque quais operadores cadastrados nesta maquina irao trabalhar nesta requisicao.")
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
         layout.addWidget(helper)
 
         selection_row = QHBoxLayout()
@@ -1249,14 +1249,14 @@ class ProductionView(QWidget):
         for name in operator_names:
             checkbox = QCheckBox(name)
             checkbox.setChecked(True)
-            checkbox.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+            checkbox.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
             content_layout.addWidget(checkbox)
             checkboxes.append(checkbox)
         content_layout.addStretch()
         layout.addWidget(scroll)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 
@@ -1462,13 +1462,13 @@ class ProductionView(QWidget):
 
         ped = str(req.get("ped_number") or "-")
         header = QLabel(f"Requisicao PED #{ped}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         helper = QLabel("Clique na maquina que sera usada nesta producao.")
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
         layout.addWidget(helper)
 
         scroll = QScrollArea()
@@ -1568,7 +1568,7 @@ class ProductionView(QWidget):
 
         machine_name = str(machine.get("name") or "").strip() or "-"
         header = QLabel(f"Maquina: {machine_name}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         helper = QLabel(
@@ -1576,7 +1576,7 @@ class ProductionView(QWidget):
         )
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
         layout.addWidget(helper)
 
         selection_row = QHBoxLayout()
@@ -1607,14 +1607,14 @@ class ProductionView(QWidget):
             role_label = WORKER_ROLE_LABELS.get(member["role"], "OPERADOR")
             checkbox = QCheckBox(f"{member['name']} ({role_label})")
             checkbox.setChecked(True)
-            checkbox.setStyleSheet(f"font-size:{max(8, int(9 * self.scale))}pt;")
+            checkbox.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
             content_layout.addWidget(checkbox)
             checkboxes.append((checkbox, member["name"], member["role"]))
         content_layout.addStretch()
         layout.addWidget(scroll)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 
@@ -1888,7 +1888,7 @@ class ProductionView(QWidget):
 
         ped = str(req.get("ped_number") or "")
         header = QLabel(f"Requisição PED #{ped}")
-        header.setStyleSheet(f"font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
         lbl_date = QLabel("Novo prazo de entrega:")
@@ -1913,7 +1913,7 @@ class ProductionView(QWidget):
         layout.addWidget(input_reason)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 
@@ -1982,7 +1982,7 @@ class ProductionView(QWidget):
         layout.addWidget(input_reason)
 
         error_lbl = QLabel("")
-        error_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * self.scale))}pt;")
         error_lbl.setVisible(False)
         layout.addWidget(error_lbl)
 
