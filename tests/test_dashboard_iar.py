@@ -18,6 +18,7 @@ from server.models.requisition import Requisition, RequisitionStatus, StatusHist
 from server.models.user import Role, User
 from server.routers.requisitions import (
     _DESTINATION_AR,
+    _DESTINATION_PINHEIRO,
     _PROD_CANCELED,
     _PROD_FINISHED,
     _PROD_STARTED,
@@ -80,6 +81,7 @@ def _req(
     delivery_date: datetime,
     status: RequisitionStatus,
     history: list[StatusHistory],
+    destination: str = _DESTINATION_AR,
 ) -> Requisition:
     vendor = _vendor(vendor_id, vendor_name)
     client = _client(req_id, f"CLIENTE {req_id}")
@@ -95,7 +97,7 @@ def _req(
         emission_date=emission_at,
         created_at=emission_at,
         delivery_date=delivery_date.date(),
-        production_destination=_DESTINATION_AR,
+        production_destination=destination,
         status_history=history,
     )
 
@@ -203,7 +205,7 @@ def test_build_iar_general_uses_deadline_productivity_and_cancelation_weights():
         ],
     )
 
-    summary = _build_iar_general([req_on_time, req_late, req_open, req_canceled], "year", None, None, now)
+    summary = _build_iar_general([req_on_time, req_late, req_open, req_canceled], "year", None, None, "", now)
 
     assert summary.received_count == 4
     assert summary.finalized_count == 2
@@ -213,6 +215,90 @@ def test_build_iar_general_uses_deadline_productivity_and_cancelation_weights():
     assert summary.produtividade_percent == 50.0
     assert summary.cancelamentos_percent == 75.0
     assert summary.iar_percent == 55.0
+
+
+def test_build_iar_general_filters_by_production_destination():
+    now = datetime.utcnow().replace(hour=15, minute=0, second=0, microsecond=0)
+
+    ar_start = now - timedelta(days=5)
+    ar_finish = now - timedelta(days=3)
+    pinheiro_start = now - timedelta(days=4)
+    pinheiro_finish = now - timedelta(days=3)
+
+    req_ar = _req(
+        21,
+        vendor_id=1,
+        vendor_name="ALICE",
+        weight=6.0,
+        emission_at=now - timedelta(days=6),
+        delivery_date=ar_start,
+        status=RequisitionStatus.FATURADO,
+        history=[
+            _status_entry(
+                21,
+                RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                RequisitionStatus.EM_PRODUCAO.value,
+                ar_start,
+                _prod_note(_PROD_STARTED, _DESTINATION_AR, machine="PRENSA 05"),
+                21,
+            ),
+            _status_entry(
+                21,
+                RequisitionStatus.EM_PRODUCAO.value,
+                RequisitionStatus.FATURADO.value,
+                ar_finish,
+                _prod_note(_PROD_FINISHED, _DESTINATION_AR, machine="PRENSA 05"),
+                22,
+            ),
+        ],
+        destination=_DESTINATION_AR,
+    )
+    req_pinheiro = _req(
+        22,
+        vendor_id=2,
+        vendor_name="BRUNO",
+        weight=4.5,
+        emission_at=now - timedelta(days=5),
+        delivery_date=pinheiro_finish,
+        status=RequisitionStatus.FATURADO,
+        history=[
+            _status_entry(
+                22,
+                RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                RequisitionStatus.EM_PRODUCAO.value,
+                pinheiro_start,
+                _prod_note(_PROD_STARTED, _DESTINATION_PINHEIRO, machine="LASER 07"),
+                23,
+            ),
+            _status_entry(
+                22,
+                RequisitionStatus.EM_PRODUCAO.value,
+                RequisitionStatus.FATURADO.value,
+                pinheiro_finish,
+                _prod_note(_PROD_FINISHED, _DESTINATION_PINHEIRO, machine="LASER 07"),
+                24,
+            ),
+        ],
+        destination=_DESTINATION_PINHEIRO,
+    )
+
+    summary = _build_iar_general(
+        [req_ar, req_pinheiro],
+        "year",
+        None,
+        None,
+        _DESTINATION_PINHEIRO,
+        now,
+    )
+
+    assert summary.received_count == 1
+    assert summary.finalized_count == 1
+    assert summary.on_time_count == 1
+    assert summary.canceled_count == 0
+    assert summary.prazo_percent == 100.0
+    assert summary.produtividade_percent == 100.0
+    assert summary.cancelamentos_percent == 100.0
+    assert summary.iar_percent == 100.0
 
 
 def test_build_top_vendor_rows_orders_by_iar_percent():
@@ -312,6 +398,7 @@ def test_build_top_vendor_rows_orders_by_iar_percent():
         "year",
         None,
         None,
+        "",
         now,
     )
 
@@ -327,3 +414,78 @@ def test_build_top_vendor_rows_orders_by_iar_percent():
     assert rows[1].produtividade_percent == 100.0
     assert rows[1].cancelamentos_percent == 100.0
     assert rows[1].iar_percent == 75.0
+
+
+def test_build_top_vendor_rows_filters_by_production_destination():
+    now = datetime.utcnow().replace(hour=15, minute=0, second=0, microsecond=0)
+
+    req_ar = _req(
+        31,
+        vendor_id=1,
+        vendor_name="ALICE",
+        weight=7.5,
+        emission_at=now - timedelta(days=5),
+        delivery_date=now - timedelta(days=4),
+        status=RequisitionStatus.FATURADO,
+        history=[
+            _status_entry(
+                31,
+                RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                RequisitionStatus.EM_PRODUCAO.value,
+                now - timedelta(days=4, hours=6),
+                _prod_note(_PROD_STARTED, _DESTINATION_AR, machine="PRENSA 06"),
+                31,
+            ),
+            _status_entry(
+                31,
+                RequisitionStatus.EM_PRODUCAO.value,
+                RequisitionStatus.FATURADO.value,
+                now - timedelta(days=4),
+                _prod_note(_PROD_FINISHED, _DESTINATION_AR, machine="PRENSA 06"),
+                32,
+            ),
+        ],
+        destination=_DESTINATION_AR,
+    )
+    req_pinheiro = _req(
+        32,
+        vendor_id=2,
+        vendor_name="BRUNO",
+        weight=5.0,
+        emission_at=now - timedelta(days=4),
+        delivery_date=now - timedelta(days=3),
+        status=RequisitionStatus.FATURADO,
+        history=[
+            _status_entry(
+                32,
+                RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                RequisitionStatus.EM_PRODUCAO.value,
+                now - timedelta(days=3, hours=8),
+                _prod_note(_PROD_STARTED, _DESTINATION_PINHEIRO, machine="LASER 08"),
+                33,
+            ),
+            _status_entry(
+                32,
+                RequisitionStatus.EM_PRODUCAO.value,
+                RequisitionStatus.FATURADO.value,
+                now - timedelta(days=3),
+                _prod_note(_PROD_FINISHED, _DESTINATION_PINHEIRO, machine="LASER 08"),
+                34,
+            ),
+        ],
+        destination=_DESTINATION_PINHEIRO,
+    )
+
+    rows = _build_top_vendor_rows(
+        [req_ar, req_pinheiro],
+        "year",
+        None,
+        None,
+        _DESTINATION_PINHEIRO,
+        now,
+    )
+
+    assert len(rows) == 1
+    assert rows[0].vendor_name == "BRUNO"
+    assert rows[0].requisition_count == 1
+    assert rows[0].iar_percent == 100.0

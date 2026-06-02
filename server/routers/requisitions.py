@@ -2425,6 +2425,7 @@ def _build_iar_general(
     period_key: str,
     start_date: date | None = None,
     end_date: date | None = None,
+    destination: str = "",
     now: datetime | None = None,
 ) -> DashboardIarSummaryItem:
     received_count = 0
@@ -2433,6 +2434,8 @@ def _build_iar_general(
     canceled_count = 0
 
     for req in reqs:
+        if destination and _current_production_destination(req) != destination:
+            continue
         emission_at = _parse_local_emission_datetime(req.emission_date) or _to_local_datetime(req.created_at)
         if not _datetime_in_performance_period(
             emission_at,
@@ -2466,10 +2469,13 @@ def _build_top_vendor_rows(
     period_key: str,
     start_date: date | None = None,
     end_date: date | None = None,
+    destination: str = "",
     now: datetime | None = None,
 ) -> list[DashboardVendorItem]:
     stats: dict[tuple[int, str], dict[str, object]] = {}
     for req in reqs:
+        if destination and _current_production_destination(req) != destination:
+            continue
         emission_at = _parse_local_emission_datetime(req.emission_date) or _to_local_datetime(req.created_at)
         if not _datetime_in_performance_period(
             emission_at,
@@ -2809,6 +2815,7 @@ def _build_management_dashboard(
     performance_period: str = "month",
     performance_date_start: date | None = None,
     performance_date_end: date | None = None,
+    performance_destination: str = "",
     people_period: str = "30d",
     people_destination: str = "",
 ) -> ManagementDashboardResponse:
@@ -2903,6 +2910,7 @@ def _build_management_dashboard(
         performance_period,
         performance_date_start,
         performance_date_end,
+        performance_destination,
         now,
     )
     top_vendors = _build_top_vendor_rows(
@@ -2910,6 +2918,7 @@ def _build_management_dashboard(
         performance_period,
         performance_date_start,
         performance_date_end,
+        performance_destination,
         now,
     )
     top_operators, top_helpers = _build_top_production_people_rows(
@@ -3364,6 +3373,7 @@ def get_management_dashboard(
     performance_period: str = Query("month"),
     performance_date_start: date | None = Query(None),
     performance_date_end: date | None = Query(None),
+    performance_destination: str = Query(""),
     people_period: str = Query("30d"),
     people_destination: str = Query(""),
     db: Session = Depends(get_db),
@@ -3373,6 +3383,7 @@ def get_management_dashboard(
     normalized_ar_period = _normalize_dashboard_period(ar_period)
     normalized_industria_period = _normalize_dashboard_period(industria_period)
     normalized_performance_period = _normalize_performance_dashboard_period(performance_period)
+    normalized_performance_destination = _normalize_dashboard_destination(performance_destination)
     normalized_people_period = _normalize_dashboard_period(people_period)
     normalized_people_destination = _normalize_dashboard_destination(people_destination)
 
@@ -3399,6 +3410,7 @@ def get_management_dashboard(
         performance_period=normalized_performance_period,
         performance_date_start=performance_date_start,
         performance_date_end=performance_date_end,
+        performance_destination=normalized_performance_destination,
         people_period=normalized_people_period,
         people_destination=normalized_people_destination,
     )

@@ -56,6 +56,25 @@ _NEON_PERIOD_LABELS = {
     "weekly": "SEMANAL",
     "daily": "DIARIO",
 }
+_IAR_TOOLTIP_TEXTS = {
+    "iar_geral": (
+        "Resume a saúde da operação no período selecionado. Quanto mais perto de 100%, "
+        "melhor o equilíbrio entre prazo, produtividade e baixo cancelamento."
+    ),
+    "prazo_percent": (
+        "Percentual de pedidos finalizados dentro do prazo de entrega no período. "
+        "Quanto maior, melhor o cumprimento dos compromissos."
+    ),
+    "produtividade_percent": (
+        "Percentual de pedidos recebidos no período que já foram finalizados. "
+        "Indica o ritmo de escoamento da produção."
+    ),
+    "cancelamentos_percent": (
+        "Percentual de pedidos que seguiram ativos no período, sem cancelamento. "
+        "Quanto maior, menor a perda operacional e comercial."
+    ),
+}
+
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
@@ -558,6 +577,7 @@ class DashWorker(QObject):
         performance_period: str,
         performance_date_start: str | None,
         performance_date_end: str | None,
+        performance_destination: str,
         people_period: str,
         people_destination: str,
     ):
@@ -567,6 +587,7 @@ class DashWorker(QObject):
         self.performance_period = performance_period
         self.performance_date_start = performance_date_start
         self.performance_date_end = performance_date_end
+        self.performance_destination = performance_destination
         self.people_period = people_period
         self.people_destination = people_destination
 
@@ -579,6 +600,7 @@ class DashWorker(QObject):
                     performance_period=self.performance_period,
                     performance_date_start=self.performance_date_start,
                     performance_date_end=self.performance_date_end,
+                    performance_destination=self.performance_destination,
                     people_period=self.people_period,
                     people_destination=self.people_destination,
                 )
@@ -629,6 +651,7 @@ class DashboardView(QWidget):
         self.ar_period_combo: QComboBox | None = None
         self.industria_period_combo: QComboBox | None = None
         self.performance_period_combo: QComboBox | None = None
+        self.performance_destination_combo: QComboBox | None = None
         self.performance_date_from: QDateEdit | None = None
         self.performance_date_to: QDateEdit | None = None
         self.performance_date_wrap: QWidget | None = None
@@ -798,7 +821,7 @@ class DashboardView(QWidget):
         secondary_row.setSpacing(max(12, int(16 * s)))
         self.vendors_card = self._build_machine_section_card(
             "VENDEDORES COM MAIS REQUISIÇÕES",
-            "Ranking por IAR, prazo, produtividade, cancelamentos e peso requerido no mesmo periodo do KPI principal.",
+            "Ranking por IAR, prazo, produtividade, cancelamentos e peso requerido no mesmo período e filtro de produção do KPI principal.",
             self._build_top_vendors_table(),
             theme.PRIMARY,
             None,
@@ -893,6 +916,7 @@ class DashboardView(QWidget):
         title_label.setStyleSheet(
             f"font-size:{max(14, int(18 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
         )
+        title_label.setToolTip(_IAR_TOOLTIP_TEXTS["iar_geral"])
         subtitle_label = QLabel(
             "KPI principal da operaÃ§Ã£o, calculado por prazo, produtividade e eficiÃªncia de cancelamentos."
         )
@@ -959,8 +983,22 @@ class DashboardView(QWidget):
             self.performance_period_combo.setCurrentIndex(selected_index)
         self.performance_period_combo.currentIndexChanged.connect(self._on_performance_filter_changed)
 
+        production_filter_label = QLabel("PRODUÇÃO")
+        production_filter_label.setStyleSheet(
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        )
+        self.performance_destination_combo = QComboBox()
+        self.performance_destination_combo.setFixedHeight(max(34, int(38 * s)))
+        self.performance_destination_combo.setMinimumWidth(max(170, int(200 * s)))
+        self.performance_destination_combo.setStyleSheet(_field_style(s))
+        for label, value in self._production_filter_options:
+            self.performance_destination_combo.addItem(label, value)
+        self.performance_destination_combo.currentIndexChanged.connect(self._on_performance_filter_changed)
+
         filters_row.addWidget(self.performance_date_wrap, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         filters_row.addWidget(self.performance_period_combo, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        filters_row.addWidget(production_filter_label, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        filters_row.addWidget(self.performance_destination_combo, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         title_row.addLayout(title_col, 1)
         title_row.addLayout(filters_row)
@@ -974,9 +1012,9 @@ class DashboardView(QWidget):
         self.iar_value_label.setStyleSheet(
             f"font-size:{max(26, int(34 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
         )
-        self.iar_status_chip = QLabel("VERMELHO")
+        self.iar_status_chip = QLabel("PREOCUPANTE")
         self.iar_status_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.iar_status_chip.setMinimumWidth(max(90, int(108 * s)))
+        self.iar_status_chip.setMinimumWidth(max(118, int(136 * s)))
         hero_col.addWidget(self.iar_value_label)
         hero_col.addWidget(self.iar_status_chip, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -1019,6 +1057,10 @@ class DashboardView(QWidget):
         title_label.setStyleSheet(
             f"font-size:{max(8, int(9 * s))}pt; font-weight:800; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
         )
+        tooltip_text = _IAR_TOOLTIP_TEXTS.get(key, "")
+        if tooltip_text:
+            title_label.setToolTip(tooltip_text)
+            wrapper.setToolTip(tooltip_text)
         value_label = QLabel("0,00%")
         value_label.setStyleSheet(
             f"font-size:{max(13, int(16 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
@@ -1292,17 +1334,24 @@ class DashboardView(QWidget):
         end_date = self.performance_date_to.date().toPython()
         return period_key, start_date.isoformat(), end_date.isoformat()
 
+    def _selected_performance_destination(self) -> str:
+        return (
+            str(self.performance_destination_combo.currentData() or "")
+            if self.performance_destination_combo
+            else ""
+        )
+
     def _apply_iar_visuals(self, iar_percent: object) -> None:
         color = _iar_color(iar_percent)
         try:
             percentage = float(iar_percent)
         except (TypeError, ValueError):
             percentage = 0.0
-        status_text = "VERDE"
+        status_text = "BOM"
         if percentage < 75.0:
-            status_text = "VERMELHO"
+            status_text = "PREOCUPANTE"
         elif percentage < 90.0:
-            status_text = "AMARELO"
+            status_text = "ATENÇÃO"
 
         if self.iar_value_label is not None:
             self.iar_value_label.setStyleSheet(
@@ -1639,6 +1688,7 @@ class DashboardView(QWidget):
             else "30d"
         )
         performance_period, performance_date_start, performance_date_end = self._selected_performance_params()
+        performance_destination = self._selected_performance_destination()
         people_period = (
             str(self.people_period_combo.currentData() or "30d")
             if self.people_period_combo
@@ -1656,6 +1706,7 @@ class DashboardView(QWidget):
             performance_period,
             performance_date_start,
             performance_date_end,
+            performance_destination,
             people_period,
             people_destination,
         )
@@ -1683,6 +1734,8 @@ class DashboardView(QWidget):
             self.industria_period_combo.setEnabled(not loading)
         if self.performance_period_combo:
             self.performance_period_combo.setEnabled(not loading)
+        if self.performance_destination_combo:
+            self.performance_destination_combo.setEnabled(not loading)
         if self.performance_date_from:
             self.performance_date_from.setEnabled(not loading)
         if self.performance_date_to:
@@ -2106,6 +2159,7 @@ class DashboardView(QWidget):
                 self._apply_table_style(tbl)
         for combo in [
             getattr(self, "performance_period_combo", None),
+            getattr(self, "performance_destination_combo", None),
             getattr(self, "people_period_combo", None),
             getattr(self, "people_destination_combo", None),
             getattr(self, "ar_period_combo", None),

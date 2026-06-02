@@ -248,6 +248,7 @@ def get_management_dashboard(
     performance_period: str = "month",
     performance_date_start: str | None = None,
     performance_date_end: str | None = None,
+    performance_destination: str = "",
     people_period: str = "30d",
     people_destination: str = "",
 ) -> dict:
@@ -255,6 +256,7 @@ def get_management_dashboard(
         "ar_period": ar_period,
         "industria_period": industria_period,
         "performance_period": performance_period,
+        "performance_destination": performance_destination,
         "people_period": people_period,
         "people_destination": people_destination,
     }
