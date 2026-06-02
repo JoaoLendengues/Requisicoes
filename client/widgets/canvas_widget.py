@@ -6331,14 +6331,16 @@ class DrawingCanvas(QWidget):
 
     # Limpar
     def _clear(self):
-        reply = QMessageBox.question(
-            self,
-            "Confirmar limpeza",
-            "Deseja realmente limpar todo o desenho?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
+        box = QMessageBox(self)
+        box.setWindowTitle("Confirmar limpeza")
+        box.setText("Deseja realmente limpar todo o desenho?")
+        box.setIcon(QMessageBox.Icon.Question)
+        btn_sim = box.addButton("Sim", QMessageBox.ButtonRole.YesRole)
+        btn_nao = box.addButton("Não", QMessageBox.ButtonRole.NoRole)
+        box.setDefaultButton(btn_nao)
+        box.setEscapeButton(btn_nao)
+        box.exec()
+        if box.clickedButton() is not btn_sim:
             return
 
         self.scene.cancel_angle_mode()
