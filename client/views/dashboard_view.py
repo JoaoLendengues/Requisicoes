@@ -107,7 +107,11 @@ def _restore_table_sorting(table: QTableWidget) -> None:
     header.setSectionsClickable(allow_sorting)
     sort_column = int(table.property("sortColumn") or -1)
     if allow_sorting and sort_column >= 0:
-        sort_order = Qt.SortOrder(int(table.property("sortOrder") or int(Qt.SortOrder.AscendingOrder)))
+        sort_order = (
+            Qt.SortOrder.DescendingOrder
+            if str(table.property("sortOrder") or "asc") == "desc"
+            else Qt.SortOrder.AscendingOrder
+        )
         table.sortItems(sort_column, sort_order)
         header.setSortIndicator(sort_column, sort_order)
         header.setSortIndicatorShown(True)
@@ -1583,7 +1587,11 @@ class DashboardView(QWidget):
             return
 
         current_column = int(table.property("sortColumn") or -1)
-        current_order = Qt.SortOrder(int(table.property("sortOrder") or int(Qt.SortOrder.AscendingOrder)))
+        current_order = (
+            Qt.SortOrder.DescendingOrder
+            if str(table.property("sortOrder") or "asc") == "desc"
+            else Qt.SortOrder.AscendingOrder
+        )
         next_order = Qt.SortOrder.AscendingOrder
         if current_column == section:
             next_order = (
@@ -1593,7 +1601,10 @@ class DashboardView(QWidget):
             )
 
         table.setProperty("sortColumn", section)
-        table.setProperty("sortOrder", int(next_order))
+        table.setProperty(
+            "sortOrder",
+            "desc" if next_order == Qt.SortOrder.DescendingOrder else "asc",
+        )
         table.sortItems(section, next_order)
         header = table.horizontalHeader()
         header.setSortIndicator(section, next_order)
@@ -1634,7 +1645,7 @@ class DashboardView(QWidget):
         table.setProperty("blockedSortColumns", sorted(blocked_sort_columns or set()))
         table.setProperty("allowSorting", sortable)
         table.setProperty("sortColumn", -1)
-        table.setProperty("sortOrder", int(Qt.SortOrder.AscendingOrder))
+        table.setProperty("sortOrder", "asc")
         table.setSortingEnabled(False)
         header.setSectionsClickable(sortable)
         if sortable:
