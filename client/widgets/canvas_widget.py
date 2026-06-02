@@ -5805,12 +5805,13 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(60.0, -80.0))
             path.lineTo(QPointF(180.0, -80.0))
         elif preset == "perfil_2":
-            path.moveTo(QPointF(-140.0, -70.0))
-            path.lineTo(QPointF(-20.0, -70.0))
-            path.lineTo(QPointF(-20.0, 80.0))
-            path.lineTo(QPointF(180.0, 80.0))
-            path.lineTo(QPointF(180.0, -70.0))
-            path.lineTo(QPointF(60.0, -70.0))
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-30.0, -80.0))
+            path.moveTo(QPointF(30.0, -80.0))
+            path.lineTo(QPointF(170.0, -80.0))
+            path.lineTo(QPointF(170.0, 90.0))
+            path.lineTo(QPointF(-170.0, 90.0))
+            path.lineTo(QPointF(-170.0, -80.0))
 
         return path
 
