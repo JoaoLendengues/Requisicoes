@@ -99,6 +99,13 @@ class _Callback(QObject):
     error  = Signal(str)
 
 
+# Tracking global de threads em execucao. Mantem referencia Python aos
+# (thread, worker) enquanto rodam — sem isso, o GC do Python pode coletar
+# o worker antes do final, mesmo que o Qt o tenha movido para outro thread.
+# Cleanup automatico ao terminar evita acumulo entre sessoes longas.
+_active_pending: set = set()
+
+
 def _run_in_thread(fn, *args, on_result=None, on_error=None, **kwargs):
     worker = ApiWorker(fn, *args, **kwargs)
     thread = QThread()
@@ -122,6 +129,21 @@ def _run_in_thread(fn, *args, on_result=None, on_error=None, **kwargs):
 
     # Guarda cb no worker para não ser coletado pelo GC antes do término
     worker._cb = cb
+
+    # Tracking global: mantem o par vivo ate o thread terminar, mesmo se
+    # a view caller for fechada ou esquecer de armazenar a referencia.
+    pair = (thread, worker)
+    _active_pending.add(pair)
+
+    # Cleanup automatico dos objetos Qt quando o thread terminar.
+    # Sem isso, threads + workers acumulavam ate o app fechar, segurando
+    # stack/sockets/handles do kernel mesmo apos terminarem.
+    def _on_thread_finished():
+        _active_pending.discard(pair)
+
+    thread.finished.connect(_on_thread_finished)
+    thread.finished.connect(worker.deleteLater)
+    thread.finished.connect(thread.deleteLater)
 
     thread.start()
     return thread, worker

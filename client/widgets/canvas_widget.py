@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsTextItem,
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
-    QSizePolicy, QFrame, QComboBox, QApplication, QDialog,
+    QSizePolicy, QFrame, QComboBox, QApplication, QDialog, QMessageBox,
     QListWidget, QListWidgetItem,
 )
 from ..core import theme
@@ -143,6 +143,17 @@ _CHAPA_PRESET_LABELS = {
     "chapa_12": "Corte em Chapa 12",
     "chapa_13": "Corte em Chapa 13",
     "chapa_14": "Corte em Chapa 14",
+    "chapa_perfurada_1": "Chapa Perfurada 1",
+    "chapa_perfurada_2": "Chapa Perfurada 2",
+    "chapa_perfurada_3": "Chapa Perfurada 3",
+    "chapa_perfurada_4": "Chapa Perfurada 4",
+    "chapa_perfurada_5": "Chapa Perfurada 5",
+    "chapa_perfurada_6": "Chapa Perfurada 6",
+    "chapa_perfurada_7": "Chapa Perfurada 7",
+    "chapa_perfurada_8": "Chapa Perfurada 8",
+    "sapata_6_furos": "Sapata 6 Furos",
+    "sapata_9_furos": "Sapata 9 Furos",
+    "sapata_perfurada": "Sapata Perfurada",
 }
 _PERFIL_PRESET_LABELS = {
     "perfil_u": "Perfil U",
@@ -5950,6 +5961,90 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(80.0, 120.0))
             path.lineTo(QPointF(180.0, 120.0))
             path.lineTo(QPointF(180.0, -120.0))
+        elif preset in {
+            "chapa_perfurada_1",
+            "chapa_perfurada_2",
+            "chapa_perfurada_3",
+            "chapa_perfurada_4",
+            "chapa_perfurada_5",
+            "chapa_perfurada_6",
+            "chapa_perfurada_7",
+            "chapa_perfurada_8",
+            "sapata_6_furos",
+            "sapata_9_furos",
+            "sapata_perfurada",
+        }:
+            if preset == "sapata_6_furos":
+                left, top, width, height = -260.0, -120.0, 520.0, 240.0
+                hole_r = 42.0
+            elif preset == "sapata_9_furos":
+                left, top, width, height = -260.0, -180.0, 520.0, 360.0
+                hole_r = 38.0
+            elif preset == "sapata_perfurada":
+                left, top, width, height = -260.0, -180.0, 520.0, 360.0
+                hole_r = 32.0
+            else:
+                left, top, width, height = -160.0, -140.0, 320.0, 280.0
+                hole_r = 46.0
+            path.addRect(left, top, width, height)
+
+            def _add_hole(cx: float, cy: float, r: float = hole_r) -> None:
+                path.addEllipse(QPointF(cx, cy), r, r)
+
+            if preset == "chapa_perfurada_1":
+                _add_hole(-82.0, -68.0)
+                _add_hole(82.0, -68.0)
+                _add_hole(-82.0, 68.0)
+                _add_hole(82.0, 68.0)
+            elif preset == "chapa_perfurada_2":
+                _add_hole(-82.0, -68.0)
+                _add_hole(82.0, -68.0)
+                _add_hole(-82.0, 68.0)
+            elif preset == "chapa_perfurada_3":
+                _add_hole(-88.0, -76.0)
+                _add_hole(-88.0, 76.0)
+            elif preset == "chapa_perfurada_4":
+                _add_hole(78.0, -82.0)
+                _add_hole(78.0, 68.0)
+            elif preset == "chapa_perfurada_5":
+                _add_hole(-70.0, -82.0)
+                _add_hole(92.0, -82.0)
+            elif preset == "chapa_perfurada_6":
+                _add_hole(0.0, 0.0)
+            elif preset == "chapa_perfurada_7":
+                _add_hole(-84.0, 70.0)
+                _add_hole(78.0, 70.0)
+            elif preset == "chapa_perfurada_8":
+                _add_hole(96.0, -92.0)
+                _add_hole(-68.0, 82.0)
+                _add_hole(94.0, 82.0)
+            elif preset == "sapata_6_furos":
+                _add_hole(-160.0, -52.0)
+                _add_hole(0.0, -52.0)
+                _add_hole(160.0, -52.0)
+                _add_hole(-160.0, 52.0)
+                _add_hole(0.0, 52.0)
+                _add_hole(160.0, 52.0)
+            elif preset == "sapata_9_furos":
+                _add_hole(-180.0, -102.0)
+                _add_hole(0.0, -102.0)
+                _add_hole(180.0, -102.0)
+                _add_hole(-180.0, 0.0)
+                _add_hole(0.0, 0.0)
+                _add_hole(180.0, 0.0)
+                _add_hole(-180.0, 102.0)
+                _add_hole(0.0, 102.0)
+                _add_hole(180.0, 102.0)
+            elif preset == "sapata_perfurada":
+                _add_hole(-190.0, -108.0)
+                _add_hole(0.0, -108.0)
+                _add_hole(190.0, -108.0)
+                _add_hole(-190.0, 0.0)
+                _add_hole(190.0, 0.0)
+                _add_hole(-190.0, 108.0)
+                _add_hole(0.0, 108.0)
+                _add_hole(190.0, 108.0)
+                _add_hole(0.0, 0.0, 58.0)
 
         return path
 
@@ -6006,6 +6101,17 @@ class DrawingCanvas(QWidget):
             "chapa_12",
             "chapa_13",
             "chapa_14",
+            "chapa_perfurada_1",
+            "chapa_perfurada_2",
+            "chapa_perfurada_3",
+            "chapa_perfurada_4",
+            "chapa_perfurada_5",
+            "chapa_perfurada_6",
+            "chapa_perfurada_7",
+            "chapa_perfurada_8",
+            "sapata_6_furos",
+            "sapata_9_furos",
+            "sapata_perfurada",
         ):
             item = QListWidgetItem(_CHAPA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
@@ -6223,8 +6329,7 @@ class DrawingCanvas(QWidget):
         self._redo_stack.clear()
         self.changed.emit()
 
-    # Limpar
-    def _clear(self):
+    def _clear_scene_contents(self):
         self.scene.cancel_angle_mode()
         self.scene.cancel_mirror_axis()
         self.scene.cancel_manual_dimension()
@@ -6251,6 +6356,21 @@ class DrawingCanvas(QWidget):
         self._undo_stack.clear()
         self._redo_stack.clear()
         self.changed.emit()
+
+    # Limpar
+    def _clear(self):
+        box = QMessageBox(self)
+        box.setWindowTitle("Confirmar limpeza")
+        box.setText("Deseja realmente limpar todo o desenho?")
+        box.setIcon(QMessageBox.Icon.Question)
+        btn_sim = box.addButton("Sim", QMessageBox.ButtonRole.YesRole)
+        btn_nao = box.addButton("Não", QMessageBox.ButtonRole.NoRole)
+        box.setDefaultButton(btn_nao)
+        box.setEscapeButton(btn_nao)
+        box.exec()
+        if box.clickedButton() is not btn_sim:
+            return
+        self._clear_scene_contents()
 
     def _image_paths_from_mime(self, mime: QMimeData) -> list[str]:
         paths: list[str] = []
@@ -6538,7 +6658,7 @@ class DrawingCanvas(QWidget):
         }, ensure_ascii=False)
 
     def from_json(self, data: str):
-        self._clear()
+        self._clear_scene_contents()
         try:
             obj = json.loads(data)
         except (json.JSONDecodeError, TypeError):

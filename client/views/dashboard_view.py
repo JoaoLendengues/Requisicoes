@@ -138,6 +138,35 @@ def _flat_secondary_btn_style(scale: float) -> str:
     return theme.secondary_btn_style(scale)
 
 
+def _scoped_field_qss_dash(s: float) -> str:
+    """Escopa _field_style por property dashField='1'. Permite que apply_theme
+    cubra todos os combos/dates do dashboard em uma única chamada de
+    setStyleSheet no root da view."""
+    raw = _field_style(s)
+    return (raw
+        .replace("QComboBox, QDateEdit ",
+                 "QComboBox[dashField='1'], QDateEdit[dashField='1'] ")
+        .replace("QComboBox:hover, QDateEdit:hover",
+                 "QComboBox[dashField='1']:hover, QDateEdit[dashField='1']:hover")
+        .replace("QComboBox:focus, QDateEdit:focus",
+                 "QComboBox[dashField='1']:focus, QDateEdit[dashField='1']:focus")
+        .replace("QComboBox::", "QComboBox[dashField='1']::")
+        .replace("QDateEdit ", "QDateEdit[dashField='1'] ")
+        .replace("QComboBox QAbstractItemView",
+                 "QComboBox[dashField='1'] QAbstractItemView")
+    )
+
+
+def _scoped_chip_qss_dash(s: float) -> str:
+    """Escopa _neon_period_chip_style por property dashPeriodChip='1'."""
+    raw = _neon_period_chip_style(s)
+    selector = "QPushButton[dashPeriodChip='1']"
+    return (raw
+        .replace("QPushButton ", f"{selector} ")
+        .replace("QPushButton:", f"{selector}:")
+    )
+
+
 def _field_style(scale: float) -> str:
     fs = max(8, int(9 * scale))
     radius = max(12, int(14 * scale))
@@ -2122,12 +2151,74 @@ class DashboardView(QWidget):
                 )
 
     def apply_theme(self) -> None:
+        """Reaplica tema no Painel Gerencial — versao otimizada.
+
+        Otimizacoes:
+        1) QPalette no root cascateia cores fundamentais.
+        2) UMA chamada setStyleSheet no root cobre:
+           - bg da view + content + scroll area
+           - 12-15 cards (QFrame#dashboardCard) via objectName selector
+           - 5 combos + 2 dates (via property dashField)
+           - N period chips (via property dashPeriodChip)
+           Antes era 1 + 12-15 cards (loop findChildren) + 5 + 2 + N chamadas.
+        3) Properties setadas em runtime (custo desprezivel vs setStyleSheet).
+        """
         s = self.scale
         bg = theme.CONTENT_BG
-        self.setStyleSheet(f"QWidget#dashboardView {{ background:{bg}; }}")
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
+
+        # QPalette no root — cores cascateiam para os ~313 filhos automaticamente
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window,          QColor(bg))
+        pal.setColor(QPalette.ColorRole.WindowText,      QColor(theme.PANEL_TEXT_PRIMARY))
+        pal.setColor(QPalette.ColorRole.Text,            QColor(theme.PANEL_TEXT_PRIMARY))
+        pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(theme.PANEL_TEXT_MUTED))
+        pal.setColor(QPalette.ColorRole.Base,            QColor(theme.PANEL_SURFACE_BG))
+        pal.setColor(QPalette.ColorRole.Highlight,       QColor(theme.PANEL_NEON_PRIMARY))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.PANEL_TEXT_PRIMARY))
+        self.setPalette(pal)
+
+        # Marca properties (microssegundos cada). Em runtime para nao alterar
+        # _setup_ui — Qt resolve o property selector automaticamente.
+        for combo in (
+            getattr(self, "performance_period_combo", None),
+            getattr(self, "people_period_combo", None),
+            getattr(self, "people_destination_combo", None),
+            getattr(self, "ar_period_combo", None),
+            getattr(self, "industria_period_combo", None),
+        ):
+            if combo is not None:
+                combo.setProperty("dashField", "1")
+        for date_edit in (
+            getattr(self, "performance_date_from", None),
+            getattr(self, "performance_date_to", None),
+        ):
+            if date_edit is not None:
+                date_edit.setProperty("dashField", "1")
+        for btn in self._comparison_period_buttons.values():
+            btn.setProperty("dashPeriodChip", "1")
+
+        # QSS view-level: 1 chamada cobre bg + cards + fields + chips
+        card_qss = (
+            f"QFrame#dashboardCard {{"
+            f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            f"    stop:0 {theme.PANEL_CARD_BG_START},"
+            f"    stop:0.55 {theme.PANEL_CARD_BG_MID},"
+            f"    stop:1 {theme.PANEL_CARD_BG_END});"
+            f"  border:1px solid {_rgba(theme.PANEL_BORDER_SOFT, 126)};"
+            f"  border-radius:{max(18, int(20 * s))}px;"
+            f"}}"
+            f"QFrame#dashboardCard:hover {{ border-color:{_rgba(theme.PANEL_BORDER_SOFT, 210)}; }}"
+        )
+        self.setStyleSheet(
+            f"QWidget#dashboardView, QWidget#dashboardContent {{ background:{bg}; }}"
+            f"QScrollArea {{ border:none; background:{bg}; }}"
+            + card_qss
+            + _scoped_field_qss_dash(s)
+            + _scoped_chip_qss_dash(s)
+        )
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
-        self._page_content.setStyleSheet(f"QWidget#dashboardContent {{ background:{bg}; }}")
+
+        # Botoes individuais (poucos, nao vale property)
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self.btn_guide.setStyleSheet(
             f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
@@ -2146,6 +2237,8 @@ class DashboardView(QWidget):
             f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
+
+        # Tabelas (helper centralizado)
         for tbl in [
             getattr(self, "top_vendors_table", None),
             getattr(self, "top_operators_table", None),
@@ -2157,6 +2250,7 @@ class DashboardView(QWidget):
         ]:
             if tbl is not None:
                 self._apply_table_style(tbl)
+<<<<<<< HEAD
         for combo in [
             getattr(self, "performance_period_combo", None),
             getattr(self, "performance_destination_combo", None),
@@ -2175,12 +2269,16 @@ class DashboardView(QWidget):
                 date_edit.setStyleSheet(_field_style(s))
         for btn in self._comparison_period_buttons.values():
             btn.setStyleSheet(_neon_period_chip_style(s))
+=======
+>>>>>>> ef2556c487b99b4b535e508ee80c55c809eb6e66
         for tbl in [
             getattr(self, "top_machines_ar_table", None),
             getattr(self, "top_machines_industria_table", None),
         ]:
             if tbl is not None:
                 self._refresh_machine_status_labels(tbl)
+
+        # Labels com cor explicita (precisam reaplicar)
         for lbl in self._metric_labels.values():
             lbl.setStyleSheet(
                 f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
@@ -2209,19 +2307,6 @@ class DashboardView(QWidget):
             if chart is not None:
                 chart.update()
 
-        # Reaplica o gradiente em todos os cards do dashboard. Sem isso, ao
-        # trocar tema o gradient (gravado uma unica vez via _make_shadow_card)
-        # fica com a paleta antiga.
-        card_qss = (
-            f"QFrame#dashboardCard {{"
-            f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
-            f"    stop:0 {theme.PANEL_CARD_BG_START},"
-            f"    stop:0.55 {theme.PANEL_CARD_BG_MID},"
-            f"    stop:1 {theme.PANEL_CARD_BG_END});"
-            f"  border:1px solid {_rgba(theme.PANEL_BORDER_SOFT, 126)};"
-            f"  border-radius:{max(18, int(20 * s))}px;"
-            f"}}"
-            f"QFrame#dashboardCard:hover {{ border-color:{_rgba(theme.PANEL_BORDER_SOFT, 210)}; }}"
-        )
-        for card in self.findChildren(QFrame, "dashboardCard"):
-            card.setStyleSheet(card_qss)
+        # NOTE: removido o for card in findChildren(QFrame, "dashboardCard"):
+        # o card_qss agora está no QSS view-level (1 chamada cobre todos).
+        self.update()
