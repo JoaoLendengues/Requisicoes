@@ -124,6 +124,11 @@ _CHAPA_PRESET_LABELS = {
     "chapa_13": "Corte em Chapa 13",
     "chapa_14": "Corte em Chapa 14",
 }
+_PERFIL_PRESET_LABELS = {
+    "perfil_u": "Perfil U",
+    "perfil_1": "Perfil 1",
+    "perfil_2": "Perfil 2",
+}
 
 
 # Limita a maior dimensão de imagens inseridas/coladas no canvas antes de
@@ -351,6 +356,9 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         chapa_name = str(d.get("preset_chapa_name") or "").strip().lower()
         if chapa_name in _CHAPA_PRESET_LABELS:
             path_meta["preset_chapa_name"] = chapa_name
+        perfil_name = str(d.get("preset_perfil_name") or "").strip().lower()
+        if perfil_name in _PERFIL_PRESET_LABELS:
+            path_meta["preset_perfil_name"] = perfil_name
         vector_nodes = d.get("vector_pen_nodes")
         if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
             path_meta["vector_pen_nodes"] = vector_nodes
@@ -3789,6 +3797,11 @@ class DrawingCanvas(QWidget):
         btn_chapas.setToolTip("Inserir modelo de chapa")
         btn_chapas.clicked.connect(self._open_chapa_popup)
         btn_chapas.setStyleSheet(self._tool_btn_style())
+        btn_perfil = QPushButton("Perfil")
+        btn_perfil.setFixedHeight(fh)
+        btn_perfil.setToolTip("Inserir modelo de perfil")
+        btn_perfil.clicked.connect(self._open_perfil_popup)
+        btn_perfil.setStyleSheet(self._tool_btn_style())
 
         btn_dim = QPushButton("MM")
         btn_dim.setFixedHeight(fh)
@@ -3814,6 +3827,7 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_bandeja)
         row2.addWidget(btn_cantoneira)
         row2.addWidget(btn_chapas)
+        row2.addWidget(btn_perfil)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
@@ -5775,6 +5789,148 @@ class DrawingCanvas(QWidget):
         self._redo_stack.clear()
         self.changed.emit()
 
+    def _build_perfil_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+
+        if preset == "perfil_u":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-170.0, 80.0))
+            path.lineTo(QPointF(170.0, 80.0))
+            path.lineTo(QPointF(170.0, -80.0))
+        elif preset == "perfil_1":
+            path.moveTo(QPointF(-180.0, -80.0))
+            path.lineTo(QPointF(-60.0, -80.0))
+            path.lineTo(QPointF(-60.0, 60.0))
+            path.lineTo(QPointF(60.0, 60.0))
+            path.lineTo(QPointF(60.0, -80.0))
+            path.lineTo(QPointF(180.0, -80.0))
+        elif preset == "perfil_2":
+            path.moveTo(QPointF(-140.0, -70.0))
+            path.lineTo(QPointF(-20.0, -70.0))
+            path.lineTo(QPointF(-20.0, 80.0))
+            path.lineTo(QPointF(180.0, 80.0))
+            path.lineTo(QPointF(180.0, -70.0))
+            path.lineTo(QPointF(60.0, -70.0))
+
+        return path
+
+    def _perfil_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_perfil_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_perfil_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Perfil")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de perfil:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "perfil_u",
+            "perfil_1",
+            "perfil_2",
+        ):
+            item = QListWidgetItem(_PERFIL_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._perfil_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_perfil_preset(preset)
+
+    def _insert_perfil_preset(self, preset: str):
+        if preset not in _PERFIL_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_perfil_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_perfil_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
     # Limpar
     def _clear(self):
         self.scene.cancel_angle_mode()
@@ -6205,6 +6361,9 @@ class DrawingCanvas(QWidget):
                 chapa_name = str(meta.get("preset_chapa_name") or "").strip().lower()
                 if chapa_name in _CHAPA_PRESET_LABELS:
                     payload["preset_chapa_name"] = chapa_name
+                perfil_name = str(meta.get("preset_perfil_name") or "").strip().lower()
+                if perfil_name in _PERFIL_PRESET_LABELS:
+                    payload["preset_perfil_name"] = perfil_name
                 vector_nodes = meta.get("vector_pen_nodes")
                 if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
                     payload["vector_pen_nodes"] = vector_nodes
