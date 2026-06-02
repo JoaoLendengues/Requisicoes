@@ -1,7 +1,17 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtWidgets import QMessageBox, QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QColorDialog,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFontDialog,
+    QMessageBox,
+    QPushButton,
+    QWidget,
+)
 
 from . import theme
 
@@ -86,68 +96,242 @@ def _resolve_message_box_button(box: QMessageBox, letter: str):
 
 
 _MESSAGE_BOX_SHORTCUT_FILTER = _MessageBoxShortcutFilter()
+_DIALOG_THEME_FILTER: QObject | None = None
+
+
+def _dialog_surface_style() -> str:
+    primary_fg = "#04111F" if theme.is_dark else theme.TEXT_WHITE
+    return (
+        f"QDialog[fp_dialog='1'] {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {theme.PANEL_CARD_BG_START}, stop:0.56 {theme.PANEL_CARD_BG_MID}, stop:1 {theme.PANEL_CARD_BG_END});"
+        f"  color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {theme.rgba(theme.PANEL_NEON_PRIMARY, 94)};"
+        f"  border-radius:18px;"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QWidget {{ background:transparent; color:{theme.PANEL_TEXT_PRIMARY}; }}"
+        f"QDialog[fp_dialog='1'] QLabel {{ background:transparent; color:{theme.PANEL_TEXT_PRIMARY}; }}"
+        f"QDialog[fp_dialog='1'] QFrame {{ color:{theme.PANEL_BORDER_SOFT}; }}"
+        f"QDialog[fp_dialog='1'] QAbstractScrollArea,"
+        f"QDialog[fp_dialog='1'] QListWidget,"
+        f"QDialog[fp_dialog='1'] QListView,"
+        f"QDialog[fp_dialog='1'] QTreeView,"
+        f"QDialog[fp_dialog='1'] QTableView {{"
+        f"  background:{theme.PANEL_SURFACE_BG};"
+        f"  color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {theme.PANEL_BORDER_SOFT};"
+        f"  border-radius:14px;"
+        f"  selection-background-color:{theme.rgba(theme.PANEL_NEON_PRIMARY, 64)};"
+        f"  selection-color:{theme.PANEL_TEXT_PRIMARY};"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QHeaderView::section {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        f"    stop:0 {theme.PANEL_TABLE_HEADER_START}, stop:1 {theme.PANEL_TABLE_HEADER_END});"
+        f"  color:{theme.PANEL_TEXT_PRIMARY if theme.is_dark else theme.TEXT_WHITE};"
+        f"  border:none; padding:8px 10px; font-weight:700;"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QDialogButtonBox {{"
+        f"  border-top:1px solid {theme.PANEL_BORDER_SOFT};"
+        f"  margin-top:8px; padding-top:12px;"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QProgressBar {{"
+        f"  background:{theme.PANEL_SURFACE_ALT};"
+        f"  border:1px solid {theme.PANEL_BORDER_SOFT};"
+        f"  border-radius:9px;"
+        f"  min-height:10px;"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QProgressBar::chunk {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        f"    stop:0 {theme.PANEL_NEON_PRIMARY}, stop:1 {theme.PANEL_NEON_SECONDARY});"
+        f"  border-radius:8px;"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton {{"
+        f"  background:{theme.PANEL_SURFACE_BG};"
+        f"  color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {theme.rgba(theme.PANEL_NEON_PRIMARY, 110)};"
+        f"  border-radius:14px;"
+        f"  padding:9px 18px;"
+        f"  min-height:36px;"
+        f"  font-weight:700;"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton:hover {{"
+        f"  background:{theme.PANEL_SURFACE_ALT};"
+        f"  border-color:{theme.PANEL_NEON_SECONDARY};"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton:pressed {{"
+        f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 26)};"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton:disabled {{"
+        f"  background:{theme.rgba(theme.PANEL_BORDER_SOFT, 40)};"
+        f"  color:{theme.PANEL_TEXT_MUTED};"
+        f"  border-color:{theme.PANEL_BORDER_SOFT};"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton:default {{"
+        f"  border:1px solid {theme.PANEL_NEON_SECONDARY};"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton[dialog_kind='primary'] {{"
+        f"  background:{theme.PRIMARY};"
+        f"  color:{primary_fg};"
+        f"  border:none;"
+        f"  font-weight:800;"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton[dialog_kind='primary']:hover {{"
+        f"  background:{theme.PRIMARY_HOVER};"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton[dialog_kind='primary']:pressed {{"
+        f"  background:{theme.rgba(theme.PRIMARY, 220)};"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton[dialog_kind='danger'] {{"
+        f"  background:{theme.DANGER};"
+        f"  color:{theme.TEXT_WHITE};"
+        f"  border:none;"
+        f"  font-weight:800;"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton[dialog_kind='danger']:hover {{"
+        f"  background:{theme.QColor(theme.DANGER).lighter(112).name()};"
+        f"}}"
+        f"QDialog[fp_dialog='1'] QPushButton[dialog_kind='danger']:pressed {{"
+        f"  background:{theme.QColor(theme.DANGER).darker(118).name()};"
+        f"}}"
+    )
+
+
+def _dialog_button_kind_from_role(role: object) -> str:
+    role_name = getattr(role, "name", str(role)).split(".")[-1]
+    if role_name in {"AcceptRole", "YesRole", "ApplyRole"}:
+        return "primary"
+    if role_name == "DestructiveRole":
+        return "danger"
+    return "secondary"
+
+
+def _apply_button_kind(button: QPushButton, kind: str) -> None:
+    button.setProperty("dialog_kind", kind)
+    button.style().unpolish(button)
+    button.style().polish(button)
+
+
+def _style_dialog_buttons(dialog: QDialog) -> None:
+    if isinstance(dialog, QMessageBox):
+        for button in dialog.buttons():
+            if isinstance(button, QPushButton):
+                _apply_button_kind(button, _dialog_button_kind_from_role(dialog.buttonRole(button)))
+        return
+
+    for button_box in dialog.findChildren(QDialogButtonBox):
+        for button in button_box.buttons():
+            if isinstance(button, QPushButton):
+                _apply_button_kind(button, _dialog_button_kind_from_role(button_box.buttonRole(button)))
+
+
+def apply_dialog_theme(dialog: QDialog) -> QDialog:
+    dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    dialog.setProperty("fp_dialog", "1")
+    dialog.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
+
+    base_style = dialog.property("_fp_dialog_base_style")
+    if base_style is None:
+        base_style = dialog.styleSheet() or ""
+        dialog.setProperty("_fp_dialog_base_style", base_style)
+
+    dialog.setStyleSheet(f"{base_style}\n{_dialog_surface_style()}".strip())
+    _style_dialog_buttons(dialog)
+    return dialog
+
+
+class _DialogThemeFilter(QObject):
+    def eventFilter(self, obj, event):
+        if not isinstance(obj, QDialog):
+            return False
+        if event.type() in (QEvent.Type.Polish, QEvent.Type.Show):
+            apply_dialog_theme(obj)
+        return False
+
+
+def _inject_dialog_option(
+    args: tuple,
+    kwargs: dict,
+    *,
+    option_index: int,
+    flag: object,
+) -> tuple[tuple, dict]:
+    args_list = list(args)
+    if "options" in kwargs:
+        kwargs["options"] = kwargs.get("options") | flag
+        return tuple(args_list), kwargs
+    if len(args_list) > option_index:
+        args_list[option_index] = args_list[option_index] | flag
+        return tuple(args_list), kwargs
+    kwargs["options"] = flag
+    return tuple(args_list), kwargs
+
+
+def _patch_static_dialogs() -> None:
+    if getattr(QFileDialog, "_fp_theme_hooks_installed", False):
+        return
+
+    original_get_open_file_name = QFileDialog.getOpenFileName
+    original_get_open_file_names = QFileDialog.getOpenFileNames
+    original_get_save_file_name = QFileDialog.getSaveFileName
+    original_get_existing_directory = QFileDialog.getExistingDirectory
+    original_get_color = QColorDialog.getColor
+    original_get_font = QFontDialog.getFont
+
+    def _get_open_file_name(*args, **kwargs):
+        args, kwargs = _inject_dialog_option(args, kwargs, option_index=5, flag=QFileDialog.Option.DontUseNativeDialog)
+        return original_get_open_file_name(*args, **kwargs)
+
+    def _get_open_file_names(*args, **kwargs):
+        args, kwargs = _inject_dialog_option(args, kwargs, option_index=5, flag=QFileDialog.Option.DontUseNativeDialog)
+        return original_get_open_file_names(*args, **kwargs)
+
+    def _get_save_file_name(*args, **kwargs):
+        args, kwargs = _inject_dialog_option(args, kwargs, option_index=5, flag=QFileDialog.Option.DontUseNativeDialog)
+        return original_get_save_file_name(*args, **kwargs)
+
+    def _get_existing_directory(*args, **kwargs):
+        args, kwargs = _inject_dialog_option(args, kwargs, option_index=3, flag=QFileDialog.Option.DontUseNativeDialog)
+        return original_get_existing_directory(*args, **kwargs)
+
+    def _get_color(*args, **kwargs):
+        args, kwargs = _inject_dialog_option(
+            args,
+            kwargs,
+            option_index=3,
+            flag=QColorDialog.ColorDialogOption.DontUseNativeDialog,
+        )
+        return original_get_color(*args, **kwargs)
+
+    def _get_font(*args, **kwargs):
+        args, kwargs = _inject_dialog_option(
+            args,
+            kwargs,
+            option_index=3,
+            flag=QFontDialog.FontDialogOption.DontUseNativeDialog,
+        )
+        return original_get_font(*args, **kwargs)
+
+    QFileDialog.getOpenFileName = staticmethod(_get_open_file_name)
+    QFileDialog.getOpenFileNames = staticmethod(_get_open_file_names)
+    QFileDialog.getSaveFileName = staticmethod(_get_save_file_name)
+    QFileDialog.getExistingDirectory = staticmethod(_get_existing_directory)
+    QColorDialog.getColor = staticmethod(_get_color)
+    QFontDialog.getFont = staticmethod(_get_font)
+    QFileDialog._fp_theme_hooks_installed = True
 
 
 def _message_box_style() -> str:
-    return (
-        f"QMessageBox {{"
-        f"  background-color:{theme.CARD_BG}; border:1px solid {theme.PRIMARY_LIGHT}; border-radius:10px;"
-        f"}}"
-        f"QMessageBox QWidget {{ background-color:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
-        f"QMessageBox QLabel {{ background-color:transparent; color:{theme.TEXT_DARK}; padding:2px 0; }}"
-        f"QMessageBox QFrame {{ background-color:{theme.CARD_BG}; border:none; }}"
-        f"QMessageBox QDialogButtonBox {{"
-        f"  background-color:{theme.CARD_BG}; border-top:1px solid {theme.BORDER_COLOR}; padding-top:10px;"
-        f"}}"
-    )
+    return _dialog_surface_style()
 
 
 def _message_box_button_style() -> str:
-    return (
-        f"QPushButton {{"
-        f"  background:{theme.SIDEBAR_BG};"
-        f"  background-color:{theme.SIDEBAR_BG};"
-        f"  background-image:none;"
-        f"  color:{theme.TEXT_WHITE};"
-        f"  border:1px solid {theme.SIDEBAR_BG};"
-        f"  border-radius:8px;"
-        f"  padding:7px 16px;"
-        f"  min-width:84px;"
-        f"  min-height:34px;"
-        f"  font-weight:600;"
-        f"}}"
-        f"QPushButton:hover {{"
-        f"  background:{theme.SIDEBAR_HOVER};"
-        f"  background-color:{theme.SIDEBAR_HOVER};"
-        f"  border-color:{theme.SIDEBAR_HOVER};"
-        f"}}"
-        f"QPushButton:pressed {{"
-        f"  background:{theme.SIDEBAR_ACTIVE};"
-        f"  background-color:{theme.SIDEBAR_ACTIVE};"
-        f"  border-color:{theme.SIDEBAR_ACTIVE};"
-        f"}}"
-        f"QPushButton:focus, QPushButton:default {{"
-        f"  background:{theme.SIDEBAR_BG};"
-        f"  background-color:{theme.SIDEBAR_BG};"
-        f"  color:{theme.TEXT_WHITE};"
-        f"  border:1px solid {theme.SIDEBAR_ACTIVE};"
-        f"}}"
-        f"QPushButton:disabled {{"
-        f"  background:{theme.BORDER_COLOR};"
-        f"  background-color:{theme.BORDER_COLOR};"
-        f"  color:{theme.TEXT_LABEL};"
-        f"  border:1px solid {theme.BORDER_COLOR};"
-        f"}}"
-    )
+    return ""
 
 
 def apply_message_box_theme(box: QMessageBox) -> QMessageBox:
-    box.setStyleSheet(_message_box_style())
+    apply_dialog_theme(box)
     box.installEventFilter(_MESSAGE_BOX_SHORTCUT_FILTER)
-    for button in box.buttons():
-        if isinstance(button, QPushButton):
-            button.setStyleSheet(_message_box_button_style())
-            button.setAutoDefault(False)
+    _style_dialog_buttons(box)
     return box
 
 
@@ -227,6 +411,22 @@ def install_message_box_theme_hooks() -> None:
     QMessageBox.critical = staticmethod(_critical)
     QMessageBox.question = staticmethod(_question)
     QMessageBox._fp_theme_hooks_installed = True
+
+
+def install_dialog_theme_hooks(app: QApplication | None = None) -> None:
+    install_message_box_theme_hooks()
+    _patch_static_dialogs()
+
+    global _DIALOG_THEME_FILTER
+    target_app = app or QApplication.instance()
+    if target_app is None:
+        return
+    if getattr(target_app, "_fp_dialog_theme_filter_installed", False):
+        return
+
+    _DIALOG_THEME_FILTER = _DialogThemeFilter()
+    target_app.installEventFilter(_DIALOG_THEME_FILTER)
+    target_app._fp_dialog_theme_filter_installed = True
 
 
 def ask_confirmation(

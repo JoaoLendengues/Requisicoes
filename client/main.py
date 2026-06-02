@@ -51,7 +51,7 @@ from PySide6.QtGui import QFont, QFontDatabase
 from client.core.resolution import res
 from client.core.session import session
 from client.core import theme
-from client.core.dialogs import install_message_box_theme_hooks
+from client.core.dialogs import install_dialog_theme_hooks
 from client.views.login_view import LoginView
 from client.views.main_window import MainWindow
 from client.updater import finalize_pending_update, UpdateChecker
@@ -118,7 +118,7 @@ def main():
 
     # Estilo global
     app.setStyleSheet(theme.global_style())
-    install_message_box_theme_hooks()
+    install_dialog_theme_hooks(app)
 
     # Verifica se uma atualização anterior foi concluída (ou falhou)
     update_result = finalize_pending_update()
