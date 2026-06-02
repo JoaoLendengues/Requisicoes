@@ -3837,7 +3837,7 @@ class DrawingCanvas(QWidget):
         btn_3d.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(btn_3d)
 
-        btn_dim = QPushButton("MM")
+        btn_dim = QPushButton("Régua")
         btn_dim.setFixedHeight(fh)
         btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
         btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
@@ -4378,10 +4378,10 @@ class DrawingCanvas(QWidget):
                 target_text = item
                 break
 
-        default_value = target_text.toPlainText() if target_text else "Ø 12 mm"
+        default_value = target_text.toPlainText() if target_text else "12 mm"
         text, ok = self._prompt_text(
             "Cota manual",
-            "Informe a cota (ex.: Ø 12 mm, 350 mm, 1.20 m):",
+            "Informe a cota (ex.: 12 mm, 350 mm, 1.20 m):",
             default_value,
             ok_text="Aplicar",
         )
