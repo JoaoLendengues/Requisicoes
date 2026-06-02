@@ -1197,7 +1197,7 @@ class DashboardView(QWidget):
 
     def _build_top_vendors_table(self) -> QTableWidget:
         self.top_vendors_table = self._create_table(
-            ["#", "VENDEDOR", "REQUISIÇÕES", "PESO(KG)"],
+            ["#", "VENDEDOR", "REQUISIÇÕES", "PESO(KG)", "IGA"],
             {1},
         )
         self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
@@ -1460,12 +1460,14 @@ class DashboardView(QWidget):
                 str(row.get("vendor_name") or "-"),
                 str(row.get("requisition_count") or 0),
                 _format_weight_kg(row.get("total_weight_kg")),
+                _format_percentage(row.get("iga_percent")),
             ]
             sort_values = [
                 index,
                 str(row.get("vendor_name") or "-"),
                 int(row.get("requisition_count") or 0),
                 float(row.get("total_weight_kg") or 0.0),
+                float(row.get("iga_percent") or 0.0),
             ]
             for col, value in enumerate(values):
                 item = _SortableTableWidgetItem(value, sort_values[col])

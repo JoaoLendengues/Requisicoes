@@ -21,6 +21,7 @@ class DashboardVendorItem(BaseModel):
     vendor_name: str
     requisition_count: int
     total_weight_kg: float = 0.0
+    iga_percent: float = 0.0
 
 
 class DashboardProductionPersonItem(BaseModel):

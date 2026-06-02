@@ -164,6 +164,68 @@ def _did_finish_on_time(finished_at: object, delivery_date: date | None) -> bool
     return finished_local.date() <= delivery_date
 
 
+def _did_deliver_on_time(delivered_at: object, delivery_date: date | None) -> bool | None:
+    if delivery_date is None:
+        return None
+
+    delivered_local = _to_local_datetime(delivered_at)
+    if delivered_local is None:
+        return None
+
+    return delivered_local.date() <= delivery_date
+
+
+def _has_rework_marker(value: object) -> bool:
+    probe = (
+        _normalize_text(value)
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("_", "")
+    )
+    return "retrabalho" in probe
+
+
+def _request_meets_deadline(
+    req: Requisition,
+    finished_cycles: list[dict],
+) -> bool | None:
+    delivered_on_time = _did_deliver_on_time(
+        getattr(req, "delivered_at", None),
+        req.delivery_date,
+    )
+    if delivered_on_time is not None:
+        return delivered_on_time
+
+    if not getattr(req, "entrega", False) and finished_cycles:
+        return _did_finish_on_time(
+            finished_cycles[-1].get("finished_at"),
+            req.delivery_date,
+        )
+
+    return None
+
+
+def _request_has_rework(req: Requisition, finished_cycles: list[dict]) -> bool:
+    if len(finished_cycles) > 1:
+        return True
+
+    if _has_rework_marker(getattr(req, "delivery_deadline_change_reason", None)):
+        return True
+
+    if _has_rework_marker(_cancel_reason_for(req)):
+        return True
+
+    for event in _production_events(req):
+        if _has_rework_marker(event.get("reason")):
+            return True
+
+    for entry in _sorted_status_history(req):
+        if _has_rework_marker(entry.note):
+            return True
+
+    return False
+
+
 def _delivery_deadline_changed_at(req: Requisition) -> datetime | None:
     changed_at = getattr(req, "delivery_deadline_changed_at", None)
     if isinstance(changed_at, datetime):
@@ -1616,16 +1678,46 @@ def _build_top_vendor_rows(
                 "vendor_name": vendor_name,
                 "requisition_count": 0,
                 "total_weight_kg": 0.0,
+                "on_time_count": 0,
+                "finished_count": 0,
+                "no_rework_count": 0,
             },
         )
         entry["requisition_count"] = int(entry["requisition_count"] or 0) + 1
         entry["total_weight_kg"] = float(entry["total_weight_kg"] or 0.0) + float(req.weight or 0.0)
+
+        finished_cycles = _all_finished_cycles(req)
+        if _request_meets_deadline(req, finished_cycles):
+            entry["on_time_count"] = int(entry["on_time_count"] or 0) + 1
+
+        if finished_cycles:
+            entry["finished_count"] = int(entry["finished_count"] or 0) + 1
+            if not _request_has_rework(req, finished_cycles):
+                entry["no_rework_count"] = int(entry["no_rework_count"] or 0) + 1
 
     rows = [
         DashboardVendorItem(
             vendor_name=str(data["vendor_name"] or "Sem vendedor"),
             requisition_count=int(data["requisition_count"] or 0),
             total_weight_kg=round(float(data["total_weight_kg"] or 0.0), 2),
+            iga_percent=round(
+                (
+                    (
+                        int(data["on_time_count"] or 0)
+                        / max(1, int(data["requisition_count"] or 0))
+                    )
+                    * (
+                        int(data["finished_count"] or 0)
+                        / max(1, int(data["requisition_count"] or 0))
+                    )
+                    * (
+                        int(data["no_rework_count"] or 0)
+                        / max(1, int(data["finished_count"] or 0))
+                    )
+                )
+                * 100.0,
+                2,
+            ),
         )
         for data in stats.values()
     ]
