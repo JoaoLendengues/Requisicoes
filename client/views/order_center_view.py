@@ -1237,14 +1237,16 @@ class OrderCenterView(QWidget):
     def _open_row(self, key: str, row_index: int):
         rows = self._rows.get(key, [])
         if 0 <= row_index < len(rows):
-            self.open_requisition.emit(int(rows[row_index]["id"]))
+            req_id = rows[row_index].get("source_requisition_id") or rows[row_index].get("id")
+            self.open_requisition.emit(int(req_id))
 
     def _open_selected(self, key: str):
         row = self._selected_row(key)
         if not row:
             QMessageBox.information(self, "Central de pedidos", "Selecione um pedido primeiro.")
             return
-        self.open_requisition.emit(int(row["id"]))
+        req_id = row.get("source_requisition_id") or row.get("id")
+        self.open_requisition.emit(int(req_id))
 
     def _open_selected_pdf(self, key: str):
         row = self._selected_row(key)
@@ -1256,7 +1258,7 @@ class OrderCenterView(QWidget):
             )
             return
 
-        req_id = int(row["id"])
+        req_id = int(row.get("source_requisition_id") or row["id"])
         thread, worker = _run_in_thread(
             api.get_requisition,
             req_id,
@@ -1340,7 +1342,7 @@ class OrderCenterView(QWidget):
         note: str,
         success_message: str,
     ):
-        req_id = int(row["id"])
+        req_id = int(row.get("source_requisition_id") or row["id"])
         thread, worker = _run_in_thread(
             api.update_status,
             req_id,

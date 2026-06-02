@@ -2,7 +2,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime, date
 from sqlalchemy import (
-    String, Boolean, DateTime, Date, Float, Text,
+    String, Boolean, DateTime, Date, Float, Text, UniqueConstraint,
     ForeignKey, Enum as SAEnum,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -86,6 +86,9 @@ class Requisition(Base):
     status_history: Mapped[list[StatusHistory]] = relationship(
         "StatusHistory", back_populates="requisition", cascade="all, delete-orphan"
     )
+    production_splits: Mapped[list[RequisitionProductionSplit]] = relationship(
+        "RequisitionProductionSplit", back_populates="requisition", cascade="all, delete-orphan"
+    )
 
 
 class RequisitionItem(Base):
@@ -120,11 +123,42 @@ class CanvasData(Base):
     requisition: Mapped[Requisition] = relationship("Requisition", back_populates="canvas")
 
 
+class RequisitionProductionSplit(Base):
+    __tablename__ = "requisition_production_splits"
+    __table_args__ = (
+        UniqueConstraint("requisition_id", "sequence", name="uq_req_prod_split_sequence"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    requisition_id: Mapped[int] = mapped_column(ForeignKey("requisitions.id"))
+    sequence: Mapped[int] = mapped_column(default=1)
+    weight: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[RequisitionStatus] = mapped_column(
+        SAEnum(RequisitionStatus, values_callable=lambda x: [e.value for e in x], native_enum=False),
+        default=RequisitionStatus.EM_PRODUCAO,
+    )
+    destination: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    production_machine: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    requisition: Mapped[Requisition] = relationship("Requisition", back_populates="production_splits")
+    status_history: Mapped[list[StatusHistory]] = relationship(
+        "StatusHistory", back_populates="production_split", cascade="all, delete-orphan"
+    )
+
+
 class StatusHistory(Base):
     __tablename__ = "status_history"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     requisition_id: Mapped[int] = mapped_column(ForeignKey("requisitions.id"))
+    production_split_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requisition_production_splits.id"),
+        nullable=True,
+    )
     old_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
     new_status: Mapped[str] = mapped_column(String(50))
     changed_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
@@ -132,4 +166,8 @@ class StatusHistory(Base):
     changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     requisition: Mapped[Requisition] = relationship("Requisition", back_populates="status_history")
+    production_split: Mapped[RequisitionProductionSplit | None] = relationship(
+        "RequisitionProductionSplit",
+        back_populates="status_history",
+    )
     changed_by: Mapped[User] = relationship("User", foreign_keys=[changed_by_id])

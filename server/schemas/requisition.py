@@ -164,6 +164,7 @@ class CanvasDataResponse(BaseModel):
 
 class StatusHistoryResponse(BaseModel):
     id: int
+    production_split_id: Optional[int] = None
     old_status: Optional[str]
     new_status: str
     note: Optional[str]
@@ -227,6 +228,10 @@ class RequisitionListItem(BaseModel):
     desenhos e assinaturas em base64 a cada linha.
     """
     id: int
+    source_requisition_id: Optional[int] = None
+    production_split_id: Optional[int] = None
+    split_sequence: Optional[int] = None
+    is_partial_split: bool = False
     ped_number: str
     emission_date: datetime
     delivery_date: Optional[date]
@@ -244,6 +249,7 @@ class RequisitionListItem(BaseModel):
     delivery_address: Optional[str] = None
     phone: Optional[str] = None
     weight: float
+    total_weight: Optional[float] = None
     obs: Optional[str] = None
     status: RequisitionStatus
     production_destination: Optional[str] = None
