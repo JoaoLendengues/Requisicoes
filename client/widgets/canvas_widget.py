@@ -151,6 +151,8 @@ _CHAPA_PRESET_LABELS = {
     "chapa_perfurada_6": "Chapa Perfurada 6",
     "chapa_perfurada_7": "Chapa Perfurada 7",
     "chapa_perfurada_8": "Chapa Perfurada 8",
+    "sapata_6_furos": "Sapata 6 Furos",
+    "sapata_9_furos": "Sapata 9 Furos",
 }
 _PERFIL_PRESET_LABELS = {
     "perfil_u": "Perfil U",
@@ -5967,9 +5969,18 @@ class DrawingCanvas(QWidget):
             "chapa_perfurada_6",
             "chapa_perfurada_7",
             "chapa_perfurada_8",
+            "sapata_6_furos",
+            "sapata_9_furos",
         }:
-            left, top, width, height = -160.0, -140.0, 320.0, 280.0
-            hole_r = 46.0
+            if preset == "sapata_6_furos":
+                left, top, width, height = -260.0, -120.0, 520.0, 240.0
+                hole_r = 42.0
+            elif preset == "sapata_9_furos":
+                left, top, width, height = -260.0, -180.0, 520.0, 360.0
+                hole_r = 38.0
+            else:
+                left, top, width, height = -160.0, -140.0, 320.0, 280.0
+                hole_r = 46.0
             path.addRect(left, top, width, height)
 
             def _add_hole(cx: float, cy: float, r: float = hole_r) -> None:
@@ -6002,6 +6013,23 @@ class DrawingCanvas(QWidget):
                 _add_hole(96.0, -92.0)
                 _add_hole(-68.0, 82.0)
                 _add_hole(94.0, 82.0)
+            elif preset == "sapata_6_furos":
+                _add_hole(-160.0, -52.0)
+                _add_hole(0.0, -52.0)
+                _add_hole(160.0, -52.0)
+                _add_hole(-160.0, 52.0)
+                _add_hole(0.0, 52.0)
+                _add_hole(160.0, 52.0)
+            elif preset == "sapata_9_furos":
+                _add_hole(-180.0, -102.0)
+                _add_hole(0.0, -102.0)
+                _add_hole(180.0, -102.0)
+                _add_hole(-180.0, 0.0)
+                _add_hole(0.0, 0.0)
+                _add_hole(180.0, 0.0)
+                _add_hole(-180.0, 102.0)
+                _add_hole(0.0, 102.0)
+                _add_hole(180.0, 102.0)
 
         return path
 
@@ -6066,6 +6094,8 @@ class DrawingCanvas(QWidget):
             "chapa_perfurada_6",
             "chapa_perfurada_7",
             "chapa_perfurada_8",
+            "sapata_6_furos",
+            "sapata_9_furos",
         ):
             item = QListWidgetItem(_CHAPA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
