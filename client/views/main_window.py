@@ -254,7 +254,12 @@ class MainWindow(QMainWindow):
         self._setup_statusbar()
 
     def _nav_transition(self, page: int) -> None:
-        """Cross-fade suave ao trocar de página no stack (160 ms, OutCubic)."""
+        """Cross-fade suave ao trocar de página no stack (160 ms, OutCubic).
+
+        Lazy theme: se a view de destino tiver tema pendente (marcada em
+        _on_theme_toggle), reaplica antes da navegação. O custo (~30–330 ms)
+        fica mascarado pela animação de fade.
+        """
         if self.stack.currentIndex() == page:
             return
 
@@ -262,6 +267,9 @@ class MainWindow(QMainWindow):
         if self._nav_overlay is not None:
             self._nav_overlay.deleteLater()
             self._nav_overlay = None
+
+        # Reaplica tema na view de destino se estiver "dirty" (oculta durante toggle)
+        self._consume_theme_dirty(page)
 
         pixmap = self.stack.grab()
         self.stack.setCurrentIndex(page)
@@ -1067,46 +1075,6 @@ class MainWindow(QMainWindow):
         self._theme_transition_anim = anim
         anim.start()
 
-    def _apply_theme_to_all(self) -> None:
-        """Re-aplica apenas os estilos inline dependentes do tema — ~50 ms."""
-        from PySide6.QtWidgets import QApplication
-
-        bg = theme.CONTENT_BG
-        self.setStyleSheet(f"background:{bg};")
-        self._sep.setStyleSheet(
-            f"background:{theme.SIDEBAR_BG}; color:{theme.SIDEBAR_BG}; border:none;"
-        )
-        self.stack.setStyleSheet(f"background:{bg};")
-        self._scroll_main.setStyleSheet(
-            f"QScrollArea {{ background:{bg}; border:none; }}"
-            f"QScrollBar:vertical {{"
-            f"  width:8px; background:transparent;"
-            f"}}"
-            f"QScrollBar::handle:vertical {{"
-            f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 58)}; border-radius:4px; min-height:32px;"
-            f"}}"
-            f"QScrollBar::handle:vertical:hover {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 96)}; }}"
-            f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}"
-            f"QScrollBar:horizontal {{"
-            f"  height:8px; background:transparent;"
-            f"}}"
-            f"QScrollBar::handle:horizontal {{"
-            f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 58)}; border-radius:4px; min-width:32px;"
-            f"}}"
-            f"QScrollBar::handle:horizontal:hover {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 96)}; }}"
-            f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
-        )
-        self.sidebar.apply_theme()
-        for _v in (
-            self.form_view, self.history_view, self.dashboard_view,
-            self.technical_panel_view, self.order_center_view, self.delivery_center_view,
-            self.pinheiro_industria_view, self.ar_view,
-            self.user_center_view, self.settings_view, self.feedback_view,
-        ):
-            if _v is not None:
-                _v.apply_theme()
-        self._setup_statusbar()
-
     def _get_current_view(self):
         """Retorna a view visível no stack, ou None."""
         views = [
@@ -1118,6 +1086,74 @@ class MainWindow(QMainWindow):
         ]
         idx = self.stack.currentIndex()
         return views[idx] if 0 <= idx < len(views) else None
+
+    # ── Lazy theme: views ocultas só re-estilizam quando o usuário navega ────
+    def _mark_other_views_theme_dirty(self) -> None:
+        """Marca todas as views como precisando reaplicar tema, exceto a atual.
+
+        Chamado em _on_theme_toggle: a view atual e a sidebar já receberam o
+        novo tema imediatamente; as outras esperam o usuário navegar pra elas.
+        Economia: ~700–1000 ms de trabalho diferido fora do caminho crítico.
+        """
+        all_views = [
+            self.form_view, self.history_view, self.dashboard_view,
+            self.technical_panel_view, self.order_center_view, self.delivery_center_view,
+            self.pinheiro_industria_view, self.ar_view,
+            self.user_center_view, self.settings_view, self.feedback_view,
+        ]
+        current = self._get_current_view()
+        for v in all_views:
+            if v is not None and v is not current:
+                v._theme_dirty = True  # type: ignore[attr-defined]
+
+    def _consume_theme_dirty(self, page: int) -> None:
+        """Se a view de destino está com tema pendente, aplica antes da navegação.
+
+        Custo típico: 30–100 ms (Dashboard pode chegar a 330). Mascarado pela
+        animação de cross-fade do _nav_transition.
+        """
+        views_by_page = {
+            PAGE_FORM:               getattr(self, "form_view", None),
+            PAGE_HISTORY:            getattr(self, "history_view", None),
+            PAGE_DASHBOARD:          getattr(self, "dashboard_view", None),
+            PAGE_TECHNICAL:          getattr(self, "technical_panel_view", None),
+            PAGE_ORDER_CENTER:       getattr(self, "order_center_view", None),
+            PAGE_DELIVERY_CENTER:    getattr(self, "delivery_center_view", None),
+            PAGE_PINHEIRO_INDUSTRIA: getattr(self, "pinheiro_industria_view", None),
+            PAGE_AR:                 getattr(self, "ar_view", None),
+            PAGE_USER_CENTER:        getattr(self, "user_center_view", None),
+            PAGE_SETTINGS:           getattr(self, "settings_view", None),
+            PAGE_FEEDBACK:           getattr(self, "feedback_view", None),
+        }
+        view = views_by_page.get(page)
+        if view is not None and getattr(view, "_theme_dirty", False):
+            self._apply_theme_to_view_buffered(view)
+            view._theme_dirty = False  # type: ignore[attr-defined]
+
+    def _apply_theme_to_view_buffered(self, view) -> None:
+        """Aplica tema na view com updates suspensos (evita repaint intermediário).
+
+        setUpdatesEnabled(False) ao redor do apply_theme + _refresh_shadows_for
+        elimina o flicker e os repaints parciais que o Qt dispara a cada
+        setStyleSheet. Ganho típico: -30 a -50% em telas com QTableWidget
+        populado (Histórico, Dashboard, A&R, Pinheiro Indústria).
+        """
+        view.setUpdatesEnabled(False)
+        try:
+            view.apply_theme()
+            self._refresh_shadows_for(view)
+        finally:
+            view.setUpdatesEnabled(True)
+
+    def _refresh_shadows_for(self, root) -> None:
+        """Atualiza a cor dos QGraphicsDropShadowEffect dentro de um widget."""
+        for child in root.findChildren(QWidget):
+            effect = child.graphicsEffect()
+            if isinstance(effect, QGraphicsDropShadowEffect):
+                alpha = effect.color().alpha()
+                color = QColor(theme.PANEL_SHADOW)
+                color.setAlpha(alpha)
+                effect.setColor(color)
 
     def _apply_theme_immediate(self) -> None:
         """Aplica tema apenas ao sidebar e à view atual (~30ms)."""
@@ -1148,70 +1184,34 @@ class MainWindow(QMainWindow):
             f"QScrollBar::handle:horizontal:hover {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 96)}; }}"
             f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
         )
+        # Aplica o global_style ANTES das views — assim cada setStyleSheet
+        # inline das views já trabalha com a paleta global atualizada (evita
+        # ~150 ms de re-resolução dupla do QSS pelo Qt).
+        QApplication.instance().setStyleSheet(theme.global_style())
+
         self.sidebar.apply_theme()
         current = self._get_current_view()
         if current is not None:
-            current.apply_theme()
+            # setUpdatesEnabled(False) suspende repaint enquanto reaplica os
+            # styles. Vital em telas pesadas (Histórico, Dashboard, A&R,
+            # Pinheiro Indústria) onde cada setStyleSheet de tabela disparava
+            # repaint completo, somando centenas de ms.
+            self._apply_theme_to_view_buffered(current)
+        self._refresh_shadows_for(self.sidebar)
         self._setup_statusbar()
-
-        # Aplica o global_style enquanto o overlay ainda cobre a tela, assim os
-        # textos e paletas globais já estão corretos quando o fade-out terminar.
-        QApplication.instance().setStyleSheet(theme.global_style())
-
-    def _apply_theme_remaining(self) -> None:
-        """Aplica views ocultas + atualiza sombras. Chamado após o fade-out."""
-        current = self._get_current_view()
-        for view in (
-            self.form_view, self.history_view, self.dashboard_view,
-            self.technical_panel_view, self.order_center_view, self.delivery_center_view,
-            self.pinheiro_industria_view, self.ar_view,
-            self.user_center_view, self.settings_view, self.feedback_view,
-        ):
-            if view is not None and view is not current:
-                view.apply_theme()
-        # Atualiza a cor de todos os QGraphicsDropShadowEffect na janela inteira.
-        # Necessário porque os efeitos são criados uma única vez no __init__ com
-        # a cor do tema corrente; sem isso a sombra some ao trocar de tema.
-        self._refresh_all_shadows()
-
-    def _refresh_all_shadows(self) -> None:
-        """Percorre widgets criados e atualiza a cor das sombras."""
-        def _fix(root):
-            for child in root.findChildren(QWidget):
-                effect = child.graphicsEffect()
-                if isinstance(effect, QGraphicsDropShadowEffect):
-                    alpha = effect.color().alpha()
-                    color = QColor(theme.PANEL_SHADOW)
-                    color.setAlpha(alpha)
-                    effect.setColor(color)
-
-        # Sidebar e view atual: prioritários (o usuário vê agora)
-        _fix(self.sidebar)
-        current = self._get_current_view()
-        if current is not None:
-            _fix(current)
-
-        # Views já criadas mas ocultas
-        for view in (
-            self.form_view, self.history_view, self.dashboard_view,
-            self.technical_panel_view, self.order_center_view, self.delivery_center_view,
-            self.pinheiro_industria_view, self.ar_view,
-            self.user_center_view, self.settings_view, self.feedback_view,
-        ):
-            if view is not None and view is not current and view is not self.sidebar:
-                _fix(view)
 
     def _on_theme_toggle(self, dark: bool):
         """
-        Troca de tema com transição visual responsiva.
+        Troca de tema com transição visual responsiva (estratégia lazy).
 
         Sequência:
-        1. Screenshot da janela atual
-        2. Overlay aparece imediatamente (cobre a janela)
-        3. processEvents() — força a pintura do overlay ANTES do re-estilo
-        4. Re-aplica estilos apenas no sidebar e na view atual (~30ms)
-        5. Fade-out inicia imediatamente; views ocultas + global stylesheet
-           são aplicados no cleanup do fade, sem bloquear a animação.
+        1. Screenshot da janela atual e overlay congelado (cobre a janela)
+        2. processEvents() — força a pintura do overlay ANTES do re-estilo
+        3. Re-aplica estilos apenas no sidebar e na view atual (~30–330ms)
+        4. Marca as outras views como _theme_dirty=True (aplicam ao serem
+           visitadas via _nav_transition — custo amortizado, mascarado pelo
+           cross-fade da navegação)
+        5. Fade-out do overlay; nenhum trabalho restante em background.
         """
         from PySide6.QtWidgets import QApplication
 
@@ -1224,9 +1224,11 @@ class MainWindow(QMainWindow):
 
         # Fase rápida: apenas o que o usuário vê agora
         self._apply_theme_immediate()
+        # Demais views: lazy — aplicam sozinhas quando o usuário navegar
+        self._mark_other_views_theme_dirty()
 
-        # Fade-out começa imediatamente; o restante é diferido para o cleanup
-        self._start_overlay_fadeout(overlay, on_complete=self._apply_theme_remaining)
+        # Fade-out — nenhum callback pesado (vs. antes: aplicava em ~10 views)
+        self._start_overlay_fadeout(overlay, on_complete=None)
 
     def _on_scale_changed(self, _new_scale: float):
         """Reconstrói o conteúdo da janela principal com a nova escala."""
