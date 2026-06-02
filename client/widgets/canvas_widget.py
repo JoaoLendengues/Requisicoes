@@ -3605,13 +3605,12 @@ class DrawingCanvas(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(8)
 
         title = QLabel("DESENHO / REFERENCIA")
+        self._title_label = title
         fs = max(9, int(11 * self.scale))
-        title.setStyleSheet(
-            f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
-        )
+        title.setStyleSheet(self._title_style())
         layout.addWidget(title)
 
         s  = self.scale
@@ -3627,6 +3626,12 @@ class DrawingCanvas(QWidget):
             return l
 
         self._tool_btns: dict[Tool, QPushButton] = {}
+        self._tool_misc_btns: list[QPushButton] = []
+        self._toolbar_sections: list[QFrame] = []
+
+        toolbar_stack = QVBoxLayout()
+        toolbar_stack.setContentsMargins(0, 0, 0, 0)
+        toolbar_stack.setSpacing(6)
 
         tools = [
             (Tool.SELECT, "Selec.", "S"),
@@ -3647,7 +3652,7 @@ class DrawingCanvas(QWidget):
         ]
 
         # Linha 1a: Ferramentas (separado das propriedades para não cortar nomes)
-        row_tools = QHBoxLayout()
+        tools_frame, row_tools = self._create_toolbar_section()
         row_tools.setSpacing(4)
         for t, label, key in tools:
             btn = QPushButton(label)
@@ -3659,20 +3664,17 @@ class DrawingCanvas(QWidget):
             self._tool_btns[t] = btn
             row_tools.addWidget(btn)
         row_tools.addStretch()
-        layout.addLayout(row_tools)
+        toolbar_stack.addWidget(tools_frame)
 
         # Linha 1b: Propriedades do traço
-        row_props = QHBoxLayout()
+        props_frame, row_props = self._create_toolbar_section()
         row_props.setSpacing(4)
 
         # Cor
         self.btn_color = QPushButton("Cor")
         self.btn_color.setFixedSize(fh, fh)
         self.btn_color.setToolTip("Cor do traço")
-        self.btn_color.setStyleSheet(
-            f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
-            f"font-size:{fs}pt;"
-        )
+        self.btn_color.setStyleSheet(self._color_swatch_style())
         self.btn_color.clicked.connect(self._pick_color)
         row_props.addWidget(self.btn_color)
 
@@ -3685,6 +3687,7 @@ class DrawingCanvas(QWidget):
         self.spin_width.setValue(self.pen_width)
         self.spin_width.setFixedWidth(max(56, int(68 * s)))
         self.spin_width.setFixedHeight(fh)
+        self.spin_width.setStyleSheet(self._field_style())
         self.spin_width.valueChanged.connect(self._on_pen_width_changed)
         row_props.addWidget(self.spin_width)
 
@@ -3699,6 +3702,7 @@ class DrawingCanvas(QWidget):
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
         self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
         self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
+        self.combo_style.setStyleSheet(self._field_style())
         self.combo_style.currentIndexChanged.connect(self._on_pen_style_changed)
         row_props.addWidget(self.combo_style)
 
@@ -3716,6 +3720,7 @@ class DrawingCanvas(QWidget):
         self.combo_esquadro.currentIndexChanged.connect(self._on_esquadro_snap_changed)
         self.combo_esquadro.setToolTip("Passo angular da ferramenta Esquadro")
         self.combo_esquadro.setEnabled(False)
+        self.combo_esquadro.setStyleSheet(self._field_style())
         row_props.addWidget(self.combo_esquadro)
 
         row_props.addSpacing(8)
@@ -3728,25 +3733,28 @@ class DrawingCanvas(QWidget):
         self.spin_font.setSuffix(" pt")
         self.spin_font.setFixedWidth(max(76, int(92 * s)))
         self.spin_font.setFixedHeight(fh)
+        self.spin_font.setStyleSheet(self._field_style())
         self.spin_font.valueChanged.connect(self._on_font_size_changed)
         row_props.addWidget(self.spin_font)
 
         row_props.addStretch()
-        layout.addLayout(row_props)
+        toolbar_stack.addWidget(props_frame)
 
         # Linha 2: Ações
-        row2 = QHBoxLayout()
+        actions_frame, row2 = self._create_toolbar_section()
         row2.setSpacing(4)
 
         btn_undo = QPushButton("Desfazer")
         btn_undo.setFixedHeight(fh)
         btn_undo.clicked.connect(self._undo)
         btn_undo.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_undo)
 
         btn_redo = QPushButton("Refazer")
         btn_redo.setFixedHeight(fh)
         btn_redo.clicked.connect(self._redo)
         btn_redo.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_redo)
 
         row2.addWidget(btn_undo)
         row2.addWidget(btn_redo)
@@ -3761,12 +3769,14 @@ class DrawingCanvas(QWidget):
         self.spin_rotate.setSuffix("°")
         self.spin_rotate.setFixedWidth(max(68, int(80 * s)))
         self.spin_rotate.setFixedHeight(fh)
+        self.spin_rotate.setStyleSheet(self._field_style())
         row2.addWidget(self.spin_rotate)
 
         btn_rotate = QPushButton("Aplicar")
         btn_rotate.setFixedHeight(fh)
         btn_rotate.clicked.connect(self._rotate_selected)
         btn_rotate.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_rotate)
         row2.addWidget(btn_rotate)
 
         btn_mirror_h = QPushButton("Horizontal")
@@ -3774,6 +3784,7 @@ class DrawingCanvas(QWidget):
         btn_mirror_h.setToolTip("Espelhar com cópia na horizontal (Ctrl+Shift+H)")
         btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
         btn_mirror_h.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_mirror_h)
         row2.addWidget(btn_mirror_h)
 
         btn_mirror_v = QPushButton("Vertical")
@@ -3781,6 +3792,7 @@ class DrawingCanvas(QWidget):
         btn_mirror_v.setToolTip("Espelhar com cópia na vertical (Ctrl+J)")
         btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
         btn_mirror_v.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_mirror_v)
         row2.addWidget(btn_mirror_v)
 
         row2.addSpacing(8)
@@ -3789,74 +3801,82 @@ class DrawingCanvas(QWidget):
         btn_img.setFixedHeight(fh)
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_img)
 
         btn_pdf = QPushButton("PDF")
         btn_pdf.setFixedHeight(fh)
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_pdf)
 
         btn_attachments = QPushButton("Anexos")
         btn_attachments.setFixedHeight(fh)
         btn_attachments.setToolTip("Anexar arquivo DWG")
         btn_attachments.clicked.connect(self._attach_dwg)
         btn_attachments.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_attachments)
 
         btn_3d = QPushButton("3D")
         btn_3d.setFixedHeight(fh)
         btn_3d.setToolTip("Inserir desenho 3D pre-definido")
         btn_3d.clicked.connect(self._open_3d_preset_popup)
         btn_3d.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_3d)
         btn_pingadeira = QPushButton("Pingadeira")
         btn_pingadeira.setFixedHeight(fh)
         btn_pingadeira.setToolTip("Inserir modelo de pingadeira")
         btn_pingadeira.clicked.connect(self._open_pingadeira_popup)
         btn_pingadeira.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_pingadeira)
         btn_rufo = QPushButton("Rufo")
         btn_rufo.setFixedHeight(fh)
         btn_rufo.setToolTip("Inserir modelo de rufo")
         btn_rufo.clicked.connect(self._open_rufo_popup)
         btn_rufo.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_rufo)
         btn_calhas = QPushButton("Calhas")
         btn_calhas.setFixedHeight(fh)
         btn_calhas.setToolTip("Inserir modelo de calha")
         btn_calhas.clicked.connect(self._open_calha_popup)
         btn_calhas.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_calhas)
         btn_bandeja = QPushButton("Bandeja")
         btn_bandeja.setFixedHeight(fh)
         btn_bandeja.setToolTip("Inserir modelo de bandeja")
         btn_bandeja.clicked.connect(self._open_bandeja_popup)
         btn_bandeja.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_bandeja)
         btn_cantoneira = QPushButton("Cantoneira")
         btn_cantoneira.setFixedHeight(fh)
         btn_cantoneira.setToolTip("Inserir modelo de cantoneira")
         btn_cantoneira.clicked.connect(self._open_cantoneira_popup)
         btn_cantoneira.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_cantoneira)
         btn_chapas = QPushButton("Chapas")
         btn_chapas.setFixedHeight(fh)
         btn_chapas.setToolTip("Inserir modelo de chapa")
         btn_chapas.clicked.connect(self._open_chapa_popup)
         btn_chapas.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_chapas)
         btn_perfil = QPushButton("Perfil")
         btn_perfil.setFixedHeight(fh)
         btn_perfil.setToolTip("Inserir modelo de perfil")
         btn_perfil.clicked.connect(self._open_perfil_popup)
         btn_perfil.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_perfil)
 
         btn_dim = QPushButton("MM")
         btn_dim.setFixedHeight(fh)
         btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
         btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
         btn_dim.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_dim)
 
         btn_clear = QPushButton("Limpar")
+        self._btn_clear = btn_clear
         btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
-        btn_clear.setStyleSheet(
-            f"QPushButton {{ background:#FDEEEF; color:{theme.DANGER};"
-            f"border:1px solid #F4C7CC; border-radius:8px; padding:2px 8px;"
-            f"font-size:{fs}pt; font-weight:600; }}"
-            f"QPushButton:hover {{ background:#FBE1E4; }}"
-        )
+        btn_clear.setStyleSheet(self._danger_tool_btn_style())
         row2.addWidget(btn_img)
         row2.addWidget(btn_pdf)
         row2.addWidget(btn_attachments)
@@ -3871,7 +3891,8 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
-        layout.addLayout(row2)
+        toolbar_stack.addWidget(actions_frame)
+        layout.addLayout(toolbar_stack)
 
         # Dica de teclado
         hint = QLabel(
@@ -3883,9 +3904,8 @@ class DrawingCanvas(QWidget):
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
         hint.setWordWrap(True)
-        hint.setStyleSheet(
-            f"background:transparent; color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
-        )
+        self._hint_label = hint
+        hint.setStyleSheet(self._hint_style())
         layout.addWidget(hint)
 
         # Cena + View
@@ -3962,12 +3982,107 @@ class DrawingCanvas(QWidget):
 
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
+        radius = max(10, int(12 * self.scale))
         return (
-            f"QPushButton {{ background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
-            f"border-radius:8px; padding:2px 8px; font-size:{fs}pt; color:{theme.TEXT_DARK}; font-weight:600; }}"
-            f"QPushButton:checked {{ background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY}; }}"
-            f"QPushButton:hover:!checked {{ background:{theme.SELECTION_BG}; border-color:{theme.PRIMARY_LIGHT}; }}"
+            f"QPushButton {{"
+            f" background:qlineargradient(x1:0, y1:0, x2:0, y2:1,"
+            f" stop:0 {theme.CARD_BG}, stop:1 {theme.SURFACE_SOFT});"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 60)};"
+            f" border-radius:{radius}px; padding:4px 10px;"
+            f" font-size:{fs}pt; color:{theme.TEXT_DARK}; font-weight:700;"
+            f"}}"
+            f"QPushButton:hover:!checked {{"
+            f" background:{theme.SELECTION_BG}; border-color:{theme.PRIMARY_LIGHT}; color:{theme.PRIMARY};"
+            f"}}"
+            f"QPushButton:checked {{"
+            f" background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f" stop:0 {theme.PRIMARY}, stop:1 {theme.PRIMARY_HOVER});"
+            f" color:{theme.TEXT_WHITE}; border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QPushButton:pressed {{ background:{theme.rgba(theme.PRIMARY, 210)}; }}"
+            f"QPushButton:disabled {{ color:{theme.TEXT_LIGHT}; border-color:{theme.BORDER_COLOR}; }}"
         )
+
+    def _danger_tool_btn_style(self) -> str:
+        fs = max(8, int(9 * self.scale))
+        radius = max(10, int(12 * self.scale))
+        return (
+            f"QPushButton {{"
+            f" background:{theme.rgba(theme.DANGER, 24)}; color:{theme.DANGER};"
+            f" border:1px solid {theme.rgba(theme.DANGER, 86)}; border-radius:{radius}px;"
+            f" padding:4px 10px; font-size:{fs}pt; font-weight:800;"
+            f"}}"
+            f"QPushButton:hover {{ background:{theme.rgba(theme.DANGER, 42)}; }}"
+            f"QPushButton:pressed {{ background:{theme.rgba(theme.DANGER, 72)}; color:{theme.TEXT_WHITE}; }}"
+        )
+
+    def _field_style(self) -> str:
+        fs = max(8, int(9 * self.scale))
+        radius = max(11, int(12 * self.scale))
+        return (
+            f"QComboBox, QSpinBox, QDoubleSpinBox {{"
+            f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 60)}; border-radius:{radius}px;"
+            f" padding:4px 10px; font-size:{fs}pt; font-weight:600;"
+            f" selection-background-color:{theme.rgba(theme.PRIMARY, 70)};"
+            f"}}"
+            f"QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{"
+            f" border-color:{theme.PRIMARY_LIGHT}; background:{theme.SURFACE_SOFT};"
+            f"}}"
+            f"QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{"
+            f" border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QComboBox::drop-down {{ border:none; width:24px; }}"
+            f"QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{"
+            f" width:18px; border:none; background:transparent; margin-right:4px;"
+            f"}}"
+            f"QComboBox QAbstractItemView {{"
+            f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.BORDER_COLOR};"
+            f" selection-background-color:{theme.SELECTION_BG};"
+            f"}}"
+        )
+
+    def _color_swatch_style(self) -> str:
+        return (
+            f"QPushButton {{"
+            f" background:{self.color}; border-radius:12px; border:2px solid {theme.rgba(theme.PRIMARY, 96)};"
+            f" color:{theme.TEXT_WHITE}; font-weight:700;"
+            f"}}"
+            f"QPushButton:hover {{ border-color:{theme.PRIMARY}; }}"
+        )
+
+    def _toolbar_section_style(self) -> str:
+        return (
+            f"QFrame {{"
+            f" background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            f" stop:0 {theme.CARD_BG}, stop:1 {theme.SURFACE_SOFT});"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 34)};"
+            f" border-radius:14px;"
+            f"}}"
+        )
+
+    def _hint_style(self) -> str:
+        return (
+            f"background:{theme.rgba(theme.PRIMARY, 10)}; color:{theme.TEXT_LIGHT};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 42)}; border-radius:12px;"
+            f" padding:8px 12px; font-size:{max(7, int(8*self.scale))}pt; font-style:italic;"
+        )
+
+    def _title_style(self) -> str:
+        fs = max(9, int(11 * self.scale))
+        return (
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:800;"
+        )
+
+    def _create_toolbar_section(self) -> tuple[QFrame, QHBoxLayout]:
+        frame = QFrame(self)
+        frame.setStyleSheet(self._toolbar_section_style())
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(6)
+        self._toolbar_sections.append(frame)
+        return frame, layout
 
     def apply_theme(self) -> None:
         """Reaplica o tema corrente em todos os controles do editor de desenho.
@@ -3989,20 +4104,32 @@ class DrawingCanvas(QWidget):
         tool_style = self._tool_btn_style()
         for btn in getattr(self, "_tool_btns", {}).values():
             btn.setStyleSheet(tool_style)
+        for btn in getattr(self, "_tool_misc_btns", []):
+            btn.setStyleSheet(tool_style)
+        if hasattr(self, "_btn_clear") and self._btn_clear is not None:
+            self._btn_clear.setStyleSheet(self._danger_tool_btn_style())
 
         # Botão de cor: preserva o swatch da cor atual, atualiza só a borda
         if hasattr(self, "btn_color") and self.btn_color is not None:
-            self.btn_color.setStyleSheet(
-                f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
-                f"font-size:{small}pt;"
-            )
+            self.btn_color.setStyleSheet(self._color_swatch_style())
+
+        for frame in getattr(self, "_toolbar_sections", []):
+            frame.setStyleSheet(self._toolbar_section_style())
+
+        for field_name in ("spin_width", "combo_style", "combo_esquadro", "spin_font", "spin_rotate"):
+            field = getattr(self, field_name, None)
+            if field is not None:
+                field.setStyleSheet(self._field_style())
 
         # Demais botões e labels: aplica estilo padrão.
         # Pula os que já estilizamos especificamente acima.
         from PySide6.QtWidgets import QPushButton, QLabel
         special_btns = set(getattr(self, "_tool_btns", {}).values())
+        special_btns.update(getattr(self, "_tool_misc_btns", []))
         if hasattr(self, "btn_color"):
             special_btns.add(self.btn_color)
+        if hasattr(self, "_btn_clear"):
+            special_btns.add(self._btn_clear)
 
         for btn in self.findChildren(QPushButton):
             if btn in special_btns:
@@ -4014,11 +4141,15 @@ class DrawingCanvas(QWidget):
 
         # Labels: detecta o título (cor PRIMARY/bold/maior) e re-estiliza
         for lbl in self.findChildren(QLabel):
+            if hasattr(self, "_title_label") and lbl is self._title_label:
+                lbl.setStyleSheet(self._title_style())
+                continue
+            if hasattr(self, "_hint_label") and lbl is self._hint_label:
+                lbl.setStyleSheet(self._hint_style())
+                continue
             current = lbl.styleSheet() or ""
             if "font-weight:bold" in current.replace(" ", ""):
-                lbl.setStyleSheet(
-                    f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
-                )
+                lbl.setStyleSheet(self._title_style())
             else:
                 lbl.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
 
