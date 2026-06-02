@@ -105,6 +105,38 @@ def _primary_action_btn_style(scale: float) -> str:
     return theme.primary_btn_style(scale)
 
 
+def _scoped_field_qss(s: float) -> str:
+    """Versão escopada do _field_style: aplica somente a widgets que tenham
+    property historyField='1'. Permite que apply_theme aplique uma única
+    chamada de setStyleSheet no view-level cobrindo os 7 inputs.
+    """
+    raw = _field_style(s)
+    # Substitui seletores raiz pelos escopados por property.
+    return (raw
+        .replace("QLineEdit, QComboBox, QDateEdit ",
+                 "QLineEdit[historyField='1'], QComboBox[historyField='1'], QDateEdit[historyField='1'] ")
+        .replace("QComboBox ",     "QComboBox[historyField='1'] ")
+        .replace("QDateEdit ",     "QDateEdit[historyField='1'] ")
+        .replace("QLineEdit ",     "QLineEdit[historyField='1'] ")
+        .replace("QLineEdit:focus, QComboBox:focus, QDateEdit:focus",
+                 "QLineEdit[historyField='1']:focus, QComboBox[historyField='1']:focus, QDateEdit[historyField='1']:focus")
+        .replace("QComboBox::",    "QComboBox[historyField='1']::")
+        .replace("QDateEdit::",    "QDateEdit[historyField='1']::")
+        .replace("QComboBox QAbstractItemView, QDateEdit QAbstractItemView",
+                 "QComboBox[historyField='1'] QAbstractItemView, QDateEdit[historyField='1'] QAbstractItemView")
+    )
+
+
+def _scoped_btn_qss_history(s: float, role: str, fn) -> str:
+    """Mesmo conceito do production_view._scoped_btn_qss: escopa um QSS de
+    botão por property historyBtn='<role>'. Cobre todos os botões da view
+    em uma única chamada de setStyleSheet no root.
+    """
+    raw = fn(s)
+    selector = f"QPushButton[historyBtn='{role}']"
+    return raw.replace("QPushButton ", f"{selector} ").replace("QPushButton:", f"{selector}:")
+
+
 def _field_style(scale: float) -> str:
     fs = max(9, int(10 * scale))
     arrow = _rgba(theme.TEXT_LIGHT, 220)
@@ -338,8 +370,13 @@ class HistoryView(QWidget):
         page_bg = theme.CONTENT_BG
         self.setObjectName("historyView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        # QSS view-level completo (background + 7 fields property-based + 4
+        # botoes property-based). Widgets criados a seguir herdam via cascata.
         self.setStyleSheet(
             f"QWidget#historyView {{ background:{page_bg}; }}"
+            + _scoped_field_qss(s)
+            + _scoped_btn_qss_history(s, "primary",   _primary_action_btn_style)
+            + _scoped_btn_qss_history(s, "secondary", _flat_secondary_btn_style)
         )
 
         root = QVBoxLayout(self)
@@ -404,7 +441,7 @@ class HistoryView(QWidget):
 
         self.refresh_btn = QPushButton("ATUALIZAR")
         self.refresh_btn.setFixedHeight(max(38, int(44 * s)))
-        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.refresh_btn.setProperty("historyBtn", "secondary")
         self.refresh_btn.clicked.connect(self.refresh)
         right_col.addWidget(info_card)
         right_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
@@ -477,7 +514,7 @@ class HistoryView(QWidget):
         for key, label in theme.STATUS_LABELS.items():
             self.combo_status.addItem(label, key)
         self.combo_status.setFixedHeight(max(38, int(44 * s)))
-        self.combo_status.setStyleSheet(_field_style(s))
+        self.combo_status.setProperty("historyField", "1")
         status_col.addWidget(status_label)
         status_col.addWidget(self.combo_status)
 
@@ -499,7 +536,7 @@ class HistoryView(QWidget):
         self.input_date_from.setDisplayFormat("dd/MM/yyyy")
         self.input_date_from.setCalendarPopup(False)
         self.input_date_from.setFixedHeight(max(38, int(44 * s)))
-        self.input_date_from.setStyleSheet(_field_style(s))
+        self.input_date_from.setProperty("historyField", "1")
         self.btn_date_from = QToolButton()
         self.btn_date_from.setText("\U0001F4C5")
         self.btn_date_from.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -521,7 +558,7 @@ class HistoryView(QWidget):
         self.input_date_to.setDisplayFormat("dd/MM/yyyy")
         self.input_date_to.setCalendarPopup(False)
         self.input_date_to.setFixedHeight(max(38, int(44 * s)))
-        self.input_date_to.setStyleSheet(_field_style(s))
+        self.input_date_to.setProperty("historyField", "1")
         self.btn_date_to = QToolButton()
         self.btn_date_to.setText("\U0001F4C5")
         self.btn_date_to.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -546,7 +583,7 @@ class HistoryView(QWidget):
         )
         self.combo_operator = QComboBox()
         self.combo_operator.setFixedHeight(max(38, int(44 * s)))
-        self.combo_operator.setStyleSheet(_field_style(s))
+        self.combo_operator.setProperty("historyField", "1")
         operator_col.addWidget(operator_label)
         operator_col.addWidget(self.combo_operator)
 
@@ -560,7 +597,7 @@ class HistoryView(QWidget):
         for label, value in PRODUCTION_OPTIONS:
             self.combo_production.addItem(label, value)
         self.combo_production.setFixedHeight(max(38, int(44 * s)))
-        self.combo_production.setStyleSheet(_field_style(s))
+        self.combo_production.setProperty("historyField", "1")
         self.combo_production.currentIndexChanged.connect(self._on_production_changed)
         production_col.addWidget(production_label)
         production_col.addWidget(self.combo_production)
@@ -573,7 +610,7 @@ class HistoryView(QWidget):
         )
         self.combo_machine = QComboBox()
         self.combo_machine.setFixedHeight(max(38, int(44 * s)))
-        self.combo_machine.setStyleSheet(_field_style(s))
+        self.combo_machine.setProperty("historyField", "1")
         machine_col.addWidget(machine_label)
         machine_col.addWidget(self.combo_machine)
 
@@ -587,7 +624,7 @@ class HistoryView(QWidget):
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("Buscar por PED, cliente ou obra...")
         self.input_search.setFixedHeight(max(38, int(44 * s)))
-        self.input_search.setStyleSheet(_field_style(s))
+        self.input_search.setProperty("historyField", "1")
         self.input_search.returnPressed.connect(self.refresh)
         search_col.addWidget(search_label)
         search_col.addWidget(self.input_search)
@@ -599,12 +636,12 @@ class HistoryView(QWidget):
         buttons_row.setSpacing(max(8, int(10 * s)))
         self.search_btn = QPushButton("BUSCAR")
         self.search_btn.setFixedHeight(max(38, int(44 * s)))
-        self.search_btn.setStyleSheet(_primary_action_btn_style(s))
+        self.search_btn.setProperty("historyBtn", "primary")
         self.search_btn.clicked.connect(self.refresh)
 
         self.clear_btn = QPushButton("LIMPAR")
         self.clear_btn.setFixedHeight(max(38, int(44 * s)))
-        self.clear_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.clear_btn.setProperty("historyBtn", "secondary")
         self.clear_btn.clicked.connect(self._clear_filters)
 
         buttons_row.addWidget(self.search_btn)
@@ -688,7 +725,7 @@ class HistoryView(QWidget):
 
         self.export_btn = QPushButton("EXPORTAR EXCEL")
         self.export_btn.setFixedHeight(max(36, int(42 * s)))
-        self.export_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        self.export_btn.setProperty("historyBtn", "secondary")
         self.export_btn.setToolTip("Exportar os resultados atuais para uma planilha Excel")
         self.export_btn.clicked.connect(self._export_excel)
         results_header.addWidget(self.export_btn, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -1153,25 +1190,47 @@ class HistoryView(QWidget):
         theme.apply_neon_table_palette(self.table)
 
     def apply_theme(self) -> None:
+        """Reaplica tema no Historico — versao otimizada (property-based).
+
+        Antes: 13 setStyleSheets individuais (7 fields + 4 botoes principais +
+        2 calendarios + error_label + 1 root) + _apply_table_style.
+
+        Depois: 1 setStyleSheet view-level cobre 7 fields (via property
+        historyField='1') + 4 botoes principais (via property historyBtn=role).
+        Restam apenas: error_label (cores DANGER com alpha), 2 calendar btns
+        (estilo proprio) e _apply_table_style. Plus setPalette no root para
+        cascatear cores fundamentais.
+        """
         s = self.scale
         bg = theme.CONTENT_BG
-        self.setStyleSheet(f"QWidget#historyView {{ background:{bg}; }}")
-        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+
+        # QPalette no root — cores cascateiam para filhos automaticamente.
+        pal = self.palette()
+        pal.setColor(QPalette.ColorRole.Window,          QColor(bg))
+        pal.setColor(QPalette.ColorRole.WindowText,      QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.Text,            QColor(theme.TEXT_DARK))
+        pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(theme.TEXT_MEDIUM))
+        pal.setColor(QPalette.ColorRole.Base,            QColor(theme.PANEL_SURFACE_BG))
+        pal.setColor(QPalette.ColorRole.Highlight,       QColor(theme.PANEL_NEON_PRIMARY))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.PANEL_TEXT_PRIMARY))
+        self.setPalette(pal)
+
+        # UMA chamada de setStyleSheet cobre: background da view + 7 fields
+        # (property historyField) + 4 botoes principais (property historyBtn).
+        self.setStyleSheet(
+            f"QWidget#historyView {{ background:{bg}; }}"
+            + _scoped_field_qss(s)
+            + _scoped_btn_qss_history(s, "primary",   _primary_action_btn_style)
+            + _scoped_btn_qss_history(s, "secondary", _flat_secondary_btn_style)
+        )
+
+        # Restam estilos que nao cabem no padrao property-based
         self.error_label.setStyleSheet(
             f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
             f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
             f"padding:12px 14px; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
-        self.combo_status.setStyleSheet(_field_style(s))
-        self.input_date_from.setStyleSheet(_field_style(s))
-        self.input_date_to.setStyleSheet(_field_style(s))
         self.btn_date_from.setStyleSheet(_calendar_btn_style(s))
         self.btn_date_to.setStyleSheet(_calendar_btn_style(s))
-        self.combo_production.setStyleSheet(_field_style(s))
-        self.combo_machine.setStyleSheet(_field_style(s))
-        self.combo_operator.setStyleSheet(_field_style(s))
-        self.input_search.setStyleSheet(_field_style(s))
-        self.search_btn.setStyleSheet(_primary_action_btn_style(s))
-        self.clear_btn.setStyleSheet(_flat_secondary_btn_style(s))
-        self.export_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self._apply_table_style()
+        self.update()

@@ -1225,7 +1225,8 @@ class MainWindow(QMainWindow):
         cover = self._show_frozen_overlay(old_pixmap)
         QApplication.processEvents()
 
-        res.save(dark_mode=dark)
+        # res.save() escreve no disco — adiado para depois do cross-fade
+        # para nao adicionar I/O ao caminho critico da animacao.
         theme.set_dark(dark)
 
         # Aplica tema na view atual + sidebar + global (cover ainda visível)
@@ -1239,6 +1240,10 @@ class MainWindow(QMainWindow):
         # e sem flicker observável).
         new_pixmap = self._grab_without_overlay(cover)
         self._start_cross_fade(cover, old_pixmap, new_pixmap, duration_ms=120)
+
+        # I/O da preferencia: depois do toggle visual terminar.
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(200, lambda d=dark: res.save(dark_mode=d))
 
     def _grab_without_overlay(self, overlay):
         """Captura um pixmap da janela sem o overlay aparecer.
