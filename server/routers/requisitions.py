@@ -2724,6 +2724,8 @@ def _build_count_kg_comparison_rows(
 def _build_production_destination_comparison(
     reqs: list[Requisition],
     now: datetime | None = None,
+    *,
+    destination: str = "",
 ) -> list[DashboardKgComparisonItem]:
     periods = _comparison_period_windows(now)
     stats: dict[str, dict[str, object]] = {}
@@ -2731,10 +2733,12 @@ def _build_production_destination_comparison(
     for req in reqs:
         weight = float(req.weight or 0.0)
         for cycle in _all_finished_cycles(req):
-            destination = _canonical_destination(cycle.get("target"))
-            if not destination:
+            cycle_destination = _canonical_destination(cycle.get("target"))
+            if not cycle_destination:
                 continue
-            entry = stats.setdefault(destination, _new_kg_comparison_entry(destination))
+            if destination and cycle_destination != destination:
+                continue
+            entry = stats.setdefault(cycle_destination, _new_kg_comparison_entry(cycle_destination))
             _accumulate_kg_comparison(entry, cycle.get("finished_at"), weight, periods)
 
     return _build_kg_comparison_rows(stats)
@@ -2744,6 +2748,7 @@ def _build_production_machine_comparison(
     reqs: list[Requisition],
     now: datetime | None = None,
     *,
+    destination: str = "",
     limit: int | None = None,
 ) -> list[DashboardKgComparisonItem]:
     periods = _comparison_period_windows(now)
@@ -2752,13 +2757,17 @@ def _build_production_machine_comparison(
     for req in reqs:
         weight = float(req.weight or 0.0)
         for cycle in _all_finished_cycles(req):
-            destination = _canonical_destination(cycle.get("target"))
+            cycle_destination = _canonical_destination(cycle.get("target"))
             machine_name = _normalize_machine_name(cycle.get("machine"))
             if not machine_name:
                 continue
-            label = machine_name if not destination else f"{destination} - {machine_name}"
+            if destination and cycle_destination != destination:
+                continue
+            label = machine_name
+            if not destination and cycle_destination:
+                label = f"{cycle_destination} - {machine_name}"
             entry = stats.setdefault(
-                (destination, machine_name),
+                (cycle_destination, machine_name),
                 _new_kg_comparison_entry(label),
             )
             _accumulate_kg_comparison(entry, cycle.get("finished_at"), weight, periods)
@@ -2770,12 +2779,15 @@ def _build_vendor_comparison(
     reqs: list[Requisition],
     now: datetime | None = None,
     *,
+    destination: str = "",
     limit: int | None = None,
 ) -> list[DashboardCountKgComparisonItem]:
     periods = _comparison_period_windows(now)
     stats: dict[tuple[int, str], dict[str, object]] = {}
 
     for req in reqs:
+        if destination and _current_production_destination(req) != destination:
+            continue
         vendor_name = (req.vendor_name or "").strip() or "Sem vendedor"
         vendor_key = (int(req.vendor_id or 0), vendor_name)
         emission_at = _parse_local_emission_datetime(req.emission_date) or _to_local_datetime(req.created_at)
@@ -2790,6 +2802,7 @@ def _build_people_comparison(
     people_key: str,
     now: datetime | None = None,
     *,
+    destination: str = "",
     limit: int | None = None,
 ) -> list[DashboardCountKgComparisonItem]:
     periods = _comparison_period_windows(now)
@@ -2798,6 +2811,9 @@ def _build_people_comparison(
     for req in reqs:
         weight = float(req.weight or 0.0)
         for cycle in _all_finished_cycles(req):
+            cycle_destination = _canonical_destination(cycle.get("target"))
+            if destination and cycle_destination != destination:
+                continue
             finished_at = cycle.get("finished_at")
             for person_name in _clean_operator_names(list(cycle.get(people_key) or [])):
                 entry = stats.setdefault(person_name, _new_count_kg_comparison_entry(person_name))
@@ -2816,6 +2832,7 @@ def _build_management_dashboard(
     performance_date_start: date | None = None,
     performance_date_end: date | None = None,
     performance_destination: str = "",
+    comparison_destination: str = "",
     people_period: str = "30d",
     people_destination: str = "",
 ) -> ManagementDashboardResponse:
@@ -2928,11 +2945,33 @@ def _build_management_dashboard(
         now,
     )
     insights = DashboardInsightsResponse(
-        production_kg_by_destination=_build_production_destination_comparison(reqs, now),
-        production_kg_by_machine=_build_production_machine_comparison(reqs, now),
-        requisitions_kg_by_vendor=_build_vendor_comparison(reqs, now),
-        requisitions_kg_by_operator=_build_people_comparison(reqs, "operators", now),
-        requisitions_kg_by_helper=_build_people_comparison(reqs, "helpers", now),
+        production_kg_by_destination=_build_production_destination_comparison(
+            reqs,
+            now,
+            destination=comparison_destination,
+        ),
+        production_kg_by_machine=_build_production_machine_comparison(
+            reqs,
+            now,
+            destination=comparison_destination,
+        ),
+        requisitions_kg_by_vendor=_build_vendor_comparison(
+            reqs,
+            now,
+            destination=comparison_destination,
+        ),
+        requisitions_kg_by_operator=_build_people_comparison(
+            reqs,
+            "operators",
+            now,
+            destination=comparison_destination,
+        ),
+        requisitions_kg_by_helper=_build_people_comparison(
+            reqs,
+            "helpers",
+            now,
+            destination=comparison_destination,
+        ),
     )
 
     receipt_alerts.sort(key=lambda item: item.waiting_minutes, reverse=True)
@@ -3374,6 +3413,7 @@ def get_management_dashboard(
     performance_date_start: date | None = Query(None),
     performance_date_end: date | None = Query(None),
     performance_destination: str = Query(""),
+    comparison_destination: str = Query(""),
     people_period: str = Query("30d"),
     people_destination: str = Query(""),
     db: Session = Depends(get_db),
@@ -3384,6 +3424,7 @@ def get_management_dashboard(
     normalized_industria_period = _normalize_dashboard_period(industria_period)
     normalized_performance_period = _normalize_performance_dashboard_period(performance_period)
     normalized_performance_destination = _normalize_dashboard_destination(performance_destination)
+    normalized_comparison_destination = _normalize_dashboard_destination(comparison_destination)
     normalized_people_period = _normalize_dashboard_period(people_period)
     normalized_people_destination = _normalize_dashboard_destination(people_destination)
 
@@ -3411,6 +3452,7 @@ def get_management_dashboard(
         performance_date_start=performance_date_start,
         performance_date_end=performance_date_end,
         performance_destination=normalized_performance_destination,
+        comparison_destination=normalized_comparison_destination,
         people_period=normalized_people_period,
         people_destination=normalized_people_destination,
     )

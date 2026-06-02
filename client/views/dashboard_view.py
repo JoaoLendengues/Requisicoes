@@ -376,8 +376,8 @@ class NeonComparisonWidget(QWidget):
         self.update()
 
     def _content_height(self) -> int:
-        top_block = max(88, int(104 * self._scale))
-        row_height = max(78, int(86 * self._scale)) if self._mode == "count_kg" else max(70, int(78 * self._scale))
+        top_block = max(92, int(108 * self._scale))
+        row_height = max(92, int(102 * self._scale)) if self._mode == "count_kg" else max(82, int(90 * self._scale))
         visible_rows = max(1, len(self._visible_rows()))
         bottom_padding = max(16, int(20 * self._scale))
         return top_block + (visible_rows * row_height) + bottom_padding
@@ -521,12 +521,11 @@ class NeonComparisonWidget(QWidget):
         if max_value <= 0:
             max_value = 1.0
 
-        row_height = max(78, int(86 * self._scale)) if self._mode == "count_kg" else max(70, int(78 * self._scale))
+        row_height = max(92, int(102 * self._scale)) if self._mode == "count_kg" else max(82, int(90 * self._scale))
+        label_height = max(32, int(36 * self._scale)) if self._mode == "count_kg" else max(28, int(32 * self._scale))
         bar_height = max(14, int(16 * self._scale))
-        label_column_width = max(110, int(130 * self._scale))
-        value_column_width = max(110, int(132 * self._scale)) if self._mode == "kg" else max(148, int(182 * self._scale))
-        bar_x = left_pad + label_column_width
-        bar_width = max(90, rect.width() - bar_x - value_column_width - max(18, int(22 * self._scale)))
+        value_height = max(18, int(20 * self._scale))
+        bar_width = max(120, rect.width() - (left_pad * 2))
 
         for row_index, row in enumerate(visible_rows):
             row_top = body_top + (row_index * row_height)
@@ -536,22 +535,24 @@ class NeonComparisonWidget(QWidget):
             row_label_font.setPointSize(max(8, int(9 * self._scale)))
             row_label_font.setBold(True)
             painter.setFont(row_label_font)
+            label_rect = QRectF(
+                left_pad,
+                row_top,
+                bar_width,
+                label_height,
+            )
+            label_flags = int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop) | int(Qt.TextFlag.TextWordWrap)
             painter.drawText(
-                QRectF(
-                    left_pad,
-                    row_top,
-                    label_column_width - max(10, int(12 * self._scale)),
-                    max(16, int(20 * self._scale)),
-                ),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                label_rect,
+                label_flags,
                 str(row.get("label") or "-"),
             )
 
             period_key = self._selected_period
             value = self._value_for_period(row, period_key)
             ratio = min(1.0, value / max_value) if max_value else 0.0
-            current_y = row_top + max(24, int(28 * self._scale))
-            track_rect = QRectF(bar_x, current_y, bar_width, bar_height)
+            current_y = row_top + label_height + max(8, int(10 * self._scale))
+            track_rect = QRectF(left_pad, current_y, bar_width, bar_height)
 
             painter.setPen(QPen(Qt.PenStyle.NoPen))
             painter.setBrush(QColor(255, 255, 255, 18))
@@ -585,12 +586,12 @@ class NeonComparisonWidget(QWidget):
             painter.setFont(value_font)
             painter.drawText(
                 QRectF(
-                    bar_x + bar_width + max(10, int(12 * self._scale)),
-                    current_y - max(4, int(4 * self._scale)),
-                    value_column_width,
-                    bar_height + max(8, int(10 * self._scale)),
+                    left_pad,
+                    current_y + bar_height + max(6, int(8 * self._scale)),
+                    bar_width,
+                    value_height,
                 ),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 self._bar_label(row, period_key),
             )
 
@@ -607,6 +608,7 @@ class DashWorker(QObject):
         performance_date_start: str | None,
         performance_date_end: str | None,
         performance_destination: str,
+        comparison_destination: str,
         people_period: str,
         people_destination: str,
     ):
@@ -617,6 +619,7 @@ class DashWorker(QObject):
         self.performance_date_start = performance_date_start
         self.performance_date_end = performance_date_end
         self.performance_destination = performance_destination
+        self.comparison_destination = comparison_destination
         self.people_period = people_period
         self.people_destination = people_destination
 
@@ -630,6 +633,7 @@ class DashWorker(QObject):
                     performance_date_start=self.performance_date_start,
                     performance_date_end=self.performance_date_end,
                     performance_destination=self.performance_destination,
+                    comparison_destination=self.comparison_destination,
                     people_period=self.people_period,
                     people_destination=self.people_destination,
                 )
@@ -681,6 +685,7 @@ class DashboardView(QWidget):
         self.industria_period_combo: QComboBox | None = None
         self.performance_period_combo: QComboBox | None = None
         self.performance_destination_combo: QComboBox | None = None
+        self.comparison_destination_combo: QComboBox | None = None
         self.performance_date_from: QDateEdit | None = None
         self.performance_date_to: QDateEdit | None = None
         self.performance_date_wrap: QWidget | None = None
@@ -1336,6 +1341,9 @@ class DashboardView(QWidget):
         self._update_performance_filter_visibility()
         self.refresh()
 
+    def _on_comparison_filter_changed(self) -> None:
+        self.refresh()
+
     def _on_performance_date_changed(self) -> None:
         if (
             self.performance_date_from
@@ -1367,6 +1375,13 @@ class DashboardView(QWidget):
         return (
             str(self.performance_destination_combo.currentData() or "")
             if self.performance_destination_combo
+            else ""
+        )
+
+    def _selected_comparison_destination(self) -> str:
+        return (
+            str(self.comparison_destination_combo.currentData() or "")
+            if self.comparison_destination_combo
             else ""
         )
 
@@ -1441,6 +1456,22 @@ class DashboardView(QWidget):
             selector_row.addWidget(btn)
 
         selector_row.addStretch()
+
+        comparison_destination_label = QLabel("PRODUÇÃO:")
+        comparison_destination_label.setStyleSheet(
+            f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
+            f"color:{theme.PANEL_TEXT_PRIMARY};"
+        )
+        self.comparison_destination_combo = QComboBox()
+        self.comparison_destination_combo.setFixedHeight(max(34, int(38 * self.scale)))
+        self.comparison_destination_combo.setMinimumWidth(max(170, int(210 * self.scale)))
+        self.comparison_destination_combo.setStyleSheet(_field_style(self.scale))
+        for label, value in self._production_filter_options:
+            self.comparison_destination_combo.addItem(label, value)
+        self.comparison_destination_combo.currentIndexChanged.connect(self._on_comparison_filter_changed)
+        selector_row.addWidget(comparison_destination_label)
+        selector_row.addWidget(self.comparison_destination_combo)
+
         root.addLayout(selector_row)
 
         grid = QGridLayout()
@@ -1451,56 +1482,46 @@ class DashboardView(QWidget):
         grid.setColumnStretch(1, 1)
 
         self.production_destination_chart = NeonComparisonWidget(
-            "PRODUCAO EM KG POR DESTINO",
-            "Peso finalizado por producao com leitura mensal, semanal e diaria.",
+            "DESTINOS DE PRODUÇÃO",
+            "Peso finalizado por produção em cada recorte de tempo.",
             self.scale,
             mode="kg",
             max_rows=None,
         )
         self.production_machine_chart = NeonComparisonWidget(
-            "PRODUCAO EM KG POR MAQUINA",
-            "Top maquinas por peso processado nos tres recortes de tempo.",
+            "PRODUÇÃO POR MÁQUINA",
+            "Máquinas com maior peso processado no período comparado.",
             self.scale,
             mode="kg",
             max_rows=8,
         )
         self.vendor_comparison_chart = NeonComparisonWidget(
-            "VENDEDORES | REQUISICOES E KG",
-            "Top 8 vendedores por quantidade de requisicoes e peso emitido.",
+            "VENDEDORES",
+            "Requisições emitidas e peso correspondente no período.",
             self.scale,
             mode="count_kg",
             max_rows=8,
         )
         self.operator_comparison_chart = NeonComparisonWidget(
-            "OPERADORES | REQUISICOES E KG",
-            "Top 8 operadores por requisicoes finalizadas e peso processado.",
+            "OPERADORES",
+            "Produções finalizadas e peso processado por operador.",
             self.scale,
             mode="count_kg",
             max_rows=8,
         )
         self.helper_comparison_chart = NeonComparisonWidget(
-            "AJUDANTES | REQUISICOES E KG",
-            "Top 8 ajudantes por requisicoes finalizadas e peso processado.",
+            "AJUDANTES",
+            "Produções finalizadas e peso processado por ajudante.",
             self.scale,
             mode="count_kg",
             max_rows=8,
         )
 
-        left_column = QVBoxLayout()
-        left_column.setContentsMargins(0, 0, 0, 0)
-        left_column.setSpacing(max(12, int(16 * self.scale)))
-        left_column.addWidget(self.production_destination_chart)
-        left_column.addWidget(self.production_machine_chart)
-
-        right_column = QVBoxLayout()
-        right_column.setContentsMargins(0, 0, 0, 0)
-        right_column.setSpacing(max(12, int(16 * self.scale)))
-        right_column.addWidget(self.vendor_comparison_chart)
-        right_column.addWidget(self.operator_comparison_chart)
-        right_column.addWidget(self.helper_comparison_chart)
-
-        grid.addLayout(left_column, 0, 0)
-        grid.addLayout(right_column, 0, 1)
+        grid.addWidget(self.production_destination_chart, 0, 0, 1, 2)
+        grid.addWidget(self.production_machine_chart, 1, 0, 1, 2)
+        grid.addWidget(self.vendor_comparison_chart, 2, 0, 1, 2)
+        grid.addWidget(self.operator_comparison_chart, 3, 0, 1, 2)
+        grid.addWidget(self.helper_comparison_chart, 4, 0, 1, 2)
         root.addLayout(grid)
         self._apply_comparison_period()
         return container
@@ -1718,6 +1739,7 @@ class DashboardView(QWidget):
         )
         performance_period, performance_date_start, performance_date_end = self._selected_performance_params()
         performance_destination = self._selected_performance_destination()
+        comparison_destination = self._selected_comparison_destination()
         people_period = (
             str(self.people_period_combo.currentData() or "30d")
             if self.people_period_combo
@@ -1736,6 +1758,7 @@ class DashboardView(QWidget):
             performance_date_start,
             performance_date_end,
             performance_destination,
+            comparison_destination,
             people_period,
             people_destination,
         )
@@ -1765,6 +1788,8 @@ class DashboardView(QWidget):
             self.performance_period_combo.setEnabled(not loading)
         if self.performance_destination_combo:
             self.performance_destination_combo.setEnabled(not loading)
+        if self.comparison_destination_combo:
+            self.comparison_destination_combo.setEnabled(not loading)
         if self.performance_date_from:
             self.performance_date_from.setEnabled(not loading)
         if self.performance_date_to:
@@ -2182,6 +2207,7 @@ class DashboardView(QWidget):
         for combo in (
             getattr(self, "performance_period_combo", None),
             getattr(self, "performance_destination_combo", None),
+            getattr(self, "comparison_destination_combo", None),
             getattr(self, "people_period_combo", None),
             getattr(self, "people_destination_combo", None),
             getattr(self, "ar_period_combo", None),

@@ -23,7 +23,11 @@ from server.routers.requisitions import (
     _PROD_FINISHED,
     _PROD_STARTED,
     _build_iar_general,
+    _build_people_comparison,
+    _build_production_destination_comparison,
+    _build_production_machine_comparison,
     _build_top_vendor_rows,
+    _build_vendor_comparison,
 )
 
 
@@ -45,10 +49,21 @@ def _client(client_id: int, name: str) -> Client:
     )
 
 
-def _prod_note(action: str, destination: str, *, machine: str | None = None) -> str:
+def _prod_note(
+    action: str,
+    destination: str,
+    *,
+    machine: str | None = None,
+    operators: list[str] | None = None,
+    helpers: list[str] | None = None,
+) -> str:
     parts = ["PRODUCAO", action, destination]
     if machine:
         parts.append(f"machine={machine}")
+    if operators:
+        parts.append(f"operators={';'.join(operators)}")
+    if helpers:
+        parts.append(f"helpers={';'.join(helpers)}")
     return "|".join(parts)
 
 
@@ -489,3 +504,131 @@ def test_build_top_vendor_rows_filters_by_production_destination():
     assert rows[0].vendor_name == "BRUNO"
     assert rows[0].requisition_count == 1
     assert rows[0].iar_percent == 100.0
+
+
+def test_dashboard_comparisons_filter_by_production_destination():
+    now = datetime.utcnow().replace(hour=15, minute=0, second=0, microsecond=0)
+
+    req_ar = _req(
+        41,
+        vendor_id=1,
+        vendor_name="ALICE",
+        weight=7.0,
+        emission_at=now - timedelta(days=5),
+        delivery_date=now - timedelta(days=4),
+        status=RequisitionStatus.FATURADO,
+        history=[
+            _status_entry(
+                41,
+                RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                RequisitionStatus.EM_PRODUCAO.value,
+                now - timedelta(days=4, hours=4),
+                _prod_note(
+                    _PROD_STARTED,
+                    _DESTINATION_AR,
+                    machine="PRENSA 09",
+                    operators=["ANA"],
+                    helpers=["BIA"],
+                ),
+                41,
+            ),
+            _status_entry(
+                41,
+                RequisitionStatus.EM_PRODUCAO.value,
+                RequisitionStatus.FATURADO.value,
+                now - timedelta(days=4),
+                _prod_note(
+                    _PROD_FINISHED,
+                    _DESTINATION_AR,
+                    machine="PRENSA 09",
+                    operators=["ANA"],
+                    helpers=["BIA"],
+                ),
+                42,
+            ),
+        ],
+        destination=_DESTINATION_AR,
+    )
+    req_pinheiro = _req(
+        42,
+        vendor_id=2,
+        vendor_name="BRUNO",
+        weight=5.5,
+        emission_at=now - timedelta(days=3),
+        delivery_date=now - timedelta(days=2),
+        status=RequisitionStatus.FATURADO,
+        history=[
+            _status_entry(
+                42,
+                RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                RequisitionStatus.EM_PRODUCAO.value,
+                now - timedelta(days=2, hours=6),
+                _prod_note(
+                    _PROD_STARTED,
+                    _DESTINATION_PINHEIRO,
+                    machine="LASER 12",
+                    operators=["CARLOS"],
+                    helpers=["DORA"],
+                ),
+                43,
+            ),
+            _status_entry(
+                42,
+                RequisitionStatus.EM_PRODUCAO.value,
+                RequisitionStatus.FATURADO.value,
+                now - timedelta(days=2),
+                _prod_note(
+                    _PROD_FINISHED,
+                    _DESTINATION_PINHEIRO,
+                    machine="LASER 12",
+                    operators=["CARLOS"],
+                    helpers=["DORA"],
+                ),
+                44,
+            ),
+        ],
+        destination=_DESTINATION_PINHEIRO,
+    )
+
+    destination_rows = _build_production_destination_comparison(
+        [req_ar, req_pinheiro],
+        now,
+        destination=_DESTINATION_PINHEIRO,
+    )
+    machine_rows = _build_production_machine_comparison(
+        [req_ar, req_pinheiro],
+        now,
+        destination=_DESTINATION_PINHEIRO,
+    )
+    vendor_rows = _build_vendor_comparison(
+        [req_ar, req_pinheiro],
+        now,
+        destination=_DESTINATION_PINHEIRO,
+    )
+    operator_rows = _build_people_comparison(
+        [req_ar, req_pinheiro],
+        "operators",
+        now,
+        destination=_DESTINATION_PINHEIRO,
+    )
+    helper_rows = _build_people_comparison(
+        [req_ar, req_pinheiro],
+        "helpers",
+        now,
+        destination=_DESTINATION_PINHEIRO,
+    )
+
+    assert len(destination_rows) == 1
+    assert destination_rows[0].label == _DESTINATION_PINHEIRO
+
+    assert len(machine_rows) == 1
+    assert machine_rows[0].label == "LASER 12"
+
+    assert len(vendor_rows) == 1
+    assert vendor_rows[0].label == "BRUNO"
+
+    assert len(operator_rows) == 1
+    assert operator_rows[0].label == "CARLOS"
+
+    assert len(helper_rows) == 1
+    assert helper_rows[0].label == "DORA"
