@@ -101,7 +101,18 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
 
 
 def _restore_table_sorting(table: QTableWidget) -> None:
-    table.setSortingEnabled(bool(table.property("allowSorting")))
+    table.setSortingEnabled(False)
+    allow_sorting = bool(table.property("allowSorting"))
+    header = table.horizontalHeader()
+    header.setSectionsClickable(allow_sorting)
+    sort_column = int(table.property("sortColumn") or -1)
+    if allow_sorting and sort_column >= 0:
+        sort_order = Qt.SortOrder(int(table.property("sortOrder") or int(Qt.SortOrder.AscendingOrder)))
+        table.sortItems(sort_column, sort_order)
+        header.setSortIndicator(sort_column, sort_order)
+        header.setSortIndicatorShown(True)
+        return
+    header.setSortIndicatorShown(False)
 
 
 def _make_shadow_card(
@@ -1560,12 +1571,41 @@ class DashboardView(QWidget):
             if chart is not None:
                 chart.set_selected_period(self._comparison_period)
 
+    def _on_table_header_clicked(self, table: QTableWidget, section: int) -> None:
+        if not bool(table.property("allowSorting")):
+            return
+
+        blocked_columns = {
+            int(value)
+            for value in (table.property("blockedSortColumns") or [])
+        }
+        if section in blocked_columns:
+            return
+
+        current_column = int(table.property("sortColumn") or -1)
+        current_order = Qt.SortOrder(int(table.property("sortOrder") or int(Qt.SortOrder.AscendingOrder)))
+        next_order = Qt.SortOrder.AscendingOrder
+        if current_column == section:
+            next_order = (
+                Qt.SortOrder.DescendingOrder
+                if current_order == Qt.SortOrder.AscendingOrder
+                else Qt.SortOrder.AscendingOrder
+            )
+
+        table.setProperty("sortColumn", section)
+        table.setProperty("sortOrder", int(next_order))
+        table.sortItems(section, next_order)
+        header = table.horizontalHeader()
+        header.setSortIndicator(section, next_order)
+        header.setSortIndicatorShown(True)
+
     def _create_table(
         self,
         headers: list[str],
         stretch_columns: set[int],
         *,
         sortable: bool = True,
+        blocked_sort_columns: set[int] | None = None,
     ) -> QTableWidget:
         s = self.scale
         table = QTableWidget(0, len(headers))
@@ -1589,10 +1629,16 @@ class DashboardView(QWidget):
             header.setSectionResizeMode(index, mode)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setMinimumHeight(max(34, int(40 * s)))
-        header.setSortIndicatorShown(sortable)
+        header.setSortIndicatorShown(False)
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
+        table.setProperty("blockedSortColumns", sorted(blocked_sort_columns or set()))
         table.setProperty("allowSorting", sortable)
-        table.setSortingEnabled(sortable)
+        table.setProperty("sortColumn", -1)
+        table.setProperty("sortOrder", int(Qt.SortOrder.AscendingOrder))
+        table.setSortingEnabled(False)
+        header.setSectionsClickable(sortable)
+        if sortable:
+            header.sectionClicked.connect(lambda section, tbl=table: self._on_table_header_clicked(tbl, section))
 
         table.setStyleSheet(
             f"QTableWidget {{"
@@ -1638,7 +1684,7 @@ class DashboardView(QWidget):
                 "IAR (%)",
             ],
             {1},
-            sortable=False,
+            blocked_sort_columns={0},
         )
         self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_vendors_table
@@ -1672,7 +1718,7 @@ class DashboardView(QWidget):
         self.top_operators_table = self._create_table(
             ["#", "OPERADOR", "PRODUÇÕES", "PESO(KG)"],
             {1},
-            sortable=False,
+            blocked_sort_columns={0},
         )
         self.top_operators_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_operators_table
@@ -1681,7 +1727,7 @@ class DashboardView(QWidget):
         self.top_helpers_table = self._create_table(
             ["#", "AJUDANTE", "PRODUÇÕES", "PESO(KG)"],
             {1},
-            sortable=False,
+            blocked_sort_columns={0},
         )
         self.top_helpers_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_helpers_table
@@ -1716,7 +1762,7 @@ class DashboardView(QWidget):
                 "STATUS",
             ],
             {1},
-            sortable=False,
+            blocked_sort_columns={0},
         )
         header = self.top_machines_ar_table.horizontalHeader()
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
@@ -1739,7 +1785,7 @@ class DashboardView(QWidget):
                 "STATUS",
             ],
             {1},
-            sortable=False,
+            blocked_sort_columns={0},
         )
         header = self.top_machines_industria_table.horizontalHeader()
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
