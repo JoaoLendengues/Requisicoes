@@ -110,7 +110,6 @@ _CANTONEIRA_PRESET_LABELS = {
 }
 _CHAPA_PRESET_LABELS = {
     "chapa_1": "Corte de Chapa 1",
-    "chapa_2": "Chapa Dobrada 2",
     "chapa_3": "Corte em Chapa 3",
     "chapa_4": "Corte em Chapa 4",
     "chapa_5": "Corte em Chapa 5",
@@ -5702,7 +5701,6 @@ class DrawingCanvas(QWidget):
 
         for key in (
             "chapa_1",
-            "chapa_2",
             "chapa_3",
             "chapa_4",
             "chapa_5",
