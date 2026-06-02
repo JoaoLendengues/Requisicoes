@@ -249,7 +249,7 @@ class ClientCenterView(QWidget):
 
         self.result_hint = QLabel("")
         self.result_hint.setProperty("muted", "1")
-        self.result_hint.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        self.result_hint.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt;")
         layout.addWidget(self.result_hint)
         return card
 
@@ -271,13 +271,13 @@ class ClientCenterView(QWidget):
         )
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"font-size:{max(7, int(8 * s))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * s))}pt;")
         layout.addWidget(title)
         layout.addWidget(helper)
 
         self.form_status = QLabel("Novo cliente")
         self.form_status.setProperty("accent", "1")
-        self.form_status.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:700;")
+        self.form_status.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:700;")
         layout.addWidget(self.form_status)
 
         grid = QGridLayout()
@@ -301,7 +301,7 @@ class ClientCenterView(QWidget):
 
         self.check_active = QCheckBox("Cliente ativo")
         self.check_active.setChecked(True)
-        self.check_active.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
+        self.check_active.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt;")
         layout.addWidget(self.check_active)
 
         actions = QHBoxLayout()
@@ -337,7 +337,10 @@ class ClientCenterView(QWidget):
     def _field_label(self, text: str) -> QLabel:
         label = QLabel(text.upper())
         label.setProperty("muted", "1")
-        label.setStyleSheet(f"font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;")
+        label.setStyleSheet(
+            f"font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
+            f"background:transparent;"
+        )
         return label
 
     # ── Busca / listagem ──────────────────────────────────────────────────────
@@ -707,6 +710,6 @@ class ClientCenterView(QWidget):
             self.input_code.setStyleSheet(
                 _field_style(s) + "QLineEdit { color:" + theme.TEXT_MEDIUM + "; }"
             )
-        self.check_active.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
+        self.check_active.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt;")
         self.btn_save.setStyleSheet(_primary_action_btn_style(s))
         self.btn_disable.setStyleSheet(_danger_action_btn_style(s))

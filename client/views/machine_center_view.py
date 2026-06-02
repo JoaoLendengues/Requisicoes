@@ -167,7 +167,7 @@ class MachineCenterView(QWidget):
 
         self.result_hint = QLabel("Carregando máquinas...")
         self.result_hint.setProperty("muted", "1")
-        self.result_hint.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
+        self.result_hint.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt;")
         header.addWidget(self.result_hint)
 
         self.btn_refresh_list = QPushButton("ATUALIZAR")
@@ -220,7 +220,7 @@ class MachineCenterView(QWidget):
         layout.setSpacing(max(10, int(12 * s)))
 
         title = QLabel("CADASTRO DE MÁQUINAS")
-        title.setStyleSheet(f"font-size:{max(10, int(12 * s))}pt; font-weight:800;")
+        title.setStyleSheet(f"background:transparent; font-size:{max(10, int(12 * s))}pt; font-weight:800;")
         layout.addWidget(title)
 
         subtitle = QLabel(
@@ -228,12 +228,12 @@ class MachineCenterView(QWidget):
         )
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
+        subtitle.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt;")
         layout.addWidget(subtitle)
 
         self.form_status = QLabel("Nova máquina")
         self.form_status.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:700; color:{theme.PRIMARY};"
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:700; color:{theme.PRIMARY};"
         )
         layout.addWidget(self.form_status)
 
@@ -260,7 +260,7 @@ class MachineCenterView(QWidget):
 
         # ── Seção de equipe ───────────────────────────────────────────────
         ops_title = QLabel("EQUIPE DA MÁQUINA")
-        ops_title.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:800;")
+        ops_title.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:800;")
         layout.addWidget(ops_title)
 
         ops_hint = QLabel(
@@ -269,7 +269,7 @@ class MachineCenterView(QWidget):
         )
         ops_hint.setWordWrap(True)
         ops_hint.setProperty("muted", "1")
-        ops_hint.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
+        ops_hint.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt;")
         layout.addWidget(ops_hint)
 
         ops_input_row = QHBoxLayout()
@@ -319,7 +319,7 @@ class MachineCenterView(QWidget):
         self.save_status = QLabel("")
         self.save_status.setWordWrap(True)
         self.save_status.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
         )
         layout.addWidget(self.save_status)
 
@@ -352,6 +352,7 @@ class MachineCenterView(QWidget):
         label.setProperty("muted", "1")
         label.setStyleSheet(
             f"font-size:{max(7, int(8 * self.scale))}pt; font-weight:700;"
+            f"background:transparent;"
         )
         return label
 
@@ -660,7 +661,7 @@ class MachineCenterView(QWidget):
         if not self._machine_operator_rows:
             empty = QLabel("Nenhuma pessoa vinculada.")
             empty.setProperty("muted", "1")
-            empty.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt;")
+            empty.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt;")
             self.operators_layout.addWidget(empty)
             self.operators_layout.addStretch()
             return
@@ -672,7 +673,7 @@ class MachineCenterView(QWidget):
             row_layout.setContentsMargins(0, 0, 0, 0)
             row_layout.setSpacing(max(6, int(8 * s)))
             lbl = QLabel(f"{name}  •  {role_text}")
-            lbl.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK};")
+            lbl.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_DARK};")
             row_layout.addWidget(lbl, 1)
             btn_rm = QPushButton("×")
             btn_rm.setFixedSize(max(22, int(26 * s)), max(22, int(26 * s)))

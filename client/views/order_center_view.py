@@ -350,7 +350,7 @@ class OrderCenterView(QWidget):
 
         title = QLabel("Central de Pedidos")
         title.setStyleSheet(
-            f"font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
         subtitle = QLabel(
             "Acompanhamento operacional dos pedidos por etapa, ritmo e pendências da produção."
@@ -358,7 +358,7 @@ class OrderCenterView(QWidget):
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
         subtitle.setStyleSheet(
-            f"font-size:{max(8, int(10 * s))}pt;"
+            f"background:transparent; font-size:{max(8, int(10 * s))}pt;"
         )
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -892,7 +892,7 @@ class OrderCenterView(QWidget):
             self.avg_finished_label = QLabel("Tempo médio: -")
             self.avg_finished_label.setProperty("muted", "1")
             self.avg_finished_label.setStyleSheet(
-                f"font-size:{max(7, int(8 * s))}pt; font-weight:600;"
+                f"background:transparent; font-size:{max(7, int(8 * s))}pt; font-weight:600;"
             )
             layout.addWidget(self.avg_finished_label)
             if key != "faturados":

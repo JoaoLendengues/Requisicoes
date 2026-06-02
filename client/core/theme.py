@@ -599,7 +599,7 @@ def global_style() -> str:
         f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
         f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 56)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"
-        f"QCheckBox {{ spacing:8px; }}"
+        f"QCheckBox {{ spacing:8px; background:transparent; }}"
         f"QCheckBox::indicator {{"
         f"  width:16px; height:16px; border-radius:4px; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
         f"  background:{PANEL_SURFACE_BG};"  # noqa: F821

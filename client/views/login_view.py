@@ -155,14 +155,14 @@ class FirstAccessDialog(QDialog):
 
         title = QLabel("PRIMEIRO ACESSO")
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(12, int(14 * s))}pt; font-weight:bold;"
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{max(12, int(14 * s))}pt; font-weight:bold;"
         )
         helper = QLabel(
             "Informe seu código e cadastre uma senha para entrar no sistema."
         )
         helper.setWordWrap(True)
         helper.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
+            f"background:transparent; color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * s))}pt;"
         )
         layout.addWidget(title)
         layout.addWidget(helper)
@@ -288,7 +288,7 @@ class LoginView(QWidget):
         else:
             logo_label.setText("PINHEIRO FERRAGENS")
             logo_label.setStyleSheet(
-                f"color:{theme.PRIMARY}; font-size:{max(14, int(16 * self.scale))}pt; font-weight:bold;"
+                f"background:transparent; color:{theme.PRIMARY}; font-size:{max(14, int(16 * self.scale))}pt; font-weight:bold;"
             )
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(logo_label)
@@ -296,14 +296,14 @@ class LoginView(QWidget):
         title = QLabel("Sistema de Requisições")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:600;"
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{max(10, int(12 * self.scale))}pt; font-weight:600;"
         )
         card_layout.addWidget(title)
         card_layout.addSpacing(max(4, int(8 * self.scale)))
 
         lbl_code = QLabel("CODIGO DE ACESSO")
         lbl_code.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:700;"
         )
         card_layout.addWidget(lbl_code)
 
@@ -317,7 +317,7 @@ class LoginView(QWidget):
 
         lbl_pass = QLabel("SENHA")
         lbl_pass.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{max(9, int(11 * self.scale))}pt; font-weight:700;"
         )
         card_layout.addWidget(lbl_pass)
 
@@ -367,7 +367,7 @@ class LoginView(QWidget):
         footer_card = QLabel("Ferragens Pinheiro | SIA e Taguatinga")
         footer_card.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer_card.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(9 * self.scale))}pt;"
+            f"background:transparent; color:{theme.TEXT_LIGHT}; font-size:{max(7, int(9 * self.scale))}pt;"
         )
         card_layout.addWidget(footer_card)
 
@@ -376,7 +376,7 @@ class LoginView(QWidget):
         footer = QLabel("pinheiroferragens.com.br")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer.setStyleSheet(
-            f"color:{theme.TEXT_WHITE}; font-size:{max(7, int(9 * self.scale))}pt; margin-top:18px; font-weight:600;"
+            f"background:transparent; color:{theme.TEXT_WHITE}; font-size:{max(7, int(9 * self.scale))}pt; margin-top:18px; font-weight:600;"
         )
         outer.addWidget(footer)
 

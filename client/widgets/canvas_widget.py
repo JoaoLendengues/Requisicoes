@@ -1,13 +1,13 @@
 ﻿"""
-Canvas de desenho tÃ©cnico com suporte a:
-- Ferramentas: SeleÃ§Ã£o, Caneta livre, Linha, RetÃ¢ngulo, Elipse, Texto
-- Shift: trava linha em 0Â°/45Â°/90Â°
-- InserÃ§Ã£o de imagem (PNG, JPG, BMP)
-- ReferÃªncia de arquivo PDF (exibe nome, abre externamente)
+Canvas de desenho técnico com suporte a:
+- Ferramentas: Seleção, Caneta livre, Linha, Retângulo, Elipse, Texto
+- Shift: trava linha em 0°/45°/90°
+- Inserção de imagem (PNG, JPG, BMP)
+- Referência de arquivo PDF (exibe nome, abre externamente)
 - Undo / Redo (Ctrl+Z / Ctrl+Y)
 - Ctrl+T: Free Transform (bounding box + arrastar cantos para girar)
-- Delete para apagar seleÃ§Ã£o
-- SerializaÃ§Ã£o completa para JSON (salvo no banco)
+- Delete para apagar seleção
+- Serialização completa para JSON (salvo no banco)
 """
 import json
 import math
@@ -99,13 +99,38 @@ _BANDEJA_PRESET_LABELS = {
     "bandeja_3": "Bandeja 3",
     "bandeja_4": "Bandeja 4",
 }
+_CANTONEIRA_PRESET_LABELS = {
+    "cantoneira_1": "Cantoneira 1",
+    "cantoneira_2": "Cantoneira 2",
+    "cantoneira_3": "Cantoneira 3",
+    "cantoneira_4": "Cantoneira 4",
+    "cantoneira_5": "Cantoneira 5",
+    "cantoneira_7": "Cantoneira 7",
+    "cantoneira_8": "Cantoneira 8",
+}
+_CHAPA_PRESET_LABELS = {
+    "chapa_1": "Corte de Chapa 1",
+    "chapa_2": "Chapa Dobrada 2",
+    "chapa_3": "Corte em Chapa 3",
+    "chapa_4": "Corte em Chapa 4",
+    "chapa_5": "Corte em Chapa 5",
+    "chapa_6": "Corte em Chapa 6",
+    "chapa_7": "Corte em Chapa 7",
+    "chapa_8": "Corte em Chapa 8",
+    "chapa_9": "Corte em Chapa 9",
+    "chapa_10": "Corte em Chapa 10",
+    "chapa_11": "Corte em Chapa 11",
+    "chapa_12": "Corte em Chapa 12",
+    "chapa_13": "Corte em Chapa 13",
+    "chapa_14": "Corte em Chapa 14",
+}
 
 
-# Limita a maior dimensÃ£o de imagens inseridas/coladas no canvas antes de
+# Limita a maior dimensão de imagens inseridas/coladas no canvas antes de
 # serializar para base64. Evita que prints/fotos inflem o JSON do desenho
-# (que Ã© persistido no banco). 1600px fica acima da resoluÃ§Ã£o que o PDF
-# consome (o desenho inteiro Ã© rasterizado a â‰¤2400px), entÃ£o nÃ£o hÃ¡ perda
-# perceptÃ­vel no documento final.
+# (que é persistido no banco). 1600px fica acima da resolução que o PDF
+# consome (o desenho inteiro e rasterizado a <=2400px), entao nao ha perda
+# perceptível no documento final.
 _MAX_EMBEDDED_IMAGE_SIDE = 1600
 
 
@@ -320,6 +345,12 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
         bandeja_name = str(d.get("preset_bandeja_name") or "").strip().lower()
         if bandeja_name in _BANDEJA_PRESET_LABELS:
             path_meta["preset_bandeja_name"] = bandeja_name
+        cantoneira_name = str(d.get("preset_cantoneira_name") or "").strip().lower()
+        if cantoneira_name in _CANTONEIRA_PRESET_LABELS:
+            path_meta["preset_cantoneira_name"] = cantoneira_name
+        chapa_name = str(d.get("preset_chapa_name") or "").strip().lower()
+        if chapa_name in _CHAPA_PRESET_LABELS:
+            path_meta["preset_chapa_name"] = chapa_name
         vector_nodes = d.get("vector_pen_nodes")
         if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
             path_meta["vector_pen_nodes"] = vector_nodes
@@ -430,11 +461,11 @@ def load_canvas_scene(scene: QGraphicsScene, data: str, selectable: bool = False
 
 
 # ---------------------------------------------------------------------------
-# Subclasses para formas ocas (hit-test somente na borda, nÃ£o no interior)
+# Subclasses para formas ocas (hit-test somente na borda, não no interior)
 # ---------------------------------------------------------------------------
 
 class HollowRectItem(QGraphicsRectItem):
-    """RetÃ¢ngulo selecionÃ¡vel/clicÃ¡vel apenas na borda, nÃ£o no interior vazio."""
+    """Retângulo selecionável/clicável apenas na borda, não no interior vazio."""
 
     def shape(self) -> QPainterPath:
         stroker = QPainterPathStroker()
@@ -445,7 +476,7 @@ class HollowRectItem(QGraphicsRectItem):
 
 
 class HollowEllipseItem(QGraphicsEllipseItem):
-    """Elipse selecionÃ¡vel/clicÃ¡vel apenas na borda, nÃ£o no interior vazio."""
+    """Elipse selecionável/clicável apenas na borda, não no interior vazio."""
 
     def shape(self) -> QPainterPath:
         stroker = QPainterPathStroker()
@@ -492,7 +523,7 @@ class DrawingScene(QGraphicsScene):
         self._angle_marker_preview_item: QGraphicsPathItem | None = None
         self._angle_mode_active: bool = False
         self._angle_mode_start: QPointF | None = None
-        self._angle_mode_label: str = "90Â°"
+        self._angle_mode_label: str = "90°"
         self._angle_mode_degrees: float = 90.0
         self._angle_mode_style: str = "auto"
         self._angle_mode_block_release: bool = False
@@ -545,17 +576,17 @@ class DrawingScene(QGraphicsScene):
 
         self.selectionChanged.connect(self._on_selection_changed)
 
-    # Grade de fundo (somente visual, nÃ£o serializada)
+    # Grade de fundo (somente visual, não serializada)
     GRID_MINOR = 20
     GRID_MAJOR = 100
     # Tamanho dos handles do bounding box do Free Transform
     FT_HANDLE_SIZE = 5     # metade do lado do quadradinho (px viewport)
     FT_HANDLE_HIT = 12     # raio de clique dos handles (px viewport)
-    FT_CORNER_ZONE = 22    # distÃ¢ncia mÃ¡xima do canto para ativar rotaÃ§Ã£o (px viewport)
+    FT_CORNER_ZONE = 22    # distância máxima do canto para ativar rotação (px viewport)
     # Snap to endpoints
-    SNAP_RADIUS    = 16    # raio de detecÃ§Ã£o em px de tela (constante com zoom)
-    PEN_MIN_STEP   = 0.8   # distÃ¢ncia mÃ­nima para adicionar ponto no traÃ§o livre
-    CURVE_MAX_BENDS = 2    # comportamento do Paint clÃ¡ssico: atÃ© 2 "dobras"
+    SNAP_RADIUS    = 16    # raio de detecção em px de tela (constante com zoom)
+    PEN_MIN_STEP   = 0.8   # distância mínima para adicionar ponto no traço livre
+    CURVE_MAX_BENDS = 2    # comportamento do Paint clássico: até 2 "dobras"
     RULER_PX_PER_MM = 3.78
     ANGLE_MARKER_SCALE_STEP = 1.1
     ANGLE_MARKER_ROTATE_STEP = 5.0
@@ -706,7 +737,7 @@ class DrawingScene(QGraphicsScene):
         if not self._ft_items:
             return True
         # Regra especial apenas para presets 3D:
-        # se houver qualquer item NÃƒO-3D na seleÃ§Ã£o, mantÃ©m resize normal.
+        # se houver qualquer item NAO-3D na selecao, mantem resize normal.
         if any(not self._is_3d_preset_item(item) for item in self._ft_items):
             return True
         for item in self._ft_items:
@@ -717,7 +748,7 @@ class DrawingScene(QGraphicsScene):
     def _finalize_3d_resize_after_escape(self):
         if not self._ft_items:
             return
-        # SÃ³ finaliza/trava resize quando a seleÃ§Ã£o atual for 100% 3D preset.
+        # Só finaliza/trava resize quando a seleção atual for 100% 3D preset.
         if any(not self._is_3d_preset_item(item) for item in self._ft_items):
             return
         changed = False
@@ -735,7 +766,7 @@ class DrawingScene(QGraphicsScene):
             try:
                 item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, was_movable)
             except RuntimeError:
-                # Item pode ter sido removido da cena durante a sessÃ£o.
+                # Item pode ter sido removido da cena durante a sessão.
                 pass
         self._ft_locked_items = {}
 
@@ -797,7 +828,7 @@ class DrawingScene(QGraphicsScene):
             t.translate(-anchor_local.x(), -anchor_local.y())
             item.setTransform(t, True)
 
-            # Garante que a Ã¢ncora oposta permaneÃ§a fixa na cena (sem "andar").
+            # Garante que a âncora oposta permaneça fixa na cena (sem "andar").
             current_anchor_scene = item.mapToScene(anchor_local)
             dx = anchor_scene.x() - current_anchor_scene.x()
             dy = anchor_scene.y() - current_anchor_scene.y()
@@ -809,7 +840,7 @@ class DrawingScene(QGraphicsScene):
                     item.setPos(item.pos() + QPointF(dx, dy))
 
     def _in_rotation_zone_vp(self, vp_pos: QPointF) -> bool:
-        """True se vp_pos estÃ¡ na zona de rotaÃ§Ã£o (perto de um canto, fora do rect)."""
+        """True se vp_pos está na zona de rotação (perto de um canto, fora do rect)."""
         vp_rect = self._ft_bounding_rect_vp()
         if vp_rect.isNull():
             return False
@@ -836,7 +867,7 @@ class DrawingScene(QGraphicsScene):
         if self.cw.tool != Tool.SELECT:
             self.cw._set_tool(Tool.SELECT)
         self._ft_items = list(items)
-        # Pivot de rotaÃ§Ã£o = centro do bounding rect de cada item
+        # Pivot de rotação = centro do bounding rect de cada item
         for item in self._ft_items:
             item.setTransformOriginPoint(item.boundingRect().center())
         self._ft_lock_items()
@@ -874,7 +905,7 @@ class DrawingScene(QGraphicsScene):
             if item in skip_items:
                 continue
             meta = item.data(0) or {}
-            # Ignora overlays/itens transitÃ³rios para o snap nÃ£o "grudar" no prÃ³prio preview.
+            # Ignora overlays/itens transitórios para o snap não "grudar" no próprio preview.
             if isinstance(meta, dict) and meta.get("type") in {
                 "ruler_overlay",
                 "ruler_measure_line",
@@ -916,8 +947,8 @@ class DrawingScene(QGraphicsScene):
         candidates: list[QPointF] | None = None,
     ) -> QPointF | None:
         """
-        Retorna o endpoint mais prÃ³ximo de scene_pos se estiver dentro de
-        SNAP_RADIUS pixels de tela. Usa distÃ¢ncia de viewport para que o
+        Retorna o endpoint mais próximo de scene_pos se estiver dentro de
+        SNAP_RADIUS pixels de tela. Usa distância de viewport para que o
         raio seja constante independente do zoom.
         """
         view = self._view()
@@ -955,8 +986,8 @@ class DrawingScene(QGraphicsScene):
                     self.cw.spin_font.blockSignals(False)
                 break
 
-        # Free Transform NÃƒO ativa automaticamente na seleÃ§Ã£o.
-        # SÃ³ deve aparecer quando o usuÃ¡rio acionar Ctrl+T.
+        # Free Transform NAO ativa automaticamente na selecao.
+        # Só deve aparecer quando o usuário acionar Ctrl+T.
         if self._ft_active:
             selected_items = self.selectedItems()
             if selected_items:
@@ -1265,7 +1296,7 @@ class DrawingScene(QGraphicsScene):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(vr)
 
-        # Handles (cantos + laterais) â€” oculta quando o item 3D jÃ¡ teve resize finalizado.
+        # Handles (cantos + laterais) - oculta quando o item 3D ja teve resize finalizado.
         if self._ft_resize_allowed_for_current_selection():
             hs = self.FT_HANDLE_SIZE
             painter.setPen(QPen(QColor("#1A73E8"), 1.5))
@@ -1281,7 +1312,7 @@ class DrawingScene(QGraphicsScene):
 
         painter.restore()
 
-        # Indicador de snap (cÃ­rculo laranja no ponto de conexÃ£o)
+        # Indicador de snap (círculo laranja no ponto de conexão)
         if self._snap_point is not None:
             view = self._view()
             if view:
@@ -1297,7 +1328,7 @@ class DrawingScene(QGraphicsScene):
                 painter.drawLine(QPointF(vp.x(), vp.y() - r), QPointF(vp.x(), vp.y() + r))
                 painter.restore()
 
-        # NÃ³s e alÃ§as da Pen Vetorial
+        # Nós e alças da Pen Vetorial
         if self.cw.tool == Tool.VECTOR_PEN:
             item = self._current_vector_item()
             view = self._view()
@@ -1795,7 +1826,7 @@ class DrawingScene(QGraphicsScene):
                     b_vp.y(),
                 )
             else:
-                # Aproxima distÃ¢ncia da curva cÃºbica por segmentos curtos.
+                # Aproxima distância da curva cúbica por segmentos curtos.
                 d = float("inf")
                 prev = p0
                 steps = 18
@@ -1899,7 +1930,7 @@ class DrawingScene(QGraphicsScene):
         self._set_vector_item_data(item, nodes, radii, closed, handles_data)
 
     def _commit_curve_draw(self, ctrl: QPointF):
-        """Aplica uma dobra da curva (atÃ© CURVE_MAX_BENDS) e finaliza ao atingir o limite."""
+        """Aplica uma dobra da curva (até CURVE_MAX_BENDS) e finaliza ao atingir o limite."""
         if not self._curve_draw_start or not self._curve_draw_end or not self._preview_item:
             self._cancel_curve_draw()
             return
@@ -2062,10 +2093,10 @@ class DrawingScene(QGraphicsScene):
 
     def _smart_label_pos(self, start: QPointF, end: QPointF, label: str = "") -> QPointF:
         """
-        Posiciona o texto da cota evitando sobreposiÃ§Ã£o com outros elementos.
+        Posiciona o texto da cota evitando sobreposição com outros elementos.
 
-        Linha vertical  â†’ padrÃ£o Ã  direita; se houver colisÃ£o, vai Ã  esquerda.
-        Linha horizontalâ†’ padrÃ£o acima;    se houver colisÃ£o, vai abaixo.
+        Linha vertical -> padrao a direita; se houver colisao, vai a esquerda.
+        Linha horizontal -> padrao acima; se houver colisao, vai abaixo.
         """
         mid_x = (start.x() + end.x()) / 2.0
         mid_y = (start.y() + end.y()) / 2.0
@@ -2079,11 +2110,11 @@ class DrawingScene(QGraphicsScene):
         gap = max(8, int(fs * 1.3))
 
         if dy > dx:
-            # Linha mais vertical â†’ padrÃ£o: texto Ã  DIREITA
+            # Linha mais vertical -> padrao: texto a DIREITA
             def_x, def_y = mid_x + gap,          mid_y - th / 2
             alt_x, alt_y = mid_x - gap - tw,     mid_y - th / 2
         else:
-            # Linha mais horizontal â†’ padrÃ£o: texto ACIMA
+            # Linha mais horizontal -> padrao: texto ACIMA
             def_x, def_y = mid_x - tw / 2,  mid_y - gap - th
             alt_x, alt_y = mid_x - tw / 2,  mid_y + gap
 
@@ -2098,7 +2129,7 @@ class DrawingScene(QGraphicsScene):
         end: QPointF,
         label: str = "",
     ) -> QPointF:
-        """Posiciona o texto do Ã¢ngulo prÃ³ximo ao marcador, evitando ficar longe da peÃ§a."""
+        """Posiciona o texto do ângulo próximo ao marcador, evitando ficar longe da peça."""
         bounds = marker_path.boundingRect()
         if bounds.isNull():
             return self._smart_label_pos(start, end, label)
@@ -2111,13 +2142,13 @@ class DrawingScene(QGraphicsScene):
         dy = end.y() - start.y()
 
         if abs(dx) >= abs(dy):
-            # Base horizontal: texto acima (alternativa abaixo), sempre prÃ³ximo do marcador.
+            # Base horizontal: texto acima (alternativa abaixo), sempre próximo do marcador.
             def_x = bounds.center().x() - (tw / 2.0)
             def_y = bounds.top() - th - gap
             alt_x = def_x
             alt_y = bounds.bottom() + gap
         else:
-            # Base vertical: texto Ã  direita (alternativa Ã  esquerda), prÃ³ximo do marcador.
+            # Base vertical: texto à direita (alternativa à esquerda), próximo do marcador.
             def_x = bounds.right() + gap
             def_y = bounds.center().y() - (th / 2.0)
             alt_x = bounds.left() - tw - gap
@@ -2137,7 +2168,7 @@ class DrawingScene(QGraphicsScene):
         return QPointF(def_x, def_y)
 
     def _has_collision_at(self, rect: QRectF) -> bool:
-        """True se hÃ¡ itens de desenho reais (nÃ£o cota/rÃ©gua) na Ã¡rea indicada."""
+        """True se há itens de desenho reais (não cota/régua) na área indicada."""
         _ignore = {
             "ruler_overlay", "manual_dimension_overlay",
             "ruler_measure_line", "ruler_measure_text",
@@ -2186,15 +2217,15 @@ class DrawingScene(QGraphicsScene):
         dx = end.x() - start.x()
         dy = end.y() - start.y()
         if math.hypot(dx, dy) < 1e-6:
-            return "0.0Â°"
+            return "0.0°"
         angle_deg = math.degrees(math.atan2(dy, dx))
-        return f"{angle_deg:.1f}Â°"
+        return f"{angle_deg:.1f}°"
 
     def _commit_ruler_measure(self, start: QPointF, end: QPointF):
         if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
             return
         text, dist_mm = self._format_ruler_text(start, end)
-        _ = text  # mantÃ©m o cÃ¡lculo completo centralizado para rÃ©gua dinÃ¢mica.
+        _ = text  # mantém o cálculo completo centralizado para régua dinâmica.
 
         line_item = QGraphicsLineItem(start.x(), start.y(), end.x(), end.y())
         line_item.setPen(self._ruler_pen(cosmetic=True))
@@ -2324,7 +2355,7 @@ class DrawingScene(QGraphicsScene):
 
     def _resolve_angle_style(self, degrees: float, style: str | None = None) -> str:
         del degrees, style
-        # Regra de UX: ferramenta de Ã¢ngulo sempre em meia-lua.
+        # Regra de UX: ferramenta de ângulo sempre em meia-lua.
         return "arc"
 
     def _build_angle_marker_path(
@@ -2360,7 +2391,7 @@ class DrawingScene(QGraphicsScene):
             path.lineTo(p3)
             return path
 
-        # Arc (meia-lua e demais Ã¢ngulos)
+        # Arc (meia-lua e demais ângulos)
         normalized = self._normalize_angle_degrees(degrees)
         if normalized > 359.9:
             normalized = 359.9
@@ -2450,7 +2481,7 @@ class DrawingScene(QGraphicsScene):
             self._exit_ft()
         self._angle_mode_active = True
         self._angle_mode_start = None
-        self._angle_mode_label = str(label or "").strip() or f"{float(degrees):.1f}Â°"
+        self._angle_mode_label = str(label or "").strip() or f"{float(degrees):.1f}°"
         self._angle_mode_degrees = float(degrees)
         self._angle_mode_style = style
 
@@ -2599,7 +2630,7 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
-        # Free Transform ativo: verificar zona de rotaÃ§Ã£o nos cantos
+        # Free Transform ativo: verificar zona de rotação nos cantos
         if self._ft_active and event.button() == Qt.MouseButton.LeftButton:
             view = self._view()
             if view:
@@ -2642,13 +2673,13 @@ class DrawingScene(QGraphicsScene):
                         )
                     event.accept()
                     return
-                # Clique fora da Ã¡rea do bounding box -> sair do FT
+                # Clique fora da área do bounding box -> sair do FT
                 outer = self._ft_bounding_rect_vp().adjusted(-20, -20, 20, 20)
                 if not outer.contains(vp_pos):
                     self._exit_ft()
-                    # NÃ£o retorna: deixa a seleÃ§Ã£o normal acontecer
+                    # Não retorna: deixa a seleção normal acontecer
                 else:
-                    # Com FT ativo, sÃ³ permite interaÃ§Ã£o pelos 8 handles (e rotaÃ§Ã£o nos cantos).
+                    # Com FT ativo, só permite interação pelos 8 handles (e rotação nos cantos).
                     # Evita mover o item arrastando o corpo.
                     event.accept()
                     return
@@ -2786,9 +2817,9 @@ class DrawingScene(QGraphicsScene):
 
         elif tool == Tool.LINE:
             self._start = QPointF(pos.x(), pos.y())
-            # Cache de snap para a sessÃ£o atual de desenho da linha (evita varredura a cada mouse move).
+            # Cache de snap para a sessão atual de desenho da linha (evita varredura a cada mouse move).
             self._snap_points_cache = self._collect_snap_points()
-            # Pequeno segmento inicial para feedback visual instantÃ¢neo no primeiro clique.
+            # Pequeno segmento inicial para feedback visual instantâneo no primeiro clique.
             self._preview_item = self.addLine(
                 self._start.x(), self._start.y(),
                 self._start.x() + 0.01, self._start.y(), self._pen()
@@ -2813,7 +2844,7 @@ class DrawingScene(QGraphicsScene):
             self.addItem(self._preview_item)
 
         elif tool == Tool.CURVE:
-            # Fase 1: inÃ­cio â€” define ponto inicial da linha base
+            # Fase 1: inicio - define ponto inicial da linha base
             self._curve_draw_phase = 1
             self._curve_bend_count = 0
             self._curve_dragging = True
@@ -2900,7 +2931,7 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
-        # Free Transform: rotaÃ§Ã£o fluida
+        # Free Transform: rotação fluida
         if self._ft_is_rotating and self._ft_rotate_pivot is not None:
             angle = math.atan2(
                 pos.y() - self._ft_rotate_pivot.y(),
@@ -2979,8 +3010,8 @@ class DrawingScene(QGraphicsScene):
 
         if tool == Tool.PEN and self._painter_path and self._path_item:
             if shift and self._pen_last_point is not None:
-                # Shift na caneta: trava em 0Â°/45Â°/90Â° usando Ã¢ncora estÃ¡vel
-                # para manter uma Ãºnica reta/diagonal limpa durante o arraste.
+                # Shift na caneta: trava em 0°/45°/90° usando âncora estável
+                # para manter uma única reta/diagonal limpa durante o arraste.
                 if self._pen_shift_anchor is None:
                     self._pen_shift_anchor = QPointF(self._pen_last_point.x(), self._pen_last_point.y())
                     self._pen_shift_base_path = QPainterPath(self._painter_path)
@@ -3095,7 +3126,7 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
-        # Free Transform: fim do redimensionamento (mantÃ©m ft ativo para mais ajustes)
+        # Free Transform: fim do redimensionamento (mantém ft ativo para mais ajustes)
         if self._ft_is_resizing:
             self._ft_is_resizing = False
             self._ft_resize_handle = ""
@@ -3111,7 +3142,7 @@ class DrawingScene(QGraphicsScene):
             event.accept()
             return
 
-        # Free Transform: fim da rotaÃ§Ã£o (mantÃ©m ft ativo para mais ajustes)
+        # Free Transform: fim da rotação (mantém ft ativo para mais ajustes)
         if self._ft_is_rotating:
             self._ft_is_rotating = False
             self._ft_rotate_pivot = None
@@ -3200,7 +3231,7 @@ class DrawingScene(QGraphicsScene):
             self._ruler_commit_on_release = False
 
         elif tool == Tool.CURVE and self._curve_draw_phase == 1:
-            # Fim do drag da linha base â†’ transita para fase 2
+            # Fim do drag da linha base -> transita para fase 2
             if (self._curve_draw_start and
                     math.hypot(pos.x() - self._curve_draw_start.x(),
                                pos.y() - self._curve_draw_start.y()) < 3):
@@ -3215,7 +3246,7 @@ class DrawingScene(QGraphicsScene):
                 self._curve_draw_phase = 2
                 self._curve_dragging = False
             self._start = None
-            return  # nÃ£o limpa _start nem _snap_points_cache abaixo
+            return  # não limpa _start nem _snap_points_cache abaixo
 
         elif tool == Tool.CURVE and self._curve_draw_phase == 3:
             self._commit_curve_draw(pos)
@@ -3343,7 +3374,7 @@ class DrawingScene(QGraphicsScene):
             super().keyPressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
-        """Duplo clique em texto -> ativa ediÃ§Ã£o inline."""
+        """Duplo clique em texto -> ativa edição inline."""
         if self.cw.tool == Tool.VECTOR_PEN and event.button() == Qt.MouseButton.LeftButton:
             self._finalize_vector_pen_drawing(close_path=False)
             event.accept()
@@ -3361,11 +3392,11 @@ class DrawingScene(QGraphicsScene):
         super().mouseDoubleClickEvent(event)
 
 
-# View com pan por botÃ£o do meio + Space + arraste
+# View com pan por botão do meio + Space + arraste
 class DrawingView(QGraphicsView):
     """
-    QGraphicsView com zoom por scroll e pan por botÃ£o do meio ou Space+drag.
-    TambÃ©m gerencia o cursor de rotaÃ§Ã£o quando Free Transform estÃ¡ ativo.
+    QGraphicsView com zoom por scroll e pan por botão do meio ou Space+drag.
+    Também gerencia o cursor de rotação quando Free Transform está ativo.
     """
 
     def __init__(self, scene: QGraphicsScene, canvas_widget=None, parent=None):
@@ -3376,12 +3407,12 @@ class DrawingView(QGraphicsView):
         self._space_held = False
         self.setAcceptDrops(True)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        # AnchorViewCenter: mantÃ©m o centro ao redimensionar (AnchorUnderMouse causava
-        # scroll incorreto no primeiro show, pois o mouse ainda nÃ£o estÃ¡ no canvas)
+        # AnchorViewCenter: mantém o centro ao redimensionar (AnchorUnderMouse causava
+        # scroll incorreto no primeiro show, pois o mouse ainda não está no canvas)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         vp = self.viewport()
         vp.installEventFilter(self)
-        vp.setMouseTracking(True)   # receber MouseMove sem botÃ£o pressionado
+        vp.setMouseTracking(True)   # receber MouseMove sem botão pressionado
         vp.setAcceptDrops(True)
 
     def _can_accept_image_mime(self, mime: QMimeData | None) -> bool:
@@ -3431,7 +3462,7 @@ class DrawingView(QGraphicsView):
             self.scale(factor, factor)
             return True
 
-        # InÃ­cio do pan
+        # Início do pan
         if t == QEvent.Type.MouseButtonPress:
             mid        = event.button() == Qt.MouseButton.MiddleButton
             space_left = (event.button() == Qt.MouseButton.LeftButton
@@ -3459,7 +3490,7 @@ class DrawingView(QGraphicsView):
                 self._stop_pan()
                 return True
 
-        # Cursor de rotaÃ§Ã£o no Free Transform (hover sem botÃ£o)
+        # Cursor de rotação no Free Transform (hover sem botão)
         if t == QEvent.Type.MouseMove and not self._panning:
             sc = self.scene()
             if hasattr(sc, "_ft_active") and sc._ft_active:
@@ -3534,10 +3565,10 @@ class DrawingCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        title = QLabel("ðŸŽ¨ DESENHO / REFERÃŠNCIA")
+        title = QLabel("DESENHO / REFERENCIA")
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(
-            f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
         )
         layout.addWidget(title)
 
@@ -3556,24 +3587,24 @@ class DrawingCanvas(QWidget):
         self._tool_btns: dict[Tool, QPushButton] = {}
 
         tools = [
-            (Tool.SELECT,   "ðŸ–±ï¸ Selec.",   "S"),
-            (Tool.PEN,      "âœï¸ Caneta",   "P"),
-            (Tool.VECTOR_PEN, "âœ’ Vetor",   "V"),
-            (Tool.ERASER,   "ðŸ§¹ Borracha", "X"),
-            (Tool.LINE,     "ðŸ“ Linha",    "L"),
-            (Tool.ESQUADRO, "ðŸ“ Esquadro", "Q"),
-            (Tool.ANGLE,    "âˆ  Ã‚ngulo",    "U"),
-            (Tool.ARROW,    "âž¡ Seta",      "A"),
-            (Tool.CURVE,    "ã€° Curva",    "C"),
-            (Tool.TRIANGLE, "â–³ Triang.",  "G"),
-            (Tool.PENTAGON, "â¬Ÿ Penta",    "N"),
-            (Tool.HEXAGON,  "â¬¢ Hexa",     "H"),
-            (Tool.RECT,     "â¬› Ret.",     "R"),
-            (Tool.ELLIPSE,  "â­• Elipse",   "E"),
-            (Tool.TEXT,     "T Texto",     "T"),
+            (Tool.SELECT, "Selec.", "S"),
+            (Tool.PEN, "Caneta", "P"),
+            (Tool.VECTOR_PEN, "Vetor", "V"),
+            (Tool.ERASER, "Borracha", "X"),
+            (Tool.LINE, "Linha", "L"),
+            (Tool.ESQUADRO, "Esquadro", "Q"),
+            (Tool.ANGLE, "Angulo", "U"),
+            (Tool.ARROW, "Seta", "A"),
+            (Tool.CURVE, "Curva", "C"),
+            (Tool.TRIANGLE, "Triang.", "G"),
+            (Tool.PENTAGON, "Penta", "N"),
+            (Tool.HEXAGON, "Hexa", "H"),
+            (Tool.RECT, "Ret.", "R"),
+            (Tool.ELLIPSE, "Elipse", "E"),
+            (Tool.TEXT, "Texto", "T"),
         ]
 
-        # Linha 1a: Ferramentas (separado das propriedades para nÃ£o cortar nomes)
+        # Linha 1a: Ferramentas (separado das propriedades para não cortar nomes)
         row_tools = QHBoxLayout()
         row_tools.setSpacing(4)
         for t, label, key in tools:
@@ -3588,14 +3619,14 @@ class DrawingCanvas(QWidget):
         row_tools.addStretch()
         layout.addLayout(row_tools)
 
-        # Linha 1b: Propriedades do traÃ§o
+        # Linha 1b: Propriedades do traço
         row_props = QHBoxLayout()
         row_props.setSpacing(4)
 
         # Cor
-        self.btn_color = QPushButton("ðŸŽ¨")
+        self.btn_color = QPushButton("Cor")
         self.btn_color.setFixedSize(fh, fh)
-        self.btn_color.setToolTip("Cor do traÃ§o")
+        self.btn_color.setToolTip("Cor do traço")
         self.btn_color.setStyleSheet(
             f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
             f"font-size:{fs}pt;"
@@ -3622,10 +3653,10 @@ class DrawingCanvas(QWidget):
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
         self.combo_style.setFixedWidth(max(126, int(152 * s)))
-        self.combo_style.addItem("â”€â”€â”€ SÃ³lida",     Qt.PenStyle.SolidLine)
+        self.combo_style.addItem("___ Solida", Qt.PenStyle.SolidLine)
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
-        self.combo_style.addItem("Â·Â·Â· Pontilhada", Qt.PenStyle.DotLine)
-        self.combo_style.addItem("-Â·- Misto",      Qt.PenStyle.DashDotLine)
+        self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
+        self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
         self.combo_style.currentIndexChanged.connect(self._on_pen_style_changed)
         row_props.addWidget(self.combo_style)
 
@@ -3635,10 +3666,10 @@ class DrawingCanvas(QWidget):
         self.combo_esquadro = QComboBox()
         self.combo_esquadro.setFixedHeight(fh)
         self.combo_esquadro.setFixedWidth(max(116, int(136 * s)))
-        self.combo_esquadro.addItem("90Â°", 90.0)
-        self.combo_esquadro.addItem("45Â°", 45.0)
-        self.combo_esquadro.addItem("30Â°/60Â°", 30.0)
-        self.combo_esquadro.addItem("15Â°", 15.0)
+        self.combo_esquadro.addItem("90°", 90.0)
+        self.combo_esquadro.addItem("45°", 45.0)
+        self.combo_esquadro.addItem("30°/60°", 30.0)
+        self.combo_esquadro.addItem("15°", 15.0)
         self.combo_esquadro.setCurrentIndex(1)
         self.combo_esquadro.currentIndexChanged.connect(self._on_esquadro_snap_changed)
         self.combo_esquadro.setToolTip("Passo angular da ferramenta Esquadro")
@@ -3661,16 +3692,16 @@ class DrawingCanvas(QWidget):
         row_props.addStretch()
         layout.addLayout(row_props)
 
-        # Linha 2: AÃ§Ãµes
+        # Linha 2: Ações
         row2 = QHBoxLayout()
         row2.setSpacing(4)
 
-        btn_undo = QPushButton("â†©ï¸ Desfazer")
+        btn_undo = QPushButton("Desfazer")
         btn_undo.setFixedHeight(fh)
         btn_undo.clicked.connect(self._undo)
         btn_undo.setStyleSheet(self._tool_btn_style())
 
-        btn_redo = QPushButton("â†ªï¸ Refazer")
+        btn_redo = QPushButton("Refazer")
         btn_redo.setFixedHeight(fh)
         btn_redo.clicked.connect(self._redo)
         btn_redo.setStyleSheet(self._tool_btn_style())
@@ -3679,13 +3710,13 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_redo)
         row2.addSpacing(8)
 
-        # RotaÃ§Ã£o via toolbar (mantida para precisÃ£o numÃ©rica)
-        row2.addWidget(_lbl("â†» Girar:"))
+        # Rotação via toolbar (mantida para precisão numérica)
+        row2.addWidget(_lbl("Girar:"))
         self.spin_rotate = QDoubleSpinBox()
         self.spin_rotate.setRange(-360, 360)
         self.spin_rotate.setValue(45)
         self.spin_rotate.setSingleStep(15)
-        self.spin_rotate.setSuffix("Â°")
+        self.spin_rotate.setSuffix("°")
         self.spin_rotate.setFixedWidth(max(68, int(80 * s)))
         self.spin_rotate.setFixedHeight(fh)
         row2.addWidget(self.spin_rotate)
@@ -3698,26 +3729,26 @@ class DrawingCanvas(QWidget):
 
         btn_mirror_h = QPushButton("Horizontal")
         btn_mirror_h.setFixedHeight(fh)
-        btn_mirror_h.setToolTip("Espelhar com cÃ³pia na horizontal (Ctrl+Shift+H)")
+        btn_mirror_h.setToolTip("Espelhar com cópia na horizontal (Ctrl+Shift+H)")
         btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
         btn_mirror_h.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_mirror_h)
 
         btn_mirror_v = QPushButton("Vertical")
         btn_mirror_v.setFixedHeight(fh)
-        btn_mirror_v.setToolTip("Espelhar com cÃ³pia na vertical (Ctrl+J)")
+        btn_mirror_v.setToolTip("Espelhar com cópia na vertical (Ctrl+J)")
         btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
         btn_mirror_v.setStyleSheet(self._tool_btn_style())
         row2.addWidget(btn_mirror_v)
 
         row2.addSpacing(8)
 
-        btn_img = QPushButton("ðŸ–¼ï¸ Imagem")
+        btn_img = QPushButton("🖼️ Imagem")
         btn_img.setFixedHeight(fh)
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
 
-        btn_pdf = QPushButton("ðŸ“Ž PDF")
+        btn_pdf = QPushButton("PDF")
         btn_pdf.setFixedHeight(fh)
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
@@ -3748,14 +3779,24 @@ class DrawingCanvas(QWidget):
         btn_bandeja.setToolTip("Inserir modelo de bandeja")
         btn_bandeja.clicked.connect(self._open_bandeja_popup)
         btn_bandeja.setStyleSheet(self._tool_btn_style())
+        btn_cantoneira = QPushButton("Cantoneira")
+        btn_cantoneira.setFixedHeight(fh)
+        btn_cantoneira.setToolTip("Inserir modelo de cantoneira")
+        btn_cantoneira.clicked.connect(self._open_cantoneira_popup)
+        btn_cantoneira.setStyleSheet(self._tool_btn_style())
+        btn_chapas = QPushButton("Chapas")
+        btn_chapas.setFixedHeight(fh)
+        btn_chapas.setToolTip("Inserir modelo de chapa")
+        btn_chapas.clicked.connect(self._open_chapa_popup)
+        btn_chapas.setStyleSheet(self._tool_btn_style())
 
-        btn_dim = QPushButton("ðŸ“ MM")
+        btn_dim = QPushButton("MM")
         btn_dim.setFixedHeight(fh)
         btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
         btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
         btn_dim.setStyleSheet(self._tool_btn_style())
 
-        btn_clear = QPushButton("ðŸ—‘ï¸ Limpar")
+        btn_clear = QPushButton("Limpar")
         btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
         btn_clear.setStyleSheet(
@@ -3771,6 +3812,8 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_pingadeira)
         row2.addWidget(btn_calhas)
         row2.addWidget(btn_bandeja)
+        row2.addWidget(btn_cantoneira)
+        row2.addWidget(btn_chapas)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
@@ -3778,24 +3821,24 @@ class DrawingCanvas(QWidget):
 
         # Dica de teclado
         hint = QLabel(
-            "âœ¨ Shift = traÃ§o reto  |  V = pen vetorial  |  Q = esquadro (Ã¢ngulo guiado)  |  U = Ã¢ngulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triÃ¢ngulo  |  N = pentÃ¡gono  |  H = hexÃ¡gono  |  Del = apagar  |  Scroll = zoom  |  "
-            "BotÃ£o do meio / Space+drag = mover  |  "
+            "Shift = traco reto  |  V = pen vetorial  |  Q = esquadro (angulo guiado)  |  U = angulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
+            "Botão do meio / Space+drag = mover  |  "
             "Ctrl+C / Ctrl+V = duplicar e colar  |  "
-            "Ctrl+Shift+H = espelhar com cÃ³pia horizontal  |  Ctrl+J = espelhar com cÃ³pia vertical  |  "
+            "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
             "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  Angulo selecionado: +/- = tamanho  |  Alt+<-/> = girar (Shift = 15 deg)  |  "
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
         hint.setWordWrap(True)
         hint.setStyleSheet(
-            f"color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
+            f"background:transparent; color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
         )
         layout.addWidget(hint)
 
         # Cena + View
         self.scene = DrawingScene(self)
-        # sceneRect fixo: impede que o viewport role quando o primeiro item Ã©
+        # sceneRect fixo: impede que o viewport role quando o primeiro item é
         # adicionado (sem rect fixo, Qt recalcula os limites e causa um scroll
-        # que faz o ponto inicial aparecer deslocado em relaÃ§Ã£o ao clique)
+        # que faz o ponto inicial aparecer deslocado em relação ao clique)
         self.scene.setSceneRect(-5000, -5000, 10000, 10000)
         self.view  = DrawingView(self.scene, canvas_widget=self)
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -3810,7 +3853,7 @@ class DrawingCanvas(QWidget):
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
         self.view.setMinimumHeight(max(250, int(300 * self.scale)))
-        # Garante que a origem (0,0) da cena comeÃ§a centralizada no viewport
+        # Garante que a origem (0,0) da cena começa centralizada no viewport
         self.view.centerOn(QPointF(0, 0))
         layout.addWidget(self.view)
 
@@ -3822,15 +3865,15 @@ class DrawingCanvas(QWidget):
         pdf_layout = QHBoxLayout(self.pdf_panel)
         pdf_layout.setContentsMargins(10, 6, 10, 6)
         self.pdf_label = QLabel("Nenhum PDF anexado")
-        self.pdf_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
-        btn_open_pdf = QPushButton("ðŸ“‚ Abrir")
+        self.pdf_label.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
+        btn_open_pdf = QPushButton("Abrir")
         btn_open_pdf.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_pdf.clicked.connect(self._open_pdf)
         btn_rm_pdf = QPushButton("X")
         btn_rm_pdf.setFixedWidth(28)
         btn_rm_pdf.setStyleSheet(theme.danger_btn_style(self.scale))
         btn_rm_pdf.clicked.connect(self._remove_pdf)
-        pdf_layout.addWidget(QLabel("ðŸ“Ž PDF"))
+        pdf_layout.addWidget(QLabel("PDF"))
         pdf_layout.addWidget(self.pdf_label, 1)
         pdf_layout.addWidget(btn_open_pdf)
         pdf_layout.addWidget(btn_rm_pdf)
@@ -3845,7 +3888,7 @@ class DrawingCanvas(QWidget):
         attachment_layout = QHBoxLayout(self.attachment_panel)
         attachment_layout.setContentsMargins(10, 6, 10, 6)
         self.attachment_label = QLabel("Nenhum anexo DWG")
-        self.attachment_label.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
+        self.attachment_label.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8,int(10*self.scale))}pt;")
         btn_open_attachment = QPushButton("Abrir")
         btn_open_attachment.setStyleSheet(theme.secondary_btn_style(self.scale))
         btn_open_attachment.clicked.connect(self._open_dwg)
@@ -3875,33 +3918,33 @@ class DrawingCanvas(QWidget):
     def apply_theme(self) -> None:
         """Reaplica o tema corrente em todos os controles do editor de desenho.
 
-        NecessÃ¡rio porque o estilo Ã© setado item a item no construtor; ao
+        Necessário porque o estilo é setado item a item no construtor; ao
         trocar de tema em runtime, os widgets ficam com as cores antigas
-        atÃ© essa funÃ§Ã£o ser chamada.
+        até essa função ser chamada.
         """
         fs = max(9, int(11 * self.scale))
         small = max(8, int(9 * self.scale))
 
-        # Borda do canvas. O fundo do canvas Ã© sempre branco (papel de desenho).
+        # Borda do canvas. O fundo do canvas é sempre branco (papel de desenho).
         if hasattr(self, "view") and self.view is not None:
             self.view.setStyleSheet(
                 f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
             )
 
-        # Reaplica estilo nos botÃµes de ferramentas (lista guardada)
+        # Reaplica estilo nos botões de ferramentas (lista guardada)
         tool_style = self._tool_btn_style()
         for btn in getattr(self, "_tool_btns", {}).values():
             btn.setStyleSheet(tool_style)
 
-        # BotÃ£o de cor: preserva o swatch da cor atual, atualiza sÃ³ a borda
+        # Botão de cor: preserva o swatch da cor atual, atualiza só a borda
         if hasattr(self, "btn_color") and self.btn_color is not None:
             self.btn_color.setStyleSheet(
                 f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
                 f"font-size:{small}pt;"
             )
 
-        # Demais botÃµes e labels: aplica estilo padrÃ£o.
-        # Pula os que jÃ¡ estilizamos especificamente acima.
+        # Demais botões e labels: aplica estilo padrão.
+        # Pula os que já estilizamos especificamente acima.
         from PySide6.QtWidgets import QPushButton, QLabel
         special_btns = set(getattr(self, "_tool_btns", {}).values())
         if hasattr(self, "btn_color"):
@@ -3910,20 +3953,20 @@ class DrawingCanvas(QWidget):
         for btn in self.findChildren(QPushButton):
             if btn in special_btns:
                 continue
-            # MantÃ©m botÃµes com estilo custom (ex.: que tenham background:transparent
-            # no QSS atual) â€” re-aplicar o estilo padrÃ£o a TODOS dÃ¡ um look uniforme,
-            # que Ã© o que queremos quando troca o tema.
+            # Mantém botões com estilo custom (ex.: que tenham background:transparent
+            # no QSS atual) - re-aplicar o estilo padrao a TODOS da um look uniforme,
+            # que é o que queremos quando troca o tema.
             btn.setStyleSheet(tool_style)
 
-        # Labels: detecta o tÃ­tulo (cor PRIMARY/bold/maior) e re-estiliza
+        # Labels: detecta o título (cor PRIMARY/bold/maior) e re-estiliza
         for lbl in self.findChildren(QLabel):
             current = lbl.styleSheet() or ""
             if "font-weight:bold" in current.replace(" ", ""):
                 lbl.setStyleSheet(
-                    f"color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
+                    f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
                 )
             else:
-                lbl.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
+                lbl.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
 
     def _setup_shortcuts(self):
         shortcuts = {
@@ -4030,8 +4073,8 @@ class DrawingCanvas(QWidget):
     def _add_or_edit_manual_dimension(self):
         """
         Cota manual:
-        - Se houver texto selecionado, edita o conteÃºdo.
-        - Caso contrÃ¡rio, inicia o modo de cota manual (2 cliques para posicionar a linha).
+        - Se houver texto selecionado, edita o conteúdo.
+        - Caso contrário, inicia o modo de cota manual (2 cliques para posicionar a linha).
         """
         selected = self.scene.selectedItems()
         target_text = None
@@ -4040,11 +4083,11 @@ class DrawingCanvas(QWidget):
                 target_text = item
                 break
 
-        default_value = target_text.toPlainText() if target_text else "Ã˜ 12 mm"
+        default_value = target_text.toPlainText() if target_text else "Ø 12 mm"
         text, ok = QInputDialog.getText(
             self,
             "Cota manual",
-            "Informe a cota (ex.: Ã˜ 12 mm, 350 mm, 1.20 m):",
+            "Informe a cota (ex.: Ø 12 mm, 350 mm, 1.20 m):",
             text=default_value,
         )
         if not ok:
@@ -4065,23 +4108,23 @@ class DrawingCanvas(QWidget):
     def _ask_angle_mode_config(self) -> tuple[float, str, str] | None:
         preset, ok = QInputDialog.getItem(
             self,
-            "Ã‚ngulo",
-            "Selecione o valor do Ã¢ngulo:",
-            ["90Â°", "180Â°", "Personalizado..."],
+            "Angulo",
+            "Selecione o valor do ângulo:",
+            ["90°", "180°", "Personalizado..."],
             0,
             False,
         )
         if not ok:
             return None
 
-        if preset == "90Â°":
+        if preset == "90°":
             degrees = 90.0
-        elif preset == "180Â°":
+        elif preset == "180°":
             degrees = 180.0
         else:
             value, ok = QInputDialog.getDouble(
                 self,
-                "Ã‚ngulo personalizado",
+                "Angulo personalizado",
                 "Informe o valor em graus:",
                 45.0,
                 0.1,
@@ -4092,7 +4135,7 @@ class DrawingCanvas(QWidget):
                 return None
             degrees = float(value)
         style = "arc"
-        label = f"{degrees:.1f}Â°"
+        label = f"{degrees:.1f}°"
         return degrees, label, style
 
     def _get_pen_dot_cursor(self) -> QCursor:
@@ -4113,7 +4156,7 @@ class DrawingCanvas(QWidget):
         painter.setBrush(QBrush(QColor(255, 255, 255, 220)))
         painter.drawEllipse(QPointF(center, center), 3.6, 3.6)
 
-        # Centro sÃ³lido (ponto de precisÃ£o visual).
+        # Centro sólido (ponto de precisão visual).
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(QColor("#000000")))
         painter.drawEllipse(QPointF(center, center), 1.3, 1.3)
@@ -4172,7 +4215,7 @@ class DrawingCanvas(QWidget):
             self.view.setCursor(Qt.CursorShape.CrossCursor)
 
     def _rotate_selected(self):
-        """Rotaciona os itens selecionados pelo Ã¢ngulo do spin (precisÃ£o numÃ©rica)."""
+        """Rotaciona os itens selecionados pelo ângulo do spin (precisão numérica)."""
         angle = self.spin_rotate.value()
         for item in self.scene.selectedItems():
             item.setTransformOriginPoint(item.boundingRect().center())
@@ -5002,7 +5045,7 @@ class DrawingCanvas(QWidget):
             path.moveTo(bridge_left)
             path.lineTo(bridge_right)
         elif preset == "calha_1_aba_3d":
-            # Perfil 3D com aba lateral Ãºnica e linhas internas de reforÃ§o.
+            # Perfil 3D com aba lateral única e linhas internas de reforço.
             path.moveTo(QPointF(-180.0, 70.0))
             path.lineTo(QPointF(-180.0, -30.0))
             path.lineTo(QPointF(130.0, -110.0))
@@ -5154,7 +5197,7 @@ class DrawingCanvas(QWidget):
         bottom_y = 82.0
 
         if preset == "bandeja_1":
-            # Eixo central + abas nas duas pontas da base + dobra inferior Ã  direita.
+            # Eixo central + abas nas duas pontas da base + dobra inferior à direita.
             axis_x = 0.0
             left_x, right_x = -150.0, 150.0
             path.moveTo(QPointF(left_x, mid_y))
@@ -5194,7 +5237,7 @@ class DrawingCanvas(QWidget):
             path.moveTo(QPointF(axis_x, top_y))
             path.lineTo(QPointF(64.0, top_y))
         elif preset == "bandeja_4":
-            # VersÃ£o espelhada da bandeja 1 com eixo deslocado para a direita.
+            # Versão espelhada da bandeja 1 com eixo deslocado para a direita.
             axis_x = 54.0
             left_x, right_x = -150.0, 150.0
             path.moveTo(QPointF(left_x, mid_y))
@@ -5317,6 +5360,413 @@ class DrawingCanvas(QWidget):
             {
                 "type": "path",
                 "preset_bandeja_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
+    def _build_cantoneira_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+
+        if preset == "cantoneira_1":
+            path.moveTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(130.0, 80.0))
+        elif preset == "cantoneira_2":
+            path.moveTo(QPointF(-130.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+        elif preset == "cantoneira_3":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-170.0, 80.0))
+            path.lineTo(QPointF(-20.0, 80.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(130.0, -10.0))
+        elif preset == "cantoneira_4":
+            path.moveTo(QPointF(-130.0, -10.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(20.0, 80.0))
+            path.lineTo(QPointF(170.0, 80.0))
+            path.lineTo(QPointF(170.0, -80.0))
+        elif preset == "cantoneira_5":
+            path.moveTo(QPointF(90.0, -80.0))
+            path.lineTo(QPointF(-150.0, -80.0))
+            path.lineTo(QPointF(-150.0, 80.0))
+            path.lineTo(QPointF(90.0, 80.0))
+        elif preset == "cantoneira_7":
+            path.moveTo(QPointF(-90.0, -80.0))
+            path.lineTo(QPointF(150.0, -80.0))
+            path.lineTo(QPointF(150.0, 80.0))
+            path.lineTo(QPointF(-90.0, 80.0))
+        elif preset == "cantoneira_8":
+            path.moveTo(QPointF(-110.0, 80.0))
+            path.lineTo(QPointF(-110.0, -30.0))
+            path.lineTo(QPointF(110.0, -30.0))
+            path.lineTo(QPointF(110.0, 80.0))
+
+        return path
+
+    def _cantoneira_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_cantoneira_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_cantoneira_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Cantoneira")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de cantoneira:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "cantoneira_1",
+            "cantoneira_2",
+            "cantoneira_3",
+            "cantoneira_4",
+            "cantoneira_5",
+            "cantoneira_7",
+            "cantoneira_8",
+        ):
+            item = QListWidgetItem(_CANTONEIRA_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._cantoneira_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_cantoneira_preset(preset)
+
+    def _insert_cantoneira_preset(self, preset: str):
+        if preset not in _CANTONEIRA_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_cantoneira_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_cantoneira_name": preset,
+            },
+        )
+        item.setPos(self._base_insert_pos())
+        self.scene.clearSelection()
+        self._add_preset_item(item)
+        self._redo_stack.clear()
+        self.changed.emit()
+
+    def _build_chapa_path(self, preset: str) -> QPainterPath:
+        path = QPainterPath()
+
+        if preset == "chapa_1":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-90.0, -80.0))
+            path.lineTo(QPointF(170.0, -10.0))
+            path.lineTo(QPointF(170.0, 90.0))
+            path.lineTo(QPointF(-90.0, 130.0))
+            path.lineTo(QPointF(-90.0, -80.0))
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(60.0, -10.0))
+            path.lineTo(QPointF(170.0, -10.0))
+        elif preset == "chapa_2":
+            # Ajustada para seguir a referencia "CHAPA DOBRADA 2".
+            left_bottom = QPointF(-170.0, 170.0)
+            left_top = QPointF(-170.0, 20.0)
+            center_notch = QPointF(-35.0, 24.0)
+            center_inner = QPointF(-35.0, 58.0)
+            mid_top = QPointF(90.0, -150.0)
+            mid_inner = QPointF(90.0, -70.0)
+            mid_lower = QPointF(90.0, 20.0)
+            right_top = QPointF(185.0, -148.0)
+            right_drop = QPointF(185.0, -118.0)
+
+            path.moveTo(left_bottom)
+            path.lineTo(left_top)
+            path.lineTo(center_notch)
+
+            path.moveTo(left_bottom)
+            path.lineTo(mid_top)
+
+            path.moveTo(center_notch)
+            path.lineTo(mid_top)
+            path.lineTo(right_top)
+            path.lineTo(right_drop)
+            path.lineTo(mid_lower)
+
+            path.moveTo(center_notch)
+            path.lineTo(mid_inner)
+            path.lineTo(mid_lower)
+            path.lineTo(center_inner)
+            path.lineTo(center_notch)
+        elif preset == "chapa_3":
+            path.moveTo(QPointF(-170.0, -80.0))
+            path.lineTo(QPointF(-20.0, 10.0))
+            path.lineTo(QPointF(-20.0, 130.0))
+        elif preset == "chapa_4":
+            path.moveTo(QPointF(-20.0, 130.0))
+            path.lineTo(QPointF(-20.0, 10.0))
+            path.lineTo(QPointF(130.0, -80.0))
+        elif preset == "chapa_5":
+            path.moveTo(QPointF(80.0, -80.0))
+            path.lineTo(QPointF(80.0, 20.0))
+            path.lineTo(QPointF(-90.0, 130.0))
+        elif preset == "chapa_6":
+            path.moveTo(QPointF(-80.0, -80.0))
+            path.lineTo(QPointF(-80.0, 20.0))
+            path.lineTo(QPointF(90.0, 130.0))
+        elif preset == "chapa_7":
+            path.moveTo(QPointF(-40.0, -10.0))
+            path.lineTo(QPointF(-40.0, 90.0))
+            path.lineTo(QPointF(60.0, 190.0))
+            path.moveTo(QPointF(-40.0, -10.0))
+            path.lineTo(QPointF(60.0, -110.0))
+        elif preset == "chapa_8":
+            path.moveTo(QPointF(-100.0, 40.0))
+            path.lineTo(QPointF(100.0, 40.0))
+            path.lineTo(QPointF(180.0, 120.0))
+            path.moveTo(QPointF(-100.0, 40.0))
+            path.lineTo(QPointF(-180.0, 120.0))
+        elif preset == "chapa_9":
+            path.moveTo(QPointF(40.0, -10.0))
+            path.lineTo(QPointF(40.0, 90.0))
+            path.lineTo(QPointF(-60.0, 190.0))
+            path.moveTo(QPointF(40.0, -10.0))
+            path.lineTo(QPointF(-60.0, -110.0))
+        elif preset == "chapa_10":
+            path.moveTo(QPointF(-180.0, -40.0))
+            path.lineTo(QPointF(-100.0, 40.0))
+            path.lineTo(QPointF(100.0, 40.0))
+            path.lineTo(QPointF(180.0, -40.0))
+        elif preset == "chapa_11":
+            path.moveTo(QPointF(80.0, -120.0))
+            path.lineTo(QPointF(180.0, -120.0))
+            path.lineTo(QPointF(180.0, 120.0))
+            path.lineTo(QPointF(-20.0, 120.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(80.0, -10.0))
+            path.lineTo(QPointF(80.0, -120.0))
+        elif preset == "chapa_12":
+            path.moveTo(QPointF(-180.0, -120.0))
+            path.lineTo(QPointF(-80.0, -120.0))
+            path.lineTo(QPointF(-80.0, -10.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(20.0, 120.0))
+            path.lineTo(QPointF(-180.0, 120.0))
+            path.lineTo(QPointF(-180.0, -120.0))
+        elif preset == "chapa_13":
+            path.moveTo(QPointF(-180.0, -120.0))
+            path.lineTo(QPointF(20.0, -120.0))
+            path.lineTo(QPointF(20.0, -10.0))
+            path.lineTo(QPointF(-80.0, -10.0))
+            path.lineTo(QPointF(-80.0, 120.0))
+            path.lineTo(QPointF(-180.0, 120.0))
+            path.lineTo(QPointF(-180.0, -120.0))
+        elif preset == "chapa_14":
+            path.moveTo(QPointF(180.0, -120.0))
+            path.lineTo(QPointF(-20.0, -120.0))
+            path.lineTo(QPointF(-20.0, -10.0))
+            path.lineTo(QPointF(80.0, -10.0))
+            path.lineTo(QPointF(80.0, 120.0))
+            path.lineTo(QPointF(180.0, 120.0))
+            path.lineTo(QPointF(180.0, -120.0))
+
+        return path
+
+    def _chapa_preview_pixmap(self, preset: str, width: int = 360, height: int = 180) -> QPixmap:
+        pix = QPixmap(width, height)
+        pix.fill(QColor("#ffffff"))
+        path = self._build_chapa_path(preset)
+        bounds = path.boundingRect()
+
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(QPen(QColor("#111111"), 4))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        if bounds.width() > 0 and bounds.height() > 0:
+            scale = min((width - 20) / bounds.width(), (height - 20) / bounds.height())
+            transform = QTransform()
+            transform.translate(width / 2, height / 2)
+            transform.scale(scale, scale)
+            transform.translate(-bounds.center().x(), -bounds.center().y())
+            painter.drawPath(transform.map(path))
+        painter.end()
+        return pix
+
+    def _open_chapa_popup(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inserir Chapa")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Escolha um modelo de chapa:"))
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setMouseTracking(True)
+        list_widget.viewport().setMouseTracking(True)
+        list_widget.setMinimumWidth(max(180, int(220 * self.scale)))
+
+        for key in (
+            "chapa_1",
+            "chapa_2",
+            "chapa_3",
+            "chapa_4",
+            "chapa_5",
+            "chapa_6",
+            "chapa_7",
+            "chapa_8",
+            "chapa_9",
+            "chapa_10",
+            "chapa_11",
+            "chapa_12",
+            "chapa_13",
+            "chapa_14",
+        ):
+            item = QListWidgetItem(_CHAPA_PRESET_LABELS[key])
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            list_widget.addItem(item)
+        list_widget.setCurrentRow(0)
+
+        preview_col = QVBoxLayout()
+        preview_title = QLabel("Preview")
+        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_label = QLabel(dialog)
+        preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        preview_label.setStyleSheet(
+            f"background:#ffffff; border:1px solid {theme.BORDER_COLOR}; border-radius:8px;"
+        )
+        preview_col.addWidget(preview_title)
+        preview_col.addWidget(preview_label, 1)
+
+        body.addWidget(list_widget, 0)
+        body.addLayout(preview_col, 1)
+        layout.addLayout(body)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(self._tool_btn_style())
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_insert = QPushButton("Inserir")
+        btn_insert.setStyleSheet(self._tool_btn_style())
+        btn_insert.clicked.connect(dialog.accept)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_insert)
+        layout.addLayout(buttons)
+
+        def _set_preview(item: QListWidgetItem | None) -> None:
+            if item is None:
+                preview_label.clear()
+                return
+            preset_name = str(item.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+            preview_label.setPixmap(self._chapa_preview_pixmap(preset_name))
+
+        list_widget.itemEntered.connect(_set_preview)
+        list_widget.currentItemChanged.connect(lambda current, previous: _set_preview(current))
+        list_widget.itemDoubleClicked.connect(lambda item: dialog.accept())
+        _set_preview(list_widget.currentItem())
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected = list_widget.currentItem()
+        if selected is None:
+            return
+        preset = str(selected.data(Qt.ItemDataRole.UserRole) or "").strip().lower()
+        self._insert_chapa_preset(preset)
+
+    def _insert_chapa_preset(self, preset: str):
+        if preset not in _CHAPA_PRESET_LABELS:
+            return
+        item = QGraphicsPathItem(self._build_chapa_path(preset))
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setPen(self._new_current_pen())
+        item.setData(
+            0,
+            {
+                "type": "path",
+                "preset_chapa_name": preset,
             },
         )
         item.setPos(self._base_insert_pos())
@@ -5622,7 +6072,7 @@ class DrawingCanvas(QWidget):
             and item.textInteractionFlags() != Qt.TextInteractionFlag.NoTextInteraction
         )
 
-    # SerializaÃ§Ã£o
+    # Serialização
     def to_json(self) -> str:
         items = []
         for item in self.scene.items():
@@ -5749,6 +6199,12 @@ class DrawingCanvas(QWidget):
                 bandeja_name = str(meta.get("preset_bandeja_name") or "").strip().lower()
                 if bandeja_name in _BANDEJA_PRESET_LABELS:
                     payload["preset_bandeja_name"] = bandeja_name
+                cantoneira_name = str(meta.get("preset_cantoneira_name") or "").strip().lower()
+                if cantoneira_name in _CANTONEIRA_PRESET_LABELS:
+                    payload["preset_cantoneira_name"] = cantoneira_name
+                chapa_name = str(meta.get("preset_chapa_name") or "").strip().lower()
+                if chapa_name in _CHAPA_PRESET_LABELS:
+                    payload["preset_chapa_name"] = chapa_name
                 vector_nodes = meta.get("vector_pen_nodes")
                 if isinstance(vector_nodes, list) and len(vector_nodes) >= 2:
                     payload["vector_pen_nodes"] = vector_nodes
@@ -5831,7 +6287,7 @@ class CanvasPreview(QGraphicsView):
     def set_json(self, data: str):
         self._last_result = load_canvas_scene(self._scene, data, selectable=False)
         if self._last_result["items"] == 0:
-            placeholder = self._scene.addText("ðŸ–¼ï¸ Nenhum desenho salvo")
+            placeholder = self._scene.addText("🖼️ Nenhum desenho salvo")
             placeholder.setDefaultTextColor(QColor(theme.TEXT_LIGHT))
             font = QFont(theme.FONT_PRIMARY, max(9, int(10 * self.scale_factor)))
             placeholder.setFont(font)
@@ -5849,11 +6305,11 @@ class CanvasPreview(QGraphicsView):
         self.fitInView(rect.adjusted(-10, -10, 10, 10), Qt.AspectRatioMode.KeepAspectRatio)
 
     def apply_theme(self) -> None:
-        """Reaplica o tema corrente â€” chamado pela view quando troca claro/escuro."""
+        """Reaplica o tema corrente — chamado pela view quando troca claro/escuro."""
         self.setStyleSheet(
             f"border:1px solid {theme.BORDER_COLOR}; border-radius:8px; background:#fff;"
         )
-        # Atualiza o placeholder "ðŸ–¼ï¸ Nenhum desenho salvo" se estiver presente.
+        # Atualiza o placeholder "🖼️ Nenhum desenho salvo" se estiver presente.
         for item in self._scene.items():
             try:
                 from PySide6.QtWidgets import QGraphicsTextItem
