@@ -1202,33 +1202,105 @@ class MainWindow(QMainWindow):
 
     def _on_theme_toggle(self, dark: bool):
         """
-        Troca de tema com transição visual responsiva (estratégia lazy).
+        Troca de tema com transição visual quase instantânea.
+
+        Estratégia: cross-fade entre dois pixmaps (tema antigo → tema novo).
+        Em vez de fade-out de um pixmap só (380ms), dissolvemos o pixmap antigo
+        sobre o pixmap novo em ~120ms — sensação de troca decidida.
 
         Sequência:
-        1. Screenshot da janela atual e overlay congelado (cobre a janela)
-        2. processEvents() — força a pintura do overlay ANTES do re-estilo
-        3. Re-aplica estilos apenas no sidebar e na view atual (~30–330ms)
-        4. Marca as outras views como _theme_dirty=True (aplicam ao serem
-           visitadas via _nav_transition — custo amortizado, mascarado pelo
-           cross-fade da navegação)
-        5. Fade-out do overlay; nenhum trabalho restante em background.
+        1. grab() do estado atual (tema antigo) → old_pixmap
+        2. Mostra overlay COM old_pixmap (cobre a janela)
+        3. processEvents() — overlay garante que não há flash visível
+        4. Aplica tema novo (sidebar + view atual + global) — invisível
+        5. Marca outras views como dirty (lazy)
+        6. Move overlay temporariamente para fora da tela; grab() → new_pixmap
+        7. Cross-fade: overlay vira new_pixmap; cria top_overlay com old_pixmap
+           e anima opacity 1.0 → 0.0 em ~120ms.
+        8. Cleanup de ambos overlays.
         """
         from PySide6.QtWidgets import QApplication
 
-        previous_frame = self.grab()
-        overlay = self._show_frozen_overlay(previous_frame)
+        old_pixmap = self.grab()
+        cover = self._show_frozen_overlay(old_pixmap)
         QApplication.processEvents()
 
         res.save(dark_mode=dark)
         theme.set_dark(dark)
 
-        # Fase rápida: apenas o que o usuário vê agora
+        # Aplica tema na view atual + sidebar + global (cover ainda visível)
         self._apply_theme_immediate()
         # Demais views: lazy — aplicam sozinhas quando o usuário navegar
         self._mark_other_views_theme_dirty()
+        QApplication.processEvents()
 
-        # Fade-out — nenhum callback pesado (vs. antes: aplicava em ~10 views)
-        self._start_overlay_fadeout(overlay, on_complete=None)
+        # Captura snapshot do tema NOVO sem o overlay no caminho — move o
+        # overlay para fora da tela momentaneamente (mais barato que hide/show
+        # e sem flicker observável).
+        new_pixmap = self._grab_without_overlay(cover)
+        self._start_cross_fade(cover, old_pixmap, new_pixmap, duration_ms=120)
+
+    def _grab_without_overlay(self, overlay):
+        """Captura um pixmap da janela sem o overlay aparecer.
+
+        Em vez de hide()/show() (que dispara repaint visível), movemos o
+        overlay para fora da viewport e voltamos. Praticamente sem custo.
+        """
+        if overlay is None:
+            return self.grab()
+        original_pos = overlay.pos()
+        overlay.move(-99999, -99999)
+        pix = self.grab()
+        overlay.move(original_pos)
+        return pix
+
+    def _start_cross_fade(self, cover, old_pixmap, new_pixmap, duration_ms: int = 120):
+        """Cross-fade entre old_pixmap (em top_overlay) e new_pixmap (em cover).
+
+        cover já está visível com old_pixmap. Substituímos seu pixmap por
+        new_pixmap (atrás) e criamos um top_overlay com old_pixmap por cima,
+        animando opacity 1→0. O usuário vê os dois temas se cruzando suavemente.
+        """
+        from PySide6.QtWidgets import QApplication, QLabel
+        from PySide6.QtCore import QPropertyAnimation, QEasingCurve
+
+        if cover is None or new_pixmap.isNull():
+            # Fallback: fade-out simples
+            self._start_overlay_fadeout(cover, on_complete=None)
+            return
+
+        # Atrás: pixmap do tema NOVO (estado final)
+        cover.setPixmap(new_pixmap)
+
+        # Em cima: pixmap do tema ANTIGO que vai se dissolver
+        top = QLabel(self)
+        top.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        top.setScaledContents(True)
+        top.setPixmap(old_pixmap)
+        top.setGeometry(self.rect())
+        top.raise_()
+        top.show()
+
+        effect = QGraphicsOpacityEffect(top)
+        effect.setOpacity(1.0)
+        top.setGraphicsEffect(effect)
+
+        anim = QPropertyAnimation(effect, b"opacity", top)
+        anim.setDuration(duration_ms)
+        anim.setStartValue(1.0)
+        anim.setEndValue(0.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def _cleanup():
+            top.deleteLater()
+            if cover is not None:
+                cover.deleteLater()
+            self._theme_transition_overlay = None
+            self._theme_transition_anim = None
+
+        anim.finished.connect(_cleanup)
+        self._theme_transition_anim = anim
+        anim.start()
 
     def _on_scale_changed(self, _new_scale: float):
         """Reconstrói o conteúdo da janela principal com a nova escala."""
