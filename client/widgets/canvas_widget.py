@@ -6329,20 +6329,7 @@ class DrawingCanvas(QWidget):
         self._redo_stack.clear()
         self.changed.emit()
 
-    # Limpar
-    def _clear(self):
-        box = QMessageBox(self)
-        box.setWindowTitle("Confirmar limpeza")
-        box.setText("Deseja realmente limpar todo o desenho?")
-        box.setIcon(QMessageBox.Icon.Question)
-        btn_sim = box.addButton("Sim", QMessageBox.ButtonRole.YesRole)
-        btn_nao = box.addButton("Não", QMessageBox.ButtonRole.NoRole)
-        box.setDefaultButton(btn_nao)
-        box.setEscapeButton(btn_nao)
-        box.exec()
-        if box.clickedButton() is not btn_sim:
-            return
-
+    def _clear_scene_contents(self):
         self.scene.cancel_angle_mode()
         self.scene.cancel_mirror_axis()
         self.scene.cancel_manual_dimension()
@@ -6369,6 +6356,21 @@ class DrawingCanvas(QWidget):
         self._undo_stack.clear()
         self._redo_stack.clear()
         self.changed.emit()
+
+    # Limpar
+    def _clear(self):
+        box = QMessageBox(self)
+        box.setWindowTitle("Confirmar limpeza")
+        box.setText("Deseja realmente limpar todo o desenho?")
+        box.setIcon(QMessageBox.Icon.Question)
+        btn_sim = box.addButton("Sim", QMessageBox.ButtonRole.YesRole)
+        btn_nao = box.addButton("Não", QMessageBox.ButtonRole.NoRole)
+        box.setDefaultButton(btn_nao)
+        box.setEscapeButton(btn_nao)
+        box.exec()
+        if box.clickedButton() is not btn_sim:
+            return
+        self._clear_scene_contents()
 
     def _image_paths_from_mime(self, mime: QMimeData) -> list[str]:
         paths: list[str] = []
@@ -6656,7 +6658,7 @@ class DrawingCanvas(QWidget):
         }, ensure_ascii=False)
 
     def from_json(self, data: str):
-        self._clear()
+        self._clear_scene_contents()
         try:
             obj = json.loads(data)
         except (json.JSONDecodeError, TypeError):
