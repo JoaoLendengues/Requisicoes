@@ -26,6 +26,7 @@ from server.routers.requisitions import (
     _build_people_comparison,
     _build_production_destination_comparison,
     _build_production_machine_comparison,
+    _build_top_production_people_rows,
     _build_top_vendor_rows,
     _build_vendor_comparison,
 )
@@ -632,3 +633,148 @@ def test_dashboard_comparisons_filter_by_production_destination():
 
     assert len(helper_rows) == 1
     assert helper_rows[0].label == "DORA"
+
+
+def test_people_rankings_prioritize_weight_over_production_count():
+    now = datetime.utcnow().replace(hour=15, minute=0, second=0, microsecond=0)
+
+    req_light = _req(
+        51,
+        vendor_id=1,
+        vendor_name="ALICE",
+        weight=3.0,
+        emission_at=now - timedelta(days=4),
+        delivery_date=now - timedelta(days=3),
+        status=RequisitionStatus.FATURADO,
+        history=[
+            _status_entry(
+                51,
+                RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                RequisitionStatus.EM_PRODUCAO.value,
+                now - timedelta(days=3, hours=6),
+                _prod_note(
+                    _PROD_STARTED,
+                    _DESTINATION_AR,
+                    machine="PRENSA 10",
+                    operators=["ANA"],
+                    helpers=["BIA"],
+                ),
+                51,
+            ),
+            _status_entry(
+                51,
+                RequisitionStatus.EM_PRODUCAO.value,
+                RequisitionStatus.FATURADO.value,
+                now - timedelta(days=3),
+                _prod_note(
+                    _PROD_FINISHED,
+                    _DESTINATION_AR,
+                    machine="PRENSA 10",
+                    operators=["ANA"],
+                    helpers=["BIA"],
+                ),
+                52,
+            ),
+        ],
+        destination=_DESTINATION_AR,
+    )
+    req_light_2 = _req(
+        52,
+        vendor_id=1,
+        vendor_name="ALICE",
+        weight=3.0,
+        emission_at=now - timedelta(days=3),
+        delivery_date=now - timedelta(days=2),
+        status=RequisitionStatus.FATURADO,
+        history=[
+            _status_entry(
+                52,
+                RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                RequisitionStatus.EM_PRODUCAO.value,
+                now - timedelta(days=2, hours=5),
+                _prod_note(
+                    _PROD_STARTED,
+                    _DESTINATION_AR,
+                    machine="PRENSA 11",
+                    operators=["ANA"],
+                    helpers=["BIA"],
+                ),
+                53,
+            ),
+            _status_entry(
+                52,
+                RequisitionStatus.EM_PRODUCAO.value,
+                RequisitionStatus.FATURADO.value,
+                now - timedelta(days=2),
+                _prod_note(
+                    _PROD_FINISHED,
+                    _DESTINATION_AR,
+                    machine="PRENSA 11",
+                    operators=["ANA"],
+                    helpers=["BIA"],
+                ),
+                54,
+            ),
+        ],
+        destination=_DESTINATION_AR,
+    )
+    req_heavy = _req(
+        53,
+        vendor_id=2,
+        vendor_name="BRUNO",
+        weight=12.0,
+        emission_at=now - timedelta(days=2),
+        delivery_date=now - timedelta(days=1),
+        status=RequisitionStatus.FATURADO,
+        history=[
+            _status_entry(
+                53,
+                RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                RequisitionStatus.EM_PRODUCAO.value,
+                now - timedelta(days=1, hours=8),
+                _prod_note(
+                    _PROD_STARTED,
+                    _DESTINATION_AR,
+                    machine="LASER 20",
+                    operators=["CARLOS"],
+                    helpers=["DORA"],
+                ),
+                55,
+            ),
+            _status_entry(
+                53,
+                RequisitionStatus.EM_PRODUCAO.value,
+                RequisitionStatus.FATURADO.value,
+                now - timedelta(days=1),
+                _prod_note(
+                    _PROD_FINISHED,
+                    _DESTINATION_AR,
+                    machine="LASER 20",
+                    operators=["CARLOS"],
+                    helpers=["DORA"],
+                ),
+                56,
+            ),
+        ],
+        destination=_DESTINATION_AR,
+    )
+
+    operator_rows, helper_rows = _build_top_production_people_rows(
+        [req_light, req_light_2, req_heavy],
+        "30d",
+        _DESTINATION_AR,
+        now,
+    )
+    vendor_rows = _build_vendor_comparison(
+        [req_light, req_light_2, req_heavy],
+        now,
+        destination=_DESTINATION_AR,
+    )
+
+    assert operator_rows[0].person_name == "CARLOS"
+    assert operator_rows[0].total_weight_kg == 12.0
+    assert helper_rows[0].person_name == "DORA"
+    assert helper_rows[0].total_weight_kg == 12.0
+
+    assert vendor_rows[0].label == "BRUNO"
+    assert vendor_rows[0].monthly_kg >= vendor_rows[1].monthly_kg

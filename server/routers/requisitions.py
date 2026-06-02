@@ -2584,8 +2584,8 @@ def _build_top_production_people_rows(
         ]
         rows.sort(
             key=lambda item: (
-                -item.production_count,
                 -item.total_weight_kg,
+                -item.production_count,
                 _normalize_text(item.person_name),
             )
         )
@@ -2707,12 +2707,12 @@ def _build_count_kg_comparison_rows(
     ]
     items.sort(
         key=lambda item: (
-            -item.monthly_count,
             -item.monthly_kg,
-            -item.weekly_count,
+            -item.monthly_count,
             -item.weekly_kg,
-            -item.daily_count,
+            -item.weekly_count,
             -item.daily_kg,
+            -item.daily_count,
             _normalize_text(item.label),
         )
     )

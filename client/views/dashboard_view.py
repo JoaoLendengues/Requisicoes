@@ -100,6 +100,10 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
     widget.setGraphicsEffect(shadow)
 
 
+def _restore_table_sorting(table: QTableWidget) -> None:
+    table.setSortingEnabled(bool(table.property("allowSorting")))
+
+
 def _make_shadow_card(
     scale: float,
     background: str,
@@ -386,10 +390,10 @@ class NeonComparisonWidget(QWidget):
         return max(0.0, float(row.get(f"{period_key}_kg") or 0.0))
 
     def _bar_label(self, row: dict, period_key: str) -> str:
-        kg_text = f"{_format_weight_kg(row.get(f'{period_key}_kg'))} kg"
+        kg_text = f"{_format_weight_kg(row.get(f'{period_key}_kg'))} KG"
         if self._mode == "count_kg":
             count = int(row.get(f"{period_key}_count") or 0)
-            return f"{count} req | {kg_text}"
+            return f"{kg_text} | {count} REQ"
         return kg_text
 
     def _visible_rows(self) -> list[dict]:
@@ -399,8 +403,16 @@ class NeonComparisonWidget(QWidget):
             count_value = float(row.get(f"{period_key}_count") or 0)
             kg_value = self._value_for_period(row, period_key)
             weekly_value = self._value_for_period(row, "weekly")
+            weekly_count = float(row.get("weekly_count") or 0)
+            if self._mode == "count_kg":
+                return (
+                    -kg_value,
+                    -count_value,
+                    -weekly_value,
+                    -weekly_count,
+                    str(row.get("label") or "").casefold(),
+                )
             return (
-                -count_value,
                 -kg_value,
                 -weekly_value,
                 str(row.get("label") or "").casefold(),
@@ -579,10 +591,10 @@ class NeonComparisonWidget(QWidget):
                     bar_height / 2,
                 )
 
-            painter.setPen(QColor(theme.PANEL_TEXT_MUTED))
+            painter.setPen(QColor(theme.PANEL_TEXT_PRIMARY))
             value_font = painter.font()
-            value_font.setPointSize(max(7, int(8 * self._scale)))
-            value_font.setBold(False)
+            value_font.setPointSize(max(8, int(10 * self._scale)))
+            value_font.setBold(True)
             painter.setFont(value_font)
             painter.drawText(
                 QRectF(
@@ -1548,7 +1560,13 @@ class DashboardView(QWidget):
             if chart is not None:
                 chart.set_selected_period(self._comparison_period)
 
-    def _create_table(self, headers: list[str], stretch_columns: set[int]) -> QTableWidget:
+    def _create_table(
+        self,
+        headers: list[str],
+        stretch_columns: set[int],
+        *,
+        sortable: bool = True,
+    ) -> QTableWidget:
         s = self.scale
         table = QTableWidget(0, len(headers))
         table.setHorizontalHeaderLabels(headers)
@@ -1571,9 +1589,10 @@ class DashboardView(QWidget):
             header.setSectionResizeMode(index, mode)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setMinimumHeight(max(34, int(40 * s)))
-        header.setSortIndicatorShown(True)
+        header.setSortIndicatorShown(sortable)
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
-        table.setSortingEnabled(True)
+        table.setProperty("allowSorting", sortable)
+        table.setSortingEnabled(sortable)
 
         table.setStyleSheet(
             f"QTableWidget {{"
@@ -1619,6 +1638,7 @@ class DashboardView(QWidget):
                 "IAR (%)",
             ],
             {1},
+            sortable=False,
         )
         self.top_vendors_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_vendors_table
@@ -1652,6 +1672,7 @@ class DashboardView(QWidget):
         self.top_operators_table = self._create_table(
             ["#", "OPERADOR", "PRODUÇÕES", "PESO(KG)"],
             {1},
+            sortable=False,
         )
         self.top_operators_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_operators_table
@@ -1660,6 +1681,7 @@ class DashboardView(QWidget):
         self.top_helpers_table = self._create_table(
             ["#", "AJUDANTE", "PRODUÇÕES", "PESO(KG)"],
             {1},
+            sortable=False,
         )
         self.top_helpers_table.setMinimumHeight(max(220, int(250 * self.scale)))
         return self.top_helpers_table
@@ -1694,6 +1716,7 @@ class DashboardView(QWidget):
                 "STATUS",
             ],
             {1},
+            sortable=False,
         )
         header = self.top_machines_ar_table.horizontalHeader()
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
@@ -1716,6 +1739,7 @@ class DashboardView(QWidget):
                 "STATUS",
             ],
             {1},
+            sortable=False,
         )
         header = self.top_machines_industria_table.horizontalHeader()
         header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
@@ -1884,7 +1908,7 @@ class DashboardView(QWidget):
 
         if not items:
             self._set_empty_message(table, "Nenhum vendedor encontrado.")
-            table.setSortingEnabled(True)
+            _restore_table_sorting(table)
             return
 
         for index, row in enumerate(items, start=1):
@@ -1916,7 +1940,7 @@ class DashboardView(QWidget):
                 item = _SortableTableWidgetItem(value, sort_values[col])
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
-        table.setSortingEnabled(True)
+        _restore_table_sorting(table)
 
     def _fill_top_people_table(self, table: QTableWidget, rows: object, empty_message: str):
         table.setSortingEnabled(False)
@@ -1926,7 +1950,7 @@ class DashboardView(QWidget):
 
         if not items:
             self._set_empty_message(table, empty_message)
-            table.setSortingEnabled(True)
+            _restore_table_sorting(table)
             return
 
         for index, row in enumerate(items, start=1):
@@ -1950,7 +1974,7 @@ class DashboardView(QWidget):
                 item = _SortableTableWidgetItem(value, sort_values[col])
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
-        table.setSortingEnabled(True)
+        _restore_table_sorting(table)
 
     def _fill_alerts_table(self, rows: object):
         table = self.alerts_table
@@ -1961,7 +1985,7 @@ class DashboardView(QWidget):
 
         if not items:
             self._set_empty_message(table, "Nenhum pedido aguardando confirmação há mais de 1 hora.")
-            table.setSortingEnabled(True)
+            _restore_table_sorting(table)
             return
 
         for row in items:
@@ -1985,7 +2009,7 @@ class DashboardView(QWidget):
                 item = _SortableTableWidgetItem(value, sort_values[col])
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
-        table.setSortingEnabled(True)
+        _restore_table_sorting(table)
 
     def _fill_top_machines_table(
         self,
@@ -2000,7 +2024,7 @@ class DashboardView(QWidget):
 
         if not items:
             self._set_empty_message(table, empty_message)
-            table.setSortingEnabled(True)
+            _restore_table_sorting(table)
             return
 
         for index, row in enumerate(items, start=1):
@@ -2050,7 +2074,7 @@ class DashboardView(QWidget):
                     item = _SortableTableWidgetItem(value, sort_values[col])
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(line, col, item)
-        table.setSortingEnabled(True)
+        _restore_table_sorting(table)
 
     def _fill_recent_table(self, rows: object):
         table = self.recent_table
@@ -2061,7 +2085,7 @@ class DashboardView(QWidget):
 
         if not items:
             self._set_empty_message(table, "Nenhuma requisição recente encontrada.")
-            table.setSortingEnabled(True)
+            _restore_table_sorting(table)
             return
 
         for row in items:
@@ -2115,7 +2139,7 @@ class DashboardView(QWidget):
                     item = _SortableTableWidgetItem(value, sort_values[col])
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(line, col, item)
-        table.setSortingEnabled(True)
+        _restore_table_sorting(table)
 
     def _set_empty_message(self, table: QTableWidget, message: str):
         table.setRowCount(1)
