@@ -2181,6 +2181,7 @@ class DashboardView(QWidget):
         # _setup_ui — Qt resolve o property selector automaticamente.
         for combo in (
             getattr(self, "performance_period_combo", None),
+            getattr(self, "performance_destination_combo", None),
             getattr(self, "people_period_combo", None),
             getattr(self, "people_destination_combo", None),
             getattr(self, "ar_period_combo", None),
@@ -2250,27 +2251,6 @@ class DashboardView(QWidget):
         ]:
             if tbl is not None:
                 self._apply_table_style(tbl)
-<<<<<<< HEAD
-        for combo in [
-            getattr(self, "performance_period_combo", None),
-            getattr(self, "performance_destination_combo", None),
-            getattr(self, "people_period_combo", None),
-            getattr(self, "people_destination_combo", None),
-            getattr(self, "ar_period_combo", None),
-            getattr(self, "industria_period_combo", None),
-        ]:
-            if combo is not None:
-                combo.setStyleSheet(_field_style(s))
-        for date_edit in [
-            getattr(self, "performance_date_from", None),
-            getattr(self, "performance_date_to", None),
-        ]:
-            if date_edit is not None:
-                date_edit.setStyleSheet(_field_style(s))
-        for btn in self._comparison_period_buttons.values():
-            btn.setStyleSheet(_neon_period_chip_style(s))
-=======
->>>>>>> ef2556c487b99b4b535e508ee80c55c809eb6e66
         for tbl in [
             getattr(self, "top_machines_ar_table", None),
             getattr(self, "top_machines_industria_table", None),
