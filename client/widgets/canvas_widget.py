@@ -3625,7 +3625,7 @@ class DrawingCanvas(QWidget):
         def _lbl(txt):
             l = QLabel(txt)
             l.setStyleSheet(lbl_style)
-            l.setMinimumHeight(fh)
+            l.setFixedHeight(fh)
             l.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             return l
 
@@ -3953,8 +3953,9 @@ class DrawingCanvas(QWidget):
             f" background:qlineargradient(x1:0, y1:0, x2:0, y2:1,"
             f" stop:0 {theme.CARD_BG}, stop:1 {theme.SURFACE_SOFT});"
             f" border:1px solid {theme.rgba(theme.PRIMARY, 60)};"
-            f" border-radius:{radius}px; padding:4px 10px;"
+            f" border-radius:{radius}px; padding:0px 10px;"
             f" font-size:{fs}pt; color:{theme.TEXT_DARK}; font-weight:700;"
+            f" text-align:center;"
             f"}}"
             f"QPushButton:hover:!checked {{"
             f" background:{theme.SELECTION_BG}; border-color:{theme.PRIMARY_LIGHT}; color:{theme.PRIMARY};"
@@ -4023,7 +4024,8 @@ class DrawingCanvas(QWidget):
             f"QPushButton {{"
             f" background:{theme.rgba(theme.DANGER, 24)}; color:{theme.DANGER};"
             f" border:1px solid {theme.rgba(theme.DANGER, 86)}; border-radius:{radius}px;"
-            f" padding:4px 10px; font-size:{fs}pt; font-weight:800;"
+            f" padding:0px 10px; font-size:{fs}pt; font-weight:800;"
+            f" text-align:center;"
             f"}}"
             f"QPushButton:hover {{ background:{theme.rgba(theme.DANGER, 42)}; }}"
             f"QPushButton:pressed {{ background:{theme.rgba(theme.DANGER, 72)}; color:{theme.TEXT_WHITE}; }}"
@@ -4036,7 +4038,7 @@ class DrawingCanvas(QWidget):
             f"QComboBox, QSpinBox, QDoubleSpinBox {{"
             f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
             f" border:1px solid {theme.rgba(theme.PRIMARY, 60)}; border-radius:{radius}px;"
-            f" padding:4px 10px; font-size:{fs}pt; font-weight:600;"
+            f" padding:0px 10px; font-size:{fs}pt; font-weight:600;"
             f" selection-background-color:{theme.rgba(theme.PRIMARY, 70)};"
             f"}}"
             f"QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{"
@@ -4101,7 +4103,7 @@ class DrawingCanvas(QWidget):
         frame = QFrame(self)
         frame.setStyleSheet(self._toolbar_section_style())
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(6)
         self._toolbar_sections.append(frame)
         return frame, layout
