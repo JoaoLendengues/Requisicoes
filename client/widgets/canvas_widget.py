@@ -143,6 +143,14 @@ _CHAPA_PRESET_LABELS = {
     "chapa_12": "Corte em Chapa 12",
     "chapa_13": "Corte em Chapa 13",
     "chapa_14": "Corte em Chapa 14",
+    "chapa_perfurada_1": "Chapa Perfurada 1",
+    "chapa_perfurada_2": "Chapa Perfurada 2",
+    "chapa_perfurada_3": "Chapa Perfurada 3",
+    "chapa_perfurada_4": "Chapa Perfurada 4",
+    "chapa_perfurada_5": "Chapa Perfurada 5",
+    "chapa_perfurada_6": "Chapa Perfurada 6",
+    "chapa_perfurada_7": "Chapa Perfurada 7",
+    "chapa_perfurada_8": "Chapa Perfurada 8",
 }
 _PERFIL_PRESET_LABELS = {
     "perfil_u": "Perfil U",
@@ -5950,6 +5958,50 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(80.0, 120.0))
             path.lineTo(QPointF(180.0, 120.0))
             path.lineTo(QPointF(180.0, -120.0))
+        elif preset in {
+            "chapa_perfurada_1",
+            "chapa_perfurada_2",
+            "chapa_perfurada_3",
+            "chapa_perfurada_4",
+            "chapa_perfurada_5",
+            "chapa_perfurada_6",
+            "chapa_perfurada_7",
+            "chapa_perfurada_8",
+        }:
+            left, top, width, height = -160.0, -140.0, 320.0, 280.0
+            hole_r = 46.0
+            path.addRect(left, top, width, height)
+
+            def _add_hole(cx: float, cy: float, r: float = hole_r) -> None:
+                path.addEllipse(QPointF(cx, cy), r, r)
+
+            if preset == "chapa_perfurada_1":
+                _add_hole(-82.0, -68.0)
+                _add_hole(82.0, -68.0)
+                _add_hole(-82.0, 68.0)
+                _add_hole(82.0, 68.0)
+            elif preset == "chapa_perfurada_2":
+                _add_hole(-82.0, -68.0)
+                _add_hole(82.0, -68.0)
+                _add_hole(-82.0, 68.0)
+            elif preset == "chapa_perfurada_3":
+                _add_hole(-88.0, -76.0)
+                _add_hole(-88.0, 76.0)
+            elif preset == "chapa_perfurada_4":
+                _add_hole(78.0, -82.0)
+                _add_hole(78.0, 68.0)
+            elif preset == "chapa_perfurada_5":
+                _add_hole(-70.0, -82.0)
+                _add_hole(92.0, -82.0)
+            elif preset == "chapa_perfurada_6":
+                _add_hole(0.0, 0.0)
+            elif preset == "chapa_perfurada_7":
+                _add_hole(-84.0, 70.0)
+                _add_hole(78.0, 70.0)
+            elif preset == "chapa_perfurada_8":
+                _add_hole(96.0, -92.0)
+                _add_hole(-68.0, 82.0)
+                _add_hole(94.0, 82.0)
 
         return path
 
@@ -6006,6 +6058,14 @@ class DrawingCanvas(QWidget):
             "chapa_12",
             "chapa_13",
             "chapa_14",
+            "chapa_perfurada_1",
+            "chapa_perfurada_2",
+            "chapa_perfurada_3",
+            "chapa_perfurada_4",
+            "chapa_perfurada_5",
+            "chapa_perfurada_6",
+            "chapa_perfurada_7",
+            "chapa_perfurada_8",
         ):
             item = QListWidgetItem(_CHAPA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
