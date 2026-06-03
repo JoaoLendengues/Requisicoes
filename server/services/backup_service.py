@@ -22,11 +22,26 @@ import os
 import shutil
 import subprocess
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from ..config import settings
 from .backup_settings_service import load_backup_settings
 
 log = logging.getLogger(__name__)
+
+# ── Configuracoes operacionais que acompanham cada backup ─────────────────────
+# Esses arquivos JSON ficam no filesystem do servidor (nao no banco) e
+# guardam coisas como motivos de cancelamento, prazo minimo de entrega,
+# alertas de faturamento e a propria configuracao do backup. Se nao forem
+# copiados junto, sao perdidos em troca de maquina/reinstalacao.
+
+_SERVER_DIR = Path(__file__).resolve().parent.parent
+
+# (nome do arquivo no servidor, sufixo a usar no backup)
+_CONFIG_FILES = (
+    ("system_settings.json", "settings"),
+    ("backup_settings.json", "backup-config"),
+)
 
 # ── Localização do pg_dump ────────────────────────────────────────────────────
 
@@ -57,16 +72,55 @@ def _get_db_params() -> dict:
 # ── Rotação de arquivos ───────────────────────────────────────────────────────
 
 def _rotate(folder: str, prefix: str, retention: int) -> None:
-    """Apaga os backups mais antigos quando passa do limite de retenção."""
+    """Apaga os backups mais antigos quando passa do limite de retenção.
+    Apaga também os JSONs auxiliares (config files) cujo .sql correspondente
+    nao existe mais — mantem a pasta limpa sem orfaos."""
     try:
         files = sorted(
             f for f in os.listdir(folder)
             if f.startswith(prefix) and f.endswith(".sql")
         )
         while len(files) > retention:
-            os.remove(os.path.join(folder, files.pop(0)))
+            sql_to_remove = files.pop(0)
+            os.remove(os.path.join(folder, sql_to_remove))
+            # Apaga JSONs auxiliares correspondentes (mesmo prefix sem .sql)
+            sql_base = sql_to_remove[:-4]  # tira ".sql"
+            for _, suffix in _CONFIG_FILES:
+                aux = os.path.join(folder, f"{sql_base}__{suffix}.json")
+                try:
+                    if os.path.exists(aux):
+                        os.remove(aux)
+                except Exception as exc:
+                    log.warning("Falha removendo JSON auxiliar %s: %s", aux, exc)
     except Exception as exc:
         log.warning("Rotação de backups falhou: %s", exc)
+
+
+def _copy_settings_to_backup(folder: str, sql_filename: str) -> None:
+    """Copia system_settings.json e backup_settings.json para a pasta de
+    backup, com o mesmo nome base do .sql + sufixo identificador.
+
+    Exemplo: para backup_diario_2026-06-03.sql, gera:
+      backup_diario_2026-06-03__settings.json
+      backup_diario_2026-06-03__backup-config.json
+
+    Assim o admin que copia a pasta inteira para o servidor secundario ja
+    leva tudo junto, e na restauracao basta restaurar o .sql + copiar os
+    dois JSONs irmaos para server/.
+    """
+    sql_base = sql_filename[:-4] if sql_filename.endswith(".sql") else sql_filename
+    for src_name, suffix in _CONFIG_FILES:
+        src = _SERVER_DIR / src_name
+        if not src.exists():
+            log.info("Arquivo de config '%s' inexistente — pulando.", src_name)
+            continue
+        dst = os.path.join(folder, f"{sql_base}__{suffix}.json")
+        try:
+            shutil.copy2(str(src), dst)
+            log.info("Config '%s' copiada para backup como '%s'.", src_name, os.path.basename(dst))
+        except Exception as exc:
+            # Nao quebra o backup principal se a copia auxiliar falhar — so loga.
+            log.warning("Falha copiando %s para backup: %s", src_name, exc)
 
 
 # ── Execução do backup ────────────────────────────────────────────────────────
@@ -156,6 +210,11 @@ def run_backup(backup_type: str = "manual") -> dict:
         size = os.path.getsize(filepath)
     except Exception:
         size = 0
+
+    # Copia configs operacionais junto com o backup do banco. Sem isso,
+    # os JSONs ficavam fora do backup (~80 motivos cadastrados, prazo
+    # minimo, alertas) — perdidos em troca de maquina ou reinstalacao.
+    _copy_settings_to_backup(folder, filename)
 
     _rotate(folder, prefix, retention)
     log.info("Backup '%s' concluído (%d bytes).", filename, size)
