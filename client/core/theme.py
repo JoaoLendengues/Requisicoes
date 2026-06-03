@@ -58,12 +58,14 @@ _LIGHT: dict = {
     # Status de requisição
     "STATUS_COLORS": {
         "em_andamento":           "#38BDF8",
+        "rascunho":               "#94A3B8",
         "prazo_alterado":         "#A855F7",
         "entregue":               "#22C55E",
         "aguardando_recebimento": "#F59E0B",
         "aguardando_na_fila":     "#D97706",
         "em_producao":            "#0F5BD7",
         "faturado":               "#16A34A",
+        "finalizado":             "#10B981",
         "cancelada":              "#E11D48",
     },
     "PANEL_CARD_BG_START":   "#F8FCFF",
@@ -147,12 +149,14 @@ _DARK: dict = {
     # Status de requisição
     "STATUS_COLORS": {
         "em_andamento":           "#67E8F9",
+        "rascunho":               "#94A3B8",
         "prazo_alterado":         "#C084FC",
         "entregue":               "#4ADE80",
         "aguardando_recebimento": "#FBBF24",
         "aguardando_na_fila":     "#F59E0B",
         "em_producao":            "#22D3EE",
         "faturado":               "#4ADE80",
+        "finalizado":             "#34D399",
         "cancelada":              "#FB7185",
     },
     "PANEL_CARD_BG_START":   "#07111E",
@@ -197,12 +201,14 @@ _DARK: dict = {
 
 STATUS_LABELS: dict = {
     "em_andamento":           "Rascunho",
+    "rascunho":               "Rascunho",
     "prazo_alterado":         "Prazo Alterado",
     "entregue":               "Entregue",
     "aguardando_recebimento": "Aguardando Recebimento",
     "aguardando_na_fila":     "Aguardando na Fila",
     "em_producao":            "Em Producao",
     "faturado":               "Faturado",
+    "finalizado":             "Finalizado",
     "cancelada":              "Cancelada",
 }
 
