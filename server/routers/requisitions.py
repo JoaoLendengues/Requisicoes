@@ -3444,6 +3444,14 @@ def list_requisition_history_rows(
     # Visibilidade no SQL — antes carregava TUDO e filtrava em Python.
     q = _visibility_filter_sql(q, current_user)
 
+    # Cutoff temporal padrao: 2 anos. Reqs mais antigas que isso so aparecem
+    # se o usuario especificar emission_date_start explicitamente. Cobre 99%
+    # das buscas operacionais sem carregar historico ancestral.
+    if not emission_date_start and not search and not client_id:
+        # Se nao ha filtro forte de busca, aplica cutoff padrao.
+        default_cutoff = datetime.utcnow() - timedelta(days=730)
+        q = q.filter(Requisition.created_at >= default_cutoff)
+
     if client_id:
         q = q.filter(Requisition.client_id == client_id)
     if vendor_id:
