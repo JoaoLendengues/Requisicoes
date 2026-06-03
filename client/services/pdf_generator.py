@@ -569,7 +569,10 @@ def _draw_header(
     title_shift = min(30, title_w * 0.12)
     group_center = title_x + title_w / 2 - title_shift
     group_w = min(title_w * 0.70, 170)
-    _txt(pdf, "REQUISI\u00c7\u00c3O", group_center, y + h - 24, 26,
+    title_text = "REQUISI\u00c7\u00c3O"
+    title_text_w = pdfmetrics.stringWidth(title_text, PDF_FONT_BOLD, 26)
+    title_left = group_center - title_text_w / 2
+    _txt(pdf, title_text, group_center, y + h - 24, 26,
          C_BRAND, bold=True, align="center")
 
     emission = _fmt_date(req.get("emission_date"), local_now().strftime("%d/%m/%Y"))
@@ -579,13 +582,8 @@ def _draw_header(
     vendor_w = max(group_w - date_w - meta_gap, group_w * 0.58)
     vendor_cx = group_center + (date_w / 2 + meta_gap / 2 + vendor_w / 2) - meta_shift
     vendor_font_size = _fit_font_size(vendor_name, PDF_FONT_BOLD, 10, vendor_w, min_size=7.0)
-    fitted_vendor_name = _fit(vendor_name, PDF_FONT_BOLD, vendor_font_size, vendor_w)
-    vendor_text_w = pdfmetrics.stringWidth(fitted_vendor_name, PDF_FONT_BOLD, vendor_font_size)
     emission_text_w = pdfmetrics.stringWidth(emission, PDF_FONT_BOLD, 10)
-    packed_meta_gap = 12
-    base_date_cx = group_center - (vendor_w / 2 + meta_gap / 2 + date_w / 2) - meta_shift + 8
-    packed_date_cx = vendor_cx - vendor_text_w / 2 - packed_meta_gap - emission_text_w / 2
-    date_cx = max(base_date_cx, packed_date_cx)
+    date_cx = title_left + emission_text_w / 2
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
     _draw_centered_icon_label(
         pdf,
