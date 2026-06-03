@@ -1208,7 +1208,9 @@ class MainWindow(QMainWindow):
         # Aplica o global_style ANTES das views — assim cada setStyleSheet
         # inline das views já trabalha com a paleta global atualizada (evita
         # ~150 ms de re-resolução dupla do QSS pelo Qt).
-        QApplication.instance().setStyleSheet(theme.global_style())
+        app = QApplication.instance()
+        app.setStyleSheet(theme.global_style())
+        theme.apply_tooltip_palette(app)
 
         self.sidebar.apply_theme()
         current = self._get_current_view()

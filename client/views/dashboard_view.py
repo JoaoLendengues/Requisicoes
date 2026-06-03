@@ -75,6 +75,27 @@ _IAR_TOOLTIP_TEXTS = {
         "Quanto maior, menor a perda operacional e comercial."
     ),
 }
+_IAR_TOOLTIP_TEXTS.update(
+    {
+        "iar_geral": (
+            "Resume a saude da operacao no periodo selecionado.\n"
+            "Quanto mais perto de 100%, melhor o equilibrio entre prazo,\n"
+            "produtividade e baixo cancelamento."
+        ),
+        "prazo_percent": (
+            "Percentual de pedidos finalizados dentro do prazo de entrega no periodo.\n"
+            "Quanto maior, melhor o cumprimento dos compromissos."
+        ),
+        "produtividade_percent": (
+            "Percentual de pedidos recebidos no periodo que ja foram finalizados.\n"
+            "Indica o ritmo de escoamento da producao."
+        ),
+        "cancelamentos_percent": (
+            "Percentual de pedidos que seguiram ativos no periodo, sem cancelamento.\n"
+            "Quanto maior, menor a perda operacional e comercial."
+        ),
+    }
+)
 
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
