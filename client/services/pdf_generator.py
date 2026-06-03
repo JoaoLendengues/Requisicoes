@@ -584,6 +584,9 @@ def _draw_header(
     vendor_cx = group_center + (date_w / 2 + meta_gap / 2 + vendor_w / 2) - meta_shift
     vendor_font_size = _fit_font_size(vendor_name, PDF_FONT_BOLD, 10, vendor_w, min_size=7.0)
     vendor_max_w = max(title_right - vendor_title_anchor_x, 40)
+    fitted_vendor_name = _fit(vendor_name, PDF_FONT_BOLD, vendor_font_size, vendor_max_w)
+    vendor_text_w = pdfmetrics.stringWidth(fitted_vendor_name, PDF_FONT_BOLD, vendor_font_size)
+    vendor_label_cx = vendor_title_anchor_x + (vendor_text_w / 2)
     emission_text_w = pdfmetrics.stringWidth(emission, PDF_FONT_BOLD, 10)
     date_cx = title_left + emission_text_w / 2
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
@@ -601,13 +604,13 @@ def _draw_header(
          align="left", max_w=vendor_max_w)
     _draw_centered_icon_label(
         pdf,
-        vendor_cx,
+        vendor_label_cx,
         y + 18,
         "Vendedor",
         icon_names=("VENDEDOR",),
         font_size=7,
         color=C_TEXT_SOFT,
-        max_w=vendor_w,
+        max_w=vendor_max_w,
     )
 
     ped_h = h * 0.68
