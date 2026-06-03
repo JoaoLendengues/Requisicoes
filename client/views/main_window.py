@@ -1210,8 +1210,6 @@ class MainWindow(QMainWindow):
         # ~150 ms de re-resolução dupla do QSS pelo Qt).
         app = QApplication.instance()
         app.setStyleSheet(theme.global_style())
-        theme.apply_tooltip_palette(app)
-
         self.sidebar.apply_theme()
         current = self._get_current_view()
         if current is not None:

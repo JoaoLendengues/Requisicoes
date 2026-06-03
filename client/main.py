@@ -119,7 +119,6 @@ def main():
 
     # Estilo global
     app.setStyleSheet(theme.global_style())
-    theme.apply_tooltip_palette(app)
     install_orthography_hooks(app)
     install_dialog_theme_hooks(app)
 

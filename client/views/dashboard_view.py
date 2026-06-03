@@ -3,8 +3,8 @@
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QObject, QRectF, QSize, QThread, Qt, Signal
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPalette, QPen, QPixmap
+from PySide6.QtCore import QDate, QEvent, QObject, QPoint, QRectF, QSize, QThread, Qt, Signal
+from PySide6.QtGui import QColor, QGuiApplication, QLinearGradient, QPainter, QPainterPath, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -120,6 +120,92 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
     color.setAlpha(alpha)
     shadow.setColor(color)
     widget.setGraphicsEffect(shadow)
+
+
+class _DashboardHoverTooltip(QFrame):
+    def __init__(self, scale: float, parent: QWidget | None = None):
+        super().__init__(parent, Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        self._scale = scale
+        self._text = ""
+        self.setObjectName("dashboardHoverTooltip")
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._label = QLabel("")
+        self._label.setWordWrap(True)
+        self._label.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self._label)
+        self.apply_theme(scale)
+
+    def apply_theme(self, scale: float | None = None) -> None:
+        if scale is not None:
+            self._scale = scale
+
+        s = self._scale
+        max_width = max(210, int(290 * s))
+        radius = max(10, int(12 * s))
+        padding_v = max(7, int(8 * s))
+        padding_h = max(10, int(12 * s))
+        font_size = max(7, int(8 * s))
+
+        self._label.setMaximumWidth(max_width)
+        self._label.setStyleSheet(
+            f"background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"font-size:{font_size}pt; font-weight:600; line-height:1.2;"
+        )
+        self.setStyleSheet(
+            f"QFrame#dashboardHoverTooltip {{"
+            f"  background:{theme.PANEL_SURFACE_BG};"
+            f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)};"
+            f"  border-radius:{radius}px;"
+            f"  padding:{padding_v}px {padding_h}px;"
+            f"}}"
+        )
+        self._refresh_size()
+
+    def _refresh_size(self) -> None:
+        self._label.adjustSize()
+        layout = self.layout()
+        if layout is not None:
+            layout.activate()
+        self.adjustSize()
+
+    def show_for(self, widget: QWidget, text: str) -> None:
+        if not text:
+            self.hide()
+            return
+
+        self._text = text
+        self._label.setText(text)
+        self._refresh_size()
+
+        offset = max(10, int(12 * self._scale))
+        screen = widget.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            self.show()
+            return
+
+        screen_rect = screen.availableGeometry()
+        anchor_bottom = widget.mapToGlobal(QPoint(widget.width() // 2, widget.height()))
+        anchor_top = widget.mapToGlobal(QPoint(widget.width() // 2, 0))
+        x = anchor_bottom.x() - (self.width() // 2)
+        y = anchor_bottom.y() + offset
+
+        min_x = screen_rect.left() + 8
+        max_x = screen_rect.right() - self.width() - 8
+        if max_x < min_x:
+            max_x = min_x
+        x = max(min_x, min(x, max_x))
+
+        if y + self.height() > screen_rect.bottom() - 8:
+            y = anchor_top.y() - self.height() - offset
+        if y < screen_rect.top() + 8:
+            y = screen_rect.top() + 8
+
+        self.move(x, y)
+        self.show()
+        self.raise_()
 
 
 def _restore_table_sorting(table: QTableWidget) -> None:
@@ -765,10 +851,35 @@ class DashboardView(QWidget):
         self.iar_detail_blocks: dict[str, QFrame] = {}
         self.iar_detail_title_labels: dict[str, QLabel] = {}
         self.iar_detail_value_labels: dict[str, QLabel] = {}
+        self._hover_tooltip_targets: dict[QWidget, str] = {}
+        self._hover_tooltip = _DashboardHoverTooltip(scale, self)
         self.people_period_combo: QComboBox | None = None
         self.people_destination_combo: QComboBox | None = None
         self._setup_ui()
         self.refresh()
+
+    def eventFilter(self, obj, event):
+        if isinstance(obj, QWidget) and obj in self._hover_tooltip_targets:
+            event_type = event.type()
+            if event_type in (QEvent.Type.Enter, QEvent.Type.ToolTip):
+                self._hover_tooltip.show_for(obj, self._hover_tooltip_targets[obj])
+                return event_type == QEvent.Type.ToolTip
+            if event_type in (
+                QEvent.Type.Leave,
+                QEvent.Type.Hide,
+                QEvent.Type.MouseButtonPress,
+                QEvent.Type.FocusOut,
+            ):
+                self._hover_tooltip.hide()
+        return super().eventFilter(obj, event)
+
+    def _register_hover_tooltip(self, widget: QWidget | None, text: str) -> None:
+        if widget is None or not text:
+            return
+        widget.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        widget.setMouseTracking(True)
+        self._hover_tooltip_targets[widget] = text
+        widget.installEventFilter(self)
 
     def _setup_ui(self):
         s = self.scale
@@ -1021,7 +1132,7 @@ class DashboardView(QWidget):
         title_label.setStyleSheet(
             f"font-size:{max(14, int(18 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
         )
-        title_label.setToolTip(_IAR_TOOLTIP_TEXTS["iar_geral"])
+        self._register_hover_tooltip(title_label, _IAR_TOOLTIP_TEXTS["iar_geral"])
         subtitle_label = QLabel(
             "KPI principal da operaÃ§Ã£o, calculado por prazo, produtividade e eficiÃªncia de cancelamentos."
         )
@@ -1159,10 +1270,8 @@ class DashboardView(QWidget):
 
         title_label = QLabel(title)
         tooltip_text = _IAR_TOOLTIP_TEXTS.get(key, "")
-        if tooltip_text:
-            title_label.setToolTip(tooltip_text)
-            wrapper.setToolTip(tooltip_text)
         value_label = QLabel("0,00%")
+        self._register_hover_tooltip(value_label, tooltip_text)
         layout.addWidget(title_label)
         layout.addWidget(value_label)
         self._apply_iar_detail_block_style(wrapper, title_label, value_label, theme.PANEL_NEON_PRIMARY)
@@ -2363,6 +2472,8 @@ class DashboardView(QWidget):
         bg = theme.CONTENT_BG
 
         # QPalette no root — cores cascateiam para os ~313 filhos automaticamente
+        self._hover_tooltip.hide()
+        self._hover_tooltip.apply_theme(s)
         pal = self.palette()
         pal.setColor(QPalette.ColorRole.Window,          QColor(bg))
         pal.setColor(QPalette.ColorRole.WindowText,      QColor(theme.PANEL_TEXT_PRIMARY))

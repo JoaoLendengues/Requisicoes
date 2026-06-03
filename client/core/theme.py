@@ -446,19 +446,6 @@ def apply_neon_table_palette(table) -> None:
     table.viewport().setAutoFillBackground(True)
 
 
-def apply_tooltip_palette(app) -> None:
-    """Sincroniza a paleta do tooltip com o tema ativo."""
-    if app is None:
-        return
-
-    from PySide6.QtGui import QColor, QPalette
-
-    pal = app.palette()
-    pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(PANEL_SURFACE_ALT))  # noqa: F821
-    pal.setColor(QPalette.ColorRole.ToolTipText, QColor(PANEL_TEXT_PRIMARY))  # noqa: F821
-    app.setPalette(pal)
-
-
 def global_style() -> str:
     """QSS aplicado ao QApplication. Resultado cacheado por paleta — invalidado
     automaticamente em set_dark(). Chamadas adicionais retornam a string memoizada."""
@@ -485,9 +472,8 @@ def global_style() -> str:
         f"QLabel {{ background:transparent; color:{TEXT_DARK}; }}"  # noqa: F821
         f"QFrame {{ color:{TEXT_DARK}; }}"  # noqa: F821
         f"QToolTip {{"
-        f"  background-color:{PANEL_SURFACE_ALT}; background:{PANEL_SURFACE_ALT};"  # noqa: F821
-        f"  color:{PANEL_TEXT_PRIMARY}; border:1px solid {rgba(PANEL_NEON_PRIMARY, 112)};"  # noqa: F821
-        f"  padding:7px 10px; border-radius:10px; font-size:9pt;"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {rgba(PANEL_NEON_PRIMARY, 96)};"  # noqa: F821
+        f"  padding:6px 10px; border-radius:10px;"
         f"}}"
         f"QAbstractItemView {{"
         f"  outline:none; alternate-background-color:{TABLE_ALT_ROW};"  # noqa: F821
