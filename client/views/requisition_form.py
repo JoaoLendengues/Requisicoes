@@ -1285,6 +1285,8 @@ class RequisitionForm(QWidget):
         self._canvas_json: str = "{}"   # armazena o JSON do desenho
         self._signature_png_bytes: bytes | None = None
         self._loaded_updated_at = None  # versão carregada (trava otimista)
+        self._req_vendor_code = ""
+        self._req_vendor_name = ""
         self._setup_ui()
         self._setup_hidden_shortcuts()
         self._load_clients()
@@ -2546,9 +2548,18 @@ class RequisitionForm(QWidget):
         self._generate_qr()
         self._refresh_signature_preview()
 
-    def refresh_logged_user(self):
+    def _current_header_vendor_text(self) -> str:
+        if self.req_id is not None:
+            vendor = (self._req_vendor_name or self._req_vendor_code or "--").strip()
+            return vendor.upper() if vendor else "--"
+        return (session.user_name or "--").upper()
+
+    def _refresh_header_vendor_label(self) -> None:
         if hasattr(self, "lbl_vendor"):
-            self.lbl_vendor.setText((session.user_name or "--").upper())
+            self.lbl_vendor.setText(self._current_header_vendor_text())
+
+    def refresh_logged_user(self):
+        self._refresh_header_vendor_label()
         self._generate_qr()
 
     # ── WhatsApp do cliente ───────────────────────────────────────────────────
@@ -3341,6 +3352,7 @@ class RequisitionForm(QWidget):
         # Guarda info do vendedor para uso em _find_saved_pdf_for_print
         self._req_vendor_code = str(data.get("vendor_code") or "")
         self._req_vendor_name = str(data.get("vendor_name") or "")
+        self._refresh_header_vendor_label()
         self.input_ped.setText(str(data.get("ped_number") or ""))
         self.input_obra.setText(data.get("obra") or "")
         self._set_phone_text(data.get("phone") or "")
@@ -3391,6 +3403,9 @@ class RequisitionForm(QWidget):
         self._set_form_locked(False)
         self.req_id = None
         self._loaded_updated_at = None
+        self._req_vendor_code = ""
+        self._req_vendor_name = ""
+        self._refresh_header_vendor_label()
         self.input_ped.clear()
         self.input_obra.clear()
         self.input_fone.clear()
