@@ -4,6 +4,7 @@ from time import perf_counter
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 
 from .database import Base, engine
@@ -22,6 +23,7 @@ from .routers import (
     users,
 )
 from .seed import seed_admin, seed_production_machines
+from .services.alert_scheduler import alert_scheduler
 from .services.backup_service import backup_scheduler
 from .services.runtime_monitor import record_exception, record_request
 from .services.text_normalizer import normalize_existing_user_written_data
@@ -86,11 +88,20 @@ def _migrate():
         "CREATE INDEX IF NOT EXISTS idx_requisitions_client_id       ON requisitions (client_id)",
         "CREATE INDEX IF NOT EXISTS idx_requisitions_created_at      ON requisitions (created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_requisitions_prod_destination ON requisitions (production_destination)",
+        # Indices adicionados Jun/2026 — usados em filtros da Central de Entregas,
+        # Histórico e em queries de "atrasados" do Painel Gerencial.
+        # Os indices parciais (WHERE) economizam ~70% de espaço quando a maioria
+        # das linhas tem o campo NULL.
+        "CREATE INDEX IF NOT EXISTS idx_requisitions_emission_date   ON requisitions (emission_date)",
+        "CREATE INDEX IF NOT EXISTS idx_requisitions_delivery_date   ON requisitions (delivery_date) WHERE delivery_date IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_requisitions_delivered_at    ON requisitions (delivered_at) WHERE delivered_at IS NOT NULL",
+        "CREATE INDEX IF NOT EXISTS idx_requisitions_entrega         ON requisitions (entrega) WHERE entrega = true",
         "CREATE INDEX IF NOT EXISTS idx_req_items_requisition_id     ON requisition_items (requisition_id)",
         "CREATE INDEX IF NOT EXISTS idx_req_prod_splits_req_id       ON requisition_production_splits (requisition_id)",
         "CREATE INDEX IF NOT EXISTS idx_req_prod_splits_status       ON requisition_production_splits (status)",
         "CREATE INDEX IF NOT EXISTS idx_status_history_requisition_id ON status_history (requisition_id)",
         "CREATE INDEX IF NOT EXISTS idx_status_history_split_id      ON status_history (production_split_id)",
+        "CREATE INDEX IF NOT EXISTS idx_status_history_changed_at    ON status_history (changed_at)",
         "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread    ON notifications (user_id, read)",
 
         # ── Feedbacks: novas colunas (category/status) + mensagem ate 1000 ──
@@ -231,6 +242,7 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     asyncio.create_task(backup_scheduler())
+    asyncio.create_task(alert_scheduler())
     yield
 
 
@@ -248,6 +260,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Compressao gzip nas responses > 1KB. Reduz tamanho do trafego da
+# maioria dos endpoints de leitura em ~60-80% (JSON eh muito compressivel).
+# Cliente envia "Accept-Encoding: gzip" — httpx faz isso automaticamente.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.middleware("http")

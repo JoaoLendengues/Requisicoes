@@ -3539,7 +3539,8 @@ def get_management_dashboard(
     db: Session = Depends(get_db),
     _: User = Depends(require_manager_or_admin),
 ):
-    _check_invoice_alerts(db)
+    # _check_invoice_alerts foi movido para background (alert_scheduler).
+    # Roda a cada 5 min em vez de em cada GET — economia de ~30-50ms por chamada.
     normalized_ar_period = _normalize_dashboard_period(ar_period)
     normalized_industria_period = _normalize_dashboard_period(industria_period)
     normalized_performance_period = _normalize_performance_dashboard_period(performance_period)
@@ -3583,8 +3584,7 @@ def get_order_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
-    _check_invoice_alerts(db)
-
+    # _check_invoice_alerts movido para background (alert_scheduler).
     reqs = (
         db.query(Requisition)
         .options(*_LOAD_OPTS)
@@ -3599,8 +3599,7 @@ def get_delivery_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
-    _check_invoice_alerts(db)
-
+    # _check_invoice_alerts movido para background (alert_scheduler).
     reqs = (
         db.query(Requisition)
         .options(*_LOAD_OPTS)
