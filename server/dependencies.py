@@ -44,11 +44,28 @@ def require_manager_or_admin(current_user: User = Depends(get_current_user)) -> 
 
 def require_order_center_access(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role not in (
-        Role.ADMIN, Role.GERENTE, Role.VENDEDOR, Role.PRODUCAO, Role.INDUSTRIA, Role.ENTREGA,
+        Role.ADMIN, Role.GERENTE, Role.VENDEDOR, Role.PRODUCAO, Role.INDUSTRIA,
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sem permissão para acessar a Central de Pedidos",
+        )
+    return current_user
+
+
+def require_delivery_center_access(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role not in (
+        Role.ADMIN,
+        Role.GERENTE,
+        Role.VENDEDOR,
+        Role.PRODUCAO,
+        Role.INDUSTRIA,
+        Role.ENTREGA,
+        Role.ENTREGAS,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sem permissão para acessar a Central de Entregas",
         )
     return current_user
 
@@ -79,7 +96,7 @@ def require_delivery_handler(current_user: User = Depends(get_current_user)) -> 
     marcar como entregue, cancelar entrega, alterar prazo de entrega.
 
     Por que separado de require_creator:
-      - ENTREGA precisa marcar entregas concluidas (funcao operacional dela)
+      - ENTREGAS precisa marcar entregas concluidas (funcao operacional dela)
         mas nao deve criar requisicoes do zero.
       - VENDEDOR pode marcar entrega do proprio pedido (caso comum em fluxos
         compactos) — _can_edit_requisition ja filtra ownership.
@@ -92,6 +109,7 @@ def require_delivery_handler(current_user: User = Depends(get_current_user)) -> 
         Role.GERENTE,
         Role.VENDEDOR,
         Role.ENTREGA,
+        Role.ENTREGAS,
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

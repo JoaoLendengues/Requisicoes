@@ -12,6 +12,7 @@ class Role(str, enum.Enum):
     PRODUCAO = "producao"
     INDUSTRIA = "industria"
     ENTREGA = "entrega"
+    ENTREGAS = "entregas"
 
 
 class User(Base):

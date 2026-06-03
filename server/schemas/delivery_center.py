@@ -21,6 +21,7 @@ class DeliveryCenterItemResponse(BaseModel):
     delivery_date: Optional[date] = None
     status: str
     delivered_at: Optional[datetime] = None
+    finalized_at: Optional[datetime] = None
     deadline_changed_at: Optional[datetime] = None
     deadline_change_reason: Optional[str] = None
 

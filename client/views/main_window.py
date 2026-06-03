@@ -182,7 +182,7 @@ class MainWindow(QMainWindow):
             "nova":               True,  # todos veem; A&R e Indústria em leitura
             "dashboard":          session.can_access_dashboard,
             "pedidos":            session.can_access_order_center,
-            "entregas":           session.can_access_order_center,
+            "entregas":           session.can_access_delivery_center,
             "pinheiro_industria": session.can_access_industria,
             "ar":                 session.can_access_ar,
             "historico":          True,
@@ -329,7 +329,7 @@ class MainWindow(QMainWindow):
             PAGE_DASHBOARD:          session.can_access_dashboard,
             PAGE_TECHNICAL:          session.can_access_technical_panel,
             PAGE_ORDER_CENTER:       session.can_access_order_center,
-            PAGE_DELIVERY_CENTER:    session.can_access_order_center,
+            PAGE_DELIVERY_CENTER:    session.can_access_delivery_center,
             PAGE_PINHEIRO_INDUSTRIA: session.can_access_industria,
             PAGE_AR:                 session.can_access_ar,
             PAGE_USER_CENTER:        session.can_manage_users,
@@ -344,9 +344,14 @@ class MainWindow(QMainWindow):
                 # A&R e Indústria: apenas visualização, sem resetar o formulário.
                 # Se nenhuma requisição estiver carregada, exibe aviso no form.
                 if not self.form_view.req_id:
+                    lock_message = (
+                        "Selecione uma requisição em Entregas ou Relatórios para visualizar."
+                        if session.role == "entregas"
+                        else "Selecione uma requisição no Histórico ou na Central de Pedidos para visualizar."
+                    )
                     self.form_view._set_form_locked(
                         True,
-                        "Selecione uma requisição no Histórico ou na Central de Pedidos para visualizar.",
+                        lock_message,
                     )
                 self._nav_transition(PAGE_FORM)
                 return
@@ -385,6 +390,12 @@ class MainWindow(QMainWindow):
         """Navega para a página inicial correta de acordo com o perfil."""
         if not session.is_view_only:
             return  # admin/gerente/vendedor já partem em PAGE_FORM por padrão
+        if session.role == "entregas":
+            self._ensure_view(PAGE_DELIVERY_CENTER)
+            self.stack.setCurrentIndex(PAGE_DELIVERY_CENTER)
+            self.sidebar._highlight("entregas")
+            self.delivery_center_view.refresh()
+            return
         if session.can_access_ar:
             self._ensure_view(PAGE_AR)
             self.stack.setCurrentIndex(PAGE_AR)
@@ -1382,6 +1393,8 @@ class MainWindow(QMainWindow):
     def _home_screen_key(self) -> str:
         """Tela inicial do perfil (mesma lógica de _navigate_to_home)."""
         if session.is_view_only:
+            if session.role == "entregas":
+                return "entregas"
             return "ar" if session.can_access_ar else "pinheiro_industria"
         return "nova"
 
@@ -1539,6 +1552,10 @@ class MainWindow(QMainWindow):
                     return val.get(key)
                 return val
             return _get
+
+        def delivery(attr):
+            """Getter para widget da Central de Entregas (carregada sob demanda)."""
+            return lambda: getattr(mw.delivery_center_view, attr, None) if mw.delivery_center_view else None
 
         def dash(attr):
             """Getter para widget do Dashboard (carregado sob demanda)."""
@@ -2217,68 +2234,38 @@ class MainWindow(QMainWindow):
                 ),
             ]
 
-        if role == "entrega":
+        if role == "entregas":
             return [
                 welcome,
-                # ── Tela A&R (modo entrega) ───────────────────────────────────
+                # ── Central de Entregas ───────────────────────────────────────
                 TourStep(
-                    "Fila de Entrega",
-                    "Acompanhe os pedidos aguardando recebimento e entrega "
-                    "na <b>A&R</b>.",
-                    nav("ar"), "right", "ar",
+                    "Entregas",
+                    "Acompanhe os pedidos marcados para entrega, com prazos, "
+                    "status e confirmação final da entrega.",
+                    nav("entregas"), "right", "entregas",
                 ),
                 TourStep(
-                    "Contadores de Status",
-                    "Totais em tempo real: pedidos aguardando recebimento, "
-                    "na fila e em produção.",
-                    ar("summary_waiting_receipt", "card"), "bottom",
+                    "Agenda de Entregas",
+                    "Selecione um pedido para alterar o prazo ou registrar "
+                    "a conclusão quando ele já estiver finalizado.",
+                    delivery("table"), "top",
                 ),
                 TourStep(
-                    "Aguardando Recebimento",
-                    "Pedidos enviados para a A&R ainda não confirmados. "
-                    "Selecione e clique <b>Receber</b> para confirmar a chegada.",
-                    ar("waiting_receipt_panel", "card"), "right",
+                    "Nova Requisição",
+                    "Seu perfil abre a tela de requisição em modo leitura, "
+                    "sem permitir edição direta dos dados.",
+                    nav("nova"), "right", "nova",
                 ),
                 TourStep(
-                    "Aguardando na Fila",
-                    "Pedidos já recebidos esperando máquina disponível.",
-                    ar("waiting_queue_panel", "card"), "left",
-                ),
-                TourStep(
-                    "Máquinas Ativas",
-                    "Acompanhe em qual máquina cada pedido está sendo produzido "
-                    "e finalize quando concluído.",
-                    ar("machines_widget"), "top",
-                ),
-                TourStep(
-                    "Atualizar",
-                    "Clique em <b>ATUALIZAR</b> para recarregar os dados "
-                    "mais recentes da fila.",
-                    ar("refresh_btn"), "bottom",
-                ),
-                # ── Histórico ─────────────────────────────────────────────────
-                TourStep(
-                    "Histórico",
-                    "Consulte o histórico completo de requisições. "
-                    "Clique duas vezes para abrir e verificar os detalhes.",
+                    "Relatórios",
+                    "Use os relatórios para consultar requisições e abrir os "
+                    "detalhes em modo leitura.",
                     nav("historico"), "right", "historico",
                 ),
                 TourStep(
-                    "Campo de Busca",
-                    "Digite o número do PED ou nome do cliente "
-                    "para localizar rapidamente uma requisição.",
-                    hist("input_search"), "bottom",
-                ),
-                TourStep(
-                    "Tabela de Resultados",
-                    "Clique nos cabeçalhos para ordenar. "
-                    "Duplo clique para abrir a requisição completa.",
-                    hist("table"), "top",
-                ),
-                # ── Configurações ─────────────────────────────────────────────
-                TourStep(
                     "Configurações",
-                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    "Esse perfil mantém acesso às abas de aparência, conta "
+                    "e ajuda/acessibilidade.",
                     nav("config"), "right", "config",
                 ),
                 TourStep(

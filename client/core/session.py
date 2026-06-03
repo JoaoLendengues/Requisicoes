@@ -24,10 +24,13 @@ class UserSession:
     def update_profile(self, data: dict):
         if not isinstance(data, dict):
             return
+        role = str(data.get("role") or self.role or "")
+        if role == "entrega":
+            role = "entregas"
         self.user_id = int(data.get("user_id") or data.get("id") or self.user_id or 0)
         self.user_name = str(data.get("user_name") or data.get("name") or self.user_name or "")
         self.user_code = str(data.get("user_code") or data.get("code") or self.user_code or "")
-        self.role = str(data.get("role") or self.role or "")
+        self.role = role
         self.whatsapp = str(
             data.get("whatsapp")
             or data.get("contact")
@@ -57,12 +60,12 @@ class UserSession:
 
     @property
     def is_view_only(self) -> bool:
-        """A&R e Indústria sempre abrem formulários em modo somente leitura."""
-        return self.role in ("producao", "industria", "entrega")
+        """Perfis operacionais abrem formulários em modo somente leitura."""
+        return self.role in ("producao", "industria", "entregas")
 
     @property
     def is_production_team(self) -> bool:
-        return self.role in ("producao", "industria", "entrega")
+        return self.role in ("producao", "industria")
 
     # ── Acesso às telas ───────────────────────────────────────────────────────
 
@@ -76,13 +79,17 @@ class UserSession:
 
     @property
     def can_access_order_center(self) -> bool:
-        """Todos os roles acessam a Central de Pedidos."""
-        return self.role in ("admin", "gerente", "vendedor", "producao", "industria", "entrega")
+        """Perfis operacionais e comerciais acessam a Central de Pedidos."""
+        return self.role in ("admin", "gerente", "vendedor", "producao", "industria")
+
+    @property
+    def can_access_delivery_center(self) -> bool:
+        return self.role in ("admin", "gerente", "vendedor", "producao", "industria", "entregas")
 
     @property
     def can_access_ar(self) -> bool:
         """Tela da A&R: admin, gerente e role A&R (producao)."""
-        return self.role in ("admin", "gerente", "producao", "entrega")
+        return self.role in ("admin", "gerente", "producao")
 
     @property
     def can_access_industria(self) -> bool:
@@ -117,7 +124,7 @@ class UserSession:
 
     @property
     def visible_production_destinations(self) -> tuple[str, ...]:
-        if self.role in ("producao", "entrega"):
+        if self.role == "producao":
             return ("A&R",)
         if self.role == "industria":
             return ("Pinheiro Indústria",)

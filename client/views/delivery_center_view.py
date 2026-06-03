@@ -298,6 +298,7 @@ class DeliveryCenterView(QWidget):
         card_layout.addLayout(title_row)
 
         self.table = self._create_table(self._open_row)
+        self.table.itemSelectionChanged.connect(self._on_pending_selection_changed)
         card_layout.addWidget(self.table, 1)
         content_layout.addWidget(table_card, 1)
 
@@ -347,9 +348,11 @@ class DeliveryCenterView(QWidget):
         completed_layout.addLayout(completed_actions_row)
 
         self.completed_table = self._create_table(self._open_completed_row)
+        self.completed_table.itemSelectionChanged.connect(self._on_completed_selection_changed)
         completed_layout.addWidget(self.completed_table, 1)
         content_layout.addWidget(completed_card, 1)
         content_layout.addStretch()
+        self._update_action_buttons()
 
     def _build_metric_card(
         self,
@@ -480,10 +483,13 @@ class DeliveryCenterView(QWidget):
 
     def _set_loading(self, loading: bool):
         self.refresh_btn.setEnabled(not loading)
-        self.btn_change_deadline.setEnabled(not loading)
-        self.btn_mark_delivered.setEnabled(not loading)
-        if hasattr(self, "btn_cancel_delivered"):
-            self.btn_cancel_delivered.setEnabled(not loading)
+        if loading:
+            self.btn_change_deadline.setEnabled(False)
+            self.btn_mark_delivered.setEnabled(False)
+            if hasattr(self, "btn_cancel_delivered"):
+                self.btn_cancel_delivered.setEnabled(False)
+        else:
+            self._update_action_buttons()
         if loading:
             self.updated_label.setText("Atualizando dados...")
             self.date_label.setText(_format_header_date())
@@ -553,6 +559,7 @@ class DeliveryCenterView(QWidget):
             sort_column=8,
             sort_order=Qt.SortOrder.DescendingOrder,
         )
+        self._update_action_buttons()
 
     def _fill_table(
         self,
@@ -674,6 +681,38 @@ class DeliveryCenterView(QWidget):
             return None
         return self._completed_row_by_id.get(int(req_id))
 
+    def _can_mark_row_delivered(self, row: dict | None) -> bool:
+        if not isinstance(row, dict):
+            return False
+        if row.get("delivered_at"):
+            return False
+        return bool(row.get("finalized_at"))
+
+    def _update_action_buttons(self) -> None:
+        pending_row = self._selected_row()
+        completed_row = self._selected_completed_row()
+        self.btn_change_deadline.setEnabled(isinstance(pending_row, dict))
+        self.btn_mark_delivered.setEnabled(self._can_mark_row_delivered(pending_row))
+        if hasattr(self, "btn_cancel_delivered"):
+            self.btn_cancel_delivered.setEnabled(isinstance(completed_row, dict))
+
+    def _on_pending_selection_changed(self) -> None:
+        if self.table.selectionModel() is not None and self.table.selectionModel().hasSelection():
+            self.completed_table.blockSignals(True)
+            self.completed_table.clearSelection()
+            self.completed_table.blockSignals(False)
+        self._update_action_buttons()
+
+    def _on_completed_selection_changed(self) -> None:
+        if (
+            self.completed_table.selectionModel() is not None
+            and self.completed_table.selectionModel().hasSelection()
+        ):
+            self.table.blockSignals(True)
+            self.table.clearSelection()
+            self.table.blockSignals(False)
+        self._update_action_buttons()
+
     def _open_row(self, row_index: int):
         item = self.table.item(row_index, 0)
         if item is None:
@@ -720,13 +759,11 @@ class DeliveryCenterView(QWidget):
         if row.get("delivered_at"):
             QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
             return
-        allowed_statuses = {"finalizado", "prazo_alterado"}
-        current_status = str(row.get("status") or "").strip().lower()
-        if current_status not in allowed_statuses:
+        if not row.get("finalized_at"):
             QMessageBox.information(
                 self,
                 "Entregas",
-                "Somente pedidos finalizados ou com prazo alterado podem ser marcados como entregues.",
+                "Somente pedidos já finalizados podem ser marcados como entregues.",
             )
             return
         if not QMessageBox.question(

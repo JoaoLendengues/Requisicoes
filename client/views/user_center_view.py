@@ -40,10 +40,11 @@ ROLE_OPTIONS = [
     ("GERENTE", "gerente"),
     ("A&R", "producao"),
     ("INDÚSTRIA", "industria"),
+    ("ENTREGAS", "entregas"),
     ("VENDEDOR", "vendedor"),
 ]
 ROLE_LABELS = {value: label for label, value in ROLE_OPTIONS}
-ROLE_LABELS["entrega"] = "INDÚSTRIA"
+ROLE_LABELS["entrega"] = "ENTREGAS"
 
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
@@ -657,7 +658,7 @@ class UserCenterView(QWidget):
         self.input_sector.setText(str(user.get("sector") or ""))
         role = str(user.get("role") or "vendedor")
         if role == "entrega":
-            role = "industria"
+            role = "entregas"
         idx = max(0, self.combo_role.findData(role))
         self.combo_role.setCurrentIndex(idx)
         self.input_password.clear()

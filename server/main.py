@@ -64,7 +64,7 @@ def _migrate():
         "ALTER TABLE status_history ADD COLUMN IF NOT EXISTS production_split_id INTEGER "
         "REFERENCES requisition_production_splits(id) ON DELETE CASCADE",
         "UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL",
-        "UPDATE users SET role = 'industria' WHERE role = 'entrega'",
+        "UPDATE users SET role = 'entregas' WHERE role = 'entrega'",
         "UPDATE operators SET role = 'operador' WHERE role IS NULL OR TRIM(role) = ''",
         "UPDATE requisitions SET status = 'em_andamento' WHERE UPPER(status) IN "
         "('RASCUNHO','EMITIDA','RECEBIDA_PRODUCAO','PRONTA','EM_ROTA','AGUARDANDO_RETIRADA','CONCLUIDA')",

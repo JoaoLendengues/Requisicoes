@@ -233,39 +233,37 @@ _SLIDES: dict[str, list[dict]] = {
             ),
         },
     ],
-    "entrega": [
+    "entregas": [
         {
             "icon": "👋",
-            "title": "Bem-vindo — Entrega A&R!",
+            "title": "Bem-vindo — Entregas!",
             "body": (
                 "Este guia rápido apresenta as principais seções disponíveis "
-                "para o seu perfil de <b>Entrega</b>."
+                "para o seu perfil de <b>Entregas</b>."
             ),
         },
         {
-            "icon": "🏭",
-            "title": "Fila de Recebimento",
+            "icon": "🚚",
+            "title": "Agenda de Entregas",
             "body": (
-                "A tela <b>A&R</b> exibe os pedidos aguardando recebimento e entrega. "
-                "Use as abas para visualizar o status de cada pedido na fila."
+                "A tela <b>Entregas</b> reúne os pedidos marcados para entrega, "
+                "com prazos, produção e confirmação final."
             ),
         },
         {
             "icon": "✏️",
-            "title": "Confirmar Recebimento",
+            "title": "Nova Requisição",
             "body": (
-                "Dê um <b>duplo clique</b> em um pedido para abri-lo e "
-                "registrar o recebimento ou a entrega. "
-                "Mantenha o status sempre atualizado para a equipe de vendas."
+                "A tela <b>Nova Requisição</b> fica disponível em modo leitura, "
+                "para consulta dos detalhes sem edição."
             ),
         },
         {
             "icon": "🔔",
             "title": "Notificações",
             "body": (
-                "O sino na barra lateral envia alertas quando novos pedidos chegam à fila. "
-                "Você também pode acompanhar o histórico completo em "
-                "<b>Histórico / Busca</b>."
+                "O sino na barra lateral envia alertas sobre mudanças nas entregas. "
+                "Você também pode consultar tudo em <b>Relatórios</b>."
             ),
         },
     ],
@@ -273,6 +271,7 @@ _SLIDES: dict[str, list[dict]] = {
 
 # Fallback para roles desconhecidos
 _SLIDES["default"] = _SLIDES["vendedor"]
+_SLIDES["entrega"] = _SLIDES["entregas"]
 
 
 # ── Helpers de estilo ─────────────────────────────────────────────────────────

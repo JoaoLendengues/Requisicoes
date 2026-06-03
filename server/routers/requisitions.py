@@ -65,6 +65,7 @@ from ..dependencies import (
     get_current_user,
     require_admin,
     require_creator,
+    require_delivery_center_access,
     require_delivery_handler,
     require_manager_or_admin,
     require_order_center_access,
@@ -438,7 +439,10 @@ def _normalize_dashboard_destination(value: str | None) -> str:
 
 
 def _role_key(role: Role | str) -> str:
-    return getattr(role, "value", role)
+    value = getattr(role, "value", role)
+    if value in (Role.ENTREGA.value, Role.ENTREGAS.value):
+        return Role.ENTREGAS.value
+    return value
 
 
 def _is_industry_role(role: Role | str) -> bool:
@@ -1237,9 +1241,9 @@ def _can_view_requisition(req: Requisition, current_user: User) -> bool:
         return True
     if role == Role.VENDEDOR.value:
         return req.vendor_id == current_user.id
-    # ENTREGA ve qualquer requisicao marcada como entrega, independente
+    # ENTREGAS ve qualquer requisicao marcada como entrega, independente
     # do destino de producao (A&R ou Pinheiro Industria).
-    if role == Role.ENTREGA.value:
+    if role == Role.ENTREGAS.value:
         return bool(req.entrega)
 
     destination = _destination_for_role(role)
@@ -1281,7 +1285,7 @@ def _visibility_filter_sql(query, current_user: User):
     Lógica equivalente a _can_view_requisition:
       - ADMIN/GERENTE: vê tudo (sem filtro)
       - VENDEDOR: vê só do próprio (vendor_id)
-      - ENTREGA: vê só reqs marcadas como entrega
+      - ENTREGAS: vê só reqs marcadas como entrega
       - PRODUCAO/INDUSTRIA: vê só reqs com production_destination compatível
       - outros: nada visível
 
@@ -1295,7 +1299,7 @@ def _visibility_filter_sql(query, current_user: User):
         return query
     if role == Role.VENDEDOR.value:
         return query.filter(Requisition.vendor_id == current_user.id)
-    if role == Role.ENTREGA.value:
+    if role == Role.ENTREGAS.value:
         return query.filter(Requisition.entrega == True)  # noqa: E712
     destination = _destination_for_role(role)
     if destination:
@@ -1310,9 +1314,9 @@ def _can_edit_requisition(req: Requisition, current_user: User) -> bool:
         return True
     if req.vendor_id == current_user.id:
         return True
-    # ENTREGA pode editar campos de entrega (mark-delivered, cancel-delivered,
+    # ENTREGAS pode editar campos de entrega (mark-delivered, cancel-delivered,
     # delivery-schedule) em qualquer requisicao marcada como entrega.
-    if role == Role.ENTREGA.value:
+    if role == Role.ENTREGAS.value:
         return bool(req.entrega)
 
     destination = _destination_for_role(role)
@@ -2438,6 +2442,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
                 delivery_date=delivery_date,
                 status=display_status,
                 delivered_at=delivered_at if isinstance(delivered_at, datetime) else None,
+                finalized_at=req.finalized_at if isinstance(req.finalized_at, datetime) else None,
                 deadline_changed_at=deadline_changed_at,
                 deadline_change_reason=str(getattr(req, "delivery_deadline_change_reason", "") or ""),
             )
@@ -3705,7 +3710,7 @@ def get_order_center(
 @router.get("/deliveries/summary", response_model=DeliveryCenterResponse)
 def get_delivery_center(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_order_center_access),
+    current_user: User = Depends(require_delivery_center_access),
 ):
     cache_key = f"delivery_center:{current_user.role.value}:{current_user.id}"
 
@@ -4612,10 +4617,10 @@ def mark_delivery_delivered(
             status_code=400,
             detail="Não é possível concluir a entrega de uma requisição cancelada",
         )
-    if req.status not in (RequisitionStatus.FINALIZADO, RequisitionStatus.PRAZO_ALTERADO):
+    if req.finalized_at is None:
         raise HTTPException(
             status_code=400,
-            detail="Somente pedidos faturados ou com prazo alterado podem ser marcados como entregues",
+            detail="Somente pedidos finalizados podem ser marcados como entregues",
         )
     if req.delivered_at is not None:
         raise HTTPException(

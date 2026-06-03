@@ -47,7 +47,8 @@ DESTINATION_OPTIONS = (
 ROLE_LABELS = {
     "producao": "A&R",
     "industria": "INDÚSTRIA",
-    "entrega": "INDÚSTRIA",
+    "entrega": "ENTREGAS",
+    "entregas": "ENTREGAS",
 }
 STATUS_LABELS = {
     "funcionando": "FUNCIONANDO",
