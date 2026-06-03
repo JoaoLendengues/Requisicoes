@@ -57,10 +57,12 @@ def _migrate():
         " status TEXT NOT NULL DEFAULT 'em_producao',"
         " destination TEXT,"
         " production_machine TEXT,"
+        " delivered_at TIMESTAMP,"
         " created_at TIMESTAMP NOT NULL DEFAULT NOW(),"
         " updated_at TIMESTAMP NOT NULL DEFAULT NOW(),"
         " CONSTRAINT uq_req_prod_split_sequence UNIQUE (requisition_id, sequence)"
         ")",
+        "ALTER TABLE requisition_production_splits ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP",
         "ALTER TABLE status_history ADD COLUMN IF NOT EXISTS production_split_id INTEGER "
         "REFERENCES requisition_production_splits(id) ON DELETE CASCADE",
         "UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL",
@@ -99,6 +101,7 @@ def _migrate():
         "CREATE INDEX IF NOT EXISTS idx_req_items_requisition_id     ON requisition_items (requisition_id)",
         "CREATE INDEX IF NOT EXISTS idx_req_prod_splits_req_id       ON requisition_production_splits (requisition_id)",
         "CREATE INDEX IF NOT EXISTS idx_req_prod_splits_status       ON requisition_production_splits (status)",
+        "CREATE INDEX IF NOT EXISTS idx_req_prod_splits_delivered_at ON requisition_production_splits (delivered_at) WHERE delivered_at IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_status_history_requisition_id ON status_history (requisition_id)",
         "CREATE INDEX IF NOT EXISTS idx_status_history_split_id      ON status_history (production_split_id)",
         "CREATE INDEX IF NOT EXISTS idx_status_history_changed_at    ON status_history (changed_at)",
