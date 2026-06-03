@@ -1314,7 +1314,7 @@ class OrderCenterView(QWidget):
         if clicked == btn_edit:
             self._apply_reopen_canceled_status(
                 row,
-                new_status="em_andamento",
+                new_status="rascunho",
                 note="",
                 success_message=f"Pedido {ped_number} voltou para nova requisição.",
             )
