@@ -153,9 +153,13 @@ def notify_vendor(
             "Produção Finalizada ✅",
             f"PED #{req.ped_number} foi finalizada em produção.",
         ),
+        "finalizado": (
+            "Produção Finalizada ✅",
+            f"PED #{req.ped_number} foi finalizada em produção.",
+        ),
         "faturado": (
-            "Pedido Faturado",
-            f"PED #{req.ped_number} foi marcado como faturado.",
+            "Pedido Faturado 💰",
+            f"PED #{req.ped_number} foi enviado para producao e faturado.",
         ),
         "prod_cancelada": (
             "Produção Cancelada ⚠️",

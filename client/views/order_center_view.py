@@ -1191,10 +1191,12 @@ class OrderCenterView(QWidget):
                     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     color_map = {
                         "em_andamento": theme.PRIMARY_HOVER,
+                        "rascunho": theme.STATUS_COLORS.get("rascunho", theme.PRIMARY_HOVER),
                         "aguardando_recebimento": theme.WARNING,
                         "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
                         "em_producao": theme.PRIMARY,
                         "faturado": theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+                        "finalizado": theme.STATUS_COLORS.get("finalizado", theme.SUCCESS),
                         "cancelada": theme.DANGER,
                     }
                     color = color_map.get(status, theme.BORDER_COLOR)
@@ -1312,7 +1314,7 @@ class OrderCenterView(QWidget):
         if clicked == btn_edit:
             self._apply_reopen_canceled_status(
                 row,
-                new_status="em_andamento",
+                new_status="rascunho",
                 note="",
                 success_message=f"Pedido {ped_number} voltou para nova requisição.",
             )

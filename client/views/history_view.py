@@ -1100,10 +1100,12 @@ class HistoryView(QWidget):
                         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         color_map = {
                             "em_andamento": theme.PRIMARY_HOVER,
+                            "rascunho": theme.STATUS_COLORS.get("rascunho", theme.PRIMARY_HOVER),
                             "aguardando_recebimento": theme.WARNING,
                             "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
                             "em_producao": theme.PRIMARY,
                             "faturado": theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+                            "finalizado": theme.STATUS_COLORS.get("finalizado", theme.SUCCESS),
                             "finalizada_producao": theme.SUCCESS,
                             "cancelada_producao": theme.DANGER,
                             "cancelada": theme.DANGER,
