@@ -2389,6 +2389,14 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
     for req in reqs:
         delivered_at = getattr(req, "delivered_at", None)
         status_value = getattr(req.status, "value", req.status)
+        production_status = _history_production_status(req)
+        effective_status = str(status_value or "")
+        if effective_status not in (
+            RequisitionStatus.PRAZO_ALTERADO.value,
+            RequisitionStatus.FINALIZADO.value,
+            RequisitionStatus.CANCELADA.value,
+        ):
+            effective_status = str(production_status or effective_status)
 
         # A tela de Entregas lista pedidos marcados para entrega que estejam
         # em produção, faturados, com prazo alterado ou já entregues.
@@ -2397,7 +2405,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
             or req.status == RequisitionStatus.CANCELADA
             or (
                 delivered_at is None
-                and status_value not in (
+                and effective_status not in (
                     RequisitionStatus.EM_PRODUCAO.value,
                     RequisitionStatus.FINALIZADO.value,
                     RequisitionStatus.PRAZO_ALTERADO.value,
@@ -2421,7 +2429,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
         if delivered_at is None and deadline_changed_at is not None:
             changed_delivery_deadlines += 1
 
-        display_status = str(status_value or "")
+        display_status = effective_status
         if delivered_at is not None:
             display_status = "entregue"
         elif (
@@ -4617,7 +4625,7 @@ def mark_delivery_delivered(
             status_code=400,
             detail="Não é possível concluir a entrega de uma requisição cancelada",
         )
-    if req.finalized_at is None:
+    if req.status != RequisitionStatus.FINALIZADO:
         raise HTTPException(
             status_code=400,
             detail="Somente pedidos finalizados podem ser marcados como entregues",

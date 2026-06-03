@@ -686,7 +686,7 @@ class DeliveryCenterView(QWidget):
             return False
         if row.get("delivered_at"):
             return False
-        return bool(row.get("finalized_at"))
+        return str(row.get("status") or "").strip().lower() == "finalizado"
 
     def _update_action_buttons(self) -> None:
         pending_row = self._selected_row()
@@ -759,7 +759,7 @@ class DeliveryCenterView(QWidget):
         if row.get("delivered_at"):
             QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
             return
-        if not row.get("finalized_at"):
+        if str(row.get("status") or "").strip().lower() != "finalizado":
             QMessageBox.information(
                 self,
                 "Entregas",
