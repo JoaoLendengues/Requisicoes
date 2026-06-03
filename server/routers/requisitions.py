@@ -69,6 +69,7 @@ from ..dependencies import (
     require_manager_or_admin,
     require_order_center_access,
 )
+from ..services import cache
 from ..services.audit_service import diff_fields, log_action
 from ..services.notification_service import (
     _notify_admins_gerentes,
@@ -1252,6 +1253,22 @@ def _filter_requisitions_for_user(
     reqs: list[Requisition], current_user: User
 ) -> list[Requisition]:
     return [req for req in reqs if _can_view_requisition(req, current_user)]
+
+
+def _invalidate_list_caches() -> None:
+    """Invalida caches de leitura listavel apos mutacoes em requisicoes.
+
+    Chamado em todos os endpoints de escrita (create/update/delete de
+    requisicoes, splits, status, prazo etc). Garante que a proxima leitura
+    veja o estado atualizado, em troca de aceitar 1 cache miss.
+
+    Mais barato que invalidar entrada-por-entrada porque os keys incluem
+    o user_id — seriam dezenas de keys para limpar com lookup.
+    """
+    cache.invalidate("order_center:")
+    cache.invalidate("delivery_center:")
+    cache.invalidate("dashboard:")
+    cache.invalidate("production_summary:")
 
 
 def _visibility_filter_sql(query, current_user: User):
@@ -3583,7 +3600,6 @@ def get_management_dashboard(
     _: User = Depends(require_manager_or_admin),
 ):
     # _check_invoice_alerts foi movido para background (alert_scheduler).
-    # Roda a cada 5 min em vez de em cada GET — economia de ~30-50ms por chamada.
     normalized_ar_period = _normalize_dashboard_period(ar_period)
     normalized_industria_period = _normalize_dashboard_period(industria_period)
     normalized_performance_period = _normalize_performance_dashboard_period(performance_period)
@@ -3592,46 +3608,60 @@ def get_management_dashboard(
     normalized_people_period = _normalize_dashboard_period(people_period)
     normalized_people_destination = _normalize_dashboard_destination(people_destination)
 
-    # Cutoff temporal no SQL: dashboard nao precisa de reqs criadas ha mais
-    # de 13 meses (todas as metricas operam em janelas <= 1 ano). Reqs em
-    # estado aberto sao incluidas independente da idade — operacional vive.
-    cutoff = datetime.utcnow() - timedelta(days=400)
-    q = db.query(Requisition).options(*_LOAD_OPTS).filter(
-        or_(
-            Requisition.created_at >= cutoff,
-            Requisition.status.in_([
-                RequisitionStatus.RASCUNHO,
-                RequisitionStatus.EM_ANDAMENTO,
-                RequisitionStatus.AGUARDANDO_RECEBIMENTO,
-                RequisitionStatus.AGUARDANDO_NA_FILA,
-                RequisitionStatus.EM_PRODUCAO,
-                RequisitionStatus.PRAZO_ALTERADO,
-            ]),
+    # Cache TTL 30s (mais longo que order/delivery porque dashboard tem
+    # 9 params — chance maior de re-fetch identico). Key inclui todos
+    # os params normalizados para evitar colisao entre filtros diferentes.
+    cache_key = (
+        f"dashboard:{normalized_ar_period}:{normalized_industria_period}:"
+        f"{normalized_performance_period}:"
+        f"{performance_date_start}:{performance_date_end}:"
+        f"{normalized_performance_destination}:{normalized_comparison_destination}:"
+        f"{normalized_people_period}:{normalized_people_destination}"
+    )
+
+    def _compute():
+        # Cutoff temporal no SQL: dashboard nao precisa de reqs criadas ha mais
+        # de 13 meses (todas as metricas operam em janelas <= 1 ano). Reqs em
+        # estado aberto sao incluidas independente da idade — operacional vive.
+        cutoff = datetime.utcnow() - timedelta(days=400)
+        q = db.query(Requisition).options(*_LOAD_OPTS).filter(
+            or_(
+                Requisition.created_at >= cutoff,
+                Requisition.status.in_([
+                    RequisitionStatus.RASCUNHO,
+                    RequisitionStatus.EM_ANDAMENTO,
+                    RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+                    RequisitionStatus.AGUARDANDO_NA_FILA,
+                    RequisitionStatus.EM_PRODUCAO,
+                    RequisitionStatus.PRAZO_ALTERADO,
+                ]),
+            )
         )
-    )
-    reqs = q.order_by(Requisition.created_at.desc()).all()
-    machines = (
-        db.query(ProductionMachine)
-        .order_by(
-            ProductionMachine.destination.asc(),
-            ProductionMachine.sort_order.asc(),
-            ProductionMachine.id.asc(),
+        reqs = q.order_by(Requisition.created_at.desc()).all()
+        machines = (
+            db.query(ProductionMachine)
+            .order_by(
+                ProductionMachine.destination.asc(),
+                ProductionMachine.sort_order.asc(),
+                ProductionMachine.id.asc(),
+            )
+            .all()
         )
-        .all()
-    )
-    return _build_management_dashboard(
-        reqs,
-        machines,
-        ar_period=normalized_ar_period,
-        industria_period=normalized_industria_period,
-        performance_period=normalized_performance_period,
-        performance_date_start=performance_date_start,
-        performance_date_end=performance_date_end,
-        performance_destination=normalized_performance_destination,
-        comparison_destination=normalized_comparison_destination,
-        people_period=normalized_people_period,
-        people_destination=normalized_people_destination,
-    )
+        return _build_management_dashboard(
+            reqs,
+            machines,
+            ar_period=normalized_ar_period,
+            industria_period=normalized_industria_period,
+            performance_period=normalized_performance_period,
+            performance_date_start=performance_date_start,
+            performance_date_end=performance_date_end,
+            performance_destination=normalized_performance_destination,
+            comparison_destination=normalized_comparison_destination,
+            people_period=normalized_people_period,
+            people_destination=normalized_people_destination,
+        )
+
+    return cache.get_or_set(cache_key, ttl_seconds=30, compute=_compute)
 
 
 @router.get("/order-center/summary", response_model=OrderCenterResponse)
@@ -3639,29 +3669,37 @@ def get_order_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
-    # _check_invoice_alerts movido para background (alert_scheduler).
-    # Visibilidade aplicada no SQL — antes carregava TUDO e filtrava em Python.
-    q = db.query(Requisition).options(*_LOAD_OPTS)
-    q = _visibility_filter_sql(q, current_user)
-    # Cutoff temporal: reqs finalizadas/canceladas há mais de 1 ano não aparecem
-    # na Central de Pedidos (vão para o Histórico). Reqs em estado aberto
-    # ignoram o cutoff — operacional precisa vê-las sempre.
-    cutoff = datetime.utcnow() - timedelta(days=365)
-    q = q.filter(
-        or_(
-            Requisition.created_at >= cutoff,
-            Requisition.status.in_([
-                RequisitionStatus.RASCUNHO,
-                RequisitionStatus.EM_ANDAMENTO,
-                RequisitionStatus.AGUARDANDO_RECEBIMENTO,
-                RequisitionStatus.AGUARDANDO_NA_FILA,
-                RequisitionStatus.EM_PRODUCAO,
-                RequisitionStatus.PRAZO_ALTERADO,
-            ]),
+    # Cache com TTL 15s. Em uso normal (clica "Atualizar" varias vezes),
+    # 95%+ dos GETs viram cache hits. Invalidado em qualquer mutacao
+    # de requisicao (via _invalidate_list_caches).
+    cache_key = f"order_center:{current_user.role.value}:{current_user.id}"
+
+    def _compute():
+        # _check_invoice_alerts movido para background (alert_scheduler).
+        # Visibilidade aplicada no SQL — antes carregava TUDO e filtrava em Python.
+        q = db.query(Requisition).options(*_LOAD_OPTS)
+        q = _visibility_filter_sql(q, current_user)
+        # Cutoff temporal: reqs finalizadas/canceladas há mais de 1 ano não aparecem
+        # na Central de Pedidos (vão para o Histórico). Reqs em estado aberto
+        # ignoram o cutoff — operacional precisa vê-las sempre.
+        cutoff = datetime.utcnow() - timedelta(days=365)
+        q = q.filter(
+            or_(
+                Requisition.created_at >= cutoff,
+                Requisition.status.in_([
+                    RequisitionStatus.RASCUNHO,
+                    RequisitionStatus.EM_ANDAMENTO,
+                    RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+                    RequisitionStatus.AGUARDANDO_NA_FILA,
+                    RequisitionStatus.EM_PRODUCAO,
+                    RequisitionStatus.PRAZO_ALTERADO,
+                ]),
+            )
         )
-    )
-    reqs = q.order_by(Requisition.created_at.desc()).all()
-    return _build_order_center(reqs)
+        reqs = q.order_by(Requisition.created_at.desc()).all()
+        return _build_order_center(reqs)
+
+    return cache.get_or_set(cache_key, ttl_seconds=15, compute=_compute)
 
 
 @router.get("/deliveries/summary", response_model=DeliveryCenterResponse)
@@ -3669,21 +3707,26 @@ def get_delivery_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
-    # _check_invoice_alerts movido para background (alert_scheduler).
-    # Filtros no SQL: visibilidade + entrega=True (indice parcial cobre).
-    q = db.query(Requisition).options(*_LOAD_OPTS).filter(Requisition.entrega == True)  # noqa: E712
-    q = _visibility_filter_sql(q, current_user)
-    # Cutoff: entregas concluidas ha mais de 6 meses nao aparecem (vao pro Historico).
-    # Entregas pendentes (sem delivered_at) sempre aparecem.
-    cutoff = datetime.utcnow() - timedelta(days=180)
-    q = q.filter(
-        or_(
-            Requisition.delivered_at.is_(None),
-            Requisition.delivered_at >= cutoff,
+    cache_key = f"delivery_center:{current_user.role.value}:{current_user.id}"
+
+    def _compute():
+        # _check_invoice_alerts movido para background (alert_scheduler).
+        # Filtros no SQL: visibilidade + entrega=True (indice parcial cobre).
+        q = db.query(Requisition).options(*_LOAD_OPTS).filter(Requisition.entrega == True)  # noqa: E712
+        q = _visibility_filter_sql(q, current_user)
+        # Cutoff: entregas concluidas ha mais de 6 meses nao aparecem (vao pro Historico).
+        # Entregas pendentes (sem delivered_at) sempre aparecem.
+        cutoff = datetime.utcnow() - timedelta(days=180)
+        q = q.filter(
+            or_(
+                Requisition.delivered_at.is_(None),
+                Requisition.delivered_at >= cutoff,
+            )
         )
-    )
-    reqs = q.order_by(Requisition.created_at.desc()).all()
-    return _build_delivery_center(reqs)
+        reqs = q.order_by(Requisition.created_at.desc()).all()
+        return _build_delivery_center(reqs)
+
+    return cache.get_or_set(cache_key, ttl_seconds=15, compute=_compute)
 
 
 @router.get("/production/summary", response_model=ProductionDestinationSummaryResponse)
