@@ -1287,6 +1287,7 @@ class RequisitionForm(QWidget):
         self._loaded_updated_at = None  # versão carregada (trava otimista)
         self._req_vendor_code = ""
         self._req_vendor_name = ""
+        self._req_vendor_whatsapp = ""
         self._setup_ui()
         self._setup_hidden_shortcuts()
         self._load_clients()
@@ -2411,18 +2412,19 @@ class RequisitionForm(QWidget):
 
     # ── QR Code ───────────────────────────────────────────────────────────────
     def _generate_qr(self):
+        phone = self._current_vendor_whatsapp()
         if hasattr(self, "lbl_qr_contact"):
-            self.lbl_qr_contact.setText(_format_phone_text(session.whatsapp) or "Sem contato cadastrado")
+            self.lbl_qr_contact.setText(_format_phone_text(phone) or "Sem contato cadastrado")
         if not hasattr(self, "qr_label"):
             return
         self.qr_label.clear()
-        if not HAS_QR or not session.whatsapp:
+        if not HAS_QR or not phone:
             return
         try:
-            phone = self._normalize_whatsapp_number(session.whatsapp)
-            if not phone:
+            normalized_phone = self._normalize_whatsapp_number(phone)
+            if not normalized_phone:
                 return
-            url = f"https://wa.me/{phone}"
+            url = f"https://wa.me/{normalized_phone}"
             qr = qrcode.make(url)
             buf = io.BytesIO()
             qr.save(buf, format="PNG")
@@ -2548,10 +2550,20 @@ class RequisitionForm(QWidget):
         self._generate_qr()
         self._refresh_signature_preview()
 
+    def _current_vendor_whatsapp(self) -> str:
+        if self.req_id is not None:
+            phone = str(self._req_vendor_whatsapp or "").strip()
+            if phone:
+                return phone
+            if self._req_vendor_name or self._req_vendor_code:
+                return ""
+        return str(session.whatsapp or "").strip()
+
     def _current_header_vendor_text(self) -> str:
         if self.req_id is not None:
-            vendor = (self._req_vendor_name or self._req_vendor_code or "--").strip()
-            return vendor.upper() if vendor else "--"
+            vendor = (self._req_vendor_name or self._req_vendor_code or "").strip()
+            if vendor:
+                return vendor.upper()
         return (session.user_name or "--").upper()
 
     def _refresh_header_vendor_label(self) -> None:
@@ -2689,8 +2701,12 @@ class RequisitionForm(QWidget):
             req["id"] = self.req_id
         req["client_name"] = client.get("name") or ""
         req["client_code"] = client.get("code") or ""
-        req["vendor_name"] = session.user_name or ""
-        req["vendor_whatsapp"] = session.whatsapp or ""
+        req["vendor_name"] = (
+            (self._req_vendor_name or self._req_vendor_code or "").strip()
+            if self.req_id
+            else (session.user_name or "")
+        )
+        req["vendor_whatsapp"] = self._current_vendor_whatsapp()
         req["emission_date"] = local_now().isoformat()
 
         client_payload = {
@@ -3352,7 +3368,13 @@ class RequisitionForm(QWidget):
         # Guarda info do vendedor para uso em _find_saved_pdf_for_print
         self._req_vendor_code = str(data.get("vendor_code") or "")
         self._req_vendor_name = str(data.get("vendor_name") or "")
+        self._req_vendor_whatsapp = str(
+            data.get("vendor_whatsapp")
+            or (data.get("vendor") or {}).get("whatsapp")
+            or ""
+        )
         self._refresh_header_vendor_label()
+        self._generate_qr()
         self.input_ped.setText(str(data.get("ped_number") or ""))
         self.input_obra.setText(data.get("obra") or "")
         self._set_phone_text(data.get("phone") or "")
@@ -3405,7 +3427,9 @@ class RequisitionForm(QWidget):
         self._loaded_updated_at = None
         self._req_vendor_code = ""
         self._req_vendor_name = ""
+        self._req_vendor_whatsapp = ""
         self._refresh_header_vendor_label()
+        self._generate_qr()
         self.input_ped.clear()
         self.input_obra.clear()
         self.input_fone.clear()
