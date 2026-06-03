@@ -11,12 +11,13 @@ from ..database import Base
 
 class RequisitionStatus(str, enum.Enum):
     EM_ANDAMENTO = "em_andamento"
+    RASCUNHO = "rascunho"
     PRAZO_ALTERADO = "prazo_alterado"
     AGUARDANDO_RECEBIMENTO = "aguardando_recebimento"
     AGUARDANDO_NA_FILA = "aguardando_na_fila"
-    AGUARDANDO_FATURAMENTO = "aguardando_faturamento"
     EM_PRODUCAO  = "em_producao"
     FATURADO     = "faturado"
+    FINALIZADO   = "finalizado"
     CANCELADA    = "cancelada"
 
 

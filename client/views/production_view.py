@@ -45,6 +45,7 @@ WAITING_RECEIPT_STAGE = "waiting_receipt"
 WAITING_QUEUE_STAGE = "waiting_queue"
 
 PROD_NOTE_PREFIX = "PRODUCAO"
+PROD_SEND = "ENVIADA"
 PROD_QUEUED = "FILA"
 PROD_STARTED = "INICIADA"
 PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
@@ -1615,7 +1616,6 @@ class ProductionView(QWidget):
         box.setIcon(QMessageBox.Icon.Question)
         box.setText("Como deseja encaminhar esta requisição após o recebimento?")
         btn_queue = box.addButton("Aguardando na fila", QMessageBox.ButtonRole.AcceptRole)
-        btn_machine = box.addButton("Em produção", QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = box.addButton("Cancelar requisição", QMessageBox.ButtonRole.DestructiveRole)
         btn_close = box.addButton("Fechar", QMessageBox.ButtonRole.RejectRole)
         apply_message_box_theme(box)
@@ -1624,7 +1624,6 @@ class ProductionView(QWidget):
         btn_narrow = max(120, int(132 * self.scale))
         btn_queue.setMinimumWidth(btn_wide)
         btn_cancel.setMinimumWidth(btn_wide)
-        btn_machine.setMinimumWidth(btn_narrow)
         btn_close.setMinimumWidth(btn_narrow)
         box.setMinimumWidth(max(580, int(640 * self.scale)))
         box.exec()
@@ -1632,8 +1631,6 @@ class ProductionView(QWidget):
 
         if clicked == btn_queue:
             self._move_to_queue(req)
-        elif clicked == btn_machine:
-            self._start_production_selection(req)
         elif clicked == btn_cancel:
             self._cancel_to_progress(req)
 

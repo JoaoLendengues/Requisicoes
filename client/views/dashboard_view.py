@@ -2218,7 +2218,6 @@ class DashboardView(QWidget):
                         "em_andamento": theme.PRIMARY_HOVER,
                         "aguardando_recebimento": theme.WARNING,
                         "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
-                        "aguardando_faturamento": theme.STATUS_COLORS.get("aguardando_faturamento", theme.WARNING),
                         "em_producao": theme.PRIMARY,
                         "faturado": theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
                         "cancelada": theme.DANGER,

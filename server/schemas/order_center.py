@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 class OrderCenterStatsResponse(BaseModel):
     pedidos_aguardando_recebimento: int
     pedidos_em_producao: int
-    pedidos_aguardando_faturamento: int
     pedidos_faturados: int
     pedidos_cancelados: int
     pedidos_atrasados: int
@@ -49,7 +48,6 @@ class OrderCenterResponse(BaseModel):
     stats: OrderCenterStatsResponse
     aguardando_recebimento: list[OrderCenterItemResponse]
     em_producao: list[OrderCenterItemResponse]
-    aguardando_faturamento: list[OrderCenterItemResponse]
     faturados: list[OrderCenterItemResponse]
     cancelados: list[OrderCenterItemResponse]
     atrasados: list[OrderCenterItemResponse]
