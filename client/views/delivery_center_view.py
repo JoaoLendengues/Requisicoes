@@ -95,6 +95,7 @@ def _status_badge_color(status: str) -> str:
         "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
         "em_producao": theme.PRIMARY,
         "faturado": theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+        "finalizado": theme.STATUS_COLORS.get("finalizado", theme.SUCCESS),
         "cancelada": theme.DANGER,
     }
     return color_map.get(status, theme.BORDER_COLOR)
@@ -722,13 +723,13 @@ class DeliveryCenterView(QWidget):
         if row.get("delivered_at"):
             QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
             return
-        allowed_statuses = {"faturado", "prazo_alterado"}
+        allowed_statuses = {"finalizado", "prazo_alterado"}
         current_status = str(row.get("status") or "").strip().lower()
         if current_status not in allowed_statuses:
             QMessageBox.information(
                 self,
                 "Entregas",
-                "Somente pedidos faturados ou com prazo alterado podem ser marcados como entregues.",
+                "Somente pedidos finalizados ou com prazo alterado podem ser marcados como entregues.",
             )
             return
         if not QMessageBox.question(

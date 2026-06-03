@@ -45,11 +45,13 @@ _ACCENT: dict[str, str] = {
 
 _ICONS.update({
     "faturado": "💰",
+    "finalizado": "✅",
     "machine_status": "🛠️",
 })
 
 _ACCENT.update({
     "faturado": "#16A34A",
+    "finalizado": "#10B981",
     "machine_status": "#2563EB",
 })
 

@@ -2129,25 +2129,15 @@ class ProductionView(QWidget):
         api.update_status(req_id, "em_producao", start_note)
 
     def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str, is_split: bool = False):
+        # Por regra de negocio (Jun/2026): ao finalizar producao, status vai
+        # direto para FINALIZADO. O servidor processa a transicao a partir do
+        # _PROD_FINISHED na note. FATURADO foi reaproveitado para registrar o
+        # envio do vendedor para producao (timeline historica, nao status atual).
         note = _build_production_note(PROD_FINISHED, self.destination, machine=machine_name)
         if is_split:
-            api.update_production_split_status(req_id, "faturado", note)
+            api.update_production_split_status(req_id, "finalizado", note)
             return
         api.update_status(req_id, "em_andamento", note)
-
-        # Compatibilidade: servidores antigos ainda deixam em aguardando faturamento
-        # após finalizar produção; neste caso, já faturamos na sequência.
-        try:
-            api.update_status(req_id, "faturado")
-        except api.APIError as exc:
-            detail = str(exc.detail or "")
-            tolerated_errors = (
-                "Somente pedidos aguardando faturamento podem ser marcados como faturados",
-                "Pedidos faturados não podem retornar para outro status operacional",
-            )
-            if any(message in detail for message in tolerated_errors):
-                return
-            raise
 
     def _return_selected_machine_to_queue(self, machine_id: int):
         req, machine = self._selected_machine_row(machine_id)

@@ -821,7 +821,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
                 status_code=400,
                 detail="Confirme o recebimento antes de finalizar a produção",
             )
-        req.status = RequisitionStatus.FATURADO
+        req.status = RequisitionStatus.FINALIZADO
         req.production_machine = None
         return
 
@@ -843,7 +843,7 @@ def _apply_manual_status_transition(
     new_status: RequisitionStatus,
 ):
     if req.status == RequisitionStatus.CANCELADA:
-        if new_status == RequisitionStatus.FATURADO:
+        if new_status == RequisitionStatus.FINALIZADO:
             raise HTTPException(
                 status_code=400,
                 detail="Requisições canceladas não podem ser faturadas diretamente",
@@ -857,7 +857,7 @@ def _apply_manual_status_transition(
     # removida — esse status foi descontinuado (Jun/2026). Para FATURADO, a
     # semantica sera redefinida no Commit 2 (registro do envio para producao).
 
-    if req.status == RequisitionStatus.FATURADO:
+    if req.status == RequisitionStatus.FINALIZADO:
         raise HTTPException(
             status_code=400,
             detail="Pedidos faturados não podem retornar para outro status operacional",
@@ -1044,8 +1044,8 @@ def _sync_requisition_after_splits(
         desired_status = RequisitionStatus.EM_PRODUCAO
     elif any(status_value in (RequisitionStatus.AGUARDANDO_RECEBIMENTO, RequisitionStatus.AGUARDANDO_NA_FILA) for status_value in statuses):
         desired_status = RequisitionStatus.AGUARDANDO_NA_FILA
-    elif statuses and all(status_value == RequisitionStatus.FATURADO for status_value in statuses):
-        desired_status = RequisitionStatus.FATURADO
+    elif statuses and all(status_value == RequisitionStatus.FINALIZADO for status_value in statuses):
+        desired_status = RequisitionStatus.FINALIZADO
     else:
         desired_status = req.status
 
@@ -1055,7 +1055,7 @@ def _sync_requisition_after_splits(
     if desired_status in (
         RequisitionStatus.AGUARDANDO_NA_FILA,
         RequisitionStatus.EM_PRODUCAO,
-        RequisitionStatus.FATURADO,
+        RequisitionStatus.FINALIZADO,
     ):
         req.finalized_at = req.finalized_at or datetime.utcnow()
 
@@ -1195,7 +1195,7 @@ def _history_production_status(req: Requisition) -> str:
     current_status = str(getattr(req.status, "value", req.status) or "")
     if req.status == RequisitionStatus.CANCELADA:
         return current_status
-    if req.status == RequisitionStatus.FATURADO:
+    if req.status == RequisitionStatus.FINALIZADO:
         return current_status
 
     latest_event = _latest_production_event(
@@ -1262,7 +1262,7 @@ def _can_edit_requisition(req: Requisition, current_user: User) -> bool:
 def _is_open_requisition(req: Requisition) -> bool:
     if req.status in (
         RequisitionStatus.CANCELADA,
-        RequisitionStatus.FATURADO,
+        RequisitionStatus.FINALIZADO,
     ):
         return False
     return True
@@ -1947,7 +1947,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                         )
                     )
 
-                if split.status == RequisitionStatus.FATURADO and latest_split_finished:
+                if split.status == RequisitionStatus.FINALIZADO and latest_split_finished:
                     billed_rows.append(
                         OrderCenterItemResponse(
                             id=split.id,
@@ -1960,7 +1960,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                             vendor_name=req.vendor_name,
                             weight=split_weight_value,
                             total_weight=weight_value,
-                            status=RequisitionStatus.FATURADO.value,
+                            status=RequisitionStatus.FINALIZADO.value,
                             emission_date=req.emission_date,
                             delivery_date=req.delivery_date,
                             destination=latest_split_finished["target"] or split_destination,
@@ -2081,9 +2081,9 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         latest_finished = _latest_finished_cycle(req)
         if latest_finished:
             production_durations.append(latest_finished["production_time_seconds"])
-        if req.status == RequisitionStatus.FATURADO and latest_finished:
+        if req.status == RequisitionStatus.FINALIZADO and latest_finished:
             invoiced_at = (
-                _latest_status_changed_at(req, RequisitionStatus.FATURADO)
+                _latest_status_changed_at(req, RequisitionStatus.FINALIZADO)
                 or latest_finished["finished_at"]
                 or sent_to_production_at
             )
@@ -2105,7 +2105,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     client_name=req.client_name,
                     vendor_name=req.vendor_name,
                     weight=weight_value,
-                    status=RequisitionStatus.FATURADO.value,
+                    status=RequisitionStatus.FINALIZADO.value,
                     emission_date=req.emission_date,
                     delivery_date=req.delivery_date,
                     destination=latest_finished["target"] or destination,
@@ -2236,7 +2236,7 @@ def _history_row_from_requisition(
         "production_sent_at": _history_production_sent_at(req),
         "production_finished_at": _history_production_finished_at(req) if include_production_details else None,
         "cancel_reason": _cancel_reason_for(req),
-        "invoiced": req.status == RequisitionStatus.FATURADO,
+        "invoiced": req.status == RequisitionStatus.FINALIZADO,
         "delivered_at": req.delivered_at,
         "finalized_at": req.finalized_at,
         "created_at": req.created_at,
@@ -2261,7 +2261,7 @@ def _history_row_from_split(req: Requisition, split: RequisitionProductionSplit)
     )
     split_status = getattr(split.status, "value", split.status)
     production_status = str(split_status or "")
-    if split.status == RequisitionStatus.FATURADO:
+    if split.status == RequisitionStatus.FINALIZADO:
         production_status = "finalizada_producao"
     return {
         "id": int(split.id),
@@ -2301,7 +2301,7 @@ def _history_row_from_split(req: Requisition, split: RequisitionProductionSplit)
         "production_sent_at": split.created_at,
         "production_finished_at": (latest_cycle or {}).get("finished_at"),
         "cancel_reason": None,
-        "invoiced": split.status == RequisitionStatus.FATURADO,
+        "invoiced": split.status == RequisitionStatus.FINALIZADO,
         "delivered_at": req.delivered_at,
         "finalized_at": req.finalized_at,
         "created_at": split.created_at,
@@ -2332,7 +2332,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
                 delivered_at is None
                 and status_value not in (
                     RequisitionStatus.EM_PRODUCAO.value,
-                    RequisitionStatus.FATURADO.value,
+                    RequisitionStatus.FINALIZADO.value,
                     RequisitionStatus.PRAZO_ALTERADO.value,
                 )
             )
@@ -3346,7 +3346,7 @@ def list_requisitions(
     if invoiced is not None:
         visible = [
             req for req in visible
-            if (req.status == RequisitionStatus.FATURADO) == invoiced
+            if (req.status == RequisitionStatus.FINALIZADO) == invoiced
         ]
 
     paginated = visible[skip:skip + limit]
@@ -3370,7 +3370,7 @@ def list_requisitions(
         setattr(req, "production_sent_at", _history_production_sent_at(req))
         setattr(req, "production_finished_at", _history_production_finished_at(req))
         setattr(req, "production_status", _history_production_status(req))
-        setattr(req, "invoiced", req.status == RequisitionStatus.FATURADO)
+        setattr(req, "invoiced", req.status == RequisitionStatus.FINALIZADO)
         setattr(req, "cancel_reason", _cancel_reason_for(req))
     return paginated
 
@@ -3658,7 +3658,7 @@ def create_production_split(
     if not _can_edit_requisition(req, current_user):
         raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
 
-    if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FATURADO):
+    if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FINALIZADO):
         raise HTTPException(status_code=400, detail="A requisicao nao permite novo desmembramento")
     if req.status not in (
         RequisitionStatus.AGUARDANDO_RECEBIMENTO,
@@ -3760,8 +3760,8 @@ def create_production_split(
     )
 
     notifications: list = []
-    if parent_new_status == RequisitionStatus.FATURADO:
-        notifications.extend(build_vendor_event(db, req, "faturado"))
+    if parent_new_status == RequisitionStatus.FINALIZADO:
+        notifications.extend(build_vendor_event(db, req, "finalizado"))
 
     db.commit()
     push_all(notifications)
@@ -3834,13 +3834,13 @@ def update_production_split_status(
         split.status = RequisitionStatus.AGUARDANDO_NA_FILA
         split.production_machine = None
     elif action == _PROD_FINISHED:
-        if requested_status != RequisitionStatus.FATURADO:
+        if requested_status != RequisitionStatus.FINALIZADO:
             raise HTTPException(status_code=400, detail="Status invalido para finalizar a parcela")
         if split.status != RequisitionStatus.EM_PRODUCAO:
             raise HTTPException(status_code=400, detail="Somente parcelas em producao podem ser finalizadas")
         operators = []
         helpers = []
-        split.status = RequisitionStatus.FATURADO
+        split.status = RequisitionStatus.FINALIZADO
         split.production_machine = None
     else:
         raise HTTPException(status_code=400, detail="Evento operacional da parcela nao suportado")
@@ -3865,8 +3865,8 @@ def update_production_split_status(
     )
 
     notifications: list = []
-    if parent_old_status != RequisitionStatus.FATURADO and parent_new_status == RequisitionStatus.FATURADO:
-        notifications.extend(build_vendor_event(db, req, "faturado"))
+    if parent_old_status != RequisitionStatus.FINALIZADO and parent_new_status == RequisitionStatus.FINALIZADO:
+        notifications.extend(build_vendor_event(db, req, "finalizado"))
 
     db.commit()
     push_all(notifications)
@@ -3993,7 +3993,7 @@ def get_requisition(
     setattr(req, "production_sent_at", _history_production_sent_at(req))
     setattr(req, "production_finished_at", _history_production_finished_at(req))
     setattr(req, "production_status", _history_production_status(req))
-    setattr(req, "invoiced", req.status == RequisitionStatus.FATURADO)
+    setattr(req, "invoiced", req.status == RequisitionStatus.FINALIZADO)
     setattr(req, "cancel_reason", _cancel_reason_for(req))
     return req
 
@@ -4120,26 +4120,43 @@ def update_status(
         note=data.note,
     ))
 
+    # Registro historico de FATURADO no momento do envio para producao.
+    # Por regra de negocio (Jun/2026): quando o vendedor envia, o negocio ja
+    # esta fechado/pago. O status corrente vai para AGUARDANDO_RECEBIMENTO
+    # (para a producao agir), mas a timeline preserva uma entrada FATURADO
+    # logo apos AGUARDANDO_RECEBIMENTO marcando esse ponto.
+    if prod and prod["action"] == _PROD_SEND and new_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+        db.add(StatusHistory(
+            requisition_id=req.id,
+            old_status=new_status,
+            new_status=RequisitionStatus.FATURADO,
+            changed_by_id=current_user.id,
+            note="Pedido faturado no envio para producao",
+        ))
+
     # Cria notificações dentro da mesma transação
     notifications: list = []
     if prod:
         action = prod["action"]
         if action == _PROD_SEND:
             notifications.extend(build_production_sent(db, req, prod["target"]))
+            # Notifica o vendedor que o pedido foi faturado (registro)
+            notifications.extend(build_vendor_event(db, req, "faturado"))
         elif action in (_PROD_RECEIVED, _PROD_STARTED):
             notifications.extend(build_vendor_event(db, req, "em_producao"))
         elif action in (_PROD_QUEUED, _PROD_RETURNED_QUEUE):
             notifications.extend(build_vendor_event(db, req, "aguardando_na_fila"))
         elif action == _PROD_FINISHED:
-            notifications.extend(build_vendor_event(db, req, "faturado"))
+            # Producao terminou: notifica como FINALIZADO (era "faturado" antes)
+            notifications.extend(build_vendor_event(db, req, "finalizado"))
         elif action == _PROD_CANCELED:
             notifications.extend(build_vendor_event(db, req, "prod_cancelada", prod.get("reason", "")))
     elif new_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
         notifications.extend(build_production_sent(db, req, ""))
     elif new_status == RequisitionStatus.AGUARDANDO_NA_FILA:
         notifications.extend(build_vendor_event(db, req, "aguardando_na_fila"))
-    elif new_status == RequisitionStatus.FATURADO:
-        notifications.extend(build_vendor_event(db, req, "faturado"))
+    elif new_status == RequisitionStatus.FINALIZADO:
+        notifications.extend(build_vendor_event(db, req, "finalizado"))
     elif new_status == RequisitionStatus.CANCELADA:
         notifications.extend(build_vendor_event(db, req, "cancelada"))
 
@@ -4201,7 +4218,7 @@ def update_delivery_date(
         )
 
     req = _get_or_404(db, req_id)
-    if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FATURADO):
+    if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FINALIZADO):
         raise HTTPException(
             status_code=400,
             detail="Não é possível alterar o prazo de uma requisição cancelada ou faturada",
@@ -4333,7 +4350,7 @@ def mark_delivery_delivered(
             status_code=400,
             detail="Não é possível concluir a entrega de uma requisição cancelada",
         )
-    if req.status not in (RequisitionStatus.FATURADO, RequisitionStatus.PRAZO_ALTERADO):
+    if req.status not in (RequisitionStatus.FINALIZADO, RequisitionStatus.PRAZO_ALTERADO):
         raise HTTPException(
             status_code=400,
             detail="Somente pedidos faturados ou com prazo alterado podem ser marcados como entregues",
@@ -4403,7 +4420,7 @@ def cancel_delivery_delivered(
     req.status = (
         RequisitionStatus.PRAZO_ALTERADO
         if req.delivery_deadline_changed_at is not None
-        else RequisitionStatus.FATURADO
+        else RequisitionStatus.FINALIZADO
     )
 
     note = f"Entrega cancelada e retornada para agenda. Motivo: {data.reason}"
