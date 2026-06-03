@@ -2812,7 +2812,11 @@ class DrawingScene(QGraphicsScene):
             return
 
         if tool == Tool.TEXT:
-            text, ok = QInputDialog.getText(self.cw, "Texto", "Digite o texto:")
+            text, ok = self.cw._prompt_text(
+                "Texto",
+                "Digite o texto:",
+                ok_text="Inserir",
+            )
             text = normalize_upper_text(text).strip()
             if ok and text:
                 item = QGraphicsTextItem(text)
@@ -3605,13 +3609,12 @@ class DrawingCanvas(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(8)
 
         title = QLabel("DESENHO / REFERENCIA")
+        self._title_label = title
         fs = max(9, int(11 * self.scale))
-        title.setStyleSheet(
-            f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
-        )
+        title.setStyleSheet(self._title_style())
         layout.addWidget(title)
 
         s  = self.scale
@@ -3622,11 +3625,17 @@ class DrawingCanvas(QWidget):
         def _lbl(txt):
             l = QLabel(txt)
             l.setStyleSheet(lbl_style)
-            l.setMinimumHeight(fh)
+            l.setFixedHeight(fh)
             l.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             return l
 
         self._tool_btns: dict[Tool, QPushButton] = {}
+        self._tool_misc_btns: list[QPushButton] = []
+        self._toolbar_sections: list[QFrame] = []
+
+        toolbar_stack = QVBoxLayout()
+        toolbar_stack.setContentsMargins(0, 0, 0, 0)
+        toolbar_stack.setSpacing(6)
 
         tools = [
             (Tool.SELECT, "Selec.", "S"),
@@ -3647,7 +3656,7 @@ class DrawingCanvas(QWidget):
         ]
 
         # Linha 1a: Ferramentas (separado das propriedades para não cortar nomes)
-        row_tools = QHBoxLayout()
+        tools_frame, row_tools = self._create_toolbar_section()
         row_tools.setSpacing(4)
         for t, label, key in tools:
             btn = QPushButton(label)
@@ -3659,20 +3668,17 @@ class DrawingCanvas(QWidget):
             self._tool_btns[t] = btn
             row_tools.addWidget(btn)
         row_tools.addStretch()
-        layout.addLayout(row_tools)
+        toolbar_stack.addWidget(tools_frame)
 
         # Linha 1b: Propriedades do traço
-        row_props = QHBoxLayout()
+        props_frame, row_props = self._create_toolbar_section()
         row_props.setSpacing(4)
 
         # Cor
-        self.btn_color = QPushButton("Cor")
+        self.btn_color = QPushButton("")
         self.btn_color.setFixedSize(fh, fh)
         self.btn_color.setToolTip("Cor do traço")
-        self.btn_color.setStyleSheet(
-            f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
-            f"font-size:{fs}pt;"
-        )
+        self.btn_color.setStyleSheet(self._color_swatch_style())
         self.btn_color.clicked.connect(self._pick_color)
         row_props.addWidget(self.btn_color)
 
@@ -3685,6 +3691,7 @@ class DrawingCanvas(QWidget):
         self.spin_width.setValue(self.pen_width)
         self.spin_width.setFixedWidth(max(56, int(68 * s)))
         self.spin_width.setFixedHeight(fh)
+        self.spin_width.setStyleSheet(self._field_style())
         self.spin_width.valueChanged.connect(self._on_pen_width_changed)
         row_props.addWidget(self.spin_width)
 
@@ -3699,6 +3706,7 @@ class DrawingCanvas(QWidget):
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
         self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
         self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
+        self.combo_style.setStyleSheet(self._field_style())
         self.combo_style.currentIndexChanged.connect(self._on_pen_style_changed)
         row_props.addWidget(self.combo_style)
 
@@ -3716,6 +3724,7 @@ class DrawingCanvas(QWidget):
         self.combo_esquadro.currentIndexChanged.connect(self._on_esquadro_snap_changed)
         self.combo_esquadro.setToolTip("Passo angular da ferramenta Esquadro")
         self.combo_esquadro.setEnabled(False)
+        self.combo_esquadro.setStyleSheet(self._field_style())
         row_props.addWidget(self.combo_esquadro)
 
         row_props.addSpacing(8)
@@ -3728,25 +3737,38 @@ class DrawingCanvas(QWidget):
         self.spin_font.setSuffix(" pt")
         self.spin_font.setFixedWidth(max(76, int(92 * s)))
         self.spin_font.setFixedHeight(fh)
+        self.spin_font.setStyleSheet(self._field_style())
         self.spin_font.valueChanged.connect(self._on_font_size_changed)
         row_props.addWidget(self.spin_font)
 
+        row_props.addSpacing(8)
+
+        self.btn_desenho = QPushButton("Desenho")
+        self.btn_desenho.setFixedHeight(fh)
+        self.btn_desenho.setToolTip("Escolher categoria de desenho pré-definido")
+        self.btn_desenho.clicked.connect(self._open_desenho_popup)
+        self.btn_desenho.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_desenho)
+        row_props.addWidget(self.btn_desenho)
+
         row_props.addStretch()
-        layout.addLayout(row_props)
+        toolbar_stack.addWidget(props_frame)
 
         # Linha 2: Ações
-        row2 = QHBoxLayout()
+        actions_frame, row2 = self._create_toolbar_section()
         row2.setSpacing(4)
 
         btn_undo = QPushButton("Desfazer")
         btn_undo.setFixedHeight(fh)
         btn_undo.clicked.connect(self._undo)
         btn_undo.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_undo)
 
         btn_redo = QPushButton("Refazer")
         btn_redo.setFixedHeight(fh)
         btn_redo.clicked.connect(self._redo)
         btn_redo.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_redo)
 
         row2.addWidget(btn_undo)
         row2.addWidget(btn_redo)
@@ -3761,12 +3783,14 @@ class DrawingCanvas(QWidget):
         self.spin_rotate.setSuffix("°")
         self.spin_rotate.setFixedWidth(max(68, int(80 * s)))
         self.spin_rotate.setFixedHeight(fh)
+        self.spin_rotate.setStyleSheet(self._field_style())
         row2.addWidget(self.spin_rotate)
 
         btn_rotate = QPushButton("Aplicar")
         btn_rotate.setFixedHeight(fh)
         btn_rotate.clicked.connect(self._rotate_selected)
         btn_rotate.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_rotate)
         row2.addWidget(btn_rotate)
 
         btn_mirror_h = QPushButton("Horizontal")
@@ -3774,6 +3798,7 @@ class DrawingCanvas(QWidget):
         btn_mirror_h.setToolTip("Espelhar com cópia na horizontal (Ctrl+Shift+H)")
         btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
         btn_mirror_h.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_mirror_h)
         row2.addWidget(btn_mirror_h)
 
         btn_mirror_v = QPushButton("Vertical")
@@ -3781,6 +3806,7 @@ class DrawingCanvas(QWidget):
         btn_mirror_v.setToolTip("Espelhar com cópia na vertical (Ctrl+J)")
         btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
         btn_mirror_v.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_mirror_v)
         row2.addWidget(btn_mirror_v)
 
         row2.addSpacing(8)
@@ -3789,89 +3815,49 @@ class DrawingCanvas(QWidget):
         btn_img.setFixedHeight(fh)
         btn_img.clicked.connect(lambda: self._insert_image())
         btn_img.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_img)
 
         btn_pdf = QPushButton("PDF")
         btn_pdf.setFixedHeight(fh)
         btn_pdf.clicked.connect(self._attach_pdf)
         btn_pdf.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_pdf)
 
         btn_attachments = QPushButton("Anexos")
         btn_attachments.setFixedHeight(fh)
         btn_attachments.setToolTip("Anexar arquivo DWG")
         btn_attachments.clicked.connect(self._attach_dwg)
         btn_attachments.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_attachments)
 
         btn_3d = QPushButton("3D")
         btn_3d.setFixedHeight(fh)
         btn_3d.setToolTip("Inserir desenho 3D pre-definido")
         btn_3d.clicked.connect(self._open_3d_preset_popup)
         btn_3d.setStyleSheet(self._tool_btn_style())
-        btn_pingadeira = QPushButton("Pingadeira")
-        btn_pingadeira.setFixedHeight(fh)
-        btn_pingadeira.setToolTip("Inserir modelo de pingadeira")
-        btn_pingadeira.clicked.connect(self._open_pingadeira_popup)
-        btn_pingadeira.setStyleSheet(self._tool_btn_style())
-        btn_rufo = QPushButton("Rufo")
-        btn_rufo.setFixedHeight(fh)
-        btn_rufo.setToolTip("Inserir modelo de rufo")
-        btn_rufo.clicked.connect(self._open_rufo_popup)
-        btn_rufo.setStyleSheet(self._tool_btn_style())
-        btn_calhas = QPushButton("Calhas")
-        btn_calhas.setFixedHeight(fh)
-        btn_calhas.setToolTip("Inserir modelo de calha")
-        btn_calhas.clicked.connect(self._open_calha_popup)
-        btn_calhas.setStyleSheet(self._tool_btn_style())
-        btn_bandeja = QPushButton("Bandeja")
-        btn_bandeja.setFixedHeight(fh)
-        btn_bandeja.setToolTip("Inserir modelo de bandeja")
-        btn_bandeja.clicked.connect(self._open_bandeja_popup)
-        btn_bandeja.setStyleSheet(self._tool_btn_style())
-        btn_cantoneira = QPushButton("Cantoneira")
-        btn_cantoneira.setFixedHeight(fh)
-        btn_cantoneira.setToolTip("Inserir modelo de cantoneira")
-        btn_cantoneira.clicked.connect(self._open_cantoneira_popup)
-        btn_cantoneira.setStyleSheet(self._tool_btn_style())
-        btn_chapas = QPushButton("Chapas")
-        btn_chapas.setFixedHeight(fh)
-        btn_chapas.setToolTip("Inserir modelo de chapa")
-        btn_chapas.clicked.connect(self._open_chapa_popup)
-        btn_chapas.setStyleSheet(self._tool_btn_style())
-        btn_perfil = QPushButton("Perfil")
-        btn_perfil.setFixedHeight(fh)
-        btn_perfil.setToolTip("Inserir modelo de perfil")
-        btn_perfil.clicked.connect(self._open_perfil_popup)
-        btn_perfil.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_3d)
 
-        btn_dim = QPushButton("MM")
+        btn_dim = QPushButton("Régua")
         btn_dim.setFixedHeight(fh)
         btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
         btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
         btn_dim.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(btn_dim)
 
         btn_clear = QPushButton("Limpar")
+        self._btn_clear = btn_clear
         btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
-        btn_clear.setStyleSheet(
-            f"QPushButton {{ background:#FDEEEF; color:{theme.DANGER};"
-            f"border:1px solid #F4C7CC; border-radius:8px; padding:2px 8px;"
-            f"font-size:{fs}pt; font-weight:600; }}"
-            f"QPushButton:hover {{ background:#FBE1E4; }}"
-        )
+        btn_clear.setStyleSheet(self._danger_tool_btn_style())
         row2.addWidget(btn_img)
         row2.addWidget(btn_pdf)
         row2.addWidget(btn_attachments)
         row2.addWidget(btn_3d)
-        row2.addWidget(btn_pingadeira)
-        row2.addWidget(btn_rufo)
-        row2.addWidget(btn_calhas)
-        row2.addWidget(btn_bandeja)
-        row2.addWidget(btn_cantoneira)
-        row2.addWidget(btn_chapas)
-        row2.addWidget(btn_perfil)
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
-        layout.addLayout(row2)
+        toolbar_stack.addWidget(actions_frame)
+        layout.addLayout(toolbar_stack)
 
         # Dica de teclado
         hint = QLabel(
@@ -3883,9 +3869,8 @@ class DrawingCanvas(QWidget):
             "Enter / Esc = confirmar  |  2x clique = editar texto"
         )
         hint.setWordWrap(True)
-        hint.setStyleSheet(
-            f"background:transparent; color:{theme.TEXT_LIGHT}; font-size:{max(7, int(8*s))}pt; font-style:italic;"
-        )
+        self._hint_label = hint
+        hint.setStyleSheet(self._hint_style())
         layout.addWidget(hint)
 
         # Cena + View
@@ -3962,12 +3947,254 @@ class DrawingCanvas(QWidget):
 
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
+        radius = max(10, int(12 * self.scale))
         return (
-            f"QPushButton {{ background:{theme.CARD_BG}; border:1px solid {theme.BORDER_COLOR};"
-            f"border-radius:8px; padding:2px 8px; font-size:{fs}pt; color:{theme.TEXT_DARK}; font-weight:600; }}"
-            f"QPushButton:checked {{ background:{theme.PRIMARY}; color:#fff; border-color:{theme.PRIMARY}; }}"
-            f"QPushButton:hover:!checked {{ background:{theme.SELECTION_BG}; border-color:{theme.PRIMARY_LIGHT}; }}"
+            f"QPushButton {{"
+            f" background:qlineargradient(x1:0, y1:0, x2:0, y2:1,"
+            f" stop:0 {theme.CARD_BG}, stop:1 {theme.SURFACE_SOFT});"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 60)};"
+            f" border-radius:{radius}px; padding:0px 10px;"
+            f" font-size:{fs}pt; color:{theme.TEXT_DARK}; font-weight:700;"
+            f" text-align:center;"
+            f"}}"
+            f"QPushButton:hover:!checked {{"
+            f" background:{theme.SELECTION_BG}; border-color:{theme.PRIMARY_LIGHT}; color:{theme.PRIMARY};"
+            f"}}"
+            f"QPushButton:checked {{"
+            f" background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f" stop:0 {theme.PRIMARY}, stop:1 {theme.PRIMARY_HOVER});"
+            f" color:{theme.TEXT_WHITE}; border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QPushButton:pressed {{ background:{theme.rgba(theme.PRIMARY, 210)}; }}"
+            f"QPushButton:disabled {{ color:{theme.TEXT_LIGHT}; border-color:{theme.BORDER_COLOR}; }}"
         )
+
+    def _popup_dialog_style(self) -> str:
+        fs = max(9, int(10 * self.scale))
+        small = max(8, int(9 * self.scale))
+        radius = max(14, int(16 * self.scale))
+        return (
+            f"QDialog#canvasPopupDialog, QMessageBox#canvasPopupDialog, QInputDialog#canvasPopupDialog {{"
+            f" background:{theme.CONTENT_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 42)};"
+            f" border-radius:{radius}px;"
+            f"}}"
+            f"QWidget#canvasPopupDialog {{ background:{theme.CONTENT_BG}; }}"
+            f"QDialog#canvasPopupDialog QWidget, QMessageBox#canvasPopupDialog QWidget, QInputDialog#canvasPopupDialog QWidget {{"
+            f" background:transparent;"
+            f"}}"
+            f"QLabel {{"
+            f" background:transparent; color:{theme.TEXT_MEDIUM};"
+            f" font-size:{fs}pt;"
+            f"}}"
+            f"QListWidget, QListView {{"
+            f" background:{theme.INPUT_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 56)};"
+            f" border-radius:{radius}px; outline:none; padding:6px;"
+            f" selection-background-color:{theme.SELECTION_BG};"
+            f"}}"
+            f"QListWidget::item, QListView::item {{"
+            f" padding:6px 10px; margin:1px 2px; border-radius:10px;"
+            f"}}"
+            f"QListWidget::item:hover, QListView::item:hover {{"
+            f" background:{theme.SURFACE_SOFT}; color:{theme.PRIMARY};"
+            f"}}"
+            f"QListWidget::item:selected, QListView::item:selected {{"
+            f" background:{theme.SELECTION_BG}; color:{theme.PRIMARY}; font-weight:700;"
+            f"}}"
+            f"QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{"
+            f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 60)};"
+            f" border-radius:{max(12, int(14 * self.scale))}px;"
+            f" padding:8px 12px; font-size:{small}pt; font-weight:600;"
+            f"}}"
+            f"QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{"
+            f" border-color:{theme.PRIMARY_LIGHT}; background:{theme.SURFACE_SOFT};"
+            f"}}"
+            f"QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{"
+            f" border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QComboBox::drop-down {{ border:none; width:24px; }}"
+        )
+
+    def _danger_tool_btn_style(self) -> str:
+        fs = max(8, int(9 * self.scale))
+        radius = max(10, int(12 * self.scale))
+        return (
+            f"QPushButton {{"
+            f" background:{theme.rgba(theme.DANGER, 24)}; color:{theme.DANGER};"
+            f" border:1px solid {theme.rgba(theme.DANGER, 86)}; border-radius:{radius}px;"
+            f" padding:0px 10px; font-size:{fs}pt; font-weight:800;"
+            f" text-align:center;"
+            f"}}"
+            f"QPushButton:hover {{ background:{theme.rgba(theme.DANGER, 42)}; }}"
+            f"QPushButton:pressed {{ background:{theme.rgba(theme.DANGER, 72)}; color:{theme.TEXT_WHITE}; }}"
+        )
+
+    def _field_style(self) -> str:
+        fs = max(8, int(9 * self.scale))
+        radius = max(11, int(12 * self.scale))
+        return (
+            f"QComboBox, QSpinBox, QDoubleSpinBox {{"
+            f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 60)}; border-radius:{radius}px;"
+            f" padding:0px 10px; font-size:{fs}pt; font-weight:600;"
+            f" selection-background-color:{theme.rgba(theme.PRIMARY, 70)};"
+            f"}}"
+            f"QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{"
+            f" border-color:{theme.PRIMARY_LIGHT}; background:{theme.SURFACE_SOFT};"
+            f"}}"
+            f"QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{"
+            f" border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QComboBox::drop-down {{ border:none; width:24px; }}"
+            f"QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{"
+            f" width:18px; border:none; background:transparent; margin-right:4px;"
+            f"}}"
+            f"QComboBox QAbstractItemView {{"
+            f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f" border:1px solid {theme.BORDER_COLOR};"
+            f" selection-background-color:{theme.SELECTION_BG};"
+            f"}}"
+        )
+
+    def _color_swatch_style(self) -> str:
+        radius = max(8, int(9 * self.scale))
+        return (
+            f"QPushButton {{"
+            f" background:{self.color}; min-width:0px; min-height:0px;"
+            f" border-radius:{radius}px; border:1px solid {theme.rgba(theme.PRIMARY, 110)};"
+            f" padding:0px; margin:0px;"
+            f"}}"
+            f"QPushButton:hover {{ border-color:{theme.PRIMARY}; background:{self.color}; }}"
+            f"QPushButton:pressed {{ border-color:{theme.PRIMARY_HOVER}; background:{self.color}; }}"
+        )
+
+    def _toolbar_section_style(self) -> str:
+        return (
+            f"QFrame {{"
+            f" background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            f" stop:0 {theme.CARD_BG}, stop:1 {theme.SURFACE_SOFT});"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 34)};"
+            f" border-radius:14px;"
+            f"}}"
+        )
+
+    def _hint_style(self) -> str:
+        return (
+            f"background:{theme.rgba(theme.PRIMARY, 10)}; color:{theme.TEXT_LIGHT};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 42)}; border-radius:12px;"
+            f" padding:8px 12px; font-size:{max(7, int(8*self.scale))}pt; font-style:italic;"
+        )
+
+    def _title_style(self) -> str:
+        fs = max(9, int(11 * self.scale))
+        return (
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:800;"
+        )
+
+    def _popup_section_title_style(self) -> str:
+        fs = max(9, int(10 * self.scale))
+        return (
+            f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:700;"
+        )
+
+    def _create_toolbar_section(self) -> tuple[QFrame, QHBoxLayout]:
+        frame = QFrame(self)
+        frame.setStyleSheet(self._toolbar_section_style())
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(6)
+        self._toolbar_sections.append(frame)
+        return frame, layout
+
+    def _prepare_popup_dialog(self, dialog: QDialog | QMessageBox | QInputDialog) -> None:
+        dialog.setObjectName("canvasPopupDialog")
+        dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dialog.setAutoFillBackground(True)
+        dialog.setStyleSheet(self._popup_dialog_style())
+
+    def _style_popup_dialog_buttons(self, dialog: QDialog | QMessageBox | QInputDialog) -> None:
+        for btn in dialog.findChildren(QPushButton):
+            label = (btn.text() or "").replace("&", "").strip().lower()
+            if label in {"inserir", "ok", "sim", "aplicar"}:
+                btn.setStyleSheet(theme.primary_btn_style(self.scale))
+            elif label in {"limpar", "excluir"}:
+                btn.setStyleSheet(theme.danger_btn_style(self.scale))
+            else:
+                btn.setStyleSheet(theme.secondary_btn_style(self.scale))
+
+    def _prompt_text(
+        self,
+        title: str,
+        label: str,
+        default: str = "",
+        *,
+        ok_text: str = "OK",
+    ) -> tuple[str, bool]:
+        dialog = QInputDialog(self)
+        dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        dialog.setWindowTitle(title)
+        dialog.setLabelText(label)
+        dialog.setTextValue(default)
+        dialog.setOkButtonText(ok_text)
+        dialog.setCancelButtonText("Cancelar")
+        self._prepare_popup_dialog(dialog)
+        self._style_popup_dialog_buttons(dialog)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return "", False
+        return dialog.textValue(), True
+
+    def _prompt_item(
+        self,
+        title: str,
+        label: str,
+        options: list[str],
+        *,
+        current: int = 0,
+        ok_text: str = "OK",
+    ) -> tuple[str, bool]:
+        dialog = QInputDialog(self)
+        dialog.setInputMode(QInputDialog.InputMode.TextInput)
+        dialog.setWindowTitle(title)
+        dialog.setLabelText(label)
+        dialog.setComboBoxItems(options)
+        dialog.setComboBoxEditable(False)
+        dialog.setTextValue(options[current] if options else "")
+        dialog.setOption(QInputDialog.InputDialogOption.UseListViewForComboBoxItems, True)
+        dialog.setOkButtonText(ok_text)
+        dialog.setCancelButtonText("Cancelar")
+        self._prepare_popup_dialog(dialog)
+        self._style_popup_dialog_buttons(dialog)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return "", False
+        return dialog.textValue(), True
+
+    def _prompt_double(
+        self,
+        title: str,
+        label: str,
+        value: float,
+        minimum: float,
+        maximum: float,
+        decimals: int = 1,
+        *,
+        ok_text: str = "OK",
+    ) -> tuple[float, bool]:
+        dialog = QInputDialog(self)
+        dialog.setInputMode(QInputDialog.InputMode.DoubleInput)
+        dialog.setWindowTitle(title)
+        dialog.setLabelText(label)
+        dialog.setDoubleValue(value)
+        dialog.setDoubleRange(minimum, maximum)
+        dialog.setDoubleDecimals(decimals)
+        dialog.setOkButtonText(ok_text)
+        dialog.setCancelButtonText("Cancelar")
+        self._prepare_popup_dialog(dialog)
+        self._style_popup_dialog_buttons(dialog)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return value, False
+        return float(dialog.doubleValue()), True
 
     def apply_theme(self) -> None:
         """Reaplica o tema corrente em todos os controles do editor de desenho.
@@ -3989,20 +4216,32 @@ class DrawingCanvas(QWidget):
         tool_style = self._tool_btn_style()
         for btn in getattr(self, "_tool_btns", {}).values():
             btn.setStyleSheet(tool_style)
+        for btn in getattr(self, "_tool_misc_btns", []):
+            btn.setStyleSheet(tool_style)
+        if hasattr(self, "_btn_clear") and self._btn_clear is not None:
+            self._btn_clear.setStyleSheet(self._danger_tool_btn_style())
 
         # Botão de cor: preserva o swatch da cor atual, atualiza só a borda
         if hasattr(self, "btn_color") and self.btn_color is not None:
-            self.btn_color.setStyleSheet(
-                f"background:{self.color}; border-radius:8px; border:2px solid {theme.BORDER_COLOR};"
-                f"font-size:{small}pt;"
-            )
+            self.btn_color.setStyleSheet(self._color_swatch_style())
+
+        for frame in getattr(self, "_toolbar_sections", []):
+            frame.setStyleSheet(self._toolbar_section_style())
+
+        for field_name in ("spin_width", "combo_style", "combo_esquadro", "spin_font", "spin_rotate"):
+            field = getattr(self, field_name, None)
+            if field is not None:
+                field.setStyleSheet(self._field_style())
 
         # Demais botões e labels: aplica estilo padrão.
         # Pula os que já estilizamos especificamente acima.
         from PySide6.QtWidgets import QPushButton, QLabel
         special_btns = set(getattr(self, "_tool_btns", {}).values())
+        special_btns.update(getattr(self, "_tool_misc_btns", []))
         if hasattr(self, "btn_color"):
             special_btns.add(self.btn_color)
+        if hasattr(self, "_btn_clear"):
+            special_btns.add(self._btn_clear)
 
         for btn in self.findChildren(QPushButton):
             if btn in special_btns:
@@ -4014,11 +4253,15 @@ class DrawingCanvas(QWidget):
 
         # Labels: detecta o título (cor PRIMARY/bold/maior) e re-estiliza
         for lbl in self.findChildren(QLabel):
+            if hasattr(self, "_title_label") and lbl is self._title_label:
+                lbl.setStyleSheet(self._title_style())
+                continue
+            if hasattr(self, "_hint_label") and lbl is self._hint_label:
+                lbl.setStyleSheet(self._hint_style())
+                continue
             current = lbl.styleSheet() or ""
             if "font-weight:bold" in current.replace(" ", ""):
-                lbl.setStyleSheet(
-                    f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:bold;"
-                )
+                lbl.setStyleSheet(self._title_style())
             else:
                 lbl.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
 
@@ -4137,12 +4380,12 @@ class DrawingCanvas(QWidget):
                 target_text = item
                 break
 
-        default_value = target_text.toPlainText() if target_text else "Ø 12 mm"
-        text, ok = QInputDialog.getText(
-            self,
+        default_value = target_text.toPlainText() if target_text else "12 mm"
+        text, ok = self._prompt_text(
             "Cota manual",
-            "Informe a cota (ex.: Ø 12 mm, 350 mm, 1.20 m):",
-            text=default_value,
+            "Informe a cota (ex.: 12 mm, 350 mm, 1.20 m):",
+            default_value,
+            ok_text="Aplicar",
         )
         if not ok:
             return
@@ -4160,13 +4403,12 @@ class DrawingCanvas(QWidget):
         self.scene.begin_manual_dimension(label)
 
     def _ask_angle_mode_config(self) -> tuple[float, str, str] | None:
-        preset, ok = QInputDialog.getItem(
-            self,
-            "Angulo",
+        preset, ok = self._prompt_item(
+            "Ângulo",
             "Selecione o valor do ângulo:",
             ["90°", "180°", "Personalizado..."],
-            0,
-            False,
+            current=0,
+            ok_text="OK",
         )
         if not ok:
             return None
@@ -4176,14 +4418,14 @@ class DrawingCanvas(QWidget):
         elif preset == "180°":
             degrees = 180.0
         else:
-            value, ok = QInputDialog.getDouble(
-                self,
-                "Angulo personalizado",
+            value, ok = self._prompt_double(
+                "Ângulo personalizado",
                 "Informe o valor em graus:",
                 45.0,
                 0.1,
                 359.9,
                 1,
+                ok_text="OK",
             )
             if not ok:
                 return None
@@ -4596,17 +4838,50 @@ class DrawingCanvas(QWidget):
             "prisma",
             "cilindro",
         ]
-        selected, ok = QInputDialog.getItem(
-            self,
+        selected, ok = self._prompt_item(
             "Inserir 3D",
             "Escolha um desenho pre-definido:",
             options,
-            0,
-            False,
+            current=0,
+            ok_text="Inserir",
         )
         if not ok or not selected:
             return
         self._insert_3d_preset(str(selected).strip().lower())
+
+    def _open_desenho_popup(self):
+        options = [
+            "Pingadeira",
+            "Rufo",
+            "Calhas",
+            "Bandeja",
+            "Cantoneira",
+            "Chapas",
+            "Perfil",
+        ]
+        selected, ok = self._prompt_item(
+            "Desenho",
+            "Escolha a categoria do desenho:",
+            options,
+            current=0,
+            ok_text="Abrir",
+        )
+        if not ok or not selected:
+            return
+
+        selected_key = str(selected).strip().lower()
+        handlers = {
+            "pingadeira": self._open_pingadeira_popup,
+            "rufo": self._open_rufo_popup,
+            "calhas": self._open_calha_popup,
+            "bandeja": self._open_bandeja_popup,
+            "cantoneira": self._open_cantoneira_popup,
+            "chapas": self._open_chapa_popup,
+            "perfil": self._open_perfil_popup,
+        }
+        handler = handlers.get(selected_key)
+        if handler is not None:
+            handler()
 
     def _base_insert_pos(self) -> QPointF:
         if self._last_click_scene_pos is not None:
@@ -4895,11 +5170,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Pingadeira")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de pingadeira:"))
+        prompt = QLabel("Escolha um modelo de pingadeira:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -4932,7 +5210,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -4957,6 +5235,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -5122,11 +5401,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Rufo")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de rufo:"))
+        prompt = QLabel("Escolha um modelo de rufo:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -5160,7 +5442,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5185,6 +5467,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -5391,11 +5674,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Calha")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de calha:"))
+        prompt = QLabel("Escolha um modelo de calha:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -5424,7 +5710,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5449,6 +5735,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -5580,11 +5867,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Bandeja")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de bandeja:"))
+        prompt = QLabel("Escolha um modelo de bandeja:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -5602,7 +5892,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5627,6 +5917,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -5749,11 +6040,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Cantoneira")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de cantoneira:"))
+        prompt = QLabel("Escolha um modelo de cantoneira:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -5781,7 +6075,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -5806,6 +6100,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -6073,11 +6368,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Chapa")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de chapa:"))
+        prompt = QLabel("Escolha um modelo de chapa:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -6120,7 +6418,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -6145,6 +6443,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -6237,11 +6536,14 @@ class DrawingCanvas(QWidget):
         dialog.setWindowTitle("Inserir Perfil")
         dialog.setModal(True)
         dialog.setMinimumWidth(max(540, int(620 * self.scale)))
+        self._prepare_popup_dialog(dialog)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(QLabel("Escolha um modelo de perfil:"))
+        prompt = QLabel("Escolha um modelo de perfil:")
+        prompt.setStyleSheet(self._popup_section_title_style())
+        layout.addWidget(prompt)
 
         body = QHBoxLayout()
         body.setSpacing(10)
@@ -6263,7 +6565,7 @@ class DrawingCanvas(QWidget):
 
         preview_col = QVBoxLayout()
         preview_title = QLabel("Preview")
-        preview_title.setStyleSheet(f"color:{theme.TEXT_MEDIUM}; font-weight:600;")
+        preview_title.setStyleSheet(self._popup_section_title_style())
         preview_label = QLabel(dialog)
         preview_label.setMinimumSize(max(300, int(340 * self.scale)), max(140, int(170 * self.scale)))
         preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -6288,6 +6590,7 @@ class DrawingCanvas(QWidget):
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_insert)
         layout.addLayout(buttons)
+        self._style_popup_dialog_buttons(dialog)
 
         def _set_preview(item: QListWidgetItem | None) -> None:
             if item is None:
@@ -6367,6 +6670,8 @@ class DrawingCanvas(QWidget):
         btn_nao = box.addButton("Não", QMessageBox.ButtonRole.NoRole)
         box.setDefaultButton(btn_nao)
         box.setEscapeButton(btn_nao)
+        self._prepare_popup_dialog(box)
+        self._style_popup_dialog_buttons(box)
         box.exec()
         if box.clickedButton() is not btn_sim:
             return

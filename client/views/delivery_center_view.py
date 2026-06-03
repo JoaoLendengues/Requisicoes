@@ -723,6 +723,15 @@ class DeliveryCenterView(QWidget):
         if row.get("delivered_at"):
             QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
             return
+        allowed_statuses = {"faturado", "prazo_alterado"}
+        current_status = str(row.get("status") or "").strip().lower()
+        if current_status not in allowed_statuses:
+            QMessageBox.information(
+                self,
+                "Entregas",
+                "Somente pedidos faturados ou com prazo alterado podem ser marcados como entregues.",
+            )
+            return
         if not QMessageBox.question(
             self,
             "Entregue",

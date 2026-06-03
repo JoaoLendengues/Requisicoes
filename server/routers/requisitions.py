@@ -2342,14 +2342,15 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
         delivered_at = getattr(req, "delivered_at", None)
         status_value = getattr(req.status, "value", req.status)
 
-        # A tela de Entregas só lista pedidos marcados para entrega e que já
-        # passaram pela etapa de faturamento (faturado/prazo alterado/entregue).
+        # A tela de Entregas lista pedidos marcados para entrega que estejam
+        # em produção, faturados, com prazo alterado ou já entregues.
         if (
             not req.entrega
             or req.status == RequisitionStatus.CANCELADA
             or (
                 delivered_at is None
                 and status_value not in (
+                    RequisitionStatus.EM_PRODUCAO.value,
                     RequisitionStatus.FATURADO.value,
                     RequisitionStatus.PRAZO_ALTERADO.value,
                 )

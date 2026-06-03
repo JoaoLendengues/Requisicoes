@@ -238,6 +238,21 @@ def _danger_action_btn_style(scale: float) -> str:
     return theme.danger_btn_style(scale)
 
 
+def _apply_machine_card_button_styles(theme_widgets: dict, scale: float) -> None:
+    """Garante o estilo visual dos botões dos cards de máquina."""
+    button_styles = {
+        "status_button": _flat_secondary_btn_style(scale),
+        "btn_open": _flat_secondary_btn_style(scale),
+        "btn_finish": _primary_action_btn_style(scale),
+        "btn_prazo": _flat_secondary_btn_style(scale),
+        "btn_cancel": _danger_action_btn_style(scale),
+    }
+    for key, style in button_styles.items():
+        button = theme_widgets.get(key)
+        if button is not None:
+            button.setStyleSheet(style)
+
+
 def _machine_combo_style(scale: float) -> str:
     fs = max(8, int(9 * scale))
     return (
@@ -992,6 +1007,16 @@ class ProductionView(QWidget):
         btn_finish.setProperty("productionBtn", "primary")
         btn_prazo.setProperty("productionBtn", "secondary")
         btn_cancel.setProperty("productionBtn", "danger")
+        _apply_machine_card_button_styles(
+            {
+                "status_button": status_button,
+                "btn_open": btn_open,
+                "btn_finish": btn_finish,
+                "btn_prazo": btn_prazo,
+                "btn_cancel": btn_cancel,
+            },
+            s,
+        )
         btn_open.clicked.connect(lambda: self._open_selected_machine(int(machine["id"])))
         if is_dobra_source:
             btn_finish.clicked.connect(lambda: self._send_selected_machine_to_dobra(int(machine["id"])))
@@ -1071,11 +1096,7 @@ class ProductionView(QWidget):
             tw["status_label"].setStyleSheet(_machine_status_label_style(s))
         if tw.get("status_combo") is not None:
             tw["status_combo"].setStyleSheet(_machine_combo_style(s))
-        # NOTE: status_button, btn_open, btn_finish, btn_prazo, btn_cancel
-        # NAO sao reaplicados aqui — todos tem property productionBtn=... e
-        # recebem estilo do QSS view-level (apply_theme da view). Economizamos
-        # 5 setStyleSheets × N cards = ~50-90 chamadas em runtime.
-        #
+        _apply_machine_card_button_styles(tw, s)
         # NOTE: title, operator_summary, stat_titles, stat_values nao sao
         # reaplicados — seus styles nao tem cor (so font-size/weight). A cor
         # vem do palette via property muted='1' / herança.
