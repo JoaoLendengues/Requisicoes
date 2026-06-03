@@ -596,14 +596,14 @@ class ProductionView(QWidget):
             WAITING_RECEIPT_STAGE,
             "Aguardando Recebimento",
             "Confirmar recebimento e decidir o próximo passo.",
-            ["PED", "CLIENTE", "OBRA", "ENVIADA EM"],
+            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "ENVIADA EM"],
             "Receber",
         )
         self.waiting_queue_panel = self._build_stage_panel(
             WAITING_QUEUE_STAGE,
             "Aguardando na Fila",
             "Pedidos aguardando liberação de máquina.",
-            ["PED", "CLIENTE", "OBRA", "FILA DESDE"],
+            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "FILA DESDE"],
             "Enviar para Máquina",
         )
         stages_row.addWidget(self.waiting_receipt_panel["card"], 1)
@@ -775,7 +775,7 @@ class ProductionView(QWidget):
         actions.addWidget(btn_cancel)
         layout.addLayout(actions)
 
-        table = self._build_table(headers, stretch_columns={1, 2})
+        table = self._build_table(headers, stretch_columns={1, 2, 3})
         table.doubleClicked.connect(lambda index, current_stage=stage: self._open_stage_row(current_stage, index.row()))
         table.setMinimumHeight(max(240, int(270 * s)))
         layout.addWidget(table, 1)
@@ -878,6 +878,7 @@ class ProductionView(QWidget):
             values = [
                 str(req.get("ped_number") or ""),
                 str(req.get("client_name") or "-"),
+                str(req.get("vendor_name") or "-"),
                 str(req.get("obra") or "-"),
                 _format_elapsed(req.get("waiting_since")),
             ]
@@ -1060,8 +1061,8 @@ class ProductionView(QWidget):
         layout.addLayout(actions)
 
         table = self._build_table(
-            ["PED", "CLIENTE", "OPERADOR", "AJUDANTE", "INICIADO EM", "PESO(kg)"],
-            stretch_columns={1, 2, 3},
+            ["PED", "CLIENTE", "VENDEDOR", "OPERADOR", "AJUDANTE", "INICIADO EM", "PESO(kg)"],
+            stretch_columns={1, 2, 3, 4},
         )
         table.setMinimumHeight(max(180, int(210 * s)))
         rows = [row for row in (machine.get("rows") or []) if isinstance(row, dict)]
@@ -1177,6 +1178,7 @@ class ProductionView(QWidget):
             values = [
                 str(req.get("ped_number") or ""),
                 str(req.get("client_name") or "-"),
+                str(req.get("vendor_name") or "-"),
                 ", ".join(operator_names) if operator_names else "-",
                 ", ".join(helper_names) if helper_names else "-",
                 _format_elapsed(req.get("production_started_at")),

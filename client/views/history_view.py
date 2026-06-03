@@ -1,5 +1,5 @@
 from PySide6.QtCore import QDate, QObject, QThread, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QAction, QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QMenu,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -50,6 +51,21 @@ COLS = [
     "AJUDANTE",
     "MOTIVO DE CANCELAMENTO",
 ]
+
+TABLE_STRETCH_COLUMNS = {1, 2, 10, 11}
+TABLE_COLUMN_WIDTHS = {
+    1: 220,
+    2: 190,
+    4: 180,
+    5: 210,
+    6: 210,
+    8: 170,
+    9: 210,
+    10: 210,
+    11: 210,
+    12: 220,
+}
+EXPORT_WIDTHS = [12, 32, 24, 12, 22, 22, 22, 18, 18, 18, 24, 24, 30]
 
 PRODUCTION_OPTIONS = (
     ("Todas as produções", ""),
@@ -361,6 +377,8 @@ class HistoryView(QWidget):
         self.scale = scale
         self._threads: list[tuple[QThread, QObject]] = []
         self._reqs: list[dict] = []
+        self._column_visibility: dict[int, bool] = {index: True for index in range(len(COLS))}
+        self._column_actions: dict[int, QAction] = {}
         self._setup_ui()
         self._reset_machine_filter()
         self._reset_operator_filter()
@@ -724,6 +742,13 @@ class HistoryView(QWidget):
         results_title_col.addWidget(results_subtitle)
         results_header.addLayout(results_title_col, 1)
 
+        self.columns_btn = QPushButton("COLUNAS")
+        self.columns_btn.setFixedHeight(max(36, int(42 * s)))
+        self.columns_btn.setProperty("historyBtn", "secondary")
+        self.columns_btn.setToolTip("Escolher quais colunas aparecem nos resultados")
+        self.columns_btn.clicked.connect(self._show_columns_menu)
+        results_header.addWidget(self.columns_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+
         self.export_btn = QPushButton("EXPORTAR EXCEL")
         self.export_btn.setFixedHeight(max(36, int(42 * s)))
         self.export_btn.setProperty("historyBtn", "secondary")
@@ -743,11 +768,10 @@ class HistoryView(QWidget):
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         apply_smooth_scroll(self.table)
         header_widget = self.table.horizontalHeader()
-        stretch_columns = {1, 2, 10, 11}
         for col in range(len(COLS)):
             mode = (
                 QHeaderView.ResizeMode.Stretch
-                if col in stretch_columns
+                if col in TABLE_STRETCH_COLUMNS
                 else QHeaderView.ResizeMode.ResizeToContents
             )
             header_widget.setSectionResizeMode(col, mode)
@@ -764,21 +788,15 @@ class HistoryView(QWidget):
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
-        self.table.setColumnWidth(1, max(180, int(220 * s)))
-        self.table.setColumnWidth(2, max(160, int(190 * s)))
-        self.table.setColumnWidth(4, max(150, int(180 * s)))
-        self.table.setColumnWidth(5, max(180, int(210 * s)))
-        self.table.setColumnWidth(6, max(180, int(210 * s)))
-        self.table.setColumnWidth(8, max(150, int(170 * s)))
-        self.table.setColumnWidth(9, max(180, int(210 * s)))
-        self.table.setColumnWidth(10, max(170, int(210 * s)))
-        self.table.setColumnWidth(11, max(170, int(210 * s)))
-        self.table.setColumnWidth(12, max(180, int(220 * s)))
+        for col, width in TABLE_COLUMN_WIDTHS.items():
+            self.table.setColumnWidth(col, max(int(width * 0.82), int(width * s)))
         self.table.setSortingEnabled(True)
         self.table.setStyleSheet(theme.neon_table_qss(self.scale))
         theme.apply_neon_table_palette(self.table)
         self.table.setMinimumHeight(max(300, int(360 * s)))
         self.table.doubleClicked.connect(self._on_double_click)
+        self._build_columns_menu()
+        self._apply_column_visibility()
         results_layout.addWidget(self.table, 1)
         root.addWidget(results_card, 1)
 
@@ -958,6 +976,7 @@ class HistoryView(QWidget):
         self.refresh_btn.setEnabled(not loading)
         self.search_btn.setEnabled(not loading)
         self.clear_btn.setEnabled(not loading)
+        self.columns_btn.setEnabled(not loading)
         self.export_btn.setEnabled(not loading)
         self.combo_status.setEnabled(not loading)
         self.input_date_from.setEnabled(not loading)
@@ -978,6 +997,66 @@ class HistoryView(QWidget):
         self.updated_label.setText("Falha ao atualizar")
         self.error_label.setText(f"Não foi possível carregar o histórico.\n\n{message}")
         self.error_label.show()
+
+    def _column_menu_style(self) -> str:
+        return (
+            f"QMenu {{"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px; padding:6px;"
+            f"}}"
+            f"QMenu::item {{ padding:7px 12px; border-radius:8px; }}"
+            f"QMenu::item:selected {{ background:{_rgba(theme.PRIMARY, 16)}; }}"
+            f"QMenu::separator {{ height:1px; background:{theme.BORDER_COLOR}; margin:6px 4px; }}"
+        )
+
+    def _build_columns_menu(self) -> None:
+        self.columns_menu = QMenu(self)
+        self.columns_menu.setStyleSheet(self._column_menu_style())
+        self._column_actions.clear()
+
+        for index, title in enumerate(COLS):
+            action = QAction(title, self.columns_menu)
+            action.setCheckable(True)
+            action.setChecked(self._column_visibility.get(index, True))
+            action.toggled.connect(lambda checked, col=index: self._toggle_column_visibility(col, checked))
+            self.columns_menu.addAction(action)
+            self._column_actions[index] = action
+
+        self.columns_menu.addSeparator()
+        show_all_action = QAction("Mostrar todas", self.columns_menu)
+        show_all_action.triggered.connect(self._show_all_columns)
+        self.columns_menu.addAction(show_all_action)
+
+    def _show_columns_menu(self) -> None:
+        self.columns_menu.setStyleSheet(self._column_menu_style())
+        self.columns_menu.exec(self.columns_btn.mapToGlobal(self.columns_btn.rect().bottomLeft()))
+
+    def _visible_column_indexes(self) -> list[int]:
+        return [index for index, is_visible in self._column_visibility.items() if is_visible]
+
+    def _apply_column_visibility(self) -> None:
+        for index in range(len(COLS)):
+            self.table.setColumnHidden(index, not self._column_visibility.get(index, True))
+
+    def _toggle_column_visibility(self, column_index: int, checked: bool) -> None:
+        visible_count = sum(1 for is_visible in self._column_visibility.values() if is_visible)
+        if not checked and visible_count <= 1:
+            action = self._column_actions.get(column_index)
+            if action is not None:
+                action.blockSignals(True)
+                action.setChecked(True)
+                action.blockSignals(False)
+            return
+        self._column_visibility[column_index] = checked
+        self._apply_column_visibility()
+
+    def _show_all_columns(self) -> None:
+        for index, action in self._column_actions.items():
+            self._column_visibility[index] = True
+            action.blockSignals(True)
+            action.setChecked(True)
+            action.blockSignals(False)
+        self._apply_column_visibility()
 
     def _row_values(self, req: dict) -> list[str]:
         """Valores de exibição de uma linha (usado na tabela e na exportação)."""
@@ -1042,17 +1121,18 @@ class HistoryView(QWidget):
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Histórico"
-            ws.append(COLS)
+            visible_columns = self._visible_column_indexes()
+            ws.append([COLS[index] for index in visible_columns])
             header_fill = PatternFill("solid", fgColor="1E3A5F")
             for cell in ws[1]:
                 cell.font = Font(bold=True, color="FFFFFF")
                 cell.fill = header_fill
                 cell.alignment = Alignment(horizontal="center", vertical="center")
             for req in self._reqs:
-                ws.append(self._row_values(req))
-            widths = [12, 32, 24, 12, 22, 22, 22, 18, 18, 18, 24, 24, 30]
-            for i, width in enumerate(widths, start=1):
-                ws.column_dimensions[get_column_letter(i)].width = width
+                row_values = self._row_values(req)
+                ws.append([row_values[index] for index in visible_columns])
+            for i, column_index in enumerate(visible_columns, start=1):
+                ws.column_dimensions[get_column_letter(i)].width = EXPORT_WIDTHS[column_index]
             ws.freeze_panes = "A2"
             wb.save(path)
         except Exception as exc:  # noqa: BLE001
@@ -1234,5 +1314,7 @@ class HistoryView(QWidget):
         )
         self.btn_date_from.setStyleSheet(_calendar_btn_style(s))
         self.btn_date_to.setStyleSheet(_calendar_btn_style(s))
+        self.columns_menu.setStyleSheet(self._column_menu_style())
         self._apply_table_style()
+        self._apply_column_visibility()
         self.update()
