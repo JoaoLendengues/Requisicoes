@@ -596,14 +596,14 @@ class ProductionView(QWidget):
             WAITING_RECEIPT_STAGE,
             "Aguardando Recebimento",
             "Confirmar recebimento e decidir o próximo passo.",
-            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "ENVIADA EM"],
+            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "PESO(kg)", "ENVIADA EM"],
             "Receber",
         )
         self.waiting_queue_panel = self._build_stage_panel(
             WAITING_QUEUE_STAGE,
             "Aguardando na Fila",
             "Pedidos aguardando liberação de máquina.",
-            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "FILA DESDE"],
+            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "PESO(kg)", "FILA DESDE"],
             "Enviar para Máquina",
         )
         stages_row.addWidget(self.waiting_receipt_panel["card"], 1)
@@ -880,6 +880,7 @@ class ProductionView(QWidget):
                 str(req.get("client_name") or "-"),
                 str(req.get("vendor_name") or "-"),
                 str(req.get("obra") or "-"),
+                _format_weight_kg(req.get("weight")),
                 _format_elapsed(req.get("waiting_since")),
             ]
             for col, value in enumerate(values):
