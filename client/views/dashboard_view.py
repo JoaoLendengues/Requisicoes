@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.formatters import format_weight_kg
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.datetime_utils import (
     format_date as _format_date,
@@ -321,11 +322,7 @@ def _iar_color(value: object) -> str:
 
 
 def _format_weight_kg(value: object) -> str:
-    try:
-        weight = max(0.0, float(value))
-    except (TypeError, ValueError):
-        return "-"
-    return f"{weight:.2f}".replace(".", ",")
+    return format_weight_kg(value)
 
 
 def _machine_status_label(value: object) -> str:
@@ -723,7 +720,7 @@ class DashboardView(QWidget):
         self._performance_period_options = [
             ("Hoje", "today"),
             ("Semana", "week"),
-            ("Mes", "month"),
+            ("MÊS", "month"),
             ("Ano", "year"),
             ("Periodo personalizado", "custom"),
         ]

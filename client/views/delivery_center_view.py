@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.formatters import format_weight_kg
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -79,11 +80,7 @@ def _primary_action_btn_style(scale: float) -> str:
 
 
 def _format_weight(value: object) -> str:
-    try:
-        weight_value = float(value or 0.0)
-    except (TypeError, ValueError):
-        return "-"
-    return f"{weight_value:.2f}".replace(".", ",")
+    return format_weight_kg(value)
 
 
 def _status_badge_color(status: str) -> str:

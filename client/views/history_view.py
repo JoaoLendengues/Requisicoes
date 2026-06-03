@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.formatters import format_weight_kg
 from ..core.session import session
 from ..widgets.smooth_scroll import apply_smooth_scroll
 from ..widgets.sortable_item import SortableItem
@@ -389,7 +390,7 @@ class HistoryView(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(max(4, int(5 * s)))
 
-        title = QLabel("Histórico / Busca")
+        title = QLabel("RELATÓRIOS")
         title.setStyleSheet(
             f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
         )
@@ -989,7 +990,7 @@ class HistoryView(QWidget):
             str(req.get("ped_number") or "-"),
             str(req.get("client_name") or req.get("client_id") or "-"),
             str(req.get("obra") or "-"),
-            f"{weight_value:.2f}".replace(".", ","),
+            format_weight_kg(weight_value, fallback="0,00"),
             str(req.get("vendor_name") or req.get("vendor_id") or "-"),
             _format_datetime(req.get("production_sent_at")),
             _format_datetime(req.get("production_finished_at")),

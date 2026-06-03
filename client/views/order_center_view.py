@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.formatters import format_weight_kg
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..widgets.sortable_item import SortableItem
 from ..core.dialogs import apply_message_box_theme
@@ -262,11 +263,7 @@ def _format_waiting_label(minutes: object) -> str:
 
 
 def _format_weight(value: object) -> str:
-    try:
-        weight_value = float(value or 0.0)
-    except (TypeError, ValueError):
-        return "-"
-    return f"{weight_value:.2f}".replace(".", ",")
+    return format_weight_kg(value)
 
 
 def _format_deadline_met(value: object) -> str:
@@ -499,7 +496,7 @@ class OrderCenterView(QWidget):
             chip = QPushButton(label)
             chip.setCheckable(True)
             chip.setChecked(key in self._active_sections)
-            chip.setFixedHeight(max(28, int(32 * s)))
+            chip.setFixedHeight(max(32, int(36 * s)))
             chip.setStyleSheet(self._chip_style(s))
             chip.toggled.connect(lambda _checked, k=key: self._on_chip_toggled(k, _checked))
             filter_bar.addWidget(chip)
@@ -508,19 +505,19 @@ class OrderCenterView(QWidget):
         filter_bar.addStretch()
 
         self._btn_apply_filter = QPushButton("APLICAR")
-        self._btn_apply_filter.setFixedHeight(max(28, int(32 * s)))
+        self._btn_apply_filter.setFixedHeight(max(34, int(38 * s)))
         self._btn_apply_filter.setStyleSheet(_primary_action_btn_style(s))
         self._btn_apply_filter.clicked.connect(self._apply_section_filter)
         filter_bar.addWidget(self._btn_apply_filter)
 
         self._btn_reset_filter = QPushButton("TODOS")
-        self._btn_reset_filter.setFixedHeight(max(28, int(32 * s)))
+        self._btn_reset_filter.setFixedHeight(max(34, int(38 * s)))
         self._btn_reset_filter.setStyleSheet(_flat_secondary_btn_style(s))
         self._btn_reset_filter.clicked.connect(self._reset_filter)
         filter_bar.addWidget(self._btn_reset_filter)
 
         self._btn_clear_filter = QPushButton("DESMARCAR TODOS")
-        self._btn_clear_filter.setFixedHeight(max(28, int(32 * s)))
+        self._btn_clear_filter.setFixedHeight(max(34, int(38 * s)))
         self._btn_clear_filter.setStyleSheet(_danger_action_btn_style(s))
         self._btn_clear_filter.setToolTip("Limpar a seleção atual dos filtros")
         self._btn_clear_filter.clicked.connect(self._clear_filter_selection)
@@ -550,9 +547,9 @@ class OrderCenterView(QWidget):
     # ── Chip style ───────────────────────────────────────────────────────────
     def _chip_style(self, scale: float) -> str:
         fs = max(8, int(9 * scale))
-        # Pill total: usa metade da altura fixa do chip (32*scale).
+        # Pill total: usa metade da altura fixa do chip.
         # Garante cantos totalmente arredondados em qualquer escala.
-        chip_h = max(28, int(32 * scale))
+        chip_h = max(32, int(36 * scale))
         radius = chip_h // 2
         return (
             f"QPushButton {{"

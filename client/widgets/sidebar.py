@@ -46,7 +46,7 @@ NAV_ITEMS = [
     ("entregas",  "ENTREGAS",           "pedidos"),
     ("pinheiro_industria", "PINHEIRO INDÚSTRIA", "pinheiro_industria"),
     ("ar",        "A&&R",               "ar"),
-    ("historico", "HISTÓRICO / BUSCA",  "historico"),
+    ("historico", "RELATÓRIOS",         "historico"),
     ("feedback",  "FEEDBACKS",          "feedback"),
 ]
 
@@ -65,7 +65,7 @@ NAV_GROUPS = [
     ],
     [
         ("dashboard", "PAINEL GERENCIAL", "dashboard"),
-        ("historico", "HISTÓRICO / BUSCA", "historico"),
+        ("historico", "RELATÓRIOS", "historico"),
     ],
 ]
 

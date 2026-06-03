@@ -6,6 +6,7 @@ from PySide6.QtCore import QModelIndex, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 
 from ..core import theme
+from ..core.formatters import format_weight_kg, parse_decimal
 from ..core.text_case import normalize_upper_text
 
 def _rgba(color: str, alpha: int) -> str:
@@ -155,7 +156,11 @@ class ItemTable(QWidget):
             f"  padding:7px 8px; font-weight:800; font-size:{max(8, int(9 * s))}pt;"
             f"  border:none;"
             f"}}"
-            f"QTableCornerButton::section {{ background:{theme.PANEL_TABLE_HEADER_START}; border:none; }}"
+            f"QHeaderView::section:first {{ border-top-left-radius:14px; }}"
+            f"QHeaderView::section:last {{ border-top-right-radius:14px; }}"
+            f"QTableCornerButton::section {{"
+            f"  background:{theme.PANEL_TABLE_HEADER_START}; border:none; border-top-left-radius:14px;"
+            f"}}"
             f"QTableWidget::item {{"
             f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
             f"  padding:6px 5px; border-bottom:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 24)};"
@@ -293,9 +298,7 @@ class ItemTable(QWidget):
                 except ValueError:
                     pass
 
-        self.total_label.setText(
-            f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
+        self.total_label.setText(format_weight_kg(total, fallback="0,00"))
         self.weight_changed.emit(total)
 
     def get_total_weight(self) -> float:
@@ -363,7 +366,7 @@ class ItemTable(QWidget):
             self.table.setItem(
                 row,
                 WEIGHT_COL,
-                QTableWidgetItem(f"{weight:.2f}".replace(".", ",") if weight else ""),
+                QTableWidgetItem(format_weight_kg(weight, fallback="") if weight not in (None, "") else ""),
             )
 
         self.table.blockSignals(False)
@@ -374,11 +377,7 @@ class ItemTable(QWidget):
         return cell.text().strip() if cell else ""
 
     def _cell_float(self, row: int, col: int) -> float | None:
-        txt = self._cell_text(row, col).replace(",", ".")
-        try:
-            return float(txt) if txt else None
-        except ValueError:
-            return None
+        return parse_decimal(self._cell_text(row, col))
 
 
 class _ItemGridTable(QTableWidget):

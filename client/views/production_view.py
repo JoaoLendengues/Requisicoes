@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.formatters import format_weight_kg
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
@@ -255,19 +256,20 @@ def _apply_machine_card_button_styles(theme_widgets: dict, scale: float) -> None
             button.setStyleSheet(style)
 
 
-def _machine_combo_style(scale: float) -> str:
+def _machine_combo_style(scale: float, status_value: object = "") -> str:
     fs = max(8, int(9 * scale))
+    accent = _machine_status_accent(status_value)
     return (
         f"QComboBox {{"
-        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
-        f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
+        f"  background:{_rgba(accent, 18)}; color:{accent};"
+        f"  border:1px solid {_rgba(accent, 156)}; border-radius:12px;"
         f"  padding:7px 12px; font-size:{fs}pt; font-weight:600;"
         f"}}"
         f"QComboBox::drop-down {{ border:none; width:24px; }}"
         f"QComboBox QAbstractItemView {{"
-        f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+        f"  background:{theme.CARD_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
         f"  border:1px solid {theme.BORDER_COLOR};"
-        f"  selection-background-color:{theme.SELECTION_BG}; selection-color:{theme.TEXT_DARK};"
+        f"  selection-background-color:{_rgba(accent, 44)}; selection-color:{theme.PANEL_TEXT_PRIMARY};"
         f"}}"
     )
 
@@ -325,11 +327,18 @@ def _split_team_members(machine: dict) -> tuple[list[str], list[str]]:
 
 
 def _format_weight_kg(value: object) -> str:
-    try:
-        weight = float(value or 0)
-    except (TypeError, ValueError):
-        return "-"
-    return f"{weight:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return format_weight_kg(value)
+
+
+def _machine_status_accent(status_value: object) -> str:
+    normalized = str(status_value or "").strip().casefold()
+    if normalized == "funcionando":
+        return theme.SUCCESS
+    if normalized == "manutencao":
+        return theme.WARNING
+    return theme.BORDER_COLOR
+
+
 def _build_production_note(
     action: str,
     destination: str,
@@ -975,10 +984,15 @@ class ProductionView(QWidget):
         status_combo = QComboBox()
         for value, text in MACHINE_STATUS_OPTIONS:
             status_combo.addItem(text, value)
-        status_combo.setStyleSheet(_machine_combo_style(s))
         current_status = str(machine.get("status") or "funcionando")
         combo_index = max(0, status_combo.findData(current_status))
         status_combo.setCurrentIndex(combo_index)
+        status_combo.setStyleSheet(_machine_combo_style(s, current_status))
+        status_combo.currentIndexChanged.connect(
+            lambda _index, combo=status_combo: combo.setStyleSheet(
+                _machine_combo_style(self.scale, combo.currentData())
+            )
+        )
         status_button = QPushButton("Atualizar Status")
         status_button.setFixedHeight(max(34, int(38 * s)))
         # Property-based: estilo aplicado uma única vez no apply_theme da view,
@@ -1111,7 +1125,7 @@ class ProductionView(QWidget):
         if tw.get("status_label") is not None:
             tw["status_label"].setStyleSheet(_machine_status_label_style(s))
         if tw.get("status_combo") is not None:
-            tw["status_combo"].setStyleSheet(_machine_combo_style(s))
+            tw["status_combo"].setStyleSheet(_machine_combo_style(s, tw["status_combo"].currentData()))
         _apply_machine_card_button_styles(tw, s)
         # NOTE: title, operator_summary, stat_titles, stat_values nao sao
         # reaplicados — seus styles nao tem cor (so font-size/weight). A cor

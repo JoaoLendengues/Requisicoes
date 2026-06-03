@@ -34,6 +34,7 @@ except ImportError:
     HAS_QR = False
 
 from ..core import theme
+from ..core.formatters import format_weight_kg, parse_decimal
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.datetime_utils import local_now
 from ..core.dialogs import apply_message_box_theme, ask_confirmation
@@ -223,7 +224,7 @@ def _req_input_style(scale: float, *, bold: bool = False, accent: str | None = N
 def _header_ped_input_style(scale: float) -> str:
     """Estilo do PED no cabeçalho: fundo transparente para herdar o card
     (claro ou escuro), sem destacar como uma 'caixinha' a mais."""
-    fs = max(9, int(10 * scale))
+    fs = max(10, int(12 * scale))
     radius = max(10, int(12 * scale))
     return (
         f"QLineEdit {{"
@@ -442,6 +443,20 @@ def _field_label_style(scale: float) -> str:
     )
 
 
+def _header_meta_label_style(scale: float) -> str:
+    return (
+        f"font-size:{max(10, int(12 * scale))}pt; font-weight:700; border:none;"
+        f"background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+    )
+
+
+def _header_meta_value_style(scale: float) -> str:
+    return (
+        f"font-size:{max(10, int(12 * scale))}pt; font-weight:800; border:none;"
+        f"background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+    )
+
+
 def _value_label_style(scale: float) -> str:
     """Estilo do label de VALOR (01/06/2026, JOÃO PEDRO etc.).
     Usa PANEL_TEXT_PRIMARY que muda entre claro/escuro."""
@@ -468,6 +483,22 @@ def _value_label(text: str = "—", scale: float = 1.0) -> QLabel:
     lbl.setProperty("req_value_label", "1")
     lbl.setFrameStyle(QFrame.Shape.NoFrame)
     lbl.setStyleSheet(_value_label_style(scale))
+    return lbl
+
+
+def _header_meta_label(text: str, scale: float) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setProperty("req_header_meta_label", "1")
+    lbl.setFrameStyle(QFrame.Shape.NoFrame)
+    lbl.setStyleSheet(_header_meta_label_style(scale))
+    return lbl
+
+
+def _header_meta_value_label(text: str = "—", scale: float = 1.0) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setProperty("req_header_meta_value", "1")
+    lbl.setFrameStyle(QFrame.Shape.NoFrame)
+    lbl.setStyleSheet(_header_meta_value_style(scale))
     return lbl
 
 
@@ -1955,38 +1986,38 @@ class RequisitionForm(QWidget):
 
         # Data
         date_col = QVBoxLayout()
-        date_col.setSpacing(2)
-        date_col.addWidget(_field_label("📅 DATA", s))
-        self.lbl_date = _value_label(date.today().strftime("%d/%m/%Y"), s)
+        date_col.setSpacing(0)
+        date_col.addWidget(_header_meta_label("DATA", s))
+        self.lbl_date = _header_meta_value_label(date.today().strftime("%d/%m/%Y"), s)
         date_col.addWidget(self.lbl_date)
         layout.addLayout(date_col)
 
         # Vendedor
         vend_col = QVBoxLayout()
-        vend_col.setSpacing(2)
-        vend_col.addWidget(_field_label("👤 VENDEDOR", s))
-        self.lbl_vendor = _value_label(session.user_name.upper(), s)
+        vend_col.setSpacing(0)
+        vend_col.addWidget(_header_meta_label("VENDEDOR", s))
+        self.lbl_vendor = _header_meta_value_label(session.user_name.upper(), s)
         vend_col.addWidget(self.lbl_vendor)
         layout.addLayout(vend_col)
 
         # Status
         status_col = QVBoxLayout()
-        status_col.setSpacing(2)
-        status_col.addWidget(_field_label("STATUS", s))
+        status_col.setSpacing(0)
+        status_col.addWidget(_header_meta_label("STATUS", s))
         self.status_badge = StatusBadge("em_andamento", s)
         status_col.addWidget(self.status_badge)
         layout.addLayout(status_col)
 
         # PED
         ped_col = QVBoxLayout()
-        ped_col.setSpacing(2)
-        ped_col.addWidget(_field_label("PED:", s))
+        ped_col.setSpacing(0)
+        ped_col.addWidget(_header_meta_label("PED", s))
         self.input_ped = QLineEdit()
         self.input_ped.setPlaceholderText("Nº pedido")
         self._ped_min_width = max(80, int(100*s))
         self._ped_max_width = max(180, int(240*s))
         self.input_ped.setFixedWidth(self._ped_min_width)
-        self.input_ped.setFixedHeight(max(30, int(36*s)))
+        self.input_ped.setFixedHeight(max(34, int(40*s)))
         self.input_ped.setStyleSheet(_header_ped_input_style(s))
         # Apenas dígitos permitidos
         self.input_ped.setValidator(
@@ -2234,13 +2265,13 @@ class RequisitionForm(QWidget):
         self.lbl_canvas_info.setText("🖼️ Nenhum desenho salvo ainda.")
 
         btn_canvas = QPushButton("✏️ Abrir Editor de Desenho")
-        btn_canvas.setFixedHeight(max(28, int(32*s)))
+        btn_canvas.setFixedHeight(max(34, int(38*s)))
         btn_canvas.setStyleSheet(_req_secondary_btn_style(s))
         btn_canvas.clicked.connect(self._open_canvas_dialog)
         self.btn_canvas = btn_canvas
 
         btn_canvas_view = QPushButton("🖼️ Visualizar Desenho")
-        btn_canvas_view.setFixedHeight(max(28, int(32*s)))
+        btn_canvas_view.setFixedHeight(max(34, int(38*s)))
         btn_canvas_view.setStyleSheet(_req_secondary_btn_style(s))
         btn_canvas_view.clicked.connect(self._open_canvas_viewer)
         self.btn_canvas_view = btn_canvas_view
@@ -2300,13 +2331,13 @@ class RequisitionForm(QWidget):
         sig_btn_row.setSpacing(max(8, int(10 * s)))
 
         self.btn_sign = QPushButton("Assinar")
-        self.btn_sign.setFixedHeight(max(28, int(32 * s)))
+        self.btn_sign.setFixedHeight(max(34, int(38 * s)))
         self.btn_sign.setStyleSheet(_req_secondary_btn_style(s))
         self.btn_sign.clicked.connect(self._open_signature_dialog)
         sig_btn_row.addWidget(self.btn_sign, 1)
 
         self.btn_clear_signature = QPushButton("Limpar assinatura")
-        self.btn_clear_signature.setFixedHeight(max(28, int(32 * s)))
+        self.btn_clear_signature.setFixedHeight(max(34, int(38 * s)))
         self.btn_clear_signature.setStyleSheet(_req_secondary_btn_style(s))
         self.btn_clear_signature.clicked.connect(self._clear_signature)
         sig_btn_row.addWidget(self.btn_clear_signature, 1)
@@ -2965,13 +2996,13 @@ class RequisitionForm(QWidget):
         # Lógica de cálculo — recalcula a cada digitação
         def _recalculate():
             try:
-                qnt   = float(inp_qnt.text().replace(",", ".") or "0")
-                comp  = float(inp_comp.text().replace(",", ".") or "0")
-                larg  = float(inp_larg.text().replace(",", ".") or "0")
-                chapa = float(inp_chapa.text().replace(",", ".") or "0")
-                var   = float(inp_var.text().replace(",", ".") or "7.865")
+                qnt = parse_decimal(inp_qnt.text()) or 0.0
+                comp = parse_decimal(inp_comp.text()) or 0.0
+                larg = parse_decimal(inp_larg.text()) or 0.0
+                chapa = parse_decimal(inp_chapa.text()) or 0.0
+                var = parse_decimal(inp_var.text()) or 7.865
                 peso  = (qnt * comp * larg * chapa * var) / 1_000_000
-                txt   = f"{peso:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                txt = format_weight_kg(peso)
                 lbl_result.setText(f"PESO = {txt} kg")
             except (ValueError, ZeroDivisionError):
                 lbl_result.setText("PESO = —")
@@ -3393,10 +3424,16 @@ class RequisitionForm(QWidget):
         # Necessario porque o stylesheet inline congela a cor no momento da
         # construcao; ao trocar o tema, sem este loop os textos sumiriam.
         field_style = _field_label_style(s)
+        header_meta_label_style = _header_meta_label_style(s)
+        header_meta_value_style = _header_meta_value_style(s)
         value_style = _value_label_style(s)
         for lbl in self.findChildren(QLabel):
             if lbl.property("req_field_label") == "1":
                 lbl.setStyleSheet(field_style)
+            elif lbl.property("req_header_meta_label") == "1":
+                lbl.setStyleSheet(header_meta_label_style)
+            elif lbl.property("req_header_meta_value") == "1":
+                lbl.setStyleSheet(header_meta_value_style)
             elif lbl.property("req_value_label") == "1":
                 lbl.setStyleSheet(value_style)
         self.lock_label.setStyleSheet(
