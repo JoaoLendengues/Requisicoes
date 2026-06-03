@@ -69,6 +69,7 @@ from ..dependencies import (
     require_manager_or_admin,
     require_order_center_access,
 )
+from ..services import cache
 from ..services.audit_service import diff_fields, log_action
 from ..services.notification_service import (
     _notify_admins_gerentes,
@@ -1252,6 +1253,55 @@ def _filter_requisitions_for_user(
     reqs: list[Requisition], current_user: User
 ) -> list[Requisition]:
     return [req for req in reqs if _can_view_requisition(req, current_user)]
+
+
+def _invalidate_list_caches() -> None:
+    """Invalida caches de leitura listavel apos mutacoes em requisicoes.
+
+    Chamado em todos os endpoints de escrita (create/update/delete de
+    requisicoes, splits, status, prazo etc). Garante que a proxima leitura
+    veja o estado atualizado, em troca de aceitar 1 cache miss.
+
+    Mais barato que invalidar entrada-por-entrada porque os keys incluem
+    o user_id — seriam dezenas de keys para limpar com lookup.
+    """
+    cache.invalidate("order_center:")
+    cache.invalidate("delivery_center:")
+    cache.invalidate("dashboard:")
+    cache.invalidate("production_summary:")
+
+
+def _visibility_filter_sql(query, current_user: User):
+    """Aplica filtros de visibilidade DIRETAMENTE NO SQL.
+
+    Versão paralela do _can_view_requisition (Python). Use ANTES de
+    `query.all()` para evitar carregar a tabela inteira em memória só
+    para descartar a maioria das linhas.
+
+    Lógica equivalente a _can_view_requisition:
+      - ADMIN/GERENTE: vê tudo (sem filtro)
+      - VENDEDOR: vê só do próprio (vendor_id)
+      - ENTREGA: vê só reqs marcadas como entrega
+      - PRODUCAO/INDUSTRIA: vê só reqs com production_destination compatível
+      - outros: nada visível
+
+    Diferença sutil: para PRODUCAO/INDUSTRIA, filtra por
+    `Requisition.production_destination` direto, sem considerar eventos
+    de production_notes históricos. Em uso operacional não importa —
+    reqs sempre têm production_destination setado quando vão pra fila.
+    """
+    role = _role_key(current_user.role)
+    if role in (Role.ADMIN.value, Role.GERENTE.value):
+        return query
+    if role == Role.VENDEDOR.value:
+        return query.filter(Requisition.vendor_id == current_user.id)
+    if role == Role.ENTREGA.value:
+        return query.filter(Requisition.entrega == True)  # noqa: E712
+    destination = _destination_for_role(role)
+    if destination:
+        return query.filter(Requisition.production_destination == destination)
+    # Role sem visibilidade definida: filtra para conjunto vazio
+    return query.filter(Requisition.id == -1)
 
 
 def _can_edit_requisition(req: Requisition, current_user: User) -> bool:
@@ -3408,6 +3458,17 @@ def list_requisition_history_rows(
 ):
     q = db.query(Requisition).options(*_LIST_LOAD_OPTS)
 
+    # Visibilidade no SQL — antes carregava TUDO e filtrava em Python.
+    q = _visibility_filter_sql(q, current_user)
+
+    # Cutoff temporal padrao: 2 anos. Reqs mais antigas que isso so aparecem
+    # se o usuario especificar emission_date_start explicitamente. Cobre 99%
+    # das buscas operacionais sem carregar historico ancestral.
+    if not emission_date_start and not search and not client_id:
+        # Se nao ha filtro forte de busca, aplica cutoff padrao.
+        default_cutoff = datetime.utcnow() - timedelta(days=730)
+        q = q.filter(Requisition.created_at >= default_cutoff)
+
     if client_id:
         q = q.filter(Requisition.client_id == client_id)
     if vendor_id:
@@ -3431,8 +3492,15 @@ def list_requisition_history_rows(
             )
         )
 
-    reqs = q.order_by(Requisition.emission_date.desc(), Requisition.created_at.desc()).all()
-    visible = _filter_requisitions_for_user(reqs, current_user)
+    # Emission date no SQL (indice idx_requisitions_emission_date).
+    # Antes era aplicado em Python depois de carregar tudo.
+    if emission_date_start:
+        q = q.filter(Requisition.emission_date >= emission_date_start)
+    if emission_date_end:
+        # Inclusivo do dia final: < dia seguinte
+        q = q.filter(Requisition.emission_date < (datetime.combine(emission_date_end, time.max)))
+
+    visible = q.order_by(Requisition.emission_date.desc(), Requisition.created_at.desc()).all()
 
     rows: list[dict] = []
     for req in visible:
@@ -3457,16 +3525,8 @@ def list_requisition_history_rows(
         expected_status = getattr(req_status, "value", req_status)
         rows = [row for row in rows if str(row.get("status") or "") == str(expected_status)]
 
-    if emission_date_start or emission_date_end:
-        rows = [
-            row
-            for row in rows
-            if (
-                (local_dt := _parse_local_emission_datetime(row.get("emission_date"))) is not None
-                and (not emission_date_start or local_dt.date() >= emission_date_start)
-                and (not emission_date_end or local_dt.date() <= emission_date_end)
-            )
-        ]
+    # NOTA: emission_date_start/end agora sao aplicados no SQL acima (Fase 2).
+    # O bloco Python que filtrava aqui foi removido — era trabalho duplicado.
 
     if production_destination:
         normalized_destination = _canonical_destination(production_destination)
@@ -3539,7 +3599,7 @@ def get_management_dashboard(
     db: Session = Depends(get_db),
     _: User = Depends(require_manager_or_admin),
 ):
-    _check_invoice_alerts(db)
+    # _check_invoice_alerts foi movido para background (alert_scheduler).
     normalized_ar_period = _normalize_dashboard_period(ar_period)
     normalized_industria_period = _normalize_dashboard_period(industria_period)
     normalized_performance_period = _normalize_performance_dashboard_period(performance_period)
@@ -3548,34 +3608,60 @@ def get_management_dashboard(
     normalized_people_period = _normalize_dashboard_period(people_period)
     normalized_people_destination = _normalize_dashboard_destination(people_destination)
 
-    reqs = (
-        db.query(Requisition)
-        .options(*_LOAD_OPTS)
-        .order_by(Requisition.created_at.desc())
-        .all()
+    # Cache TTL 30s (mais longo que order/delivery porque dashboard tem
+    # 9 params — chance maior de re-fetch identico). Key inclui todos
+    # os params normalizados para evitar colisao entre filtros diferentes.
+    cache_key = (
+        f"dashboard:{normalized_ar_period}:{normalized_industria_period}:"
+        f"{normalized_performance_period}:"
+        f"{performance_date_start}:{performance_date_end}:"
+        f"{normalized_performance_destination}:{normalized_comparison_destination}:"
+        f"{normalized_people_period}:{normalized_people_destination}"
     )
-    machines = (
-        db.query(ProductionMachine)
-        .order_by(
-            ProductionMachine.destination.asc(),
-            ProductionMachine.sort_order.asc(),
-            ProductionMachine.id.asc(),
+
+    def _compute():
+        # Cutoff temporal no SQL: dashboard nao precisa de reqs criadas ha mais
+        # de 13 meses (todas as metricas operam em janelas <= 1 ano). Reqs em
+        # estado aberto sao incluidas independente da idade — operacional vive.
+        cutoff = datetime.utcnow() - timedelta(days=400)
+        q = db.query(Requisition).options(*_LOAD_OPTS).filter(
+            or_(
+                Requisition.created_at >= cutoff,
+                Requisition.status.in_([
+                    RequisitionStatus.RASCUNHO,
+                    RequisitionStatus.EM_ANDAMENTO,
+                    RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+                    RequisitionStatus.AGUARDANDO_NA_FILA,
+                    RequisitionStatus.EM_PRODUCAO,
+                    RequisitionStatus.PRAZO_ALTERADO,
+                ]),
+            )
         )
-        .all()
-    )
-    return _build_management_dashboard(
-        reqs,
-        machines,
-        ar_period=normalized_ar_period,
-        industria_period=normalized_industria_period,
-        performance_period=normalized_performance_period,
-        performance_date_start=performance_date_start,
-        performance_date_end=performance_date_end,
-        performance_destination=normalized_performance_destination,
-        comparison_destination=normalized_comparison_destination,
-        people_period=normalized_people_period,
-        people_destination=normalized_people_destination,
-    )
+        reqs = q.order_by(Requisition.created_at.desc()).all()
+        machines = (
+            db.query(ProductionMachine)
+            .order_by(
+                ProductionMachine.destination.asc(),
+                ProductionMachine.sort_order.asc(),
+                ProductionMachine.id.asc(),
+            )
+            .all()
+        )
+        return _build_management_dashboard(
+            reqs,
+            machines,
+            ar_period=normalized_ar_period,
+            industria_period=normalized_industria_period,
+            performance_period=normalized_performance_period,
+            performance_date_start=performance_date_start,
+            performance_date_end=performance_date_end,
+            performance_destination=normalized_performance_destination,
+            comparison_destination=normalized_comparison_destination,
+            people_period=normalized_people_period,
+            people_destination=normalized_people_destination,
+        )
+
+    return cache.get_or_set(cache_key, ttl_seconds=30, compute=_compute)
 
 
 @router.get("/order-center/summary", response_model=OrderCenterResponse)
@@ -3583,15 +3669,37 @@ def get_order_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
-    _check_invoice_alerts(db)
+    # Cache com TTL 15s. Em uso normal (clica "Atualizar" varias vezes),
+    # 95%+ dos GETs viram cache hits. Invalidado em qualquer mutacao
+    # de requisicao (via _invalidate_list_caches).
+    cache_key = f"order_center:{current_user.role.value}:{current_user.id}"
 
-    reqs = (
-        db.query(Requisition)
-        .options(*_LOAD_OPTS)
-        .order_by(Requisition.created_at.desc())
-        .all()
-    )
-    return _build_order_center(_filter_requisitions_for_user(reqs, current_user))
+    def _compute():
+        # _check_invoice_alerts movido para background (alert_scheduler).
+        # Visibilidade aplicada no SQL — antes carregava TUDO e filtrava em Python.
+        q = db.query(Requisition).options(*_LOAD_OPTS)
+        q = _visibility_filter_sql(q, current_user)
+        # Cutoff temporal: reqs finalizadas/canceladas há mais de 1 ano não aparecem
+        # na Central de Pedidos (vão para o Histórico). Reqs em estado aberto
+        # ignoram o cutoff — operacional precisa vê-las sempre.
+        cutoff = datetime.utcnow() - timedelta(days=365)
+        q = q.filter(
+            or_(
+                Requisition.created_at >= cutoff,
+                Requisition.status.in_([
+                    RequisitionStatus.RASCUNHO,
+                    RequisitionStatus.EM_ANDAMENTO,
+                    RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+                    RequisitionStatus.AGUARDANDO_NA_FILA,
+                    RequisitionStatus.EM_PRODUCAO,
+                    RequisitionStatus.PRAZO_ALTERADO,
+                ]),
+            )
+        )
+        reqs = q.order_by(Requisition.created_at.desc()).all()
+        return _build_order_center(reqs)
+
+    return cache.get_or_set(cache_key, ttl_seconds=15, compute=_compute)
 
 
 @router.get("/deliveries/summary", response_model=DeliveryCenterResponse)
@@ -3599,15 +3707,26 @@ def get_delivery_center(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_order_center_access),
 ):
-    _check_invoice_alerts(db)
+    cache_key = f"delivery_center:{current_user.role.value}:{current_user.id}"
 
-    reqs = (
-        db.query(Requisition)
-        .options(*_LOAD_OPTS)
-        .order_by(Requisition.created_at.desc())
-        .all()
-    )
-    return _build_delivery_center(_filter_requisitions_for_user(reqs, current_user))
+    def _compute():
+        # _check_invoice_alerts movido para background (alert_scheduler).
+        # Filtros no SQL: visibilidade + entrega=True (indice parcial cobre).
+        q = db.query(Requisition).options(*_LOAD_OPTS).filter(Requisition.entrega == True)  # noqa: E712
+        q = _visibility_filter_sql(q, current_user)
+        # Cutoff: entregas concluidas ha mais de 6 meses nao aparecem (vao pro Historico).
+        # Entregas pendentes (sem delivered_at) sempre aparecem.
+        cutoff = datetime.utcnow() - timedelta(days=180)
+        q = q.filter(
+            or_(
+                Requisition.delivered_at.is_(None),
+                Requisition.delivered_at >= cutoff,
+            )
+        )
+        reqs = q.order_by(Requisition.created_at.desc()).all()
+        return _build_delivery_center(reqs)
+
+    return cache.get_or_set(cache_key, ttl_seconds=15, compute=_compute)
 
 
 @router.get("/production/summary", response_model=ProductionDestinationSummaryResponse)
@@ -3619,13 +3738,21 @@ def get_production_summary(
     normalized_destination = _canonical_destination(destination)
     _ensure_destination_access(current_user, normalized_destination)
 
-    reqs = (
-        db.query(Requisition)
-        .options(*_LOAD_OPTS)
-        .order_by(Requisition.created_at.asc(), Requisition.id.asc())
-        .all()
+    # Filtros SQL: visibilidade por role + destination (direto ou via splits).
+    # Reqs com production_destination diferente OU sem splits para esse destino
+    # nao precisam ser carregadas — eram filtradas em Python depois.
+    split_req_ids = db.query(RequisitionProductionSplit.requisition_id).filter(
+        RequisitionProductionSplit.destination == normalized_destination
     )
-    visible = _filter_requisitions_for_user(reqs, current_user)
+    q = db.query(Requisition).options(*_LOAD_OPTS)
+    q = _visibility_filter_sql(q, current_user)
+    q = q.filter(
+        or_(
+            Requisition.production_destination == normalized_destination,
+            Requisition.id.in_(split_req_ids),
+        )
+    )
+    visible = q.order_by(Requisition.created_at.asc(), Requisition.id.asc()).all()
     machines = (
         db.query(ProductionMachine)
         .options(selectinload(ProductionMachine.operators))
