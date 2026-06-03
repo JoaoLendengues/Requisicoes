@@ -11,7 +11,7 @@ from ..config import settings
 from ..database import get_db
 from ..models.client import Client
 from ..models.operator import OperatorRole
-from ..models.production_machine import ProductionMachine
+from ..models.production_machine import ProductionMachine, MachineOperationalStatus
 from ..models.requisition import (
     Requisition,
     RequisitionItem,
@@ -414,6 +414,45 @@ def _matches_emission_period(req: Requisition, start: date | None, end: date | N
 
 def _normalize_machine_name(value: object) -> str:
     return normalize_upper_required(value)
+
+
+def _find_destination_machine(
+    db: Session,
+    destination: str,
+    machine_name: str,
+) -> ProductionMachine | None:
+    normalized_destination = _canonical_destination(destination)
+    normalized_machine_name = _normalize_machine_name(machine_name)
+    if not normalized_destination or not normalized_machine_name:
+        return None
+
+    machines = (
+        db.query(ProductionMachine)
+        .filter(ProductionMachine.destination == normalized_destination)
+        .all()
+    )
+    for machine in machines:
+        if _normalize_machine_name(machine.name) == normalized_machine_name:
+            return machine
+    return None
+
+
+def _ensure_machine_accepts_production(
+    db: Session,
+    destination: str,
+    machine_name: str,
+) -> ProductionMachine:
+    machine = _find_destination_machine(db, destination, machine_name)
+    if not machine:
+        raise HTTPException(status_code=400, detail="A maquina de destino nao foi encontrada")
+
+    machine_status = getattr(machine.status, "value", machine.status)
+    if str(machine_status or "") == MachineOperationalStatus.MANUTENCAO.value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A maquina {machine_name} esta em manutencao e nao pode receber requisicoes",
+        )
+    return machine
 
 
 def _canonical_destination(value: object) -> str:
@@ -3856,6 +3895,7 @@ def create_production_split(
     machine_name = _normalize_machine_name(data.machine_name)
     if not machine_name:
         raise HTTPException(status_code=400, detail="Informe a maquina de destino")
+    _ensure_machine_accepts_production(db, normalized_destination, machine_name)
 
     operators = _clean_operator_names(data.operators)
     helpers = _clean_operator_names(data.helpers)
@@ -3970,6 +4010,7 @@ def update_production_split_status(
             raise HTTPException(status_code=400, detail="A parcela nao pode voltar para producao")
         if not machine_name:
             raise HTTPException(status_code=400, detail="Informe a maquina de destino")
+        _ensure_machine_accepts_production(db, normalized_destination, machine_name)
         operators = _clean_operator_names(prod_event.get("operators") or [])
         helpers = _clean_operator_names(prod_event.get("helpers") or [])
         if not operators:
@@ -4266,6 +4307,10 @@ def update_status(
                 normalized_destination,
                 req.id,
             )
+        if action == _PROD_STARTED:
+            machine_name = _normalize_machine_name(prod.get("machine"))
+            if machine_name:
+                _ensure_machine_accepts_production(db, normalized_destination, machine_name)
         _apply_production_transition(req, data)
     else:
         _apply_manual_status_transition(req, data.status)

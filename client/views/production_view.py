@@ -164,6 +164,16 @@ def _rgba(color: str, alpha: int) -> str:
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 
+def _blend(base_color: str, overlay_color: str, overlay_alpha: int) -> str:
+    base = QColor(base_color)
+    overlay = QColor(overlay_color)
+    alpha = max(0, min(255, int(overlay_alpha))) / 255.0
+    red = round(overlay.red() * alpha + base.red() * (1 - alpha))
+    green = round(overlay.green() * alpha + base.green() * (1 - alpha))
+    blue = round(overlay.blue() * alpha + base.blue() * (1 - alpha))
+    return f"#{red:02X}{green:02X}{blue:02X}"
+
+
 # ── Helpers de estilo para machine cards (centralizados para permitir
 # re-aplicação rápida em apply_theme sem recriar o widget). ───────────────────
 def _scoped_btn_qss(role: str, fn, s: float) -> str:
@@ -191,8 +201,9 @@ def _machine_title_style(s: float) -> str:
 def _machine_subtitle_style(s: float) -> str:
     return f"background:transparent; font-size:{max(7, int(8 * s))}pt;"
 
-def _machine_status_label_style(s: float) -> str:
-    return f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+def _machine_status_label_style(s: float, status_value: object = "") -> str:
+    color = theme.WARNING if _is_machine_in_maintenance(status_value) else theme.TEXT_MEDIUM
+    return f"background:transparent; color:{color}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
 
 def _machine_stat_title_style(s: float) -> str:
     return f"background:transparent; font-size:{max(6, int(7 * s))}pt; font-weight:700;"
@@ -337,6 +348,35 @@ def _machine_status_accent(status_value: object) -> str:
     if normalized == "manutencao":
         return theme.WARNING
     return theme.BORDER_COLOR
+
+
+def _is_machine_in_maintenance(machine_or_status: object) -> bool:
+    if isinstance(machine_or_status, dict):
+        value = machine_or_status.get("status")
+    else:
+        value = machine_or_status
+    return str(value or "").strip().casefold() == "manutencao"
+
+
+def _machine_card_style(scale: float, status_value: object) -> str:
+    radius = max(18, int(20 * scale))
+    if not _is_machine_in_maintenance(status_value):
+        return f"QFrame#productionCard {{ border-radius:{radius}px; }}"
+
+    start = _blend(theme.PANEL_CARD_BG_START, theme.WARNING, 36)
+    mid = _blend(theme.PANEL_CARD_BG_MID, theme.WARNING, 28)
+    end = _blend(theme.PANEL_CARD_BG_END, theme.WARNING, 18)
+    border = _rgba(theme.WARNING, 178)
+    border_hover = _rgba(theme.WARNING, 232)
+    return (
+        f"QFrame#productionCard {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {start}, stop:0.55 {mid}, stop:1 {end});"
+        f"  border:1px solid {border};"
+        f"  border-radius:{radius}px;"
+        f"}}"
+        f"QFrame#productionCard:hover {{ border-color:{border_hover}; }}"
+    )
 
 
 def _build_production_note(
@@ -920,7 +960,12 @@ class ProductionView(QWidget):
     def _build_machine_card(self, machine: dict) -> dict:
         s = self.scale
         meta = _destination_card_meta(self.destination) or {}
-        accent_color = meta.get("accent") or theme.PRIMARY
+        current_status = str(machine.get("status") or "funcionando")
+        accent_color = (
+            theme.WARNING
+            if _is_machine_in_maintenance(current_status)
+            else (meta.get("accent") or theme.PRIMARY)
+        )
 
         card = _make_card(
             s,
@@ -981,12 +1026,11 @@ class ProductionView(QWidget):
         status_row = QHBoxLayout()
         status_row.setSpacing(max(8, int(10 * s)))
         status_label = QLabel("Status da Máquina")
-        status_label.setStyleSheet(_machine_status_label_style(s))
+        status_label.setStyleSheet(_machine_status_label_style(s, current_status))
         status_label.setProperty("muted", "1")
         status_combo = QComboBox()
         for value, text in MACHINE_STATUS_OPTIONS:
             status_combo.addItem(text, value)
-        current_status = str(machine.get("status") or "funcionando")
         combo_index = max(0, status_combo.findData(current_status))
         status_combo.setCurrentIndex(combo_index)
         status_combo.setStyleSheet(_machine_combo_style(s, current_status))
@@ -1065,6 +1109,7 @@ class ProductionView(QWidget):
             ["PED", "CLIENTE", "VENDEDOR", "OPERADOR", "AJUDANTE", "INICIADO EM", "PESO(kg)"],
             stretch_columns={1, 2, 3, 4},
         )
+        card.setStyleSheet(_machine_card_style(s, current_status))
         table.setMinimumHeight(max(180, int(210 * s)))
         rows = [row for row in (machine.get("rows") or []) if isinstance(row, dict)]
         self._fill_machine_table(table, rows)
@@ -1121,11 +1166,18 @@ class ProductionView(QWidget):
         if not tw:
             # Card construído antes da refatoração — fallback seguro.
             return
-        accent_color = tw.get("accent_color") or theme.PRIMARY
+        machine_status = str((card_data.get("machine") or {}).get("status") or "funcionando")
+        accent_color = (
+            theme.WARNING
+            if _is_machine_in_maintenance(machine_status)
+            else (tw.get("accent_color") or theme.PRIMARY)
+        )
+        if card_data.get("card") is not None:
+            card_data["card"].setStyleSheet(_machine_card_style(s, machine_status))
         if tw.get("accent") is not None:
             tw["accent"].setStyleSheet(_machine_accent_style(accent_color, s))
         if tw.get("status_label") is not None:
-            tw["status_label"].setStyleSheet(_machine_status_label_style(s))
+            tw["status_label"].setStyleSheet(_machine_status_label_style(s, machine_status))
         if tw.get("status_combo") is not None:
             tw["status_combo"].setStyleSheet(_machine_combo_style(s, tw["status_combo"].currentData()))
         _apply_machine_card_button_styles(tw, s)
@@ -1688,8 +1740,18 @@ class ProductionView(QWidget):
         machine_names = [
             str(machine.get("name") or "").strip()
             for machine in self._machines_data
-            if machine.get("name") and str(machine.get("name") or "").strip() != excluded
+            if (
+                machine.get("name")
+                and str(machine.get("name") or "").strip() != excluded
+                and not _is_machine_in_maintenance(machine)
+            )
         ]
+        if not machine_names:
+            if excluded:
+                self._show_error("Nao ha outra maquina funcionando disponivel para este envio.")
+            else:
+                self._show_error("Nao ha maquinas funcionando cadastradas para este destino.")
+            return None
         if not machine_names:
             if excluded:
                 self._show_error("Não há outra máquina disponível para este envio.")
@@ -1743,6 +1805,12 @@ class ProductionView(QWidget):
         machine_name = str(machine.get("name") or "").strip()
         if not machine_name:
             self._show_error("A máquina selecionada não possui um nome válido.")
+            return
+
+        if _is_machine_in_maintenance(machine):
+            self._show_info(
+                f"A maquina {machine_name} esta em manutencao e nao pode receber requisicoes."
+            )
             return
 
         selected_team = self._pick_machine_operators(machine)
@@ -1846,9 +1914,21 @@ class ProductionView(QWidget):
             f"QPushButton:pressed {{ background:{theme.SELECTION_BG}; }}"
             f"QPushButton:disabled {{ background:{_rgba(theme.BORDER_COLOR, 54)}; color:{theme.TEXT_LIGHT}; border-color:{theme.BORDER_COLOR}; }}"
         )
+        maintenance_btn_style = (
+            f"QPushButton {{"
+            f"  background:{_blend(theme.CARD_BG, theme.WARNING, 18)}; color:{theme.TEXT_DARK}; text-align:left;"
+            f"  border:1px solid {_rgba(theme.WARNING, 150)}; border-radius:12px;"
+            f"  padding:12px 14px; font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+            f"}}"
+            f"QPushButton:disabled {{"
+            f"  background:{_blend(theme.CARD_BG, theme.WARNING, 26)}; color:{theme.WARNING};"
+            f"  border-color:{_rgba(theme.WARNING, 176)};"
+            f"}}"
+        )
         for machine in machines:
             machine_name = str(machine.get("name") or "").strip()
             operator_names, helper_names = _split_team_members(machine)
+            is_maintenance = _is_machine_in_maintenance(machine)
             status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
             operator_summary = ", ".join(operator_names) if operator_names else "Nenhum operador cadastrado"
             helper_summary = ", ".join(helper_names) if helper_names else "Nenhum ajudante cadastrado"
@@ -1859,12 +1939,14 @@ class ProductionView(QWidget):
                 f"Ajudantes: {helper_summary}"
             )
             btn.setMinimumHeight(max(78, int(92 * self.scale)))
-            btn.setStyleSheet(btn_style)
-            btn.setEnabled(bool(operator_names))
+            btn.setStyleSheet(maintenance_btn_style if is_maintenance else btn_style)
+            btn.setEnabled(bool(operator_names) and not is_maintenance)
             btn.clicked.connect(
                 lambda checked=False, current_machine=dict(machine): _select_machine(current_machine)
             )
-            if operator_names:
+            if is_maintenance:
+                btn.setToolTip("Esta maquina esta em manutencao e nao pode receber requisicoes.")
+            elif operator_names:
                 btn.setToolTip(f"Selecionar {machine_name}")
             else:
                 btn.setToolTip("Cadastre pelo menos um operador para liberar esta maquina.")
@@ -2104,6 +2186,11 @@ class ProductionView(QWidget):
         )
         if not target_machine_data:
             self._show_error("Nao foi possivel localizar a maquina de dobra selecionada.")
+            return
+        if _is_machine_in_maintenance(target_machine_data):
+            self._show_info(
+                f"A maquina {target_machine} esta em manutencao e nao pode receber requisicoes."
+            )
             return
 
         selected_team = self._pick_machine_operators(target_machine_data)
