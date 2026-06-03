@@ -37,6 +37,12 @@ def _resolve_email(code: str, email: str | None) -> str:
     return text or _auto_email(code)
 
 
+def _normalize_role_for_storage(role: Role | None) -> Role | None:
+    if role == Role.ENTREGAS:
+        return Role.ENTREGA
+    return role
+
+
 def _get_user_or_404(db: Session, user_id: int) -> User:
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -89,7 +95,7 @@ def create_user(
         name=(data.name or "").strip(),
         email=email,
         hashed_password=hash_password(password) if password else "",
-        role=data.role,
+        role=_normalize_role_for_storage(data.role),
         whatsapp=(data.whatsapp or "").strip() or None,
         sector=(data.sector or "").strip() or None,
         must_change_password=not bool(password),
@@ -201,7 +207,7 @@ def update_user(
     if "name" in update_data:
         user.name = (update_data["name"] or "").strip()
     if "role" in update_data and update_data["role"] is not None:
-        user.role = update_data["role"]
+        user.role = _normalize_role_for_storage(update_data["role"])
     if "whatsapp" in update_data:
         user.whatsapp = (update_data["whatsapp"] or "").strip() or None
     if "sector" in update_data:
