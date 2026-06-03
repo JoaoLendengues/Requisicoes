@@ -183,6 +183,7 @@ class RequisitionResponse(BaseModel):
     vendor_id: int
     vendor_name: Optional[str] = None
     vendor_code: Optional[str] = None
+    vendor_whatsapp: Optional[str] = None
     client_id: int
     client_code: Optional[str] = None
     client_name: Optional[str] = None

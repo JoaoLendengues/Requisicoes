@@ -634,6 +634,15 @@ class MainWindow(QMainWindow):
         # (campo canvas_json no payload de create/update). Não há mais uma
         # segunda chamada que pudesse falhar em silêncio: vai direto ao PDF.
         self.form_view.req_id = req["id"]
+        self.form_view._req_vendor_code = str(req.get("vendor_code") or "")
+        self.form_view._req_vendor_name = str(req.get("vendor_name") or "")
+        self.form_view._req_vendor_whatsapp = str(
+            req.get("vendor_whatsapp")
+            or (req.get("vendor") or {}).get("whatsapp")
+            or ""
+        )
+        self.form_view._refresh_header_vendor_label()
+        self.form_view._generate_qr()
         # Atualiza a versão carregada (trava otimista) com o updated_at recém
         # retornado, para que um próximo salvamento do mesmo usuário não conflite.
         self.form_view._loaded_updated_at = req.get("updated_at")
