@@ -572,6 +572,7 @@ def _draw_header(
     title_text = "REQUISI\u00c7\u00c3O"
     title_text_w = pdfmetrics.stringWidth(title_text, PDF_FONT_BOLD, 26)
     title_left = group_center - title_text_w / 2
+    vendor_title_anchor_x = title_left + pdfmetrics.stringWidth("REQU", PDF_FONT_BOLD, 26)
     _txt(pdf, title_text, group_center, y + h - 24, 26,
          C_BRAND, bold=True, align="center")
 
@@ -582,6 +583,7 @@ def _draw_header(
     vendor_w = max(group_w - date_w - meta_gap, group_w * 0.58)
     vendor_cx = group_center + (date_w / 2 + meta_gap / 2 + vendor_w / 2) - meta_shift
     vendor_font_size = _fit_font_size(vendor_name, PDF_FONT_BOLD, 10, vendor_w, min_size=7.0)
+    vendor_max_w = max(title_right - vendor_title_anchor_x, 40)
     emission_text_w = pdfmetrics.stringWidth(emission, PDF_FONT_BOLD, 10)
     date_cx = title_left + emission_text_w / 2
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
@@ -595,8 +597,8 @@ def _draw_header(
         color=C_TEXT_SOFT,
         max_w=date_w,
     )
-    _txt(pdf, vendor_name, vendor_cx, y + 30, vendor_font_size, C_TEXT, bold=True,
-         align="center", max_w=vendor_w)
+    _txt(pdf, vendor_name, vendor_title_anchor_x, y + 30, vendor_font_size, C_TEXT, bold=True,
+         align="left", max_w=vendor_max_w)
     _draw_centered_icon_label(
         pdf,
         vendor_cx,
