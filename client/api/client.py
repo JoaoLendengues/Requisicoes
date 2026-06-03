@@ -403,6 +403,19 @@ def update_delivery_date(req_id: int, delivery_date: str, reason: str) -> dict:
         ))
 
 
+def update_delivery_date_and_resend(req_id: int, delivery_date: str, reason: str) -> dict:
+    """Produção altera o prazo de entrega E reenvia para Aguardando Recebimento
+    numa unica transacao no servidor. Substitui o par
+    update_delivery_date + update_status que tinha race condition entre
+    as duas chamadas HTTP (production_view._update_delivery_date_and_waiting_receipt).
+    """
+    with _cli() as client:
+        return _check(client.patch(
+            f"/requisitions/{req_id}/delivery-date-and-resend",
+            json={"delivery_date": delivery_date, "reason": reason},
+        ))
+
+
 def update_delivery_schedule(req_id: int, delivery_date: str, reason: str) -> dict:
     with _cli() as client:
         return _check(client.patch(

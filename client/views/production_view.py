@@ -2222,9 +2222,10 @@ class ProductionView(QWidget):
         )
 
     def _update_delivery_date_and_waiting_receipt(self, req_id: int, new_date: str, reason: str) -> dict:
-        api.update_delivery_date(req_id, new_date, reason)
-        note = _build_production_note(PROD_SEND, self.destination, reason=reason)
-        return api.update_status(req_id, "aguardando_recebimento", note)
+        # Usa endpoint transacional novo (commit 884d995++) — antes eram 2
+        # chamadas HTTP sequenciais; se a segunda falhasse a req ficava em
+        # prazo_alterado quando deveria voltar a aguardando_recebimento.
+        return api.update_delivery_date_and_resend(req_id, new_date, reason)
 
     def _ask_delivery_date(self, req: dict) -> tuple[str, str] | None:
         dlg = QDialog(self)

@@ -4298,6 +4298,112 @@ def update_delivery_date(
     return _get_or_404(db, req_id)
 
 
+@router.patch("/{req_id}/delivery-date-and-resend", response_model=RequisitionResponse)
+def update_delivery_date_and_resend(
+    req_id: int,
+    data: DeliveryDateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Producao altera o prazo de entrega E reenvia a requisicao para a fila
+    de Aguardando Recebimento numa UNICA transacao.
+
+    Substitui a sequencia de 2 chamadas que o cliente fazia
+    (_update_delivery_date_and_waiting_receipt em production_view.py):
+      1) PATCH /delivery-date          -> status vira prazo_alterado
+      2) PATCH /status                 -> status vira aguardando_recebimento
+
+    Se a segunda chamada falhasse (rede, lock otimista, etc), a req ficava
+    em prazo_alterado quando deveria ter voltado para aguardando_recebimento.
+    Agora ambas operacoes acontecem no mesmo commit — atomicas.
+
+    Permissao: ADMIN, PRODUCAO, INDUSTRIA (igual ao /delivery-date original).
+    """
+    role = _role_key(current_user.role)
+    if role not in (Role.ADMIN.value, Role.PRODUCAO.value, Role.INDUSTRIA.value):
+        raise HTTPException(
+            status_code=403,
+            detail="Apenas a producao pode alterar o prazo e reenviar para producao",
+        )
+
+    req = _get_or_404(db, req_id)
+    if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FINALIZADO):
+        raise HTTPException(
+            status_code=400,
+            detail="Nao e possivel alterar o prazo de uma requisicao cancelada ou finalizada",
+        )
+
+    destination = _destination_for_role(role)
+    if destination and _current_production_destination(req) != destination:
+        raise HTTPException(
+            status_code=403,
+            detail="Sem permissao para alterar o prazo desta requisicao",
+        )
+
+    old_date = req.delivery_date
+    old_status = req.status
+    old_str = old_date.strftime("%d/%m/%Y") if old_date else "—"
+    new_str = data.delivery_date.strftime("%d/%m/%Y")
+
+    # Passo 1: alterar prazo + registrar prazo_alterado no historico
+    req.delivery_date = data.delivery_date
+    req.delivery_deadline_changed_at = datetime.utcnow()
+    req.delivery_deadline_change_reason = data.reason
+
+    note_change = f"Prazo alterado de {old_str} para {new_str}. Motivo: {data.reason}"
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        old_status=old_status,
+        new_status=RequisitionStatus.PRAZO_ALTERADO,
+        changed_by_id=current_user.id,
+        note=note_change,
+    ))
+
+    # Passo 2: reenviar para a fila de Aguardando Recebimento
+    req.status = RequisitionStatus.AGUARDANDO_RECEBIMENTO
+    req.finalized_at = None
+    req.production_machine = None
+
+    resend_target = destination or _current_production_destination(req) or ""
+    note_resend = _compose_production_note(_PROD_SEND, resend_target, reason=data.reason)
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        old_status=RequisitionStatus.PRAZO_ALTERADO,
+        new_status=RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+        changed_by_id=current_user.id,
+        note=note_resend,
+    ))
+
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "delivery_date": {"old": old_str, "new": new_str},
+            "motivo": data.reason,
+            "status_flow": "prazo_alterado -> aguardando_recebimento",
+        },
+    )
+
+    # NOTA: nao adicionamos entrada FATURADO no historico aqui — req ja foi
+    # faturada antes (esta voltando para producao, nao sendo enviada pela
+    # primeira vez). Mesma regra do bug fix em update_status (commit 884d995).
+
+    # Notifica vendedor: prazo alterado. Nao enviamos "faturado" pelo mesmo
+    # motivo (ja foi enviada). build_production_sent para a producao saber
+    # que a req voltou.
+    notifications = build_vendor_event(db, req, "prazo_alterado", data.reason)
+    notifications.extend(
+        build_production_sent(db, req, destination or _current_production_destination(req) or "")
+    )
+
+    db.commit()
+    push_all(notifications)
+    return _get_or_404(db, req_id)
+
+
 @router.patch("/{req_id}/delivery-schedule", response_model=RequisitionResponse)
 def update_delivery_schedule(
     req_id: int,
