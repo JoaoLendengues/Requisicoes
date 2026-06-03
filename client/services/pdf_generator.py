@@ -279,6 +279,16 @@ def _fit(text: str, font: str, size: float, max_w: float) -> str:
     return "..."
 
 
+def _fit_font_size(text: str, font: str, size: float, max_w: float, min_size: float = 6.0) -> float:
+    content = str(text or "").strip()
+    if not content or max_w <= 0:
+        return size
+    current = size
+    while current > min_size and pdfmetrics.stringWidth(content, font, current) > max_w:
+        current -= 0.25
+    return max(current, min_size)
+
+
 def _wrap_text(text: str, font: str, size: float, max_w: float, max_lines: int | None = None) -> list[str]:
     raw = str(text or "")
     if not raw:
@@ -564,8 +574,11 @@ def _draw_header(
 
     emission = _fmt_date(req.get("emission_date"), local_now().strftime("%d/%m/%Y"))
     meta_shift = min(10, group_w * 0.08)
-    date_cx = group_center - group_w * 0.25 - meta_shift
-    vendor_cx = group_center + group_w * 0.25 - meta_shift
+    meta_gap = 10
+    date_w = min(58, group_w * 0.26)
+    vendor_w = max(group_w - date_w - meta_gap, group_w * 0.58)
+    date_cx = group_center - (vendor_w / 2 + meta_gap / 2 + date_w / 2) - meta_shift
+    vendor_cx = group_center + (date_w / 2 + meta_gap / 2 + vendor_w / 2) - meta_shift
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
     _draw_centered_icon_label(
         pdf,
@@ -575,10 +588,11 @@ def _draw_header(
         icon_names=("DATA",),
         font_size=7,
         color=C_TEXT_SOFT,
-        max_w=group_w * 0.40,
+        max_w=date_w,
     )
-    _txt(pdf, vendor_name, vendor_cx, y + 30, 10, C_TEXT, bold=True,
-         align="center", max_w=group_w * 0.52)
+    vendor_font_size = _fit_font_size(vendor_name, PDF_FONT_BOLD, 10, vendor_w, min_size=7.0)
+    _txt(pdf, vendor_name, vendor_cx, y + 30, vendor_font_size, C_TEXT, bold=True,
+         align="center", max_w=vendor_w)
     _draw_centered_icon_label(
         pdf,
         vendor_cx,
@@ -587,7 +601,7 @@ def _draw_header(
         icon_names=("VENDEDOR",),
         font_size=7,
         color=C_TEXT_SOFT,
-        max_w=group_w * 0.52,
+        max_w=vendor_w,
     )
 
     ped_h = h * 0.68
