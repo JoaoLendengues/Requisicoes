@@ -168,13 +168,13 @@ class ItemTable(QWidget):
             # aparecer enquanto o usuario digita (antes do Enter).
             f"QTableWidget QLineEdit {{"
             f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
-            f"  border:1px solid {_rgba(theme.PANEL_BORDER_SOFT, 110)}; border-radius:2px;"
+            f"  border:none; border-radius:0px;"
             f"  padding:1px 4px; margin:0px;"
             f"  selection-background-color:{_rgba(theme.PANEL_NEON_PRIMARY, 18)};"
             f"  selection-color:{theme.PANEL_TEXT_PRIMARY};"
             f"}}"
             f"QTableWidget QLineEdit:focus {{"
-            f"  border:1px solid {_rgba(theme.PANEL_BORDER_SOFT, 132)}; outline:none;"
+            f"  border:none; outline:none;"
             f"}}"
         )
         self.table.viewport().setStyleSheet(f"background:{theme.PANEL_SURFACE_BG};")
