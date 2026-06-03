@@ -1130,6 +1130,8 @@ class DashboardView(QWidget):
     def _build_iar_detail_block(self, title: str, key: str) -> QWidget:
         s = self.scale
         wrapper = QFrame()
+        wrapper.setObjectName("iarDetailBlock")
+        wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         layout = QVBoxLayout(wrapper)
         layout.setContentsMargins(max(12, int(14 * s)), max(10, int(12 * s)), max(12, int(14 * s)), max(10, int(12 * s)))
         layout.setSpacing(max(4, int(5 * s)))
@@ -1159,15 +1161,17 @@ class DashboardView(QWidget):
         border_alpha = 186 if theme.is_dark else 142
         surface_alpha = 24 if theme.is_dark else 14
         block.setStyleSheet(
-            f"background:{_rgba(color, surface_alpha)};"
-            f"border:1px solid {_rgba(color, border_alpha)};"
-            f"border-radius:{max(14, int(16 * s))}px;"
+            f"QFrame#iarDetailBlock {{"
+            f"  background:{_rgba(color, surface_alpha)};"
+            f"  border:1px solid {_rgba(color, border_alpha)};"
+            f"  border-radius:{max(14, int(16 * s))}px;"
+            f"}}"
         )
         title_label.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; background:transparent; color:{color};"
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; background:transparent; border:none; color:{color};"
         )
         value_label.setStyleSheet(
-            f"font-size:{max(13, int(16 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:900; background:transparent; border:none; color:{theme.PANEL_TEXT_PRIMARY};"
         )
 
     def _build_metric_card(
