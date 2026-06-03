@@ -25,6 +25,8 @@ DISPLAY_MS   = 6_000   # tempo que o toast fica visível
 TOAST_WIDTH  = 360
 MARGIN       = 20      # margem do canto da tela
 _SLIDE_OVER  = 70      # deslocamento inicial fora do canto (entrada da direita)
+_DRAG_START_PX = 10
+_DRAG_DISMISS_RATIO = 0.28
 
 _ICONS: dict[str, str] = {
     "nova_requisicao":   "🏭",
@@ -107,6 +109,10 @@ class NotificationToast(QFrame):
         self._group:    QParallelAnimationGroup | None = None
         self._remaining = DISPLAY_MS
         self._type      = data.get("type", "")
+        self._rest_pos: QPoint | None = None
+        self._press_global_pos: QPoint | None = None
+        self._press_origin_pos: QPoint | None = None
+        self._dragging = False
 
         accent = _ACCENT.get(self._type, _DEFAULT_ACCENT)
         self._build(data, accent)
@@ -227,6 +233,7 @@ class NotificationToast(QFrame):
 
         end_pos   = QPoint(x, y - h)
         start_pos = QPoint(x + _SLIDE_OVER, y - h)
+        self._rest_pos = QPoint(end_pos)
 
         self.move(start_pos)
         self.show()
@@ -254,6 +261,22 @@ class NotificationToast(QFrame):
         self._remaining = DISPLAY_MS
         self._dismiss_timer.start(DISPLAY_MS)
 
+    def _pause_auto_dismiss(self):
+        remaining = self._dismiss_timer.remainingTime()
+        if remaining > 0:
+            self._remaining = remaining
+        self._dismiss_timer.stop()
+        if self._bar_anim is not None:
+            self._bar_anim.pause()
+
+    def _resume_auto_dismiss(self):
+        if self._bar_anim is not None:
+            self._bar_anim.resume()
+        if self._remaining > 100:
+            self._dismiss_timer.start(self._remaining)
+        else:
+            self._slide_out()
+
     def _slide_out(self):
         """Saída: desliza para a direita + fade out simultâneos."""
         self._dismiss_timer.stop()
@@ -266,7 +289,7 @@ class NotificationToast(QFrame):
 
         slide = QPropertyAnimation(self, b"pos")
         slide.setStartValue(cur)
-        slide.setEndValue(QPoint(cur.x() + _SLIDE_OVER + TOAST_WIDTH // 4, cur.y()))
+        slide.setEndValue(QPoint(cur.x() + _SLIDE_OVER + self.toast_width // 4, cur.y()))
         slide.setDuration(220)
         slide.setEasingCurve(QEasingCurve.Type.InCubic)
 
@@ -294,30 +317,80 @@ class NotificationToast(QFrame):
     # ── Hover: pausa e retomada ───────────────────────────────────────────────
 
     def enterEvent(self, event):
-        remaining = self._dismiss_timer.remainingTime()
-        if remaining > 0:
-            self._remaining = remaining
-        self._dismiss_timer.stop()
-        if self._bar_anim is not None:
-            self._bar_anim.pause()
+        self._pause_auto_dismiss()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        if self._bar_anim is not None:
-            self._bar_anim.resume()
-        if self._remaining > 100:
-            self._dismiss_timer.start(self._remaining)
-        else:
-            self._slide_out()
+        if not self._dragging:
+            self._resume_auto_dismiss()
         super().leaveEvent(event)
 
     # ── Interação ─────────────────────────────────────────────────────────────
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.action_clicked.emit(self._req_id)
-            self._slide_out()
+            self._pause_auto_dismiss()
+            if self._group:
+                self._group.stop()
+            self._press_global_pos = event.globalPosition().toPoint()
+            self._press_origin_pos = QPoint(self.pos())
+            self._dragging = False
+            event.accept()
+            return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._press_global_pos is None or self._press_origin_pos is None:
+            super().mouseMoveEvent(event)
+            return
+
+        delta = event.globalPosition().toPoint() - self._press_global_pos
+        if not self._dragging and delta.x() >= _DRAG_START_PX:
+            self._dragging = True
+
+        if self._dragging:
+            new_x = self._press_origin_pos.x() + max(0, delta.x())
+            self.move(new_x, self._press_origin_pos.y())
+            event.accept()
+            return
+
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() != Qt.MouseButton.LeftButton or self._press_origin_pos is None:
+            super().mouseReleaseEvent(event)
+            return
+
+        dismiss_threshold = int(self.toast_width * _DRAG_DISMISS_RATIO)
+        dragged_distance = max(0, self.pos().x() - self._press_origin_pos.x())
+        was_dragging = self._dragging
+
+        self._press_global_pos = None
+        self._press_origin_pos = None
+        self._dragging = False
+
+        if was_dragging and dragged_distance >= dismiss_threshold:
+            self._slide_out()
+            event.accept()
+            return
+
+        if was_dragging and self._rest_pos is not None:
+            restore = QPropertyAnimation(self, b"pos")
+            restore.setStartValue(self.pos())
+            restore.setEndValue(self._rest_pos)
+            restore.setDuration(180)
+            restore.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+            self._group = QParallelAnimationGroup(self)
+            self._group.addAnimation(restore)
+            self._group.finished.connect(self._resume_auto_dismiss)
+            self._group.start()
+            event.accept()
+            return
+
+        self.action_clicked.emit(self._req_id)
+        self._slide_out()
+        event.accept()
 
 
 # ── Gerenciador sequencial ────────────────────────────────────────────────────
