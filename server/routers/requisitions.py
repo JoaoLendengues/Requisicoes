@@ -2389,14 +2389,20 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
     for req in reqs:
         delivered_at = getattr(req, "delivered_at", None)
         status_value = getattr(req.status, "value", req.status)
+        current_status = str(status_value or "")
         production_status = _history_production_status(req)
-        effective_status = str(status_value or "")
+        effective_status = current_status
         if effective_status not in (
             RequisitionStatus.PRAZO_ALTERADO.value,
             RequisitionStatus.FINALIZADO.value,
             RequisitionStatus.CANCELADA.value,
         ):
             effective_status = str(production_status or effective_status)
+        visible_pending_status = (
+            RequisitionStatus.EM_PRODUCAO.value
+            if current_status == RequisitionStatus.EM_PRODUCAO.value
+            else effective_status
+        )
 
         # A tela de Entregas lista pedidos marcados para entrega que estejam
         # em produção, faturados, com prazo alterado ou já entregues.
@@ -2405,7 +2411,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
             or req.status == RequisitionStatus.CANCELADA
             or (
                 delivered_at is None
-                and effective_status not in (
+                and visible_pending_status not in (
                     RequisitionStatus.EM_PRODUCAO.value,
                     RequisitionStatus.FINALIZADO.value,
                     RequisitionStatus.PRAZO_ALTERADO.value,
@@ -2429,7 +2435,7 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
         if delivered_at is None and deadline_changed_at is not None:
             changed_delivery_deadlines += 1
 
-        display_status = effective_status
+        display_status = visible_pending_status
         if delivered_at is not None:
             display_status = "entregue"
         elif (
