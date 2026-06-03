@@ -245,6 +245,7 @@ def _apply_machine_card_button_styles(theme_widgets: dict, scale: float) -> None
         "status_button": _flat_secondary_btn_style(scale),
         "btn_open": _flat_secondary_btn_style(scale),
         "btn_finish": _primary_action_btn_style(scale),
+        "btn_send_to_dobra": _primary_action_btn_style(scale),
         "btn_prazo": _flat_secondary_btn_style(scale),
         "btn_cancel": _danger_action_btn_style(scale),
     }
@@ -997,15 +998,21 @@ class ProductionView(QWidget):
         btn_open = QPushButton("Abrir")
         machine_name = str(machine.get("name") or "").strip()
         is_dobra_source = _is_ar_dobra_source_machine(self.destination, machine_name)
-        btn_finish = QPushButton("Enviar para dobra" if is_dobra_source else "Finalizar")
+        btn_finish = QPushButton("Finalizar")
+        btn_send_to_dobra = QPushButton("Enviar para dobra") if is_dobra_source else None
         btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
-        for btn in (btn_open, btn_finish, btn_prazo, btn_cancel):
+        action_buttons = [btn_open, btn_finish, btn_prazo, btn_cancel]
+        if btn_send_to_dobra is not None:
+            action_buttons.insert(2, btn_send_to_dobra)
+        for btn in action_buttons:
             btn.setFixedHeight(max(34, int(38 * s)))
         # Property-based: 4 botões × N cards usavam setStyleSheet individual.
         # Agora o estilo vem do QSS view-level (1 chamada cobre todos).
         btn_open.setProperty("productionBtn", "secondary")
         btn_finish.setProperty("productionBtn", "primary")
+        if btn_send_to_dobra is not None:
+            btn_send_to_dobra.setProperty("productionBtn", "primary")
         btn_prazo.setProperty("productionBtn", "secondary")
         btn_cancel.setProperty("productionBtn", "danger")
         _apply_machine_card_button_styles(
@@ -1013,20 +1020,27 @@ class ProductionView(QWidget):
                 "status_button": status_button,
                 "btn_open": btn_open,
                 "btn_finish": btn_finish,
+                "btn_send_to_dobra": btn_send_to_dobra,
                 "btn_prazo": btn_prazo,
                 "btn_cancel": btn_cancel,
             },
             s,
         )
         btn_open.clicked.connect(lambda: self._open_selected_machine(int(machine["id"])))
-        if is_dobra_source:
-            btn_finish.clicked.connect(lambda: self._send_selected_machine_to_dobra(int(machine["id"])))
-        else:
-            btn_finish.clicked.connect(lambda: self._finish_selected_machine(int(machine["id"])))
+        btn_finish.clicked.connect(lambda: self._finish_selected_machine(int(machine["id"])))
+        if btn_send_to_dobra is not None:
+            btn_send_to_dobra.clicked.connect(lambda: self._send_selected_machine_to_dobra(int(machine["id"])))
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(int(machine["id"])))
         btn_cancel.clicked.connect(lambda: self._return_selected_machine_to_queue(int(machine["id"])))
         actions.addWidget(btn_open)
-        actions.addWidget(btn_finish)
+        if btn_send_to_dobra is not None:
+            dobra_actions = QVBoxLayout()
+            dobra_actions.setSpacing(max(6, int(8 * s)))
+            dobra_actions.addWidget(btn_finish)
+            dobra_actions.addWidget(btn_send_to_dobra)
+            actions.addLayout(dobra_actions)
+        else:
+            actions.addWidget(btn_finish)
         actions.addWidget(btn_prazo)
         actions.addWidget(btn_cancel)
         layout.addLayout(actions)
@@ -1061,6 +1075,7 @@ class ProductionView(QWidget):
                 "status_button": status_button,
                 "btn_open": btn_open,
                 "btn_finish": btn_finish,
+                "btn_send_to_dobra": btn_send_to_dobra,
                 "btn_prazo": btn_prazo,
                 "btn_cancel": btn_cancel,
                 "stat_titles": _stat_titles,
