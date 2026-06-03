@@ -65,6 +65,7 @@ from ..dependencies import (
     get_current_user,
     require_admin,
     require_creator,
+    require_delivery_handler,
     require_manager_or_admin,
     require_order_center_access,
 )
@@ -440,7 +441,11 @@ def _role_key(role: Role | str) -> str:
 
 
 def _is_industry_role(role: Role | str) -> bool:
-    return _role_key(role) in (Role.INDUSTRIA.value, Role.ENTREGA.value)
+    # NOTA (Jun/2026): ENTREGA foi removida desse agrupamento. Antes, ENTREGA
+    # era tratada como INDUSTRIA, fazendo com que o perfil so visse pedidos
+    # com destino Pinheiro Industria — invisivel para pedidos da A&R.
+    # Agora ENTREGA tem caso explicito em _can_view_requisition/_can_edit_requisition.
+    return _role_key(role) == Role.INDUSTRIA.value
 
 
 def _destination_for_role(role: Role | str) -> str | None:
@@ -1231,6 +1236,10 @@ def _can_view_requisition(req: Requisition, current_user: User) -> bool:
         return True
     if role == Role.VENDEDOR.value:
         return req.vendor_id == current_user.id
+    # ENTREGA ve qualquer requisicao marcada como entrega, independente
+    # do destino de producao (A&R ou Pinheiro Industria).
+    if role == Role.ENTREGA.value:
+        return bool(req.entrega)
 
     destination = _destination_for_role(role)
     if destination:
@@ -1251,6 +1260,10 @@ def _can_edit_requisition(req: Requisition, current_user: User) -> bool:
         return True
     if req.vendor_id == current_user.id:
         return True
+    # ENTREGA pode editar campos de entrega (mark-delivered, cancel-delivered,
+    # delivery-schedule) em qualquer requisicao marcada como entrega.
+    if role == Role.ENTREGA.value:
+        return bool(req.entrega)
 
     destination = _destination_for_role(role)
     if destination:
@@ -4274,7 +4287,7 @@ def update_delivery_schedule(
     req_id: int,
     data: DeliveryDateUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_creator),
+    current_user: User = Depends(require_delivery_handler),
 ):
     req = _get_or_404(db, req_id)
     if not req.entrega:
@@ -4335,7 +4348,7 @@ def update_delivery_schedule(
 def mark_delivery_delivered(
     req_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_creator),
+    current_user: User = Depends(require_delivery_handler),
 ):
     req = _get_or_404(db, req_id)
     if not req.entrega:
@@ -4393,7 +4406,7 @@ def cancel_delivery_delivered(
     req_id: int,
     data: DeliveryCancellationUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_creator),
+    current_user: User = Depends(require_delivery_handler),
 ):
     req = _get_or_404(db, req_id)
     if not req.entrega:
