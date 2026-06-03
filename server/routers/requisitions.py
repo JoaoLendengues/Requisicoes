@@ -4138,7 +4138,21 @@ def update_status(
     # esta fechado/pago. O status corrente vai para AGUARDANDO_RECEBIMENTO
     # (para a producao agir), mas a timeline preserva uma entrada FATURADO
     # logo apos AGUARDANDO_RECEBIMENTO marcando esse ponto.
-    if prod and prod["action"] == _PROD_SEND and new_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+    #
+    # IMPORTANTE: so registramos na PRIMEIRA vez que a req e enviada para
+    # producao. Em fluxos de reabertura (cancelada -> aguardando, ou alteracao
+    # de prazo + reenvio) a req ja tem entrada FATURADO no historico e nao
+    # devemos duplicar — o pedido nao foi "faturado de novo".
+    is_first_send_to_production = (
+        prod is not None
+        and prod["action"] == _PROD_SEND
+        and new_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO
+        and not any(
+            entry.new_status == RequisitionStatus.FATURADO
+            for entry in (req.status_history or [])
+        )
+    )
+    if is_first_send_to_production:
         db.add(StatusHistory(
             requisition_id=req.id,
             old_status=new_status,
@@ -4153,8 +4167,10 @@ def update_status(
         action = prod["action"]
         if action == _PROD_SEND:
             notifications.extend(build_production_sent(db, req, prod["target"]))
-            # Notifica o vendedor que o pedido foi faturado (registro)
-            notifications.extend(build_vendor_event(db, req, "faturado"))
+            # Notifica o vendedor "Pedido Faturado" SO na primeira vez.
+            # Em reaberturas, a notificacao seria duplicada/confusa.
+            if is_first_send_to_production:
+                notifications.extend(build_vendor_event(db, req, "faturado"))
         elif action in (_PROD_RECEIVED, _PROD_STARTED):
             notifications.extend(build_vendor_event(db, req, "em_producao"))
         elif action in (_PROD_QUEUED, _PROD_RETURNED_QUEUE):
