@@ -143,11 +143,11 @@ class _DashboardHoverTooltip(QFrame):
             self._scale = scale
 
         s = self._scale
-        max_width = max(210, int(290 * s))
+        max_width = max(250, int(340 * s))
         radius = max(10, int(12 * s))
-        padding_v = max(7, int(8 * s))
-        padding_h = max(10, int(12 * s))
-        font_size = max(7, int(8 * s))
+        padding_v = max(8, int(10 * s))
+        padding_h = max(12, int(14 * s))
+        font_size = max(8, int(9 * s))
 
         self._label.setMaximumWidth(max_width)
         self._label.setStyleSheet(
