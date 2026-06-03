@@ -72,3 +72,29 @@ def require_creator(current_user: User = Depends(get_current_user)) -> User:
             detail="Sem permissão para criar ou editar requisições",
         )
     return current_user
+
+
+def require_delivery_handler(current_user: User = Depends(get_current_user)) -> User:
+    """Roles autorizados a manipular o ciclo de entrega de uma requisicao:
+    marcar como entregue, cancelar entrega, alterar prazo de entrega.
+
+    Por que separado de require_creator:
+      - ENTREGA precisa marcar entregas concluidas (funcao operacional dela)
+        mas nao deve criar requisicoes do zero.
+      - VENDEDOR pode marcar entrega do proprio pedido (caso comum em fluxos
+        compactos) — _can_edit_requisition ja filtra ownership.
+
+    Roles excluidos: PRODUCAO e INDUSTRIA — eles fabricam/produzem, mas a
+    etapa de entrega e responsabilidade do setor de Entrega/Vendedor.
+    """
+    if current_user.role not in (
+        Role.ADMIN,
+        Role.GERENTE,
+        Role.VENDEDOR,
+        Role.ENTREGA,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sem permissão para manipular entregas",
+        )
+    return current_user
