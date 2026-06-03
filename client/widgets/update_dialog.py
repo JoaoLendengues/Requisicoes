@@ -13,10 +13,11 @@ UpdateAvailableDialog:
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize
-from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QUrl, QThread, Signal
+from PySide6.QtGui import QColor, QFont, QPalette, QPixmap, QImage, QTextDocument
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -36,6 +37,38 @@ from PySide6.QtWidgets import (
 from ..core import theme
 from ..updater import UpdateDownloader, UpdateInstaller, get_update_log_path
 from .. import version as _version_mod
+
+
+# Regex para extrair imagens do Markdown: ![alt](url) ou ![alt](url "title")
+_MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+
+
+class _ImageFetcher(QThread):
+    """Baixa uma imagem em background sem bloquear a UI.
+
+    Signal `loaded(url, QImage)` ao concluir com sucesso, `failed(url)` em erro.
+    Tem timeout de 5s — release com imagem inacessivel nao trava o dialog.
+    """
+    loaded = Signal(str, QImage)
+    failed = Signal(str)
+
+    def __init__(self, url: str, parent=None):
+        super().__init__(parent)
+        self._url = url
+
+    def run(self):
+        try:
+            import requests
+            resp = requests.get(self._url, timeout=5, stream=True)
+            resp.raise_for_status()
+            data = resp.content
+            img = QImage()
+            if img.loadFromData(data):
+                self.loaded.emit(self._url, img)
+            else:
+                self.failed.emit(self._url)
+        except Exception:
+            self.failed.emit(self._url)
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -74,8 +107,119 @@ class UpdateAvailableDialog(QDialog):
         self.update_info = update_info
         self._downloader: UpdateDownloader | None = None
         self._downloading = False
+        # Hero image: primeira imagem do Markdown vira banner no header (se houver).
+        # Demais imagens permanecem inline no changelog (baixadas em background).
+        self._hero_image_url: str | None = None
+        self._inline_image_urls: list[str] = []
+        self._image_fetchers: list[_ImageFetcher] = []
+        self._loaded_images: dict[str, QImage] = {}
+        self._extract_images()
         self._setup_ui()
         self._animate_in()
+        # Inicia downloads das imagens APOS UI montada para nao bloquear setup
+        QTimer.singleShot(0, self._start_image_downloads)
+
+    def _extract_images(self) -> None:
+        """Detecta imagens no Markdown e separa: hero (primeira) vs inline (resto).
+
+        A hero so vira banner se for a primeira coisa significativa do Markdown
+        (linhas iniciais antes de qualquer texto/header). Caso contrario, todas
+        ficam inline no changelog.
+        """
+        md = (self.update_info.get("changelog") or "").lstrip()
+        if not md:
+            return
+        # A primeira imagem nas primeiras linhas vira hero
+        first_lines = md.split("\n\n", 1)[0]  # primeiro paragrafo
+        first_match = _MD_IMAGE_RE.search(first_lines)
+        all_matches = list(_MD_IMAGE_RE.finditer(md))
+
+        if first_match and all_matches and all_matches[0].start() == first_match.start():
+            # Primeira imagem aparece logo no inicio → vira hero
+            self._hero_image_url = first_match.group(2)
+            # Remove a hero do markdown body
+            self.update_info = dict(self.update_info)
+            self.update_info["changelog"] = md.replace(first_match.group(0), "", 1).lstrip()
+            self._inline_image_urls = [m.group(2) for m in all_matches[1:]]
+        else:
+            self._inline_image_urls = [m.group(2) for m in all_matches]
+
+    def _start_image_downloads(self) -> None:
+        """Dispara downloads em background para hero + inline."""
+        urls = []
+        if self._hero_image_url:
+            urls.append(self._hero_image_url)
+        urls.extend(self._inline_image_urls)
+        for url in urls:
+            fetcher = _ImageFetcher(url, parent=self)
+            fetcher.loaded.connect(self._on_image_loaded)
+            fetcher.failed.connect(self._on_image_failed)
+            fetcher.start()
+            self._image_fetchers.append(fetcher)
+
+    def _on_image_loaded(self, url: str, image: QImage) -> None:
+        self._loaded_images[url] = image
+        if url == self._hero_image_url:
+            self._apply_hero_image(image)
+        else:
+            self._apply_inline_image(url, image)
+
+    def _on_image_failed(self, url: str) -> None:
+        # Em falha silenciosa, deixa o alt-text do Markdown aparecer no lugar
+        pass
+
+    def _apply_hero_image(self, image: QImage) -> None:
+        """Substitui o placeholder do hero pela imagem carregada."""
+        if not hasattr(self, "_hero_label") or self._hero_label is None:
+            return
+        # Redimensiona mantendo aspect ratio, largura máxima do dialog
+        target_width = self.width() - 0  # full width
+        pix = QPixmap.fromImage(image)
+        # Crop/scale para banner 640x180 (proporcao 3.55:1)
+        scaled = pix.scaled(
+            target_width, 180,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        # Center-crop horizontal se ficou mais largo que target
+        if scaled.width() > target_width:
+            x = (scaled.width() - target_width) // 2
+            scaled = scaled.copy(x, 0, target_width, scaled.height())
+        self._hero_label.setPixmap(scaled)
+        self._hero_label.setVisible(True)
+
+    def _apply_inline_image(self, url: str, image: QImage) -> None:
+        """Registra a imagem como resource do QTextDocument E re-renderiza
+        o Markdown garantindo que a referencia seja resolvida."""
+        if not hasattr(self, "_notes") or self._notes is None:
+            return
+        # Limita largura para nao quebrar layout
+        max_w = 540
+        if image.width() > max_w:
+            image = image.scaledToWidth(max_w, Qt.TransformationMode.SmoothTransformation)
+
+        doc = self._notes.document()
+        # Adiciona a resource antes de re-renderizar o Markdown.
+        # setMarkdown() preserva resources adicionadas antes via addResource.
+        doc.addResource(
+            QTextDocument.ResourceType.ImageResource,
+            QUrl(url),
+            image,
+        )
+        # IMPORTANTE: re-injetar o CSS porque setMarkdown recria documento.
+        doc.setDefaultStyleSheet(self._markdown_css())
+        # Re-renderiza Markdown — agora a resource ja esta registrada.
+        current_md = self.update_info.get("changelog") or ""
+        self._notes.setMarkdown(current_md)
+        # Re-adiciona todas as outras imagens ja carregadas (setMarkdown perde resources antigos)
+        for prev_url, prev_img in self._loaded_images.items():
+            if prev_url == url or prev_url == self._hero_image_url:
+                continue
+            doc.addResource(
+                QTextDocument.ResourceType.ImageResource,
+                QUrl(prev_url),
+                prev_img,
+            )
 
     # ── Construção da UI ──────────────────────────────────────────────────────
 
@@ -86,7 +230,9 @@ class UpdateAvailableDialog(QDialog):
             | Qt.WindowType.WindowTitleHint
             | Qt.WindowType.WindowCloseButtonHint
         )
-        self.setFixedSize(640, 580)
+        # Janela mais alta se houver hero image (banner 180px)
+        height = 760 if self._hero_image_url else 580
+        self.setFixedSize(640, height)
         self.setModal(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setObjectName("updateDialog")
@@ -104,6 +250,28 @@ class UpdateAvailableDialog(QDialog):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+
+        # Hero banner (so se hover hero_image_url; comeca oculto, aparece ao carregar)
+        if self._hero_image_url:
+            self._hero_label = QLabel()
+            self._hero_label.setFixedHeight(180)
+            self._hero_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._hero_label.setScaledContents(False)
+            self._hero_label.setStyleSheet(
+                f"background: {_rgba(theme.PANEL_SURFACE_BG, 200)};"
+                f"border-bottom: 1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)};"
+            )
+            # Placeholder enquanto carrega
+            placeholder = QLabel("🖼  Carregando imagem da release...")
+            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            placeholder.setStyleSheet(
+                f"background: transparent; color: {theme.PANEL_TEXT_MUTED};"
+                f"font-size: 10pt; font-style: italic;"
+            )
+            self._hero_label.setText("🖼  Carregando imagem...")
+            root.addWidget(self._hero_label)
+        else:
+            self._hero_label = None
 
         root.addWidget(self._build_header())
         root.addWidget(self._build_body(), 1)
