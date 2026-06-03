@@ -204,6 +204,7 @@ class UpdateChecker(QThread):
                 "download_url": selected_asset.get("browser_download_url"),
                 "asset_name": selected_asset.get("name", ""),
                 "asset_kind": "portable" if selected_asset is portable_asset else "installer",
+                "asset_size": int(selected_asset.get("size") or 0),
                 "changelog": data.get("body", "Nova versão disponível."),
                 "release_date": data.get("published_at", ""),
                 "release_name": data.get("name", ""),
