@@ -744,6 +744,8 @@ class DashboardView(QWidget):
         self.iar_value_label: QLabel | None = None
         self.iar_status_chip: QLabel | None = None
         self.iar_counts_label: QLabel | None = None
+        self.iar_detail_blocks: dict[str, QFrame] = {}
+        self.iar_detail_title_labels: dict[str, QLabel] = {}
         self.iar_detail_value_labels: dict[str, QLabel] = {}
         self.people_period_combo: QComboBox | None = None
         self.people_destination_combo: QComboBox | None = None
@@ -1131,29 +1133,45 @@ class DashboardView(QWidget):
     def _build_iar_detail_block(self, title: str, key: str) -> QWidget:
         s = self.scale
         wrapper = QFrame()
-        wrapper.setStyleSheet(
-            f"background:{theme.PANEL_SURFACE_BG}; border:1px solid {_rgba(theme.PANEL_BORDER_SOFT, 84)}; border-radius:{max(14, int(16 * s))}px;"
-        )
         layout = QVBoxLayout(wrapper)
         layout.setContentsMargins(max(12, int(14 * s)), max(10, int(12 * s)), max(12, int(14 * s)), max(10, int(12 * s)))
         layout.setSpacing(max(4, int(5 * s)))
 
         title_label = QLabel(title)
-        title_label.setStyleSheet(
-            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
         tooltip_text = _IAR_TOOLTIP_TEXTS.get(key, "")
         if tooltip_text:
             title_label.setToolTip(tooltip_text)
             wrapper.setToolTip(tooltip_text)
         value_label = QLabel("0,00%")
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        self._apply_iar_detail_block_style(wrapper, title_label, value_label, theme.PANEL_NEON_PRIMARY)
+        self.iar_detail_blocks[key] = wrapper
+        self.iar_detail_title_labels[key] = title_label
+        self.iar_detail_value_labels[key] = value_label
+        return wrapper
+
+    def _apply_iar_detail_block_style(
+        self,
+        block: QFrame,
+        title_label: QLabel,
+        value_label: QLabel,
+        color: str,
+    ) -> None:
+        s = self.scale
+        border_alpha = 186 if theme.is_dark else 142
+        surface_alpha = 24 if theme.is_dark else 14
+        block.setStyleSheet(
+            f"background:{_rgba(color, surface_alpha)};"
+            f"border:1px solid {_rgba(color, border_alpha)};"
+            f"border-radius:{max(14, int(16 * s))}px;"
+        )
+        title_label.setStyleSheet(
+            f"font-size:{max(8, int(9 * s))}pt; font-weight:800; background:transparent; color:{color};"
+        )
         value_label.setStyleSheet(
             f"font-size:{max(13, int(16 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
         )
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
-        self.iar_detail_value_labels[key] = value_label
-        return wrapper
 
     def _build_metric_card(
         self,
@@ -1476,6 +1494,15 @@ class DashboardView(QWidget):
             )
         for key, label in self.iar_detail_value_labels.items():
             label.setText(_format_percentage_precise(data.get(key)))
+            block = self.iar_detail_blocks.get(key)
+            title_label = self.iar_detail_title_labels.get(key)
+            if block is not None and title_label is not None:
+                self._apply_iar_detail_block_style(
+                    block,
+                    title_label,
+                    label,
+                    _iar_color(data.get(key)),
+                )
         self._apply_iar_visuals(iar_percent)
 
     def _build_comparison_insights_body(self) -> QWidget:
