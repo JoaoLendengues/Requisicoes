@@ -56,23 +56,17 @@ _ACCENT_HOVER: dict[str, str] = {
 }
 
 _ICONS.update({
-    "aguardando_faturamento": "🧾",
     "faturado": "💰",
-    "faturamento_atrasado": "⏰",
     "machine_status": "🛠️",
 })
 
 _ACCENT.update({
-    "aguardando_faturamento": "#D97706",
     "faturado": "#16A34A",
-    "faturamento_atrasado": "#DC2626",
     "machine_status": "#2563EB",
 })
 
 _ACCENT_HOVER.update({
-    "aguardando_faturamento": "#B45309",
     "faturado": "#15803D",
-    "faturamento_atrasado": "#B91C1C",
     "machine_status": "#1D4ED8",
 })
 

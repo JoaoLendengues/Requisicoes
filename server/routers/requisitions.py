@@ -853,20 +853,9 @@ def _apply_manual_status_transition(
         req.production_machine = None
         return
 
-    if new_status == RequisitionStatus.FATURADO:
-        if req.status != RequisitionStatus.AGUARDANDO_FATURAMENTO:
-            raise HTTPException(
-                status_code=400,
-                detail="Somente pedidos aguardando faturamento podem ser marcados como faturados",
-            )
-        req.status = RequisitionStatus.FATURADO
-        return
-
-    if req.status == RequisitionStatus.AGUARDANDO_FATURAMENTO:
-        raise HTTPException(
-            status_code=400,
-            detail="Pedidos aguardando faturamento só podem ser marcados como faturados",
-        )
+    # NOTA: a branch que validava transicao para AGUARDANDO_FATURAMENTO foi
+    # removida — esse status foi descontinuado (Jun/2026). Para FATURADO, a
+    # semantica sera redefinida no Commit 2 (registro do envio para producao).
 
     if req.status == RequisitionStatus.FATURADO:
         raise HTTPException(
@@ -1206,10 +1195,7 @@ def _history_production_status(req: Requisition) -> str:
     current_status = str(getattr(req.status, "value", req.status) or "")
     if req.status == RequisitionStatus.CANCELADA:
         return current_status
-    if req.status in (
-        RequisitionStatus.AGUARDANDO_FATURAMENTO,
-        RequisitionStatus.FATURADO,
-    ):
+    if req.status == RequisitionStatus.FATURADO:
         return current_status
 
     latest_event = _latest_production_event(
@@ -1846,7 +1832,6 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
 
     waiting_rows: list[OrderCenterItemResponse] = []
     production_rows: list[OrderCenterItemResponse] = []
-    pending_invoice_rows: list[OrderCenterItemResponse] = []
     billed_rows: list[OrderCenterItemResponse] = []
     canceled_rows: list[OrderCenterItemResponse] = []
     delayed_rows: list[OrderCenterItemResponse] = []
@@ -2096,10 +2081,9 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         latest_finished = _latest_finished_cycle(req)
         if latest_finished:
             production_durations.append(latest_finished["production_time_seconds"])
-        if req.status in (RequisitionStatus.AGUARDANDO_FATURAMENTO, RequisitionStatus.FATURADO) and latest_finished:
+        if req.status == RequisitionStatus.FATURADO and latest_finished:
             invoiced_at = (
                 _latest_status_changed_at(req, RequisitionStatus.FATURADO)
-                or _latest_status_changed_at(req, RequisitionStatus.AGUARDANDO_FATURAMENTO)
                 or latest_finished["finished_at"]
                 or sent_to_production_at
             )
@@ -2178,7 +2162,6 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
 
     waiting_rows.sort(key=lambda item: item.waiting_minutes or 0, reverse=True)
     production_rows.sort(key=lambda item: item.received_at or datetime.min, reverse=True)
-    pending_invoice_rows.sort(key=lambda item: item.finished_at or datetime.min)
     billed_rows.sort(key=lambda item: item.invoiced_at or datetime.min, reverse=True)
     canceled_rows.sort(key=lambda item: item.canceled_at or datetime.min, reverse=True)
     delayed_rows.sort(key=lambda item: item.delay_days or 0, reverse=True)
@@ -2192,7 +2175,6 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         stats=OrderCenterStatsResponse(
             pedidos_aguardando_recebimento=len(waiting_rows),
             pedidos_em_producao=len(production_rows),
-            pedidos_aguardando_faturamento=len(pending_invoice_rows),
             pedidos_faturados=len(billed_rows),
             pedidos_cancelados=len(canceled_rows),
             pedidos_atrasados=len(delayed_rows),
@@ -2200,7 +2182,6 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         ),
         aguardando_recebimento=waiting_rows[:100],
         em_producao=production_rows[:100],
-        aguardando_faturamento=pending_invoice_rows[:100],
         faturados=billed_rows[:100],
         cancelados=canceled_rows[:100],
         atrasados=delayed_rows[:100],

@@ -153,10 +153,6 @@ def notify_vendor(
             "Produção Finalizada ✅",
             f"PED #{req.ped_number} foi finalizada em produção.",
         ),
-        "aguardando_faturamento": (
-            "Pedido Aguardando Faturamento",
-            f"PED #{req.ped_number} finalizado em produção e aguardando faturamento.",
-        ),
         "faturado": (
             "Pedido Faturado",
             f"PED #{req.ped_number} foi marcado como faturado.",
@@ -221,82 +217,13 @@ def notify_machine_status_change(
     ]
 
 
+# NOTA: ensure_pending_invoice_notifications foi removida (Jun/2026).
+# O status AGUARDANDO_FATURAMENTO foi descontinuado — pedidos passam direto
+# de produção para FATURADO/FINALIZADO, então não há mais "espera por
+# faturamento" para alertar. Stub mantido para compatibilidade temporaria
+# com chamadores que ainda nao foram atualizados.
 def ensure_pending_invoice_notifications(db: Session) -> list[Notification]:
-    threshold_days = get_pending_invoice_alert_days()
-    cutoff = datetime.utcnow() - timedelta(days=threshold_days)
-    managers = (
-        db.query(User)
-        .filter(User.role == Role.GERENTE, User.is_active == True)
-        .all()
-    )
-    if not managers:
-        return []
-
-    requisitions = (
-        db.query(Requisition)
-        .options(
-            selectinload(Requisition.status_history),
-            selectinload(Requisition.client),
-        )
-        .filter(Requisition.status == RequisitionStatus.AGUARDANDO_FATURAMENTO)
-        .all()
-    )
-    if not requisitions:
-        return []
-
-    manager_ids = [manager.id for manager in managers]
-    requisition_ids = [req.id for req in requisitions]
-    existing_pairs = {
-        (int(user_id), int(req_id))
-        for user_id, req_id in (
-            db.query(Notification.user_id, Notification.requisition_id)
-            .filter(
-                Notification.type == "faturamento_atrasado",
-                Notification.user_id.in_(manager_ids),
-                Notification.requisition_id.in_(requisition_ids),
-            )
-            .all()
-        )
-        if user_id is not None and req_id is not None
-    }
-
-    notifications: list[Notification] = []
-    now = datetime.utcnow()
-    for req in requisitions:
-        waiting_since = (
-            _latest_status_changed_at(req, RequisitionStatus.AGUARDANDO_FATURAMENTO)
-            or req.updated_at
-            or req.created_at
-        )
-        if waiting_since is None or waiting_since > cutoff:
-            continue
-
-        waiting_days = max(
-            threshold_days,
-            int((now - waiting_since).total_seconds() // 86_400),
-        )
-        title = "Pedido sem faturamento"
-        message = (
-            f"PED #{req.ped_number} - {req.client_name or 'CLIENTE'} "
-            f"aguarda faturamento há {waiting_days} dia(s)."
-        )
-        for manager in managers:
-            pair = (manager.id, req.id)
-            if pair in existing_pairs:
-                continue
-            notifications.append(
-                _create(
-                    db,
-                    manager.id,
-                    "faturamento_atrasado",
-                    title,
-                    message,
-                    req.id,
-                )
-            )
-            existing_pairs.add(pair)
-
-    return notifications
+    return []
 
 
 _DEADLINE_OPEN_STATUSES = (
@@ -305,7 +232,6 @@ _DEADLINE_OPEN_STATUSES = (
     RequisitionStatus.AGUARDANDO_RECEBIMENTO,
     RequisitionStatus.AGUARDANDO_NA_FILA,
     RequisitionStatus.EM_PRODUCAO,
-    RequisitionStatus.AGUARDANDO_FATURAMENTO,
 )
 
 

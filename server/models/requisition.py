@@ -14,7 +14,6 @@ class RequisitionStatus(str, enum.Enum):
     PRAZO_ALTERADO = "prazo_alterado"
     AGUARDANDO_RECEBIMENTO = "aguardando_recebimento"
     AGUARDANDO_NA_FILA = "aguardando_na_fila"
-    AGUARDANDO_FATURAMENTO = "aguardando_faturamento"
     EM_PRODUCAO  = "em_producao"
     FATURADO     = "faturado"
     CANCELADA    = "cancelada"
