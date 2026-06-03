@@ -577,8 +577,15 @@ def _draw_header(
     meta_gap = 10
     date_w = min(58, group_w * 0.26)
     vendor_w = max(group_w - date_w - meta_gap, group_w * 0.58)
-    date_cx = group_center - (vendor_w / 2 + meta_gap / 2 + date_w / 2) - meta_shift + 8
     vendor_cx = group_center + (date_w / 2 + meta_gap / 2 + vendor_w / 2) - meta_shift
+    vendor_font_size = _fit_font_size(vendor_name, PDF_FONT_BOLD, 10, vendor_w, min_size=7.0)
+    fitted_vendor_name = _fit(vendor_name, PDF_FONT_BOLD, vendor_font_size, vendor_w)
+    vendor_text_w = pdfmetrics.stringWidth(fitted_vendor_name, PDF_FONT_BOLD, vendor_font_size)
+    emission_text_w = pdfmetrics.stringWidth(emission, PDF_FONT_BOLD, 10)
+    packed_meta_gap = 12
+    base_date_cx = group_center - (vendor_w / 2 + meta_gap / 2 + date_w / 2) - meta_shift + 8
+    packed_date_cx = vendor_cx - vendor_text_w / 2 - packed_meta_gap - emission_text_w / 2
+    date_cx = max(base_date_cx, packed_date_cx)
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
     _draw_centered_icon_label(
         pdf,
@@ -590,7 +597,6 @@ def _draw_header(
         color=C_TEXT_SOFT,
         max_w=date_w,
     )
-    vendor_font_size = _fit_font_size(vendor_name, PDF_FONT_BOLD, 10, vendor_w, min_size=7.0)
     _txt(pdf, vendor_name, vendor_cx, y + 30, vendor_font_size, C_TEXT, bold=True,
          align="center", max_w=vendor_w)
     _draw_centered_icon_label(
