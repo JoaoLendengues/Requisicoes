@@ -161,20 +161,20 @@ class ItemTable(QWidget):
             f"  padding:6px 5px; border-bottom:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 24)};"
             f"}}"
             f"QTableWidget::item:alternate {{ background:{theme.PANEL_SURFACE_ALT}; color:{theme.PANEL_TEXT_PRIMARY}; }}"
-            f"QTableWidget::item:selected {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 56)}; color:{theme.PANEL_TEXT_PRIMARY}; }}"
+            f"QTableWidget::item:selected {{ background:{_rgba(theme.PANEL_NEON_PRIMARY, 16)}; color:{theme.PANEL_TEXT_PRIMARY}; }}"
             # Editor temporario da celula: o QLineEdit global tem padding e
             # border-radius generosos que empurram o texto para fora da area
             # visivel da celula durante a edicao. Aqui resetamos para o texto
             # aparecer enquanto o usuario digita (antes do Enter).
             f"QTableWidget QLineEdit {{"
             f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
-            f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 68)}; border-radius:2px;"
-            f"  padding:2px 4px; margin:0px;"
-            f"  selection-background-color:{_rgba(theme.PANEL_NEON_PRIMARY, 42)};"
+            f"  border:1px solid {_rgba(theme.PANEL_BORDER_SOFT, 110)}; border-radius:2px;"
+            f"  padding:1px 4px; margin:0px;"
+            f"  selection-background-color:{_rgba(theme.PANEL_NEON_PRIMARY, 18)};"
             f"  selection-color:{theme.PANEL_TEXT_PRIMARY};"
             f"}}"
             f"QTableWidget QLineEdit:focus {{"
-            f"  border:1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 86)}; outline:none;"
+            f"  border:1px solid {_rgba(theme.PANEL_BORDER_SOFT, 132)}; outline:none;"
             f"}}"
         )
         self.table.viewport().setStyleSheet(f"background:{theme.PANEL_SURFACE_BG};")
