@@ -1984,38 +1984,65 @@ class RequisitionForm(QWidget):
 
         layout.addStretch()
 
+        meta_wrap = QWidget()
+        meta_wrap.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        meta_row = QHBoxLayout(meta_wrap)
+        meta_row.setContentsMargins(0, 0, 0, 0)
+        meta_row.setSpacing(max(18, int(22 * s)))
+        meta_row.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+
+        def _build_meta_column(title_widget: QLabel, value_widget: QWidget, min_width: int, *, expanding: bool = False) -> QWidget:
+            col = QWidget()
+            col.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+            col.setMinimumWidth(min_width)
+            col.setSizePolicy(
+                QSizePolicy.Policy.Expanding if expanding else QSizePolicy.Policy.Fixed,
+                QSizePolicy.Policy.Preferred,
+            )
+            col_layout = QVBoxLayout(col)
+            col_layout.setContentsMargins(0, 0, 0, 0)
+            col_layout.setSpacing(max(4, int(5 * s)))
+            col_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+            col_layout.addWidget(title_widget, 0, Qt.AlignmentFlag.AlignLeft)
+            col_layout.addWidget(value_widget, 0, Qt.AlignmentFlag.AlignLeft)
+            return col
+
         # Data
-        date_col = QVBoxLayout()
-        date_col.setSpacing(0)
-        date_col.addWidget(_header_meta_label("DATA", s))
+        date_label = _header_meta_label("DATA", s)
         self.lbl_date = _header_meta_value_label(date.today().strftime("%d/%m/%Y"), s)
-        date_col.addWidget(self.lbl_date)
-        layout.addLayout(date_col)
+        self.lbl_date.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        meta_row.addWidget(
+            _build_meta_column(date_label, self.lbl_date, max(92, int(108 * s))),
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
 
         # Vendedor
-        vend_col = QVBoxLayout()
-        vend_col.setSpacing(0)
-        vend_col.addWidget(_header_meta_label("VENDEDOR", s))
+        vend_label = _header_meta_label("VENDEDOR", s)
         self.lbl_vendor = _header_meta_value_label(session.user_name.upper(), s)
-        vend_col.addWidget(self.lbl_vendor)
-        layout.addLayout(vend_col)
+        self.lbl_vendor.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        meta_row.addWidget(
+            _build_meta_column(vend_label, self.lbl_vendor, max(150, int(200 * s)), expanding=True),
+            1,
+            Qt.AlignmentFlag.AlignTop,
+        )
 
         # Status
-        status_col = QVBoxLayout()
-        status_col.setSpacing(0)
-        status_col.addWidget(_header_meta_label("STATUS", s))
+        status_label = _header_meta_label("STATUS", s)
         self.status_badge = StatusBadge("em_andamento", s)
-        status_col.addWidget(self.status_badge)
-        layout.addLayout(status_col)
+        self.status_badge.setMinimumWidth(max(112, int(126 * s)))
+        meta_row.addWidget(
+            _build_meta_column(status_label, self.status_badge, max(112, int(126 * s))),
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
 
         # PED
-        ped_col = QVBoxLayout()
-        ped_col.setSpacing(0)
-        ped_col.addWidget(_header_meta_label("PED", s))
+        ped_label = _header_meta_label("PED", s)
         self.input_ped = QLineEdit()
         self.input_ped.setPlaceholderText("Nº pedido")
-        self._ped_min_width = max(80, int(100*s))
-        self._ped_max_width = max(180, int(240*s))
+        self._ped_min_width = max(112, int(126 * s))
+        self._ped_max_width = max(190, int(250 * s))
         self.input_ped.setFixedWidth(self._ped_min_width)
         self.input_ped.setFixedHeight(max(34, int(40*s)))
         self.input_ped.setStyleSheet(_header_ped_input_style(s))
@@ -2036,8 +2063,12 @@ class RequisitionForm(QWidget):
 
         self.input_ped.textChanged.connect(_on_ped_changed)
         _resize_ped_field_width()
-        ped_col.addWidget(self.input_ped)
-        layout.addLayout(ped_col)
+        meta_row.addWidget(
+            _build_meta_column(ped_label, self.input_ped, self._ped_min_width),
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
+        layout.addWidget(meta_wrap, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
 
         # Coluna de ações redondas: "?" (guia) em cima, lupa (buscar) embaixo
         sz_g = max(24, int(28 * s))
