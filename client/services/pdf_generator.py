@@ -577,7 +577,7 @@ def _draw_header(
     meta_gap = 10
     date_w = min(58, group_w * 0.26)
     vendor_w = max(group_w - date_w - meta_gap, group_w * 0.58)
-    date_cx = group_center - (vendor_w / 2 + meta_gap / 2 + date_w / 2) - meta_shift
+    date_cx = group_center - (vendor_w / 2 + meta_gap / 2 + date_w / 2) - meta_shift + 8
     vendor_cx = group_center + (date_w / 2 + meta_gap / 2 + vendor_w / 2) - meta_shift
     _txt(pdf, emission, date_cx, y + 30, 10, C_TEXT, bold=True, align="center")
     _draw_centered_icon_label(
