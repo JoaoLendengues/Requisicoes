@@ -22,7 +22,7 @@ _LIGHT: dict = {
     "SIDEBAR_BG":        "#0F3D6E",
     "SIDEBAR_HOVER":     "#16508F",
     "SIDEBAR_ACTIVE":    "#1E5FA8",
-    "SIDEBAR_INDICATOR": "#22D3EE",
+    "SIDEBAR_INDICATOR": "#2563EB",
     "FOOTER_BG":         "#0F3D6E",
 
     # Área de conteúdo
@@ -32,16 +32,16 @@ _LIGHT: dict = {
     "SURFACE_SOFT":      "#EFF6FF",
 
     # Primária
-    "PRIMARY":           "#0F5BD7",
-    "PRIMARY_HOVER":     "#0284C7",
-    "PRIMARY_LIGHT":     "#38BDF8",
+    "PRIMARY":           "#1D4ED8",
+    "PRIMARY_HOVER":     "#2563EB",
+    "PRIMARY_LIGHT":     "#60A5FA",
 
     # Bordas / tabelas
     "BORDER_COLOR":      "#C8D9EC",
     "TABLE_HEADER_BG":   "#154E86",
     "TABLE_ALT_ROW":     "#F3F8FF",
     "TABLE_BORDER":      "#C8D9EC",
-    "SELECTION_BG":      "#DBEEFF",
+    "SELECTION_BG":      "#DBEAFE",
 
     # Texto
     "TEXT_DARK":         "#102033",
@@ -57,13 +57,13 @@ _LIGHT: dict = {
 
     # Status de requisição
     "STATUS_COLORS": {
-        "em_andamento":           "#38BDF8",
+        "em_andamento":           "#60A5FA",
         "rascunho":               "#94A3B8",
         "prazo_alterado":         "#A855F7",
         "entregue":               "#22C55E",
         "aguardando_recebimento": "#F59E0B",
         "aguardando_na_fila":     "#D97706",
-        "em_producao":            "#0F5BD7",
+        "em_producao":            "#1D4ED8",
         "faturado":               "#16A34A",
         "finalizado":             "#10B981",
         "cancelada":              "#E11D48",
@@ -76,7 +76,7 @@ _LIGHT: dict = {
     "PANEL_BORDER_SOFT":     "#C5D7EB",
     "PANEL_TEXT_PRIMARY":    "#102033",
     "PANEL_TEXT_MUTED":      "#61758E",
-    "PANEL_NEON_PRIMARY":    "#0EA5E9",
+    "PANEL_NEON_PRIMARY":    "#2563EB",
     "PANEL_NEON_SECONDARY":  "#F43F5E",
     "PANEL_NEON_TERTIARY":   "#84CC16",
     "PANEL_TABLE_HEADER_START": "#123E6F",
@@ -113,7 +113,7 @@ _DARK: dict = {
     "SIDEBAR_BG":        "#08111F",
     "SIDEBAR_HOVER":     "#0E1B2D",
     "SIDEBAR_ACTIVE":    "#13304A",
-    "SIDEBAR_INDICATOR": "#22D3EE",
+    "SIDEBAR_INDICATOR": "#3B82F6",
     "FOOTER_BG":         "#08111F",
 
     # Área de conteúdo
@@ -123,16 +123,16 @@ _DARK: dict = {
     "SURFACE_SOFT":      "#10203A",
 
     # Primária
-    "PRIMARY":           "#22D3EE",
-    "PRIMARY_HOVER":     "#67E8F9",
-    "PRIMARY_LIGHT":     "#A5F3FC",
+    "PRIMARY":           "#3B82F6",
+    "PRIMARY_HOVER":     "#60A5FA",
+    "PRIMARY_LIGHT":     "#93C5FD",
 
     # Bordas / tabelas
     "BORDER_COLOR":      "#24364F",
     "TABLE_HEADER_BG":   "#1C3B63",
     "TABLE_ALT_ROW":     "#10203A",
     "TABLE_BORDER":      "#24364F",
-    "SELECTION_BG":      "#133452",
+    "SELECTION_BG":      "#173B63",
 
     # Texto
     "TEXT_DARK":         "#F8FAFC",
@@ -148,13 +148,13 @@ _DARK: dict = {
 
     # Status de requisição
     "STATUS_COLORS": {
-        "em_andamento":           "#67E8F9",
+        "em_andamento":           "#60A5FA",
         "rascunho":               "#94A3B8",
         "prazo_alterado":         "#C084FC",
         "entregue":               "#4ADE80",
         "aguardando_recebimento": "#FBBF24",
         "aguardando_na_fila":     "#F59E0B",
-        "em_producao":            "#22D3EE",
+        "em_producao":            "#3B82F6",
         "faturado":               "#4ADE80",
         "finalizado":             "#34D399",
         "cancelada":              "#FB7185",
@@ -167,7 +167,7 @@ _DARK: dict = {
     "PANEL_BORDER_SOFT":     "#24364F",
     "PANEL_TEXT_PRIMARY":    "#F8FAFC",
     "PANEL_TEXT_MUTED":      "#93A4BD",
-    "PANEL_NEON_PRIMARY":    "#22D3EE",
+    "PANEL_NEON_PRIMARY":    "#3B82F6",
     "PANEL_NEON_SECONDARY":  "#FB7185",
     "PANEL_NEON_TERTIARY":   "#A3E635",
     "PANEL_TABLE_HEADER_START": "#12233E",
