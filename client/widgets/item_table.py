@@ -72,6 +72,7 @@ UPPERCASE_COLS = {
     CHAPA_COL,
     TIPO_COL,
 }
+WRAPPED_COLS = {PRODUCT_NAME_COL}
 
 
 class ItemTable(QWidget):
@@ -97,13 +98,18 @@ class ItemTable(QWidget):
 
         self.table = _ItemGridTable(10, len(COLUMNS), self)
         self.table.setHorizontalHeaderLabels(COLUMNS)
+        self.table.setWordWrap(True)
+        self.table.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.verticalHeader().setMinimumSectionSize(max(32, int(36 * self.scale)))
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         self.table.setAlternatingRowColors(True)
         self.table.setTabKeyNavigation(True)
         self.table.horizontalHeader().setSectionResizeMode(
             PRODUCT_NAME_COL, QHeaderView.ResizeMode.Stretch
         )
+        self.table.horizontalHeader().sectionResized.connect(self._on_section_resized)
         self._apply_table_stylesheet()
         self._apply_table_palette()
 
@@ -207,6 +213,28 @@ class ItemTable(QWidget):
         self.btn_add.setStyleSheet(_secondary_btn_style(s))
         self.btn_clear_selected.setStyleSheet(_secondary_btn_style(s))
 
+    def _apply_item_presentation(self, item: QTableWidgetItem | None) -> None:
+        if item is None:
+            return
+        if item.column() in WRAPPED_COLS:
+            item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            return
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    def _refresh_row_height(self, row: int) -> None:
+        if 0 <= row < self.table.rowCount():
+            self.table.resizeRowToContents(row)
+
+    def _refresh_all_row_heights(self) -> None:
+        for row in range(self.table.rowCount()):
+            self._refresh_row_height(row)
+
+    def _on_section_resized(self, logical_index: int, _old_size: int, _new_size: int) -> None:
+        # A coluna de produto usa quebra de linha e precisa recalcular a altura
+        # sempre que a largura muda.
+        if logical_index in WRAPPED_COLS:
+            self._refresh_all_row_heights()
+
     def _default_position(self, row: int) -> str:
         return POSITIONS[row] if row < len(POSITIONS) else f"#{row + 1}"
 
@@ -221,7 +249,7 @@ class ItemTable(QWidget):
         font = item.font()
         font.setBold(True)
         item.setFont(font)
-        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._apply_item_presentation(item)
         self.table.setItem(row, POSITION_COL, item)
 
     def _clear_row(self, row: int):
@@ -232,11 +260,12 @@ class ItemTable(QWidget):
         pos_item = self.table.item(row, POSITION_COL)
         if pos_item is not None:
             pos_item.setText(pos_item.text().strip().upper() or self._default_position(row))
-            pos_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._apply_item_presentation(pos_item)
         else:
             self._set_position_item(row)
 
         self.table.blockSignals(False)
+        self._refresh_row_height(row)
         self._recalculate_total()
 
     def _clear_selected_row(self):
@@ -249,24 +278,27 @@ class ItemTable(QWidget):
         row = self.table.rowCount()
         self.table.insertRow(row)
         self._set_position_item(row)
+        self._refresh_row_height(row)
 
     def _ensure_cell(self, row: int, col: int) -> QTableWidgetItem:
         item = self.table.item(row, col)
         if item is None:
             item = QTableWidgetItem("")
             self.table.setItem(row, col, item)
+        self._apply_item_presentation(item)
         return item
 
     def _on_item_changed(self, item: QTableWidgetItem):
         row = item.row()
         col = item.column()
+        self._apply_item_presentation(item)
 
         if col == POSITION_COL:
             text = normalize_upper_text(item.text()).strip() or self._default_position(row)
             self.table.blockSignals(True)
             item.setText(text)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.blockSignals(False)
+            self._refresh_row_height(row)
             return
 
         if col in UPPERCASE_COLS:
@@ -281,9 +313,13 @@ class ItemTable(QWidget):
             self.table.blockSignals(True)
             self._ensure_cell(row, PRODUCT_NAME_COL).setText("")
             self.table.blockSignals(False)
+            self._refresh_row_height(row)
             if code:
                 self.product_lookup_requested.emit(row, code)
             return
+
+        if col == PRODUCT_NAME_COL:
+            self._refresh_row_height(row)
 
         if col == WEIGHT_COL:
             self._recalculate_total()
@@ -317,6 +353,7 @@ class ItemTable(QWidget):
         self._ensure_cell(row, PRODUCT_CODE_COL).setText(normalize_upper_text(product.get("code", "")))
         self._ensure_cell(row, PRODUCT_NAME_COL).setText(normalize_upper_text(product.get("name", "")))
         self.table.blockSignals(False)
+        self._refresh_row_height(row)
 
     def get_items(self) -> list[dict]:
         items = []
@@ -369,7 +406,12 @@ class ItemTable(QWidget):
                 QTableWidgetItem(format_weight_kg(weight, fallback="") if weight not in (None, "") else ""),
             )
 
+        for row in range(self.table.rowCount()):
+            for col in range(self.table.columnCount()):
+                self._apply_item_presentation(self.table.item(row, col))
+
         self.table.blockSignals(False)
+        self._refresh_all_row_heights()
         self._recalculate_total()
 
     def _cell_text(self, row: int, col: int) -> str:
