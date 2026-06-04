@@ -19,10 +19,12 @@ from PySide6.QtCore import (
     Qt, QPointF, QRect, QRectF, Signal, QEvent,
     QByteArray, QBuffer, QIODevice, QMimeData, QUrl,
     QPropertyAnimation, QEasingCurve, QTimer, QParallelAnimationGroup,
+    QVariantAnimation,
 )
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPainterPathStroker, QPen, QBrush,
     QPixmap, QKeySequence, QAction, QCursor, QTransform, QGuiApplication,
+    QRegion,
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QToolBar, QGraphicsScene,
@@ -4093,25 +4095,30 @@ class DrawingCanvas(QWidget):
         return QRect(x, y, final_w, final_h)
 
     def _animate_toolbar_open(self):
-        """Abre a toolbar com animação de gaveta (geometry) + stagger nas seções.
+        """Abre a toolbar com efeito de gaveta usando MASK (clipping) animada.
 
-        Animamos `geometry` (não `maximumHeight`) porque o overlay NÃO está em
-        um layout — ele é posicionado via move()/setGeometry(). Mudar
-        maximumHeight num widget fora de layout não dispara reflow, então
-        anims de maximumHeight não tinham efeito visível (bug reportado).
+        Por que mask e não geometry: animar geometry redimensiona o widget,
+        e o QVBoxLayout interno tenta reorganizar os 3 children a cada
+        frame com altura insuficiente → botões ficam comprimidos/cortados
+        durante a anim e ficam visualmente sumidos no fim.
+
+        Mask resolve isso: o widget JÁ tem altura final desde o início
+        (layout interno organiza tudo certo), e a mask QRegion crescente
+        só CORTA visualmente o que está fora. Resultado: gaveta abrindo
+        com o conteúdo aparecendo intacto e correto.
         """
         overlay = self._toolbar_overlay
         toggle_btn = self._toolbar_toggle_btn
         effects = self._toolbar_section_effects
 
-        # Opacity inicial 0 em todas as seções (evita flash).
         for eff in effects:
             eff.setOpacity(0.0)
 
         target = self._toolbar_open_target_rect()
-        start = QRect(target.x(), target.y(), target.width(), 0)
-
-        overlay.setGeometry(start)
+        # Posiciona o widget JÁ no tamanho final (layout faz placement correto).
+        overlay.setGeometry(target)
+        # Mask começa em 0 — nada visível ainda.
+        overlay.setMask(QRegion(0, 0, target.width(), 1))
         overlay.setVisible(True)
         overlay.raise_()
 
@@ -4119,14 +4126,22 @@ class DrawingCanvas(QWidget):
         SECTION_DUR_MS = 220
         last_section_end = (len(effects) - 1) * SECTION_STEP_MS + SECTION_DUR_MS
 
-        # === Animação de gaveta (geometry: altura 0 → final) ===
-        geo_anim = QPropertyAnimation(overlay, b"geometry", self)
-        geo_anim.setDuration(last_section_end)
-        geo_anim.setStartValue(start)
-        geo_anim.setEndValue(target)
-        geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        # === Animação da MASK (gaveta abrindo) ===
+        mask_anim = QVariantAnimation(self)
+        mask_anim.setDuration(last_section_end)
+        mask_anim.setStartValue(0)
+        mask_anim.setEndValue(target.height())
+        mask_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
-        # === Stagger das seções (opacity 0 → 1 em cascata) ===
+        def _update_mask(h):
+            try:
+                overlay.setMask(QRegion(0, 0, target.width(), max(1, int(h))))
+            except Exception:
+                pass
+
+        mask_anim.valueChanged.connect(_update_mask)
+
+        # === Stagger das seções (opacity 0 → 1) ===
         section_anims = []
         for i, eff in enumerate(effects):
             anim = QPropertyAnimation(eff, b"opacity", self)
@@ -4138,30 +4153,29 @@ class DrawingCanvas(QWidget):
             section_anims.append(anim)
 
         def _on_finished():
-            overlay.setGeometry(target)  # garante geo exata
+            # Remove mask totalmente pra não cortar conteúdo futuro.
+            overlay.clearMask()
             for eff in effects:
                 eff.setOpacity(1.0)
             self._toolbar_anim_in_progress = False
             toggle_btn.setText(self._toolbar_toggle_text(True))
             toggle_btn.setChecked(True)
 
-        geo_anim.finished.connect(_on_finished)
+        mask_anim.finished.connect(_on_finished)
 
-        self._toolbar_anim_height = geo_anim
+        self._toolbar_anim_height = mask_anim
         self._toolbar_anim_sections = section_anims
         self._toolbar_anim_in_progress = True
-        geo_anim.start()
+        mask_anim.start()
 
     def _animate_toolbar_close(self):
-        """Fecha com stagger reverso nas seções + geometry colapsando."""
+        """Fecha com stagger reverso nas seções + mask colapsando."""
         overlay = self._toolbar_overlay
         toggle_btn = self._toolbar_toggle_btn
         effects = self._toolbar_section_effects
 
         current_geo = overlay.geometry()
-        target_collapsed = QRect(
-            current_geo.x(), current_geo.y(), current_geo.width(), 0
-        )
+        full_h = current_geo.height()
 
         # === Stagger reverso nas seções ===
         section_anims = []
@@ -4176,26 +4190,34 @@ class DrawingCanvas(QWidget):
             QTimer.singleShot(delay, anim.start)
             section_anims.append(anim)
 
-        # === Gaveta fechando (geometry: altura atual → 0), começa após 80ms ===
-        geo_anim = QPropertyAnimation(overlay, b"geometry", self)
-        geo_anim.setDuration(240)
-        geo_anim.setStartValue(current_geo)
-        geo_anim.setEndValue(target_collapsed)
-        geo_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+        # === Mask colapsando (gaveta fechando) ===
+        mask_anim = QVariantAnimation(self)
+        mask_anim.setDuration(240)
+        mask_anim.setStartValue(full_h)
+        mask_anim.setEndValue(0)
+        mask_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+
+        def _update_mask(h):
+            try:
+                overlay.setMask(QRegion(0, 0, current_geo.width(), max(1, int(h))))
+            except Exception:
+                pass
+
+        mask_anim.valueChanged.connect(_update_mask)
 
         def _on_finished():
             overlay.setVisible(False)
-            # Restaura geometry pra estado "fechado" no rect alvo (limpo).
+            overlay.clearMask()
             for eff in effects:
                 eff.setOpacity(1.0)
             self._toolbar_anim_in_progress = False
             toggle_btn.setText(self._toolbar_toggle_text(False))
             toggle_btn.setChecked(False)
 
-        geo_anim.finished.connect(_on_finished)
-        QTimer.singleShot(80, geo_anim.start)
+        mask_anim.finished.connect(_on_finished)
+        QTimer.singleShot(80, mask_anim.start)
 
-        self._toolbar_anim_height = geo_anim
+        self._toolbar_anim_height = mask_anim
         self._toolbar_anim_sections = section_anims
         self._toolbar_anim_in_progress = True
 
