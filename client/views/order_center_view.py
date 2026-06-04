@@ -11,6 +11,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QFontMetrics, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -1278,48 +1280,102 @@ class OrderCenterView(QWidget):
         ped_number = str(row.get("ped_number") or "").strip() or "sem PED"
         destination = str(row.get("destination") or "").strip()
 
-        box = QMessageBox(self)
-        box.setWindowTitle("Retornar Status")
-        box.setIcon(QMessageBox.Icon.Question)
-        box.setText(f"Como deseja retornar o pedido {ped_number}?")
-        if destination:
-            box.setInformativeText(f"Destino de produção registrado: {destination}.")
-        else:
-            box.setInformativeText(
-                "Este pedido não possui destino de produção registrado para voltar em aguardando recebimento."
-            )
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Retornar Status")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
 
-        btn_edit = box.addButton("Nova Requisição", QMessageBox.ButtonRole.AcceptRole)
-        btn_receipt = box.addButton("Aguardando Recebimento", QMessageBox.ButtonRole.ActionRole)
-        btn_close = box.addButton("Fechar", QMessageBox.ButtonRole.RejectRole)
-        apply_message_box_theme(box)
-        # Ajusta as larguras pelo texto real para evitar truncamento em qualquer escala.
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(max(10, int(12 * self.scale)))
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(max(12, int(14 * self.scale)))
+
+        icon_label = QLabel()
+        icon_pix = self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion).pixmap(
+            max(40, int(48 * self.scale)),
+            max(40, int(48 * self.scale)),
+        )
+        icon_label.setPixmap(icon_pix)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        top_row.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignTop)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(max(6, int(7 * self.scale)))
+        title_lbl = QLabel(f"Como deseja retornar o pedido {ped_number}?")
+        title_lbl.setWordWrap(True)
+        title_lbl.setStyleSheet(
+            f"background:transparent; font-size:{max(9, int(10 * self.scale))}pt; font-weight:700;"
+        )
+        text_col.addWidget(title_lbl)
+
+        info_text = (
+            f"Destino de produção registrado: {destination}."
+            if destination
+            else "Este pedido não possui destino de produção registrado para voltar em aguardando recebimento."
+        )
+        info_lbl = QLabel(info_text)
+        info_lbl.setWordWrap(True)
+        info_lbl.setStyleSheet(
+            f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;"
+        )
+        text_col.addWidget(info_lbl)
+        top_row.addLayout(text_col, 1)
+        layout.addLayout(top_row)
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(max(10, int(12 * self.scale)))
+
+        btn_edit = QPushButton("Nova Requisição")
+        btn_edit.setStyleSheet(theme.primary_btn_style(self.scale))
+        btn_receipt = QPushButton("Aguardando Recebimento")
+        btn_receipt.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_close = QPushButton("Fechar")
+        btn_close.setStyleSheet(theme.secondary_btn_style(self.scale))
+
         metrics = QFontMetrics(btn_edit.font())
-        horizontal_padding = max(60, int(72 * self.scale))
-        btn_edit_w = max(220, metrics.horizontalAdvance(btn_edit.text()) + horizontal_padding)
-        btn_receipt_w = max(280, metrics.horizontalAdvance(btn_receipt.text()) + horizontal_padding)
-        btn_close_w = max(160, metrics.horizontalAdvance(btn_close.text()) + horizontal_padding)
-        btn_height = max(46, int(54 * self.scale))
-        btn_edit.setMinimumWidth(btn_edit_w)
-        btn_receipt.setMinimumWidth(btn_receipt_w)
-        btn_close.setMinimumWidth(btn_close_w)
-        btn_edit.setMinimumHeight(btn_height)
-        btn_receipt.setMinimumHeight(btn_height)
-        btn_close.setMinimumHeight(btn_height)
-        row_padding = max(120, int(144 * self.scale))
-        box.setMinimumWidth(max(920, btn_edit_w + btn_receipt_w + btn_close_w + row_padding))
-        btn_receipt.setEnabled(bool(destination))
-        box.exec()
+        horizontal_padding = max(64, int(78 * self.scale))
+        btn_edit_w = max(230, metrics.horizontalAdvance(btn_edit.text()) + horizontal_padding)
+        btn_receipt_w = max(300, metrics.horizontalAdvance(btn_receipt.text()) + horizontal_padding)
+        btn_close_w = max(170, metrics.horizontalAdvance(btn_close.text()) + horizontal_padding)
+        btn_height = max(50, int(58 * self.scale))
+        for btn, width in (
+            (btn_edit, btn_edit_w),
+            (btn_receipt, btn_receipt_w),
+            (btn_close, btn_close_w),
+        ):
+            btn.setMinimumWidth(width)
+            btn.setMinimumHeight(btn_height)
+            buttons.addWidget(btn)
 
-        clicked = box.clickedButton()
-        if clicked == btn_edit:
+        btn_receipt.setEnabled(bool(destination))
+        layout.addLayout(buttons)
+
+        row_padding = max(120, int(148 * self.scale))
+        dlg.setMinimumWidth(max(980, btn_edit_w + btn_receipt_w + btn_close_w + row_padding))
+
+        btn_edit.clicked.connect(lambda: (dlg.setProperty("_action", "edit"), dlg.accept()))
+        btn_receipt.clicked.connect(lambda: (dlg.setProperty("_action", "receipt"), dlg.accept()))
+        btn_close.clicked.connect(dlg.reject)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        action = str(dlg.property("_action") or "")
+        if action == "edit":
             self._apply_reopen_canceled_status(
                 row,
                 new_status="rascunho",
                 note="",
                 success_message=f"Pedido {ped_number} voltou para nova requisição.",
             )
-        elif clicked == btn_receipt:
+        elif action == "receipt":
             if not destination:
                 QMessageBox.warning(
                     self,
@@ -1333,8 +1389,6 @@ class OrderCenterView(QWidget):
                 note=_build_production_note(PROD_SEND, destination),
                 success_message=f"Pedido {ped_number} voltou para aguardando recebimento em {destination}.",
             )
-        elif clicked == btn_close:
-            return
 
     def _apply_reopen_canceled_status(
         self,
