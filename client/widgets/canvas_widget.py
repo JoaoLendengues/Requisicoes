@@ -18,6 +18,7 @@ from uuid import uuid4
 from PySide6.QtCore import (
     Qt, QPointF, QRectF, Signal, QEvent,
     QByteArray, QBuffer, QIODevice, QMimeData, QUrl,
+    QPropertyAnimation, QEasingCurve, QTimer, QParallelAnimationGroup,
 )
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPainterPathStroker, QPen, QBrush,
@@ -30,7 +31,7 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
     QSizePolicy, QFrame, QComboBox, QApplication, QDialog, QMessageBox,
-    QListWidget, QListWidgetItem,
+    QListWidget, QListWidgetItem, QGraphicsOpacityEffect,
 )
 from ..core import theme
 from ..core.text_case import normalize_upper_text
@@ -3888,13 +3889,27 @@ class DrawingCanvas(QWidget):
         overlay_v.addWidget(tools_frame)
         overlay_v.addWidget(props_frame)
         overlay_v.addWidget(actions_frame)
+        # Guarda refs dos 3 frames pra animação em cascata (stagger).
+        self._toolbar_section_frames = [tools_frame, props_frame, actions_frame]
+        # Cada seção tem seu QGraphicsOpacityEffect próprio (Qt permite 1 por
+        # widget; usamos no FRAME interno, não no overlay container).
+        self._toolbar_section_effects = []
+        for frame in self._toolbar_section_frames:
+            eff = QGraphicsOpacityEffect(frame)
+            eff.setOpacity(1.0)
+            frame.setGraphicsEffect(eff)
+            self._toolbar_section_effects.append(eff)
         # Estado inicial: ESCONDIDO. Só o botão "Barra de Ferramentas" abaixo
         # fica visível até o usuário clicar.
         self._toolbar_overlay.setVisible(False)
+        # Flags e refs pra animação do toggle.
+        self._toolbar_anim_in_progress = False
+        self._toolbar_anim_height = None
+        self._toolbar_anim_sections = []  # lista de QPropertyAnimation por seção
 
         # Botão TOGGLE — fica sempre visível no canto sup esq do canvas.
         # Clique alterna a visibilidade da toolbar (overlay) acima.
-        self._toolbar_toggle_btn = QPushButton("☰  Barra de Ferramentas", self)
+        self._toolbar_toggle_btn = QPushButton(self._toolbar_toggle_text(False), self)
         self._toolbar_toggle_btn.setCheckable(True)
         self._toolbar_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._toolbar_toggle_btn.setStyleSheet(self._toolbar_toggle_btn_style())
@@ -4021,13 +4036,146 @@ class DrawingCanvas(QWidget):
             overlay.move(btn_x, btn_y + toggle_btn.height() + gap)
             overlay.raise_()
 
+    def _toolbar_toggle_text(self, is_open: bool) -> str:
+        """Texto do botão toggle conforme estado da toolbar."""
+        return "✕  Fechar Barra de Ferramentas" if is_open else "☰  Barra de Ferramentas"
+
     def _toggle_toolbar_overlay(self):
-        """Alterna a visibilidade da toolbar (overlay) — chamado pelo botão toggle."""
+        """Alterna a visibilidade da toolbar com animação 'gaveta + cascata'.
+
+        Abrir:  altura 0 → final (OutCubic 280ms) + opacity das 3 seções
+                em stagger (60ms entre cada, OutCubic 220ms).
+        Fechar: stagger reverso nas seções + altura final → 0 (InCubic 240ms),
+                depois setVisible(False).
+
+        Anti-spam: durante a animação o botão fica desabilitado pra não
+        permitir cliques que causariam estado inconsistente.
+        """
         overlay = getattr(self, "_toolbar_overlay", None)
-        if overlay is None:
+        toggle_btn = getattr(self, "_toolbar_toggle_btn", None)
+        if overlay is None or toggle_btn is None:
             return
-        overlay.setVisible(not overlay.isVisible())
+        # Bloqueia clicks repetidos durante anim em curso.
+        if getattr(self, "_toolbar_anim_in_progress", False):
+            # Restaura o checked state ao verdadeiro estado (clique não computa).
+            toggle_btn.setChecked(overlay.isVisible())
+            return
+
+        if not overlay.isVisible():
+            self._animate_toolbar_open()
+        else:
+            self._animate_toolbar_close()
+
+    def _animate_toolbar_open(self):
+        overlay = self._toolbar_overlay
+        toggle_btn = self._toolbar_toggle_btn
+        sections = self._toolbar_section_frames
+        effects = self._toolbar_section_effects
+
+        # Garante posição correta + reset estado das seções (opacity 0 antes
+        # de aparecer pra evitar flash).
+        for eff in effects:
+            eff.setOpacity(0.0)
+
+        overlay.setVisible(True)
+        overlay.adjustSize()
+        final_h = overlay.sizeHint().height()
+        # Posiciona o overlay na coord correta ANTES de animar.
         self._reposition_toolbar_overlay()
+        # Começa com altura 0 (gaveta fechada).
+        overlay.setMaximumHeight(0)
+        overlay.setMinimumHeight(0)
+        overlay.updateGeometry()
+
+        # Configuração do stagger pra calcular duração total ANTES da height.
+        SECTION_STEP_MS = 70   # delay entre cada seção
+        SECTION_DUR_MS = 220   # duração do fade-in de cada seção
+        last_section_end = (len(effects) - 1) * SECTION_STEP_MS + SECTION_DUR_MS
+
+        # === Animação de altura (gaveta abrindo) ===
+        # Duração casa com o fim do último stagger pra _on_finished não cortar.
+        height_anim = QPropertyAnimation(overlay, b"maximumHeight", self)
+        height_anim.setDuration(last_section_end)
+        height_anim.setStartValue(0)
+        height_anim.setEndValue(final_h)
+        height_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        # === Animação de opacity das seções em cascata (stagger) ===
+        section_anims = []
+        for i, eff in enumerate(effects):
+            anim = QPropertyAnimation(eff, b"opacity", self)
+            anim.setDuration(SECTION_DUR_MS)
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            QTimer.singleShot(i * SECTION_STEP_MS, anim.start)
+            section_anims.append(anim)
+
+        def _on_finished():
+            # Libera maxHeight pra não limitar conteúdo futuramente.
+            overlay.setMaximumHeight(16777215)
+            for eff in effects:
+                eff.setOpacity(1.0)
+            self._toolbar_anim_in_progress = False
+            toggle_btn.setText(self._toolbar_toggle_text(True))
+            toggle_btn.setChecked(True)
+
+        height_anim.finished.connect(_on_finished)
+
+        self._toolbar_anim_height = height_anim
+        self._toolbar_anim_sections = section_anims
+        self._toolbar_anim_in_progress = True
+        height_anim.start()
+
+    def _animate_toolbar_close(self):
+        overlay = self._toolbar_overlay
+        toggle_btn = self._toolbar_toggle_btn
+        sections = self._toolbar_section_frames
+        effects = self._toolbar_section_effects
+
+        current_h = overlay.height()
+        if current_h <= 0:
+            current_h = overlay.sizeHint().height()
+
+        # === Stagger reverso nas seções (última some primeiro) ===
+        section_anims = []
+        n = len(effects)
+        for i, eff in enumerate(effects):
+            anim = QPropertyAnimation(eff, b"opacity", self)
+            anim.setDuration(160)
+            anim.setStartValue(eff.opacity())
+            anim.setEndValue(0.0)
+            anim.setEasingCurve(QEasingCurve.Type.InCubic)
+            # Reverso: índice maior começa primeiro (ações > propriedades > ferramentas).
+            delay = (n - 1 - i) * 50
+            QTimer.singleShot(delay, anim.start)
+            section_anims.append(anim)
+
+        # === Anim de altura (gaveta fechando), começa um pouco depois ===
+        height_anim = QPropertyAnimation(overlay, b"maximumHeight", self)
+        height_anim.setDuration(240)
+        height_anim.setStartValue(current_h)
+        height_anim.setEndValue(0)
+        height_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+
+        def _on_finished():
+            overlay.setVisible(False)
+            overlay.setMaximumHeight(16777215)
+            # Reseta opacity pra próxima abertura começar limpa.
+            for eff in effects:
+                eff.setOpacity(1.0)
+            self._toolbar_anim_in_progress = False
+            toggle_btn.setText(self._toolbar_toggle_text(False))
+            toggle_btn.setChecked(False)
+
+        height_anim.finished.connect(_on_finished)
+
+        # Começa altura depois de ~80ms (deixa as seções somerem visualmente).
+        QTimer.singleShot(80, height_anim.start)
+
+        self._toolbar_anim_height = height_anim
+        self._toolbar_anim_sections = section_anims
+        self._toolbar_anim_in_progress = True
 
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
