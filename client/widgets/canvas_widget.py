@@ -7065,7 +7065,10 @@ class DrawingCanvas(QWidget):
         self._prepare_popup_dialog(box)
         self._style_popup_dialog_buttons(box)
         box.exec()
-        if box.clickedButton() != btn_sim:
+        clicked = box.clickedButton()
+        if clicked is None:
+            return
+        if box.buttonRole(clicked) != QMessageBox.ButtonRole.YesRole:
             return
         self._clear_scene_contents()
 
