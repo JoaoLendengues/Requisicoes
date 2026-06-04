@@ -273,8 +273,34 @@ class _DragMoveFilter(QObject):
         return False
 
 
+# Raio (px) dos cantos arredondados do diálogo frameless. Casa com o
+# border-radius:18px aplicado em _dialog_surface_style.
+_DIALOG_RADIUS = 18
+
+
+class _DialogResizeMaskFilter(QObject):
+    """Reaplica a máscara arredondada quando o diálogo é redimensionado.
+
+    Diálogos podem mudar de tamanho conforme o conteúdo (ex: QMessageBox
+    cresce com texto longo). Sem reaplicar a mask, o arredondado fica
+    desalinhado com a nova geometria — voltam os cantos pretos.
+    """
+
+    def __init__(self, dialog: QDialog, radius: int):
+        super().__init__(dialog)
+        self._radius = radius
+
+    def eventFilter(self, obj, event):  # noqa: N802 - Qt API
+        if event.type() == QEvent.Type.Resize:
+            try:
+                _apply_rounded_mask(obj, self._radius)
+            except Exception:
+                pass
+        return False
+
+
 def _install_frameless_chrome(dialog: QDialog) -> None:
-    """Aplica frameless + sombra + drag no QDialog/QMessageBox.
+    """Aplica frameless + sombra + drag + máscara arredondada no QDialog/QMessageBox.
 
     Idempotente: marca o diálogo com `_fp_frameless_applied` para não repetir
     quando `apply_dialog_theme` é chamado várias vezes pelo filter (Polish/Show)."""
@@ -295,6 +321,15 @@ def _install_frameless_chrome(dialog: QDialog) -> None:
     drag_filter = _DragMoveFilter(dialog)
     dialog.installEventFilter(drag_filter)
     dialog.setProperty("_fp_drag_filter", drag_filter)  # mantém referência viva
+    # Máscara arredondada — corta fisicamente os 4 cantos do dialog. Sem isso,
+    # o border-radius:18px do QSS desenha os cantos arredondados DENTRO do
+    # retângulo da janela, mas os pixels dos 4 cantos externos ficam visíveis
+    # com a cor padrão da palette (pretos no tema dark — as "flechas pretas").
+    # Aplicada agora e reaplicada via event filter em cada Resize.
+    _apply_rounded_mask(dialog, _DIALOG_RADIUS)
+    mask_filter = _DialogResizeMaskFilter(dialog, _DIALOG_RADIUS)
+    dialog.installEventFilter(mask_filter)
+    dialog.setProperty("_fp_dialog_mask_filter", mask_filter)
     dialog.setProperty("_fp_frameless_applied", True)
 
 
