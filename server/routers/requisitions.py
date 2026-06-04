@@ -4386,8 +4386,6 @@ def create_requisition(
         requisition_id=req.id,
         json_data=normalize_canvas_json_text(data.canvas_json) or "{}",
     ))
-    if old_delivery_date and new_delivery_date and new_delivery_date != old_delivery_date:
-        note += f" Data prevista ajustada para {new_delivery_date.strftime('%d/%m/%Y')} por entrega antecipada."
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=None,
