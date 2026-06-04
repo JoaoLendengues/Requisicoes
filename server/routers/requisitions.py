@@ -4910,10 +4910,10 @@ def mark_delivery_split_delivered(
             status_code=400,
             detail="Não é possível concluir a entrega de uma requisição cancelada",
         )
-    if split.status != RequisitionStatus.FINALIZADO:
+    if split.status != RequisitionStatus.FINALIZADO and req.status != RequisitionStatus.PRAZO_ALTERADO:
         raise HTTPException(
             status_code=400,
-            detail="Somente parcelas finalizadas podem ser marcadas como entregues",
+            detail="Somente parcelas finalizadas ou com prazo alterado podem ser marcadas como entregues",
         )
     if split.delivered_at is not None:
         raise HTTPException(
@@ -5210,8 +5210,8 @@ def mark_split_delivery_delivered(
         raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
     if req.status == RequisitionStatus.CANCELADA:
         raise HTTPException(status_code=400, detail="Nao e possivel concluir a entrega de uma requisicao cancelada")
-    if split.status != RequisitionStatus.FINALIZADO:
-        raise HTTPException(status_code=400, detail="Somente parcelas finalizadas podem ser marcadas como entregues")
+    if split.status != RequisitionStatus.FINALIZADO and req.status != RequisitionStatus.PRAZO_ALTERADO:
+        raise HTTPException(status_code=400, detail="Somente parcelas finalizadas ou com prazo alterado podem ser marcadas como entregues")
     if getattr(split, "delivered_at", None) is not None:
         raise HTTPException(status_code=400, detail="Esta parcela ja foi entregue")
 
