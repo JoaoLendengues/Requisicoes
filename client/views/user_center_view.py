@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.sortable_item import SortableItem, natural_sort_key
 from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
@@ -45,6 +46,7 @@ ROLE_OPTIONS = [
 ]
 ROLE_LABELS = {value: label for label, value in ROLE_OPTIONS}
 ROLE_LABELS["entrega"] = "ENTREGAS"
+_ROW_ID_ROLE = Qt.ItemDataRole.UserRole + 1
 
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
@@ -591,6 +593,9 @@ class UserCenterView(QWidget):
         self._fill_table()
 
     def _fill_table(self):
+        header = self.table.horizontalHeader()
+        sort_section = header.sortIndicatorSection()
+        sort_order = header.sortIndicatorOrder()
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         for user in self._users_visible:
@@ -598,6 +603,7 @@ class UserCenterView(QWidget):
                 continue
             row = self.table.rowCount()
             self.table.insertRow(row)
+            user_id = int(user.get("id") or 0)
             values = [
                 str(user.get("code") or "-"),
                 str(user.get("name") or "-"),
@@ -608,18 +614,26 @@ class UserCenterView(QWidget):
                 "Pendente" if user.get("must_change_password") else "Concluído",
             ]
             for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                if col == 0:
+                    item = SortableItem(value, sort_key=natural_sort_key(user.get("code") or ""))
+                else:
+                    item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item.setData(_ROW_ID_ROLE, user_id)
                 self.table.setItem(row, col, item)
         self.table.setSortingEnabled(True)
+        if sort_section >= 0:
+            self.table.sortItems(sort_section, sort_order)
 
         if self._pending_code:
             matched = False
-            for index, user in enumerate(self._users_visible):
+            for user in self._users_visible:
                 if str(user.get("code") or "") == self._pending_code:
-                    self.table.selectRow(index)
-                    self._load_user_into_form(user)
-                    matched = True
+                    table_row = self._find_table_row_by_user_id(int(user.get("id") or 0))
+                    if table_row >= 0:
+                        self.table.selectRow(table_row)
+                        self._load_user_into_form(user)
+                        matched = True
                     break
             if matched or not self._users_visible:
                 self._pending_code = None
@@ -638,14 +652,35 @@ class UserCenterView(QWidget):
         self.btn_disable.setEnabled(False)
 
     def _load_selected_user(self, index):
-        row = index.row()
-        if 0 <= row < len(self._users_visible):
-            self._load_user_into_form(self._users_visible[row])
+        user = self._user_from_table_row(index.row())
+        if user is not None:
+            self._load_user_into_form(user)
 
     def _load_current_selection(self):
-        row = self.table.currentRow()
-        if 0 <= row < len(self._users_visible):
-            self._load_user_into_form(self._users_visible[row])
+        user = self._user_from_table_row(self.table.currentRow())
+        if user is not None:
+            self._load_user_into_form(user)
+
+    def _find_table_row_by_user_id(self, user_id: int) -> int:
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item is None:
+                continue
+            if int(item.data(_ROW_ID_ROLE) or 0) == int(user_id):
+                return row
+        return -1
+
+    def _user_from_table_row(self, row: int) -> dict | None:
+        if row < 0:
+            return None
+        item = self.table.item(row, 0)
+        if item is None:
+            return None
+        user_id = int(item.data(_ROW_ID_ROLE) or 0)
+        for user in self._users_all:
+            if isinstance(user, dict) and int(user.get("id") or 0) == user_id:
+                return user
+        return None
 
     def _load_user_into_form(self, user: dict):
         self._selected_user_id = int(user["id"])

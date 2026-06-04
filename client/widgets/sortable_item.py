@@ -15,8 +15,26 @@ QTableWidgetItem (idêntico ao comportamento original).
 """
 from __future__ import annotations
 
+import re
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTableWidgetItem
+
+
+def natural_sort_key(value: object | None) -> tuple[tuple[int, object], ...]:
+    text = " ".join(str(value or "").split()).casefold()
+    if not text:
+        return ((1, ""),)
+
+    parts: list[tuple[int, object]] = []
+    for chunk in re.split(r"(\d+)", text):
+        if not chunk:
+            continue
+        if chunk.isdigit():
+            parts.append((0, int(chunk)))
+        else:
+            parts.append((1, chunk))
+    return tuple(parts) or ((1, ""),)
 
 
 class SortableItem(QTableWidgetItem):

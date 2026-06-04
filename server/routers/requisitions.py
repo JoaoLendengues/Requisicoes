@@ -84,7 +84,11 @@ from ..services.notification_service import (
 from ..services.runtime_monitor import snapshot as runtime_snapshot
 from ..services.sse_manager import connected_user_ids
 from ..services.system_settings import get_min_delivery_business_days
-from ..services.text_normalizer import normalize_canvas_json_text, normalize_upper_required
+from ..services.text_normalizer import (
+    natural_sort_key,
+    normalize_canvas_json_text,
+    normalize_upper_required,
+)
 
 router = APIRouter(prefix="/requisitions", tags=["RequisiÃ§Ãµes"])
 
@@ -3939,8 +3943,13 @@ def get_production_summary(
         db.query(ProductionMachine)
         .options(selectinload(ProductionMachine.operators))
         .filter(ProductionMachine.destination == normalized_destination)
-        .order_by(func.lower(ProductionMachine.name).asc(), ProductionMachine.id.asc())
         .all()
+    )
+    machines.sort(
+        key=lambda machine: (
+            natural_sort_key(getattr(machine, "name", "")),
+            int(getattr(machine, "id", 0) or 0),
+        )
     )
     return _build_production_summary(visible, machines, normalized_destination)
 
@@ -3955,8 +3964,13 @@ def list_production_machines(
     machines = (
         db.query(ProductionMachine)
         .filter(ProductionMachine.destination == normalized_destination)
-        .order_by(func.lower(ProductionMachine.name).asc(), ProductionMachine.id.asc())
         .all()
+    )
+    machines.sort(
+        key=lambda machine: (
+            natural_sort_key(getattr(machine, "name", "")),
+            int(getattr(machine, "id", 0) or 0),
+        )
     )
     return [
         _normalize_machine_name(machine.name)

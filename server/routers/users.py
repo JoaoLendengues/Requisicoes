@@ -16,7 +16,7 @@ from ..schemas.user import (
 )
 from ..services.audit_service import diff_fields, log_action
 from ..services.auth_service import hash_password
-from ..services.text_normalizer import normalize_upper_required
+from ..services.text_normalizer import natural_sort_key, normalize_upper_required
 
 router = APIRouter(prefix="/users", tags=["Usuarios"])
 
@@ -73,7 +73,15 @@ def _ensure_unique_identity(
 
 @router.get("/", response_model=List[UserResponse])
 def list_users(db: Session = Depends(get_db), _=Depends(require_manager_or_admin)):
-    return db.query(User).order_by(User.code).all()
+    users = db.query(User).all()
+    users.sort(
+        key=lambda user: (
+            natural_sort_key(getattr(user, "code", "")),
+            natural_sort_key(getattr(user, "name", "")),
+            int(getattr(user, "id", 0) or 0),
+        )
+    )
+    return users
 
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

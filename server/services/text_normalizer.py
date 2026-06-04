@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from ..database import SessionLocal
 from ..models.client import Client
@@ -25,6 +26,22 @@ def normalize_upper_optional(value: object | None) -> str | None:
 
 def normalize_upper_required(value: object | None) -> str:
     return normalize_upper_text(value, empty_as_none=False) or ""
+
+
+def natural_sort_key(value: object | None) -> tuple[tuple[int, object], ...]:
+    text = " ".join(str(value or "").split()).casefold()
+    if not text:
+        return ((1, ""),)
+
+    parts: list[tuple[int, object]] = []
+    for chunk in re.split(r"(\d+)", text):
+        if not chunk:
+            continue
+        if chunk.isdigit():
+            parts.append((0, int(chunk)))
+        else:
+            parts.append((1, chunk))
+    return tuple(parts) or ((1, ""),)
 
 
 def normalize_canvas_json_text(json_data: str | None) -> str | None:

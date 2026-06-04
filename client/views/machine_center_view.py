@@ -29,6 +29,7 @@ from ..core.datetime_utils import (
 )
 from ..core.text_case import bind_uppercase_line_edit
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.sortable_item import SortableItem, natural_sort_key
 from .user_center_view import (
     ActionWorker,
     UiCallback,
@@ -58,6 +59,7 @@ MACHINE_OPERATOR_ROLE_OPTIONS = (
     ("OPERADOR", "operador"),
     ("AJUDANTE", "ajudante"),
 )
+_ROW_ID_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 def _normalize_operator_role(value: object) -> str:
@@ -204,6 +206,7 @@ class MachineCenterView(QWidget):
         head.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         head.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setMinimumHeight(max(360, int(420 * s)))
+        self.table.setSortingEnabled(True)
         self._apply_table_style()
         layout.addWidget(self.table, 1)
         return card
@@ -507,10 +510,15 @@ class MachineCenterView(QWidget):
         self._fill_table()
 
     def _fill_table(self):
+        header = self.table.horizontalHeader()
+        sort_section = header.sortIndicatorSection()
+        sort_order = header.sortIndicatorOrder()
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         for machine in self._machines_all:
             row = self.table.rowCount()
             self.table.insertRow(row)
+            machine_id = int(machine.get("id") or 0)
 
             team_rows = [
                 {
@@ -531,18 +539,25 @@ class MachineCenterView(QWidget):
                 STATUS_LABELS.get(str(machine.get("status") or ""), str(machine.get("status") or "-").upper()),
             ]
             for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                if col == 0:
+                    item = SortableItem(value, sort_key=natural_sort_key(machine.get("name") or ""))
+                else:
+                    item = QTableWidgetItem(value)
                 if col in (0, 2, 3):
                     item.setTextAlignment(
                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
                     )
                 else:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item.setData(_ROW_ID_ROLE, machine_id)
                 if col == 2 and operator_names:
                     item.setToolTip(", ".join(operator_names))
                 if col == 3 and helper_names:
                     item.setToolTip(", ".join(helper_names))
                 self.table.setItem(row, col, item)
+        self.table.setSortingEnabled(True)
+        if sort_section >= 0:
+            self.table.sortItems(sort_section, sort_order)
 
         total = len(self._machines_all)
         self.result_hint.setText(f"{total} máquina(s) importada(s) da produção.")
@@ -565,9 +580,15 @@ class MachineCenterView(QWidget):
         return f"{clean[0]}, {clean[1]} +{len(clean) - 2}"
 
     def _select_machine_in_table(self, machine_id: int) -> bool:
-        for index, machine in enumerate(self._machines_all):
-            if int(machine.get("id") or 0) == int(machine_id):
-                self.table.selectRow(index)
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item is None:
+                continue
+            if int(item.data(_ROW_ID_ROLE) or 0) == int(machine_id):
+                self.table.selectRow(row)
+                machine = self._machine_from_table_row(row)
+                if machine is None:
+                    return False
                 self._load_machine_into_form(machine)
                 return True
         return False
@@ -585,14 +606,26 @@ class MachineCenterView(QWidget):
         self.table.clearSelection()
 
     def _load_selected_machine(self, index):
-        row = index.row()
-        if 0 <= row < len(self._machines_all):
-            self._load_machine_into_form(self._machines_all[row])
+        machine = self._machine_from_table_row(index.row())
+        if machine is not None:
+            self._load_machine_into_form(machine)
 
     def _load_current_selection(self):
-        row = self.table.currentRow()
-        if 0 <= row < len(self._machines_all):
-            self._load_machine_into_form(self._machines_all[row])
+        machine = self._machine_from_table_row(self.table.currentRow())
+        if machine is not None:
+            self._load_machine_into_form(machine)
+
+    def _machine_from_table_row(self, row: int) -> dict | None:
+        if row < 0:
+            return None
+        item = self.table.item(row, 0)
+        if item is None:
+            return None
+        machine_id = int(item.data(_ROW_ID_ROLE) or 0)
+        for machine in self._machines_all:
+            if int(machine.get("id") or 0) == machine_id:
+                return machine
+        return None
 
     def _load_machine_into_form(self, machine: dict):
         self._selected_machine_id = int(machine.get("id") or 0)
