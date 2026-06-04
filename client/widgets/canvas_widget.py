@@ -3888,6 +3888,20 @@ class DrawingCanvas(QWidget):
         overlay_v.addWidget(tools_frame)
         overlay_v.addWidget(props_frame)
         overlay_v.addWidget(actions_frame)
+        # Estado inicial: ESCONDIDO. Só o botão "Barra de Ferramentas" abaixo
+        # fica visível até o usuário clicar.
+        self._toolbar_overlay.setVisible(False)
+
+        # Botão TOGGLE — fica sempre visível no canto sup esq do canvas.
+        # Clique alterna a visibilidade da toolbar (overlay) acima.
+        self._toolbar_toggle_btn = QPushButton("☰  Barra de Ferramentas", self)
+        self._toolbar_toggle_btn.setCheckable(True)
+        self._toolbar_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._toolbar_toggle_btn.setStyleSheet(self._toolbar_toggle_btn_style())
+        self._toolbar_toggle_btn.setFixedHeight(max(32, int(38 * self.scale)))
+        self._toolbar_toggle_btn.setToolTip("Mostrar/esconder a barra de ferramentas")
+        self._toolbar_toggle_btn.clicked.connect(self._toggle_toolbar_overlay)
+
         # Hint label removido — virou tooltip do botão "?" no título.
         self._hint_label = None
 
@@ -3976,24 +3990,44 @@ class DrawingCanvas(QWidget):
         QTimer.singleShot(0, self._reposition_toolbar_overlay)
 
     def _reposition_toolbar_overlay(self):
-        """Posiciona a toolbar no CANTO SUPERIOR ESQUERDO do canvas (view).
+        """Posiciona o botão TOGGLE e a TOOLBAR no canto superior esquerdo.
 
-        Margem de ~12px da borda esquerda e do topo da área de desenho.
-        Coordenadas relativas ao DrawingCanvas (parent do overlay), mas
-        baseadas em `view.geometry()` pra que a toolbar fique exatamente
-        sobre o canvas branco, não sobre o título.
+        - Botão "Barra de Ferramentas" SEMPRE em (margin, margin).
+        - Toolbar (overlay) logo abaixo do botão, com pequeno gap.
+        Coordenadas relativas ao DrawingCanvas, baseadas em view.geometry()
+        pra ficar sobre o canvas branco, não sobre o título.
         """
         overlay = getattr(self, "_toolbar_overlay", None)
+        toggle_btn = getattr(self, "_toolbar_toggle_btn", None)
         view = getattr(self, "view", None)
-        if overlay is None or view is None:
+        if overlay is None or view is None or toggle_btn is None:
             return
-        overlay.adjustSize()
         view_geo = view.geometry()
         margin = max(10, int(12 * self.scale))
-        x = view_geo.x() + margin
-        y = view_geo.y() + margin
-        overlay.move(x, y)
-        overlay.raise_()
+        gap = max(4, int(6 * self.scale))
+        # Botão SEMPRE no canto sup esq.
+        toggle_btn.adjustSize()
+        # Fixa uma largura confortável pro botão (cabe label completo + ícone).
+        btn_min_w = max(180, int(220 * self.scale))
+        toggle_btn.setMinimumWidth(btn_min_w)
+        toggle_btn.adjustSize()
+        btn_x = view_geo.x() + margin
+        btn_y = view_geo.y() + margin
+        toggle_btn.move(btn_x, btn_y)
+        toggle_btn.raise_()
+        # Toolbar (se visível) logo abaixo do botão.
+        if overlay.isVisible():
+            overlay.adjustSize()
+            overlay.move(btn_x, btn_y + toggle_btn.height() + gap)
+            overlay.raise_()
+
+    def _toggle_toolbar_overlay(self):
+        """Alterna a visibilidade da toolbar (overlay) — chamado pelo botão toggle."""
+        overlay = getattr(self, "_toolbar_overlay", None)
+        if overlay is None:
+            return
+        overlay.setVisible(not overlay.isVisible())
+        self._reposition_toolbar_overlay()
 
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
@@ -4141,6 +4175,36 @@ class DrawingCanvas(QWidget):
             f" background:{theme.rgba(theme.CARD_BG, 245)};"
             f" border:1px solid {theme.rgba(theme.PRIMARY, 80)};"
             f" border-radius:12px;"
+            f"}}"
+        )
+
+    def _toolbar_toggle_btn_style(self) -> str:
+        """Estilo do botão '☰ Barra de Ferramentas' (trigger do overlay).
+
+        Quando o overlay está aberto, o botão fica "ativo" (checked) com
+        cor mais saturada — feedback visual de que tá ligado.
+        """
+        fs = max(8, int(10 * self.scale))
+        radius = max(10, int(12 * self.scale))
+        return (
+            f"QPushButton {{"
+            f" background:{theme.rgba(theme.CARD_BG, 245)};"
+            f" color:{theme.PRIMARY};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 90)};"
+            f" border-radius:{radius}px;"
+            f" padding:0px 14px;"
+            f" font-size:{fs}pt; font-weight:700;"
+            f" text-align:left;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f" background:{theme.rgba(theme.PRIMARY, 35)};"
+            f" border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QPushButton:checked {{"
+            f" background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"   stop:0 {theme.PRIMARY}, stop:1 {theme.PRIMARY_HOVER});"
+            f" color:{theme.TEXT_WHITE};"
+            f" border-color:{theme.PRIMARY};"
             f"}}"
         )
 
@@ -4345,16 +4409,21 @@ class DrawingCanvas(QWidget):
             special_btns.add(self.btn_color)
         if hasattr(self, "_btn_clear"):
             special_btns.add(self._btn_clear)
-        # Botão de ajuda no título tem estilo próprio.
+        # Botão de ajuda no título e botão toggle da toolbar têm estilos próprios.
         help_btn = getattr(self, "_help_btn", None)
         if help_btn is not None:
             special_btns.add(help_btn)
-        # Toolbar overlay e botão help re-estilizados aqui.
+        toggle_btn = getattr(self, "_toolbar_toggle_btn", None)
+        if toggle_btn is not None:
+            special_btns.add(toggle_btn)
+        # Re-estiliza overlay, help e toggle quando o tema muda.
         overlay = getattr(self, "_toolbar_overlay", None)
         if overlay is not None:
             overlay.setStyleSheet(self._toolbar_overlay_style())
         if help_btn is not None:
             help_btn.setStyleSheet(self._help_btn_style())
+        if toggle_btn is not None:
+            toggle_btn.setStyleSheet(self._toolbar_toggle_btn_style())
 
         for btn in self.findChildren(QPushButton):
             if btn in special_btns:
