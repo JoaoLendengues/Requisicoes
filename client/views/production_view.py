@@ -2120,10 +2120,17 @@ class ProductionView(QWidget):
 
     def _cancel_to_progress(self, req: dict):
         if self._is_split_row(req):
-            self._show_info(
-                "Parcelas desmembradas nao podem ser canceladas por esta acao.\n\n"
-                "Use a requisicao principal para cancelar o saldo pendente."
-            )
+            regroup_all = self._ask_split_cancel_mode()
+            if regroup_all is None:
+                return
+            if regroup_all:
+                self._run_action(
+                    api.regroup_production_splits,
+                    self._row_requisition_id(req),
+                    success_message="Requisição reagrupada com sucesso.",
+                )
+                return
+            self._cancel_split_only(req)
             return
         reason = self._ask_cancel_reason()
         if reason is None:
@@ -2134,7 +2141,7 @@ class ProductionView(QWidget):
             self._row_requisition_id(req),
             "cancelada",
             _build_production_note(PROD_CANCELED, self.destination, reason=reason),
-            success_message="Requisição cancelada.",
+            success_message="Requisição retornada para rascunho.",
         )
 
     def _finish_selected_machine(self, machine_id: int):
@@ -2248,6 +2255,19 @@ class ProductionView(QWidget):
         if not req or not machine:
             self._show_info("Selecione uma requisição em produção dentro do card da máquina.")
             return
+        if self._is_split_row(req):
+            regroup_all = self._ask_split_cancel_mode()
+            if regroup_all is None:
+                return
+            if regroup_all:
+                self._run_action(
+                    api.regroup_production_splits,
+                    self._row_requisition_id(req),
+                    success_message="Requisição reagrupada com sucesso.",
+                )
+                return
+            self._cancel_split_only(req, source_machine=str(machine.get("name") or ""))
+            return
         if not ask_confirmation(
             self,
             "Devolver para Fila",
@@ -2257,13 +2277,12 @@ class ProductionView(QWidget):
         ):
             return
 
-        is_split = self._is_split_row(req)
         self._run_action(
-            api.update_production_split_status if is_split else api.update_status,
-            self._row_split_id(req) if is_split else self._row_requisition_id(req),
+            api.update_status,
+            self._row_requisition_id(req),
             "aguardando_na_fila",
             _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=str(machine.get("name") or "")),
-            success_message="Parcela devolvida para aguardando na fila." if is_split else "Requisição devolvida para aguardando na fila.",
+            success_message="Requisição devolvida para aguardando na fila.",
         )
 
     def _update_machine_status(self, machine_id: int, combo: QComboBox):
@@ -2470,6 +2489,47 @@ class ProductionView(QWidget):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
         return str(dlg.property("_cancel_reason") or "")
+
+    def _ask_split_cancel_mode(self) -> bool | None:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Cancelar Parcela")
+        box.setText("VOCÊ DESEJA REAGRUPAR TODA A REQUISIÇÃO")
+        box.setTextFormat(Qt.TextFormat.PlainText)
+
+        yes_button = box.addButton("SIM", QMessageBox.ButtonRole.YesRole)
+        no_button = box.addButton("NÃO", QMessageBox.ButtonRole.NoRole)
+
+        box.setDefaultButton(no_button)
+        apply_message_box_theme(box)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == yes_button:
+            return True
+        if clicked == no_button:
+            return False
+        return None
+
+    def _cancel_split_only(self, req: dict, *, source_machine: str = ""):
+        split_id = self._row_split_id(req)
+        if split_id is None:
+            return
+        reason = self._ask_cancel_reason()
+        if reason is None:
+            return
+        self._run_action(
+            api.update_production_split_status,
+            split_id,
+            "aguardando_na_fila",
+            _build_production_note(
+                PROD_CANCELED,
+                self.destination,
+                machine=source_machine,
+                reason=reason,
+            ),
+            success_message="Parcela cancelada e liberada para novo envio à máquina.",
+        )
 
     def _run_action(self, fn, *args, success_message: str):
         worker = ActionWorker(fn, *args)

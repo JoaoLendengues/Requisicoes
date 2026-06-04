@@ -393,6 +393,11 @@ def update_production_split_status(split_id: int, status: str, note: str = "") -
         )
 
 
+def regroup_production_splits(req_id: int) -> dict:
+    with _cli() as client:
+        return _check(client.post(f"/requisitions/{req_id}/production-splits/regroup"))
+
+
 def update_delivery_date(req_id: int, delivery_date: str, reason: str) -> dict:
     """Produção altera o prazo de entrega com justificativa.
     delivery_date no formato ISO (YYYY-MM-DD)."""

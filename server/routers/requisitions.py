@@ -880,7 +880,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
                 status_code=400,
                 detail="Informe um motivo de cancelamento vÃ¡lido",
             )
-        req.status = RequisitionStatus.CANCELADA
+        req.status = RequisitionStatus.RASCUNHO
         req.cancel_reason = reason.strip()
         req.finalized_at = None
         req.production_machine = None
@@ -1136,6 +1136,30 @@ def _sync_requisition_delivery_after_splits(req: Requisition) -> datetime | None
     else:
         req.delivered_at = None
     return req.delivered_at
+
+
+def _restore_status_before_splits(req: Requisition) -> RequisitionStatus:
+    split_entries = sorted(
+        [
+            entry
+            for entry in (req.status_history or [])
+            if getattr(entry, "production_split_id", None) in (None, 0)
+            and str(entry.note or "").startswith("Desmembramento ")
+        ],
+        key=lambda entry: (entry.changed_at or datetime.min, entry.id or 0),
+    )
+    for entry in split_entries:
+        try:
+            candidate = RequisitionStatus(str(entry.old_status or "").strip())
+        except ValueError:
+            continue
+        if candidate in (
+            RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+            RequisitionStatus.AGUARDANDO_NA_FILA,
+            RequisitionStatus.EM_PRODUCAO,
+        ):
+            return candidate
+    return RequisitionStatus.AGUARDANDO_NA_FILA
 
 
 def _sorted_status_history(req: Requisition) -> list[StatusHistory]:
@@ -4124,6 +4148,70 @@ def create_production_split(
     )
 
 
+@router.post(
+    "/{req_id}/production-splits/regroup",
+    response_model=RequisitionResponse,
+)
+def regroup_production_splits(
+    req_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    req = _get_or_404(db, req_id)
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
+    if not _has_production_splits(req):
+        raise HTTPException(status_code=400, detail="A requisicao nao possui parcelas para reagrupar")
+    if req.status == RequisitionStatus.CANCELADA:
+        raise HTTPException(status_code=400, detail="A requisicao cancelada nao pode ser reagrupada")
+
+    destination = _current_production_destination(req) or _split_destination(_sorted_requisition_splits(req)[0])
+    _ensure_destination_access(current_user, destination)
+
+    split_count = len(_sorted_requisition_splits(req))
+    old_status = req.status
+    restored_status = _restore_status_before_splits(req)
+
+    req.production_splits.clear()
+    req.status = restored_status
+    req.production_machine = None
+    req.delivered_at = None
+    if restored_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+        req.finalized_at = None
+    else:
+        req.finalized_at = req.finalized_at or datetime.utcnow()
+
+    note = (
+        f"Parcelas reagrupadas ({split_count}) e requisicao restaurada para "
+        f"{getattr(restored_status, 'value', restored_status)}."
+    )
+    db.add(
+        StatusHistory(
+            requisition_id=req.id,
+            old_status=old_status,
+            new_status=restored_status,
+            changed_by_id=current_user.id,
+            note=note,
+        )
+    )
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "production_split_regroup": {
+                "split_count": split_count,
+                "restored_status": getattr(restored_status, "value", restored_status),
+            },
+        },
+    )
+
+    db.commit()
+    return _get_or_404(db, req_id)
+
+
 @router.patch(
     "/production-splits/{split_id}/status",
     response_model=ProductionItemResponse,
@@ -4191,6 +4279,17 @@ def update_production_split_status(
         operators = []
         helpers = []
         split.status = RequisitionStatus.FINALIZADO
+        split.production_machine = None
+    elif action == _PROD_CANCELED:
+        if requested_status != RequisitionStatus.AGUARDANDO_NA_FILA:
+            raise HTTPException(status_code=400, detail="Status invalido para cancelar a parcela")
+        if split.status not in (RequisitionStatus.AGUARDANDO_NA_FILA, RequisitionStatus.EM_PRODUCAO):
+            raise HTTPException(status_code=400, detail="Somente parcelas na fila ou em producao podem ser canceladas")
+        if len(str(prod_event.get("reason") or "").strip()) < 5:
+            raise HTTPException(status_code=400, detail="Informe um motivo de cancelamento valido")
+        operators = []
+        helpers = []
+        split.status = RequisitionStatus.AGUARDANDO_NA_FILA
         split.production_machine = None
     else:
         raise HTTPException(status_code=400, detail="Evento operacional da parcela nao suportado")
