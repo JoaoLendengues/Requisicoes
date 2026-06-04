@@ -351,7 +351,7 @@ def input_style(scale: float = 1.0) -> str:
         f"}}"
         f"QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{"
         f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
-        f"  border:1px solid {rgba(PANEL_NEON_PRIMARY, 80)}; border-radius:8px;"  # noqa: F821
+        f"  border:1px solid {rgba(PANEL_NEON_PRIMARY, 80)}; border-radius:0px;"  # noqa: F821
         f"  padding:4px; outline:none;"
         f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 56)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"
@@ -617,7 +617,7 @@ def global_style() -> str:
         f"}}"
         f"QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{"
         f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
-        f"  border:1px solid {rgba(PANEL_NEON_PRIMARY, 80)}; border-radius:8px;"  # noqa: F821
+        f"  border:1px solid {rgba(PANEL_NEON_PRIMARY, 80)}; border-radius:0px;"  # noqa: F821
         f"  padding:4px; outline:none;"
         f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 56)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
         f"}}"

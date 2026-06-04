@@ -10,7 +10,7 @@ from PySide6.QtCore import (
     Qt,
     QTimer,
 )
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
@@ -552,16 +552,24 @@ def install_message_box_theme_hooks() -> None:
 def install_combo_popup_chrome() -> None:
     """Limpa o chrome do popup de TODOS os QComboBox.
 
-    Estratégia segura (revisada após bug do fundo preto em Fusion):
-    NÃO mexemos em windowFlags, WA_TranslucentBackground nem aplicamos
-    QGraphicsDropShadowEffect no popup — essas mudanças causavam um
-    retângulo PRETO opaco em volta do popup em Windows + Fusion (a janela
-    popup vira translúcida mas o composit não suporta alpha, renderiza
-    preto).
+    Bug que esta função resolve: em Windows + Fusion, o popup do QComboBox
+    aparece com "4 cantos pretos" ao redor da view. Causa: o **container**
+    da janela popup (parent da QAbstractItemView) é pintado com
+    `palette().window()` do tema, que no dark mode resolve pra preto. Quando
+    a view tem `border-radius`, os pixels dos cantos não cobertos pelo
+    arredondado mostram o preto do container.
 
-    O que fazemos AGORA: apenas `setFrameShape(NoFrame)` na view interna,
-    pra que a borda visual do popup venha 100% do QSS aplicado em
-    `QComboBox QAbstractItemView` (controlado por theme.py).
+    NÃO usamos `WA_TranslucentBackground` + `FramelessWindowHint` no popup
+    (tentativa anterior em 067f577): em Windows o composit não suporta alpha
+    em janelas `Qt.Popup`, renderizando o popup inteiro como retângulo PRETO
+    opaco — pior do que o problema original.
+
+    Estratégia segura, sem mexer em window flags nem translucency:
+    1. `setFrameShape(NoFrame)` na view → borda vem só do QSS.
+    2. Força a cor de fundo do **popup container** (parent da view) pra
+       PANEL_SURFACE_BG via palette + autoFillBackground. Assim mesmo que
+       o QSS interno do view tenha border-radius, os "cantos" do container
+       aparecem na cor do tema, não pretos.
 
     Idempotente: instala o patch uma única vez por processo.
     """
@@ -575,10 +583,24 @@ def install_combo_popup_chrome() -> None:
         view = self.view()
         if view is None:
             return
-        # Remove o frame interno da QListView/AbstractItemView para que
-        # a borda venha exclusivamente do QSS (que respeita o tema).
+        # 1) Remove o frame interno da QListView/AbstractItemView para que
+        #    a borda venha exclusivamente do QSS (que respeita o tema).
         try:
             view.setFrameShape(QFrame.Shape.NoFrame)
+        except Exception:
+            pass
+        # 2) Força o background do CONTAINER do popup (parent do view) pra
+        #    cor do tema. Sem isso o Fusion pinta preto nos cantos onde o
+        #    border-radius do view não cobre.
+        try:
+            container = view.parentWidget()
+            if container is not None:
+                surface_color = QColor(theme.PANEL_SURFACE_BG)
+                pal = container.palette()
+                pal.setColor(QPalette.ColorRole.Window, surface_color)
+                pal.setColor(QPalette.ColorRole.Base, surface_color)
+                container.setPalette(pal)
+                container.setAutoFillBackground(True)
         except Exception:
             pass
 
