@@ -4217,47 +4217,73 @@ class DrawingCanvas(QWidget):
     def _toggle_overlay_visibility(self):
         """Alterna a pílula entre escondida e visível.
 
-        Escondida: fade-out 0→0 + slide-down 24px (160ms InCubic), depois
-        marca como transparent-for-mouse (não consome cliques).
-        Visível: mesma animação de entrada (slide-up + fade-in, 280ms OutCubic).
+        IMPORTANTE: sempre parte de uma POSIÇÃO ESTÁVEL recalculada via
+        `_reposition_toolbar_overlay` antes de animar. Sem isso, toggles
+        repetidos (ou Tab durante uma animação) capturam a posição
+        intermediária da anim em curso e *acumulam* deslocamento — a
+        pílula vai descendo 24px a cada toggle até sair da tela.
 
-        Disparado por Tab (atalho registrado em _setup_shortcuts).
+        Também para qualquer animação anterior, força opacity=1.0 e
+        desliga WA_TransparentForMouseEvents ao mostrar.
         """
         overlay = getattr(self, "_toolbar_overlay", None)
         effect = getattr(self, "_overlay_opacity_effect", None)
         if overlay is None or effect is None:
             return
 
-        hidden_now = bool(getattr(self, "_overlay_hidden", False))
-
-        if not hidden_now:
-            # ESCONDER
-            final_geo = overlay.geometry()
-            target_geo = final_geo.translated(0, 24)
-
-            prev_fade = getattr(self, "_overlay_fade_anim", None)
-            if prev_fade is not None:
+        # 1) Para QUALQUER animação anterior pra evitar conflito de geometry.
+        for prop_name in ("_overlay_fade_anim", "_overlay_intro_geo_anim"):
+            prev = getattr(self, prop_name, None)
+            if prev is not None:
                 try:
-                    prev_fade.stop()
+                    prev.stop()
                 except Exception:
                     pass
 
+        # 2) RECALCULA a posição padrão (a menos que o user tenha arrastado a
+        #    pílula manualmente — nesse caso respeitamos a posição escolhida).
+        #    PORÉM: se a pílula está completamente fora do canvas (perdida por
+        #    bug ou clamp falho), FORÇA reset — Tab vira "resgate de emergência".
+        view = getattr(self, "view", None)
+        current_geo = overlay.geometry()
+        canvas_rect = self.rect()
+        out_of_view = (
+            current_geo.right() < canvas_rect.x() + 4
+            or current_geo.x() > canvas_rect.right() - 4
+            or current_geo.bottom() < canvas_rect.y() + 4
+            or current_geo.y() > canvas_rect.bottom() - 4
+        )
+        if out_of_view:
+            self._overlay_user_moved = False
+        if not getattr(self, "_overlay_user_moved", False):
+            self._reposition_toolbar_overlay()
+            overlay.adjustSize()
+        base_geo = overlay.geometry()
+
+        hidden_now = bool(getattr(self, "_overlay_hidden", False))
+
+        if not hidden_now:
+            # ESCONDER: garante que partimos da posição estável e opacity=1.
+            overlay.setGeometry(base_geo)
+            effect.setOpacity(1.0)
+            target_geo = base_geo.translated(0, 24)
+
             opacity_anim = QPropertyAnimation(effect, b"opacity", self)
             opacity_anim.setDuration(160)
-            opacity_anim.setStartValue(effect.opacity())
+            opacity_anim.setStartValue(1.0)
             opacity_anim.setEndValue(0.0)
             opacity_anim.setEasingCurve(QEasingCurve.Type.InCubic)
 
             geo_anim = QPropertyAnimation(overlay, b"geometry", self)
             geo_anim.setDuration(180)
-            geo_anim.setStartValue(final_geo)
+            geo_anim.setStartValue(base_geo)
             geo_anim.setEndValue(target_geo)
             geo_anim.setEasingCurve(QEasingCurve.Type.InCubic)
 
-            def _on_hidden(saved_geo=final_geo):
-                # Após esconder, marca como transparente pra cliques e RESETA
-                # a geometria final pra que a próxima abertura comece do lugar
-                # correto (a animação subsequente recalcula start = end + 24).
+            def _on_hidden(saved_geo=base_geo):
+                # Após esconder, marca transparent-for-mouse e VOLTA pra
+                # base_geo (a posição estável, NÃO o final da anim de slide).
+                # Assim a próxima abertura sempre parte do lugar correto.
                 overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
                 overlay.setGeometry(saved_geo)
 
@@ -4268,10 +4294,9 @@ class DrawingCanvas(QWidget):
             geo_anim.start()
             self._overlay_hidden = True
         else:
-            # MOSTRAR — espelho da animação de entrada.
+            # MOSTRAR: garante visibilidade ao mouse e parte de base + 24px.
             overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-            final_geo = overlay.geometry()
-            start_geo = final_geo.translated(0, 24)
+            start_geo = base_geo.translated(0, 24)
             overlay.setGeometry(start_geo)
             effect.setOpacity(0.0)
 
@@ -4284,9 +4309,15 @@ class DrawingCanvas(QWidget):
             geo_anim = QPropertyAnimation(overlay, b"geometry", self)
             geo_anim.setDuration(240)
             geo_anim.setStartValue(start_geo)
-            geo_anim.setEndValue(final_geo)
+            geo_anim.setEndValue(base_geo)
             geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
+            def _on_shown(saved_geo=base_geo):
+                # Garante posição EXATA + opacity 1.0 no fim (anti-arredondamento).
+                overlay.setGeometry(saved_geo)
+                effect.setOpacity(1.0)
+
+            opacity_anim.finished.connect(_on_shown)
             self._overlay_fade_anim = opacity_anim
             self._overlay_intro_geo_anim = geo_anim
             opacity_anim.start()
