@@ -1289,21 +1289,21 @@ class OrderCenterView(QWidget):
                 "Este pedido não possui destino de produção registrado para voltar em aguardando recebimento."
             )
 
-        btn_edit = box.addButton("Nova requisição (editar)", QMessageBox.ButtonRole.AcceptRole)
-        btn_receipt = box.addButton("Aguardando recebimento", QMessageBox.ButtonRole.ActionRole)
-        btn_close = box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        btn_edit = box.addButton("Nova Requisição", QMessageBox.ButtonRole.AcceptRole)
+        btn_receipt = box.addButton("Aguardando Recebimento", QMessageBox.ButtonRole.ActionRole)
+        btn_close = box.addButton("Fechar", QMessageBox.ButtonRole.RejectRole)
         apply_message_box_theme(box)
         # Ajusta as larguras pelo texto real para evitar truncamento em qualquer escala.
         metrics = QFontMetrics(btn_edit.font())
         horizontal_padding = max(44, int(52 * self.scale))
-        btn_edit_w = max(170, metrics.horizontalAdvance(btn_edit.text()) + horizontal_padding)
-        btn_receipt_w = max(170, metrics.horizontalAdvance(btn_receipt.text()) + horizontal_padding)
+        btn_edit_w = max(180, metrics.horizontalAdvance(btn_edit.text()) + horizontal_padding)
+        btn_receipt_w = max(220, metrics.horizontalAdvance(btn_receipt.text()) + horizontal_padding)
         btn_close_w = max(120, metrics.horizontalAdvance(btn_close.text()) + horizontal_padding)
         btn_edit.setMinimumWidth(btn_edit_w)
         btn_receipt.setMinimumWidth(btn_receipt_w)
         btn_close.setMinimumWidth(btn_close_w)
         row_padding = max(88, int(96 * self.scale))
-        box.setMinimumWidth(max(620, btn_edit_w + btn_receipt_w + btn_close_w + row_padding))
+        box.setMinimumWidth(max(760, btn_edit_w + btn_receipt_w + btn_close_w + row_padding))
         btn_receipt.setEnabled(bool(destination))
         box.exec()
 
