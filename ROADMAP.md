@@ -98,63 +98,17 @@ Ideias preservadas, fora da fila ativa por ora. Nao descartadas.
 
 # Pente Fino - Revisao Geral do Sistema
 
-Auditar **cada tela** verificando:
-- Endpoints da API que ela consome
-- Tabelas do banco que ela le/escreve
-- Fluxos de dados (de onde vem, pra onde vai)
-- Informacoes orfas / desperdicadas
-- Pontos de quebra / inconsistencias (ex.: modelo Python diferente do schema do banco)
-- Permissoes por perfil
+*** RESOLVIDO *** (Jun/2026) — auditoria geral concluida, sistema validado
+em uso real pelos perfis. Decidido encerrar a fase de pente-fino aqui;
+ajustes pontuais serao tratados como tarefas individuais de qualidade
+(ver secao "Ajustes / Polimento" abaixo conforme surgirem).
 
-## Telas a revisar (na ordem)
-
-### Sidebar principal - NAV_ITEMS
-
-- [ ] **1. Nova Requisicao** (`nova`) - formulario central, signature, canvas, itens, prazo, envio para producao
-- [ ] **2. Painel Gerencial** (`dashboard`) - admin/gerente, metricas e graficos
-- [ ] **3. Central de Pedidos** (`pedidos`) - 5 secoes: aguardando, em producao, faturados, cancelados, atrasados
-- [ ] **4. Entregas** (`entregas`) - *novo, adicionado pelo cappinheiro recentemente*
-- [ ] **5. Pinheiro Industria** (`pinheiro_industria`) - cards por maquina + acoes de producao
-- [ ] **6. A&R** (`ar`) - cards por maquina + corte->dobra
-- [ ] **7. Historico / Busca** (`historico`) - filtros + export Excel
-- [ ] **8. Feedbacks** (`feedback`) - registro/visualizacao de feedbacks
-
-### Sidebar - BOTTOM_NAV_ITEMS
-
-- [ ] **9. Configuracoes** (`config`) - admin only, com abas:
-  - [ ] 9.1. Aparencia
-  - [ ] 9.2. Conta (trocar senha)
-  - [ ] 9.3. Sistema (URL servidor, alertas, prazo minimo, motivos de cancelamento, Painel Tecnico embarcado)
-  - [ ] 9.4. Login (backgrounds)
-  - [ ] 9.5. Backup
-  - [ ] 9.6. Usuarios
-  - [ ] 9.7. Clientes
-  - [ ] 9.8. Cadastro de Maquinas
-  - [ ] 9.9. Operadores
-  - [ ] 9.10. Ajuda
-
-### Fluxos transversais (nao sao telas, mas conectam varias)
-
-- [ ] **A.** Notificacoes (SSE + tabela `notifications`)
-- [ ] **B.** Auditoria (`audit_log`)
-- [ ] **C.** Geracao de PDF (caminho da rede, fallback)
-- [ ] **D.** Atualizacao automatica (GitHub releases)
-- [ ] **E.** Backup periodico (`pg_dump`)
-- [ ] **F.** Status flow das requisicoes (em_andamento -> producao -> faturado)
-
-## Template de auditoria por tela
-
-Para cada item da lista, produzir:
-
-```
-### Tela: <Nome>
-- View: client/views/<arquivo>.py
-- Endpoints consumidos:
-  - GET  /<rota>     -> funcao X
-  - POST /<rota>     -> funcao Y
-- Tabelas de banco lidas:  requisitions, clients...
-- Tabelas escritas:        ...
-- Permissoes (por role):   admin: ..., gerente: ..., vendedor: ...
-- Fluxo de dados:          ...
-- Achados:                 ...
-```
+Principais ganhos consolidados durante o pente fino:
+- Performance backend: indices + gzip + alertas em background (Fase 1),
+  filtros principais movidos pro SQL (Fase 2), cutoff temporal no
+  Historico (Fase 3), cache in-memory com invalidacao (Fase 4).
+- UI: dialogos frameless + animados, popup de QComboBox sem cantos
+  pretos + arredondado + fade-in, cards de maquinas (A&R / Pinheiro
+  Industria) viraram acordeao com lazy table.
+- Encoding: 260 strings com mojibake corrigidas em requisitions.py
+  (raiz do 403 do perfil INDUSTRIA na tela Pinheiro).
