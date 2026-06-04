@@ -550,17 +550,20 @@ def install_message_box_theme_hooks() -> None:
 
 
 def install_combo_popup_chrome() -> None:
-    """Substitui a borda nativa do popup de TODOS os QComboBox por uma
-    sombra customizada do tema do app.
+    """Limpa o chrome do popup de TODOS os QComboBox.
 
-    Causa do bug: o popup do QComboBox é uma janela `Qt.Popup` que o
-    Windows desenha com uma borda preta de drop-shadow do sistema operacional.
-    O QSS (mesmo estilizando `QComboBox QAbstractItemView`) não atinge essa
-    borda externa. Solução: monkey-patch em `showPopup` que remove o frame
-    da view interna E aplica frameless+sombra customizada na janela popup.
+    Estratégia segura (revisada após bug do fundo preto em Fusion):
+    NÃO mexemos em windowFlags, WA_TranslucentBackground nem aplicamos
+    QGraphicsDropShadowEffect no popup — essas mudanças causavam um
+    retângulo PRETO opaco em volta do popup em Windows + Fusion (a janela
+    popup vira translúcida mas o composit não suporta alpha, renderiza
+    preto).
 
-    Idempotente: instala o patch uma única vez por processo (marcador
-    `_fp_combo_chrome_installed` no próprio QComboBox).
+    O que fazemos AGORA: apenas `setFrameShape(NoFrame)` na view interna,
+    pra que a borda visual do popup venha 100% do QSS aplicado em
+    `QComboBox QAbstractItemView` (controlado por theme.py).
+
+    Idempotente: instala o patch uma única vez por processo.
     """
     if getattr(QComboBox, "_fp_combo_chrome_installed", False):
         return
@@ -572,31 +575,10 @@ def install_combo_popup_chrome() -> None:
         view = self.view()
         if view is None:
             return
-        # Remove o frame interno da QListView/AbstractItemView
+        # Remove o frame interno da QListView/AbstractItemView para que
+        # a borda venha exclusivamente do QSS (que respeita o tema).
         try:
             view.setFrameShape(QFrame.Shape.NoFrame)
-        except Exception:
-            pass
-        # A "janela" do popup é o widget container (ancestral da view).
-        popup = view.window()
-        if popup is None:
-            return
-        if popup.property("_fp_combo_popup_styled"):
-            return  # já configurado neste popup
-        # Aplica frameless + transparência + sombra customizada na janela popup
-        try:
-            popup.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
-            popup.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint, True)
-            popup.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-            if popup.graphicsEffect() is None:
-                shadow = QGraphicsDropShadowEffect(popup)
-                shadow.setBlurRadius(22)
-                shadow.setOffset(0, 4)
-                color = QColor(0, 0, 0)
-                color.setAlpha(120)
-                shadow.setColor(color)
-                popup.setGraphicsEffect(shadow)
-            popup.setProperty("_fp_combo_popup_styled", True)
         except Exception:
             pass
 
