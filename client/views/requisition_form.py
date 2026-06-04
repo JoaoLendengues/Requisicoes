@@ -3001,11 +3001,13 @@ class RequisitionForm(QWidget):
             inp.setValidator(validator)
             return inp
 
+        steel_density = 7.865
+
         inp_qnt   = _input("ex: 10", "")
         inp_comp  = _input("mm", "")
         inp_larg  = _input("mm", "")
         inp_chapa = _input("mm", "")
-        inp_var   = _input("constante", "7.865")
+        inp_var   = _input("constante", "7,865")
         inp_var.setReadOnly(True)
         inp_var.setStyleSheet(
             inp_var.styleSheet() +
@@ -3063,7 +3065,7 @@ class RequisitionForm(QWidget):
                 comp = parse_decimal(inp_comp.text()) or 0.0
                 larg = parse_decimal(inp_larg.text()) or 0.0
                 chapa = parse_decimal(inp_chapa.text()) or 0.0
-                var = parse_decimal(inp_var.text()) or 7.865
+                var = steel_density
                 peso  = (qnt * comp * larg * chapa * var) / 1_000_000
                 txt = format_weight_kg(peso)
                 lbl_result.setText(f"PESO = {txt} kg")
