@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
@@ -8,6 +9,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFontDialog,
+    QGraphicsDropShadowEffect,
     QMessageBox,
     QPushButton,
     QWidget,
@@ -230,10 +232,68 @@ def _style_dialog_buttons(dialog: QDialog) -> None:
                 _apply_button_kind(button, _dialog_button_kind_from_role(button_box.buttonRole(button)))
 
 
+class _DragMoveFilter(QObject):
+    """Permite arrastar um QDialog sem barra de título: clique-segure-arraste
+    em qualquer área que não seja um botão/input ativo.
+
+    Instalado uma única vez por diálogo (controlado por `_fp_drag_filter`)."""
+
+    def __init__(self, dialog: QDialog):
+        super().__init__(dialog)
+        self._dialog = dialog
+        self._press_offset: QPoint | None = None
+
+    def eventFilter(self, obj, event):  # noqa: N802
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                # Só inicia drag se o clique NÃO foi num widget interativo.
+                child = self._dialog.childAt(event.position().toPoint())
+                if not isinstance(child, (QPushButton,)):
+                    g = event.globalPosition().toPoint()
+                    self._press_offset = g - self._dialog.frameGeometry().topLeft()
+                    return False  # não consome — deixa o widget receber também
+        elif event.type() == QEvent.Type.MouseMove and self._press_offset is not None:
+            if event.buttons() & Qt.MouseButton.LeftButton:
+                g = event.globalPosition().toPoint()
+                self._dialog.move(g - self._press_offset)
+                return True
+        elif event.type() == QEvent.Type.MouseButtonRelease:
+            self._press_offset = None
+        return False
+
+
+def _install_frameless_chrome(dialog: QDialog) -> None:
+    """Aplica frameless + sombra + drag no QDialog/QMessageBox.
+
+    Idempotente: marca o diálogo com `_fp_frameless_applied` para não repetir
+    quando `apply_dialog_theme` é chamado várias vezes pelo filter (Polish/Show)."""
+    if dialog.property("_fp_frameless_applied"):
+        return
+    # Mantém Dialog mas tira a barra de título nativa do Windows.
+    dialog.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+    # Sem a barra nativa, perdemos a sombra do Windows. Compensamos com sombra Qt.
+    if dialog.graphicsEffect() is None:
+        shadow = QGraphicsDropShadowEffect(dialog)
+        shadow.setBlurRadius(38)
+        shadow.setOffset(0, 8)
+        color = QColor(0, 0, 0)
+        color.setAlpha(140)
+        shadow.setColor(color)
+        dialog.setGraphicsEffect(shadow)
+    # Drag manual em qualquer parte que não seja botão.
+    drag_filter = _DragMoveFilter(dialog)
+    dialog.installEventFilter(drag_filter)
+    dialog.setProperty("_fp_drag_filter", drag_filter)  # mantém referência viva
+    dialog.setProperty("_fp_frameless_applied", True)
+
+
 def apply_dialog_theme(dialog: QDialog) -> QDialog:
     dialog.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     dialog.setProperty("fp_dialog", "1")
     dialog.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
+    # Frameless + sombra + drag — substituem a barra de título nativa do Windows
+    # com o look limpo do app. Idempotente.
+    _install_frameless_chrome(dialog)
 
     base_style = dialog.property("_fp_dialog_base_style")
     if base_style is None:
