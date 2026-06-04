@@ -24,6 +24,7 @@ from .order_center_view import OrderCenterView
 from .delivery_center_view import DeliveryCenterView
 from .production_view import ProductionView
 from .settings_view import SettingsView
+from .system_updates_view import SystemUpdatesView
 from .user_center_view import UserCenterView
 from .feedback_view import FeedbackView
 
@@ -59,6 +60,7 @@ PAGE_USER_CENTER = 7
 PAGE_SETTINGS = 8
 PAGE_FEEDBACK = 9
 PAGE_DELIVERY_CENTER = 10
+PAGE_SYSTEM_UPDATES = 11
 
 
 class MainWindow(QMainWindow):
@@ -165,10 +167,11 @@ class MainWindow(QMainWindow):
         self.user_center_view: UserCenterView | None = None
         self.settings_view: SettingsView | None = None
         self.feedback_view: FeedbackView | None = None
+        self.system_updates_view: SystemUpdatesView | None = None
 
         self.stack.addWidget(self.form_view)       # PAGE_FORM = 0
         from PySide6.QtWidgets import QWidget as _QW
-        for _ in range(10):                        # páginas 1-10: placeholders leves
+        for _ in range(11):                        # páginas 1-11: placeholders leves
             self.stack.addWidget(_QW())
 
         # Sinal do formulário conectado imediatamente (único que precisa existir já)
@@ -188,6 +191,7 @@ class MainWindow(QMainWindow):
             "historico":          True,
             "config":             True,
             "feedback":           True,
+            "atualizacoes":       (session.settings_show_billing or session.settings_show_connection),
         }
         for key, visible in nav_visible.items():
             btn = self.sidebar._nav_btns.get(key)
@@ -317,6 +321,7 @@ class MainWindow(QMainWindow):
             "usuarios":           PAGE_USER_CENTER,
             "config":             PAGE_SETTINGS,
             "feedback":           PAGE_FEEDBACK,
+            "atualizacoes":       PAGE_SYSTEM_UPDATES,
         }
         page = mapping.get(key, PAGE_FORM)
 
@@ -377,6 +382,8 @@ class MainWindow(QMainWindow):
             self.ar_view.refresh()
         elif page == PAGE_USER_CENTER:
             self.user_center_view.refresh()
+        elif page == PAGE_SYSTEM_UPDATES:
+            self.system_updates_view.refresh()
         elif page == PAGE_SETTINGS:
             self.settings_view.refresh_operational_settings()
         elif page == PAGE_FEEDBACK:
@@ -426,6 +433,7 @@ class MainWindow(QMainWindow):
             PAGE_USER_CENTER:        "user_center_view",
             PAGE_SETTINGS:           "settings_view",
             PAGE_FEEDBACK:           "feedback_view",
+            PAGE_SYSTEM_UPDATES:     "system_updates_view",
         }
         attr = _attr.get(page)
         if attr is None or getattr(self, attr) is not None:
@@ -474,6 +482,8 @@ class MainWindow(QMainWindow):
             return SettingsView(self.scale)
         if page == PAGE_FEEDBACK:
             return FeedbackView(self.scale)
+        if page == PAGE_SYSTEM_UPDATES:
+            return SystemUpdatesView(self.scale)
         raise ValueError(f"Página desconhecida: {page}")
 
     def _connect_view_signals(self, page: int, view) -> None:
@@ -566,6 +576,7 @@ class MainWindow(QMainWindow):
             PAGE_USER_CENTER: "usuarios",
             PAGE_SETTINGS: "config",
             PAGE_FEEDBACK: "feedback",
+            PAGE_SYSTEM_UPDATES: "atualizacoes",
         }
         self.sidebar._highlight(mapping.get(self.stack.currentIndex(), "nova"))
 
@@ -1123,7 +1134,7 @@ class MainWindow(QMainWindow):
             self.technical_panel_view, self.order_center_view,
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
-            self.delivery_center_view,
+            self.delivery_center_view, self.system_updates_view,
         ]
         idx = self.stack.currentIndex()
         return views[idx] if 0 <= idx < len(views) else None
@@ -1141,6 +1152,7 @@ class MainWindow(QMainWindow):
             self.technical_panel_view, self.order_center_view, self.delivery_center_view,
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
+            self.system_updates_view,
         ]
         current = self._get_current_view()
         for v in all_views:
@@ -1165,6 +1177,7 @@ class MainWindow(QMainWindow):
             PAGE_USER_CENTER:        getattr(self, "user_center_view", None),
             PAGE_SETTINGS:           getattr(self, "settings_view", None),
             PAGE_FEEDBACK:           getattr(self, "feedback_view", None),
+            PAGE_SYSTEM_UPDATES:     getattr(self, "system_updates_view", None),
         }
         view = views_by_page.get(page)
         if view is not None and getattr(view, "_theme_dirty", False):
@@ -1739,9 +1752,9 @@ class MainWindow(QMainWindow):
                     nav("config"), "right", "config",
                 ),
                 TourStep(
-                    "Aba Aparência",
-                    "Ajuste a <b>escala da interface</b> e o <b>tamanho de fonte</b> "
-                    "para se adaptar a qualquer resolução de tela.",
+                    "Aba Ajuda e Acessibilidade",
+                    "Ajuste a <b>escala da interface</b>, o <b>tamanho de fonte</b>, "
+                    "o tamanho das notificações e reabra o <b>Guia Rápido</b> quando precisar.",
                     cfg("_tab_btns", 0), "bottom",
                 ),
                 TourStep(
@@ -1759,34 +1772,22 @@ class MainWindow(QMainWindow):
                     cfg("_tab_btns", 2), "bottom",
                 ),
                 TourStep(
-                    "Aba Login",
-                    "Personalize o <b>fundo da tela de login</b> com imagens da empresa. "
-                    "Adicione, remova e visualize as imagens disponíveis.",
-                    cfg("_tab_btns", 3), "bottom",
-                ),
-                TourStep(
                     "Aba Backup",
                     "Configure o <b>backup automático</b> do banco de dados: "
                     "horário de execução e retenção diária, semanal e mensal.",
-                    cfg("_tab_btns", 4), "bottom",
+                    cfg("_tab_btns", 3), "bottom",
                 ),
                 TourStep(
                     "Aba Usuários",
                     "Cadastre, edite e desative os usuários do sistema e "
                     "defina o nível de acesso de cada um.",
-                    cfg("_tab_btns", 5), "bottom",
+                    cfg("_tab_btns", 4), "bottom",
                 ),
                 TourStep(
                     "Aba Clientes",
                     "Cadastre clientes individualmente ou <b>importe em lote</b> "
                     "por planilha Excel, e mantenha a base de clientes atualizada.",
-                    cfg("_tab_btns", 6), "bottom",
-                ),
-                TourStep(
-                    "Aba Ajuda",
-                    "Verifique atualizações disponíveis e acesse "
-                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
-                    cfg("_tab_btns", 7), "bottom",
+                    cfg("_tab_btns", 5), "bottom",
                 ),
                 TourStep(
                     "Salvar Configurações",
@@ -1929,8 +1930,9 @@ class MainWindow(QMainWindow):
                     nav("config"), "right", "config",
                 ),
                 TourStep(
-                    "Aparência",
-                    "Ajuste a escala e o tamanho de fonte para sua resolução.",
+                    "Ajuda e Acessibilidade",
+                    "Ajuste a escala, o tamanho de fonte, o tamanho das notificações "
+                    "e reabra o <b>Guia Rápido</b> quando precisar.",
                     cfg("_tab_btns", 0), "bottom",
                 ),
                 TourStep(
@@ -1942,11 +1944,6 @@ class MainWindow(QMainWindow):
                     "Sistema",
                     "Configure alertas de faturamento e visualize as opções de conexão com o servidor.",
                     cfg("_tab_btns", 2), "bottom",
-                ),
-                TourStep(
-                    "Ajuda",
-                    "Verifique atualizações disponíveis e acesse o <b>Guia Rápido</b> novamente.",
-                    cfg("_tab_btns", 3), "bottom",
                 ),
                 TourStep(
                     "Salvar",
@@ -2043,8 +2040,8 @@ class MainWindow(QMainWindow):
                     nav("config"), "right", "config",
                 ),
                 TourStep(
-                    "Aparência",
-                    "Escolha a escala e o tamanho de fonte "
+                    "Ajuda e Acessibilidade",
+                    "Escolha a escala, o tamanho de fonte e o tamanho das notificações "
                     "mais confortáveis para a sua tela.",
                     cfg("_tab_btns", 0), "bottom",
                 ),
@@ -2052,12 +2049,6 @@ class MainWindow(QMainWindow):
                     "Conta",
                     "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
                     cfg("_tab_btns", 1), "bottom",
-                ),
-                TourStep(
-                    "Ajuda",
-                    "Verifique atualizações disponíveis e acesse "
-                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
-                    cfg("_tab_btns", 2), "bottom",
                 ),
                 # ── Notificações ──────────────────────────────────────────────
                 TourStep(
@@ -2132,19 +2123,19 @@ class MainWindow(QMainWindow):
                 # ── Configurações ─────────────────────────────────────────────
                 TourStep(
                     "Configurações",
-                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    "Ajuste a escala da interface, o tamanho de fonte e altere sua senha de acesso.",
                     nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Ajuda e Acessibilidade",
+                    "Ajuste a escala, o tamanho de fonte, o tamanho das notificações "
+                    "e reabra o <b>Guia Rápido</b> quando precisar.",
+                    cfg("_tab_btns", 0), "bottom",
                 ),
                 TourStep(
                     "Conta",
                     "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
                     cfg("_tab_btns", 1), "bottom",
-                ),
-                TourStep(
-                    "Ajuda",
-                    "Verifique atualizações disponíveis e acesse "
-                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
-                    cfg("_tab_btns", 2), "bottom",
                 ),
                 # ── Notificações ──────────────────────────────────────────────
                 TourStep(
@@ -2220,19 +2211,19 @@ class MainWindow(QMainWindow):
                 # ── Configurações ─────────────────────────────────────────────
                 TourStep(
                     "Configurações",
-                    "Ajuste a escala da interface e altere sua senha de acesso.",
+                    "Ajuste a escala da interface, o tamanho de fonte e altere sua senha de acesso.",
                     nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Ajuda e Acessibilidade",
+                    "Ajuste a escala, o tamanho de fonte, o tamanho das notificações "
+                    "e reabra o <b>Guia Rápido</b> quando precisar.",
+                    cfg("_tab_btns", 0), "bottom",
                 ),
                 TourStep(
                     "Conta",
                     "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
                     cfg("_tab_btns", 1), "bottom",
-                ),
-                TourStep(
-                    "Ajuda",
-                    "Verifique atualizações disponíveis e acesse "
-                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
-                    cfg("_tab_btns", 2), "bottom",
                 ),
                 # ── Notificações ──────────────────────────────────────────────
                 TourStep(
@@ -2273,20 +2264,20 @@ class MainWindow(QMainWindow):
                 ),
                 TourStep(
                     "Configurações",
-                    "Esse perfil mantém acesso às abas de aparência, conta "
-                    "e ajuda/acessibilidade.",
+                    "Esse perfil mantém acesso à aba de ajuda e acessibilidade "
+                    "e à aba da conta.",
                     nav("config"), "right", "config",
+                ),
+                TourStep(
+                    "Ajuda e Acessibilidade",
+                    "Ajuste a escala, o tamanho de fonte, o tamanho das notificações "
+                    "e reabra o <b>Guia Rápido</b> quando precisar.",
+                    cfg("_tab_btns", 0), "bottom",
                 ),
                 TourStep(
                     "Conta",
                     "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
                     cfg("_tab_btns", 1), "bottom",
-                ),
-                TourStep(
-                    "Ajuda",
-                    "Verifique atualizações disponíveis e acesse "
-                    "o <b>Guia Rápido</b> novamente a qualquer momento.",
-                    cfg("_tab_btns", 2), "bottom",
                 ),
                 # ── Notificações ──────────────────────────────────────────────
                 TourStep(

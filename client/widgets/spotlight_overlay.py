@@ -344,6 +344,7 @@ class SpotlightOverlay(QWidget):
         "config":             8,
         "feedback":           9,
         "entregas":           10,
+        "atualizacoes":       11,
     }
 
     def __init__(

@@ -33,6 +33,7 @@ SIDEBAR_ICON_ALIASES = {
     "historico":    ["historico", "histórico", "busca", "historico busca", "histórico busca"],
     "usuarios":     ["usuarios", "usuários", "usuario", "usuário", "central de usuarios", "central de usuários"],
     "config":       ["configuracoes", "configurações", "config", "ajustes"],
+    "atualizacoes": ["atualizacoes", "atualizações", "update", "updates", "configuracoes", "configurações", "config"],
     "feedback":     ["feedback", "feedbacks", "sugestao", "sugestoes", "bugs", "elogios", "problemas"],
     "usuario":      ["usuario", "usuário", "perfil"],
     "trocar_usuario": ["trocar usuario", "trocar usuário", "alternar usuario", "alternar usuário", "switch user"],
@@ -52,6 +53,7 @@ NAV_ITEMS = [
 
 BOTTOM_NAV_ITEMS = [
     ("feedback", "FEEDBACKS", "feedback"),
+    ("atualizacoes", "ATUALIZAÇÕES", "atualizacoes"),
     ("config", "CONFIGURAÇÕES", "config"),
 ]
 

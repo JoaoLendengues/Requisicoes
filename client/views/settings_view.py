@@ -462,7 +462,64 @@ class SettingsView(QWidget):
         font_size_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         lay_ap.addWidget(font_size_hint)
 
-        _add_tab("Aparência", _wrap(card_ap))
+        lay_ap.addWidget(_section("Guia Rápido", s))
+        lay_ap.addWidget(_separator())
+
+        guide_row = QHBoxLayout()
+        guide_row.setSpacing(max(8, int(10 * s)))
+        guide_hint = QLabel("Precisa relembrar alguma funcionalidade?")
+        guide_hint.setProperty("muted", "1")
+        guide_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        guide_row.addWidget(guide_hint)
+        guide_row.addStretch()
+        self.btn_show_guide = QPushButton("📖  Ver Guia Rápido")
+        self.btn_show_guide.setFixedHeight(max(38, int(44 * s)))
+        self.btn_show_guide.setStyleSheet(_flat_secondary_btn_style(s))
+        self.btn_show_guide.clicked.connect(self.show_guide_requested)
+        guide_row.addWidget(self.btn_show_guide)
+        lay_ap.addLayout(guide_row)
+
+        lay_ap.addWidget(_section("Tamanho das Notificações", s))
+        lay_ap.addWidget(_separator())
+
+        notif_size_row = QHBoxLayout()
+        notif_size_row.setSpacing(max(6, int(8 * s)))
+        notif_size_row.addWidget(self._lbl("Tamanho dos pop-ups:", s))
+        self._notification_size_btns: dict[str, QPushButton] = {}
+        active_notif_label = res.notification_size_label
+        for label, _factor in NOTIFICATION_SIZE_STEPS:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setChecked(label == active_notif_label)
+            btn.setFixedHeight(max(32, int(36 * s)))
+            btn.setStyleSheet(self._scale_btn_style(s))
+            btn.clicked.connect(
+                lambda checked=False, lbl=label: self._on_notification_size_btn(lbl)
+            )
+            notif_size_row.addWidget(btn)
+            self._notification_size_btns[label] = btn
+        notif_size_row.addStretch()
+        lay_ap.addLayout(notif_size_row)
+
+        notif_test_row = QHBoxLayout()
+        notif_test_row.setSpacing(max(8, int(10 * s)))
+        notif_size_hint = QLabel(
+            'Pré-visualize cada tamanho com "Testar" e clique em '
+            "SALVAR CONFIGURAÇÕES para aplicar. Vale para os pop-ups e para o "
+            "painel do sininho."
+        )
+        notif_size_hint.setWordWrap(True)
+        notif_size_hint.setProperty("muted", "1")
+        notif_size_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        notif_test_row.addWidget(notif_size_hint, 1)
+        self._btn_test_notification = QPushButton("🔔  Testar")
+        self._btn_test_notification.setFixedHeight(max(38, int(44 * s)))
+        self._btn_test_notification.setStyleSheet(_flat_secondary_btn_style(s))
+        self._btn_test_notification.clicked.connect(self._preview_notification)
+        notif_test_row.addWidget(self._btn_test_notification, 0, Qt.AlignmentFlag.AlignTop)
+        lay_ap.addLayout(notif_test_row)
+
+        _add_tab("Ajuda e Acessibilidade", _wrap(card_ap))
 
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Conta
@@ -519,6 +576,12 @@ class SettingsView(QWidget):
 
         _add_tab("Conta", _wrap(card_ct))
 
+        # Placeholders mantidos para compatibilidade: o bloco de Atualizações
+        # saiu de Configurações e agora vive em uma tela dedicada no sidebar.
+        self._version_label = QLabel()
+        self.btn_check_update = QPushButton()
+        self._update_status_label = QLabel()
+
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Sistema (admin + gerente)
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -527,30 +590,6 @@ class SettingsView(QWidget):
             lay_sis = QVBoxLayout(card_sis)
             lay_sis.setContentsMargins(*_cm)
             lay_sis.setSpacing(_cs)
-
-            # Atualizações do Sistema (primeiro tópico)
-            from ..version import CURRENT_VERSION as _CURRENT_VERSION
-            lay_sis.addWidget(_section("Atualizações do Sistema", s))
-            lay_sis.addWidget(_separator())
-            update_row = QHBoxLayout()
-            update_row.setSpacing(max(8, int(10 * s)))
-            self._version_label = QLabel(f"Versão atual: v{_CURRENT_VERSION}")
-            self._version_label.setProperty("muted", "1")
-            self._version_label.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
-            update_row.addWidget(self._version_label)
-            update_row.addStretch()
-            self.btn_check_update = QPushButton("Verificar atualizações")
-            self.btn_check_update.setFixedHeight(max(38, int(44 * s)))
-            self.btn_check_update.setStyleSheet(_flat_secondary_btn_style(s))
-            self.btn_check_update.clicked.connect(self._check_updates)
-            update_row.addWidget(self.btn_check_update)
-            lay_sis.addLayout(update_row)
-            self._update_status_label = QLabel("")
-            self._update_status_label.setProperty("muted", "1")
-            self._update_status_label.setStyleSheet(
-                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
-            )
-            lay_sis.addWidget(self._update_status_label)
 
             # Conexão com o Servidor (admin only)
             self._conn_section = QWidget()
@@ -935,109 +974,13 @@ class SettingsView(QWidget):
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Login (admin only)
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        if session.settings_show_login_backgrounds:
-            card_bg = _new_card()
-            lay_bg = QVBoxLayout(card_bg)
-            lay_bg.setContentsMargins(*_cm)
-            lay_bg.setSpacing(max(8, int(10 * s)))
-
-            lay_bg.addWidget(_section("Fundo da Tela de Login", s))
-            lay_bg.addWidget(_separator())
-
-            bg_folder_row = QHBoxLayout()
-            bg_folder_row.setSpacing(max(8, int(10 * s)))
-            bg_folder_row.addWidget(self._lbl("Pasta de imagens:", s))
-            self.input_bg_folder = QLineEdit(res.bg_folder)
-            self.input_bg_folder.setFixedHeight(max(38, int(44 * s)))
-            self.input_bg_folder.setStyleSheet(_field_style(s))
-            self.input_bg_folder.setPlaceholderText(
-                r"Z:\REQUISIÇÕES (VENDAS)\login_backgrounds"
-            )
-            bg_folder_row.addWidget(self.input_bg_folder, 1)
-            self._btn_browse_bg_folder = QPushButton("Procurar")
-            self._btn_browse_bg_folder.setFixedHeight(max(38, int(44 * s)))
-            self._btn_browse_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
-            self._btn_browse_bg_folder.clicked.connect(self._browse_bg_folder)
-            bg_folder_row.addWidget(self._btn_browse_bg_folder)
-            self._btn_verify_bg_folder = QPushButton("Verificar")
-            self._btn_verify_bg_folder.setFixedHeight(max(38, int(44 * s)))
-            self._btn_verify_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
-            self._btn_verify_bg_folder.clicked.connect(self._verify_bg_folder)
-            bg_folder_row.addWidget(self._btn_verify_bg_folder)
-            lay_bg.addLayout(bg_folder_row)
-
-            self._lbl_bg_folder_status = QLabel("")
-            self._lbl_bg_folder_status.setWordWrap(True)
-            self._lbl_bg_folder_status.setStyleSheet(
-                f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
-            )
-            lay_bg.addWidget(self._lbl_bg_folder_status)
-
-            bg_folder_hint = QLabel(
-                "Pasta compartilhada (ex.: rede Z:\\) onde ficam as imagens de fundo. "
-                "Todos que apontarem para o mesmo caminho verão as mesmas imagens."
-            )
-            bg_folder_hint.setWordWrap(True)
-            bg_folder_hint.setProperty("muted", "1")
-            bg_folder_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
-            lay_bg.addWidget(bg_folder_hint)
-
-            self._bg_table = QTableWidget(0, 1)
-            apply_smooth_scroll(self._bg_table)
-            self._bg_table.setHorizontalHeaderLabels(["Arquivo"])
-            self._bg_table.horizontalHeader().setSectionResizeMode(
-                0, QHeaderView.ResizeMode.Stretch
-            )
-            self._bg_table.verticalHeader().setVisible(False)
-            self._bg_table.setSelectionBehavior(
-                QAbstractItemView.SelectionBehavior.SelectRows
-            )
-            self._bg_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-            self._bg_table.setAlternatingRowColors(True)
-            self._bg_table.setMinimumHeight(max(120, int(140 * s)))
-            self._bg_table.setMaximumHeight(max(200, int(220 * s)))
-            self._bg_table.setStyleSheet(_table_style())
-            lay_bg.addWidget(self._bg_table)
-
-            bg_btn_row = QHBoxLayout()
-            bg_btn_row.setSpacing(max(8, int(10 * s)))
-            self._btn_open_bg_folder = QPushButton("Abrir Pasta")
-            self._btn_open_bg_folder.setFixedHeight(max(36, int(42 * s)))
-            self._btn_open_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
-            self._btn_open_bg_folder.clicked.connect(self._open_bg_folder)
-            bg_btn_row.addWidget(self._btn_open_bg_folder)
-            self._btn_refresh_bg_table = QPushButton("Atualizar")
-            self._btn_refresh_bg_table.setFixedHeight(max(36, int(42 * s)))
-            self._btn_refresh_bg_table.setStyleSheet(_flat_secondary_btn_style(s))
-            self._btn_refresh_bg_table.clicked.connect(self._on_refresh_bg_table)
-            bg_btn_row.addWidget(self._btn_refresh_bg_table)
-            bg_btn_row.addStretch()
-            lay_bg.addLayout(bg_btn_row)
-
-            bg_hint = QLabel(
-                "Coloque as imagens diretamente na pasta acima (PNG, JPG, BMP, WEBP). "
-                "Clique em 'Abrir Pasta' para acessá-la pelo Explorador de Arquivos "
-                "e 'Atualizar' para recarregar a lista."
-            )
-            bg_hint.setWordWrap(True)
-            bg_hint.setProperty("muted", "1")
-            bg_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
-            lay_bg.addWidget(bg_hint)
-
-            # A listagem lê uma pasta de REDE (UNC) — deferir para a 1ª abertura
-            # da aba Login evita travar a construção de Configurações se o share
-            # estiver lento/indisponível.
-            _login_tab_index = len(self._tab_btns)
-            _add_tab("Login", _wrap(card_bg))
-            self._tab_first_show_hooks[_login_tab_index] = self._refresh_bg_table
-        else:
-            self.input_bg_folder        = QLineEdit()
-            self._btn_browse_bg_folder  = QPushButton()
-            self._btn_verify_bg_folder  = QPushButton()
-            self._lbl_bg_folder_status  = QLabel()
-            self._bg_table              = QTableWidget(0, 1)
-            self._btn_open_bg_folder    = QPushButton()
-            self._btn_refresh_bg_table  = QPushButton()
+        self.input_bg_folder        = QLineEdit()
+        self._btn_browse_bg_folder  = QPushButton()
+        self._btn_verify_bg_folder  = QPushButton()
+        self._lbl_bg_folder_status  = QLabel()
+        self._bg_table              = QTableWidget(0, 1)
+        self._btn_open_bg_folder    = QPushButton()
+        self._btn_refresh_bg_table  = QPushButton()
 
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Backup (admin only)
@@ -1282,70 +1225,7 @@ class SettingsView(QWidget):
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # ABA: Ajuda
         # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        card_help = _new_card()
-        lay_help = QVBoxLayout(card_help)
-        lay_help.setContentsMargins(*_cm)
-        lay_help.setSpacing(_cs)
-
-        lay_help.addWidget(_section("Guia Rápido", s))
-        lay_help.addWidget(_separator())
-
-        guide_row = QHBoxLayout()
-        guide_row.setSpacing(max(8, int(10 * s)))
-        guide_hint = QLabel("Precisa relembrar alguma funcionalidade?")
-        guide_hint.setProperty("muted", "1")
-        guide_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
-        guide_row.addWidget(guide_hint)
-        guide_row.addStretch()
-        self.btn_show_guide = QPushButton("📖  Ver Guia Rápido")
-        self.btn_show_guide.setFixedHeight(max(38, int(44 * s)))
-        self.btn_show_guide.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_show_guide.clicked.connect(self.show_guide_requested)
-        guide_row.addWidget(self.btn_show_guide)
-        lay_help.addLayout(guide_row)
-
-        # ── Acessibilidade: tamanho dos pop-ups de notificação ────────────
-        lay_help.addWidget(_section("Tamanho das Notificações", s))
-        lay_help.addWidget(_separator())
-
-        notif_size_row = QHBoxLayout()
-        notif_size_row.setSpacing(max(6, int(8 * s)))
-        notif_size_row.addWidget(self._lbl("Tamanho dos pop-ups:", s))
-        self._notification_size_btns: dict[str, QPushButton] = {}
-        active_notif_label = res.notification_size_label
-        for label, _factor in NOTIFICATION_SIZE_STEPS:
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.setChecked(label == active_notif_label)
-            btn.setFixedHeight(max(32, int(36 * s)))
-            btn.setStyleSheet(self._scale_btn_style(s))
-            btn.clicked.connect(
-                lambda checked=False, lbl=label: self._on_notification_size_btn(lbl)
-            )
-            notif_size_row.addWidget(btn)
-            self._notification_size_btns[label] = btn
-        notif_size_row.addStretch()
-        lay_help.addLayout(notif_size_row)
-
-        notif_test_row = QHBoxLayout()
-        notif_test_row.setSpacing(max(8, int(10 * s)))
-        notif_size_hint = QLabel(
-            'Pré-visualize cada tamanho com "Testar" e clique em '
-            "SALVAR CONFIGURAÇÕES para aplicar. Vale para os pop-ups e para o "
-            "painel do sininho."
-        )
-        notif_size_hint.setWordWrap(True)
-        notif_size_hint.setProperty("muted", "1")
-        notif_size_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
-        notif_test_row.addWidget(notif_size_hint, 1)
-        self._btn_test_notification = QPushButton("🔔  Testar")
-        self._btn_test_notification.setFixedHeight(max(38, int(44 * s)))
-        self._btn_test_notification.setStyleSheet(_flat_secondary_btn_style(s))
-        self._btn_test_notification.clicked.connect(self._preview_notification)
-        notif_test_row.addWidget(self._btn_test_notification, 0, Qt.AlignmentFlag.AlignTop)
-        lay_help.addLayout(notif_test_row)
-
-        _add_tab("Ajuda e Acessibilidade", _wrap(card_help))
+        # Ajuda e Acessibilidade foi consolidada com a antiga aba Aparência.
 
         # Fecha a barra de abas com um stretch à direita
         tab_bar_layout.addStretch()
@@ -1992,10 +1872,6 @@ class SettingsView(QWidget):
             font_size=selected_font_size,
             notification_size=selected_notification_size,
         )
-        if session.settings_show_login_backgrounds:
-            bg_folder_val = self.input_bg_folder.text().strip()
-            if bg_folder_val:
-                save_kwargs["bg_folder"] = bg_folder_val
 
         if session.settings_show_billing:
             # Admin / Gerente: salva aparência + prazo de faturamento no servidor
@@ -2015,8 +1891,6 @@ class SettingsView(QWidget):
             res.save(**save_kwargs,
                      pending_invoice_alert_days=pending_invoice_alert_days,
                      min_delivery_business_days=min_delivery_business_days)
-            if session.settings_show_login_backgrounds:
-                self._refresh_bg_table()
             self._pending_save_context = {
                 "scale_changed": scale_changed,
                 "font_size_changed": font_size_changed,
@@ -2036,8 +1910,6 @@ class SettingsView(QWidget):
         else:
             # Demais roles: salva apenas aparência localmente
             res.save(**save_kwargs)
-            if session.settings_show_login_backgrounds:
-                self._refresh_bg_table()
             current = local_now()
             self.date_label.setText(_format_header_date(current))
             self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
@@ -2331,14 +2203,6 @@ class SettingsView(QWidget):
         for btn in self._notification_size_btns.values():
             btn.setStyleSheet(btn_style)
         self._btn_test_notification.setStyleSheet(_flat_secondary_btn_style(s))
-        if session.settings_show_login_backgrounds:
-            self.input_bg_folder.setStyleSheet(_field_style(s))
-            self._btn_browse_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
-            self._btn_verify_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
-            self._btn_open_bg_folder.setStyleSheet(_flat_secondary_btn_style(s))
-            self._btn_refresh_bg_table.setStyleSheet(_flat_secondary_btn_style(s))
-            self._bg_table.setStyleSheet(_table_style())
-            self._refresh_bg_table()
         if session.settings_show_backup:
             chk_style = _checkbox_style(s)
             spn_style = _spinbox_style(s)
