@@ -36,7 +36,6 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QGraphicsOpacityEffect,
 )
 from ..core import theme
-from ..core.dialogs import ask_confirmation
 from ..core.text_case import normalize_upper_text
 
 
@@ -7055,12 +7054,18 @@ class DrawingCanvas(QWidget):
 
     # Limpar
     def _clear(self):
-        if not ask_confirmation(
-            self,
-            "Confirmar limpeza",
-            "Deseja realmente limpar todo o desenho?",
-            default_to_yes=False,
-        ):
+        box = QMessageBox(self)
+        box.setWindowTitle("Confirmar limpeza")
+        box.setText("Deseja realmente limpar todo o desenho?")
+        box.setIcon(QMessageBox.Icon.Question)
+        btn_sim = box.addButton("Sim", QMessageBox.ButtonRole.YesRole)
+        btn_nao = box.addButton("Não", QMessageBox.ButtonRole.NoRole)
+        box.setDefaultButton(btn_nao)
+        box.setEscapeButton(btn_nao)
+        self._prepare_popup_dialog(box)
+        self._style_popup_dialog_buttons(box)
+        box.exec()
+        if box.clickedButton() != btn_sim:
             return
         self._clear_scene_contents()
 
