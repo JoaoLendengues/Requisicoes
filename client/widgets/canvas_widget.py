@@ -3652,6 +3652,49 @@ class _DragHandle(QFrame):
         super().mouseDoubleClickEvent(event)
 
 
+class _OverlayToggleTabFilter(QObject):
+    """Intercepta Tab pra toggle da toolbar — apenas quando NÃO está em campo de input.
+
+    Diferença em relação a um QAction(Tab): QAction consome Tab antes do widget
+    com foco poder processar, quebrando a navegação entre campos (SpinBox →
+    ComboBox → ...). Esse filter checa o focusWidget() antes — se for um widget
+    de entrada de dados, deixa Tab passar (return False). Caso contrário,
+    dispara o toggle e consome (return True).
+    """
+
+    def __init__(self, canvas: "DrawingCanvas"):
+        super().__init__(canvas)
+        self._canvas = canvas
+
+    def eventFilter(self, obj, event):  # noqa: N802
+        if event.type() != QEvent.Type.KeyPress:
+            return False
+        if event.key() != Qt.Key.Key_Tab:
+            return False
+        if event.modifiers() != Qt.KeyboardModifier.NoModifier:
+            return False
+        # Se o foco está em widget de entrada de dados, deixa Tab fazer a
+        # navegação default entre campos. Checa AMBOS: o focusWidget do app
+        # (pode ser None em alguns contextos) e o widget que recebeu o evento.
+        from PySide6.QtWidgets import QLineEdit, QTextEdit, QPlainTextEdit
+        input_types = (QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit, QTextEdit, QPlainTextEdit)
+        focus = QApplication.focusWidget()
+        if isinstance(focus, input_types):
+            return False
+        # Se focusWidget é None, usa o widget que processa o evento como fallback.
+        if focus is None and isinstance(obj, input_types):
+            return False
+        # Se obj é um filho do canvas (ex: spin direto), também respeita.
+        if isinstance(obj, input_types):
+            return False
+        # Caso geral: consome Tab e dispara o toggle da pílula.
+        try:
+            self._canvas._toggle_overlay_visibility()
+        except Exception:
+            pass
+        return True
+
+
 class _CanvasDrawingMouseFilter(QObject):
     """Detecta drag no canvas pra fazer fade da toolbar enquanto o usuário desenha.
 
@@ -4295,18 +4338,38 @@ class DrawingCanvas(QWidget):
 
         Roda uma vez por instância (controlada por `_overlay_intro_played`).
         ~280ms OutCubic.
+
+        Reposiciona ANTES de capturar `final_geo` pra evitar o bug em que
+        o showEvent disparava a animação enquanto o layout do canvas
+        ainda não havia estabilizado — a pílula nascia no canto superior
+        esquerdo porque a view tinha geometry 0×0 nesse momento.
         """
         overlay = getattr(self, "_toolbar_overlay", None)
         effect = getattr(self, "_overlay_opacity_effect", None)
-        if overlay is None or effect is None:
+        view = getattr(self, "view", None)
+        if overlay is None or effect is None or view is None:
             return
         if getattr(self, "_overlay_intro_played", False):
             return
-        self._overlay_intro_played = True
 
+        # Garante que a view já tem tamanho útil antes de calcular a posição
+        # destino. Se ainda for 0×0 (layout não estabilizou), adia mais um
+        # tick e tenta de novo — sem marcar como "played" ainda.
+        if view.width() <= 0 or view.height() <= 0:
+            QTimer.singleShot(60, self._animate_overlay_intro)
+            return
+
+        # Reposiciona AGORA com geometria correta da view; só então capturamos
+        # a posição final pra animação.
+        self._reposition_toolbar_overlay()
+        overlay.adjustSize()
         final_geo = overlay.geometry()
         if final_geo.width() <= 0 or final_geo.height() <= 0:
+            QTimer.singleShot(60, self._animate_overlay_intro)
             return
+
+        self._overlay_intro_played = True
+
         # Posição inicial: 24px abaixo, opacity zero.
         start_geo = final_geo.translated(0, 24)
         overlay.setGeometry(start_geo)
@@ -4793,13 +4856,13 @@ class DrawingCanvas(QWidget):
         self.addAction(manual_dimension_action)
 
         # Tab → toggle visibilidade da toolbar flutuante (estilo Figma/tldraw).
-        # WidgetWithChildrenShortcut: ativa quando o foco está no canvas ou em
-        # qualquer widget filho (ferramentas, view, etc).
-        toggle_overlay_action = QAction(self)
-        toggle_overlay_action.setShortcut(QKeySequence(Qt.Key.Key_Tab))
-        toggle_overlay_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        toggle_overlay_action.triggered.connect(self._toggle_overlay_visibility)
-        self.addAction(toggle_overlay_action)
+        # IMPORTANTE: NÃO usamos QAction porque QAction consome o Tab antes de
+        # qualquer widget de input poder receber (SpinBox/ComboBox/LineEdit
+        # precisam de Tab pra navegar entre campos). Em vez disso, instalamos
+        # um event filter inteligente que só intercepta Tab quando o foco NÃO
+        # está num widget de entrada de dados — ver _OverlayToggleTabFilter.
+        self._overlay_toggle_filter = _OverlayToggleTabFilter(self)
+        self.installEventFilter(self._overlay_toggle_filter)
 
         scale_up_action = QAction(self)
         scale_up_action.setShortcut(QKeySequence("Ctrl++"))
