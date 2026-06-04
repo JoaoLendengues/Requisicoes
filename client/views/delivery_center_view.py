@@ -541,12 +541,12 @@ class DeliveryCenterView(QWidget):
         rows = raw_rows if isinstance(raw_rows, list) else []
         self._pending_rows = [row for row in rows if isinstance(row, dict) and not row.get("delivered_at")]
         self._completed_rows = [row for row in rows if isinstance(row, dict) and row.get("delivered_at")]
-        self._row_by_key = {}
-        self._completed_row_by_key = {}
+        self._row_by_id = {}
+        self._completed_row_by_id = {}
         self._fill_table(
             self.table,
             self._pending_rows,
-            self._row_by_key,
+            self._row_by_id,
             "Nenhuma entrega pendente na agenda.",
             sort_column=5,
             sort_order=Qt.SortOrder.AscendingOrder,
@@ -554,7 +554,7 @@ class DeliveryCenterView(QWidget):
         self._fill_table(
             self.completed_table,
             self._completed_rows,
-            self._completed_row_by_key,
+            self._completed_row_by_id,
             "Nenhuma entrega realizada ainda.",
             sort_column=8,
             sort_order=Qt.SortOrder.DescendingOrder,
