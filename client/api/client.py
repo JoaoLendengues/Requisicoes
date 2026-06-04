@@ -434,7 +434,7 @@ def mark_delivery_delivered(req_id: int) -> dict:
         return _check(client.patch(f"/requisitions/{req_id}/mark-delivered"))
 
 
-def mark_delivery_split_delivered(split_id: int) -> dict:
+def mark_split_delivery_delivered(split_id: int) -> dict:
     with _cli() as client:
         return _check(client.patch(f"/requisitions/production-splits/{split_id}/mark-delivered"))
 
@@ -449,7 +449,7 @@ def cancel_delivery_delivered(req_id: int, reason: str) -> dict:
         )
 
 
-def cancel_delivery_split_delivered(split_id: int, reason: str) -> dict:
+def cancel_split_delivery_delivered(split_id: int, reason: str) -> dict:
     with _cli() as client:
         return _check(
             client.patch(

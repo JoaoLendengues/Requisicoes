@@ -1989,6 +1989,10 @@ class RequisitionForm(QWidget):
 
         meta_wrap = QWidget()
         meta_wrap.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        # Qt's Fusion style pinta QWidget sem WA_StyledBackground com a
+        # Window color padrao — aparece como um retangulo cinza/azul-cinza
+        # destoando do gradient do card. Forcamos transparente.
+        meta_wrap.setStyleSheet("background:transparent;")
         meta_row = QHBoxLayout(meta_wrap)
         meta_row.setContentsMargins(0, 0, 0, 0)
         meta_row.setSpacing(max(18, int(22 * s)))
@@ -1997,6 +2001,7 @@ class RequisitionForm(QWidget):
         def _build_meta_column(title_widget: QLabel, value_widget: QWidget, min_width: int, *, expanding: bool = False) -> QWidget:
             col = QWidget()
             col.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+            col.setStyleSheet("background:transparent;")  # herda o gradient do card
             col.setMinimumWidth(min_width)
             col.setSizePolicy(
                 QSizePolicy.Policy.Expanding if expanding else QSizePolicy.Policy.Fixed,
