@@ -205,11 +205,32 @@ def _machine_status_label_style(s: float, status_value: object = "") -> str:
     color = theme.WARNING if _is_machine_in_maintenance(status_value) else theme.TEXT_MEDIUM
     return f"background:transparent; color:{color}; font-size:{max(7, int(8 * s))}pt; font-weight:700;"
 
-def _machine_stat_title_style(s: float) -> str:
-    return f"background:transparent; font-size:{max(6, int(7 * s))}pt; font-weight:700;"
+def _machine_stat_title_style(s: float, status_value: object = "") -> str:
+    color = theme.WARNING if _is_machine_in_maintenance(status_value) else theme.PANEL_TEXT_MUTED
+    return f"background:transparent; color:{color}; font-size:{max(6, int(7 * s))}pt; font-weight:700;"
 
-def _machine_stat_value_style(s: float) -> str:
-    return f"background:transparent; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
+def _machine_stat_value_style(s: float, status_value: object = "") -> str:
+    color = (
+        _blend(theme.PANEL_TEXT_PRIMARY, theme.WARNING, 18)
+        if _is_machine_in_maintenance(status_value)
+        else theme.PANEL_TEXT_PRIMARY
+    )
+    return f"background:transparent; color:{color}; font-size:{max(9, int(11 * s))}pt; font-weight:800;"
+
+
+def _machine_stat_box_style(s: float, status_value: object = "") -> str:
+    radius = max(10, int(12 * s))
+    if _is_machine_in_maintenance(status_value):
+        background = _blend(theme.PANEL_SURFACE_BG, theme.WARNING, 18)
+        border = _rgba(theme.WARNING, 112)
+    else:
+        background = theme.PANEL_SURFACE_BG
+        border = _rgba(theme.PANEL_NEON_PRIMARY, 42)
+    return (
+        f"background:{background};"
+        f"border:1px solid {border};"
+        f"border-radius:{radius}px;"
+    )
 
 
 def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
@@ -251,14 +272,37 @@ def _danger_action_btn_style(scale: float) -> str:
     return theme.danger_btn_style(scale)
 
 
-def _apply_machine_card_button_styles(theme_widgets: dict, scale: float) -> None:
+def _warning_secondary_btn_style(scale: float) -> str:
+    fs = max(9, int(10 * scale))
+    background = _blend(theme.PANEL_SURFACE_BG, theme.WARNING, 18)
+    hover_background = _blend(theme.PANEL_SURFACE_ALT, theme.WARNING, 24)
+    pressed_background = _blend(theme.PANEL_SURFACE_BG, theme.WARNING, 34)
+    border = _rgba(theme.WARNING, 150)
+    border_hover = _rgba(theme.WARNING, 220)
+    return (
+        f"QPushButton {{"
+        f"  background:{background}; color:{theme.WARNING}; border:1px solid {border};"
+        f"  border-radius:14px; padding:9px 18px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QPushButton:hover {{ background:{hover_background}; border-color:{border_hover}; }}"
+        f"QPushButton:pressed {{ background:{pressed_background}; }}"
+        f"QPushButton:disabled {{ background:{_rgba(theme.PANEL_BORDER_SOFT, 36)}; color:{theme.PANEL_TEXT_MUTED}; border-color:{theme.PANEL_BORDER_SOFT}; }}"
+    )
+
+
+def _apply_machine_card_button_styles(theme_widgets: dict, scale: float, status_value: object = "") -> None:
     """Garante o estilo visual dos botões dos cards de máquina."""
+    secondary_style = (
+        _warning_secondary_btn_style(scale)
+        if _is_machine_in_maintenance(status_value)
+        else _flat_secondary_btn_style(scale)
+    )
     button_styles = {
-        "status_button": _flat_secondary_btn_style(scale),
-        "btn_open": _flat_secondary_btn_style(scale),
+        "status_button": secondary_style,
+        "btn_open": secondary_style,
         "btn_finish": _primary_action_btn_style(scale),
         "btn_send_to_dobra": _primary_action_btn_style(scale),
-        "btn_prazo": _flat_secondary_btn_style(scale),
+        "btn_prazo": secondary_style,
         "btn_cancel": _danger_action_btn_style(scale),
     }
     for key, style in button_styles.items():
@@ -270,6 +314,16 @@ def _apply_machine_card_button_styles(theme_widgets: dict, scale: float) -> None
 def _machine_combo_style(scale: float, status_value: object = "") -> str:
     fs = max(8, int(9 * scale))
     accent = _machine_status_accent(status_value)
+    popup_bg = (
+        _blend(theme.CARD_BG, theme.WARNING, 16)
+        if _is_machine_in_maintenance(status_value)
+        else theme.CARD_BG
+    )
+    popup_border = (
+        _rgba(theme.WARNING, 112)
+        if _is_machine_in_maintenance(status_value)
+        else theme.BORDER_COLOR
+    )
     return (
         f"QComboBox {{"
         f"  background:{_rgba(accent, 18)}; color:{accent};"
@@ -278,8 +332,8 @@ def _machine_combo_style(scale: float, status_value: object = "") -> str:
         f"}}"
         f"QComboBox::drop-down {{ border:none; width:24px; }}"
         f"QComboBox QAbstractItemView {{"
-        f"  background:{theme.CARD_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
-        f"  border:1px solid {theme.BORDER_COLOR};"
+        f"  background:{popup_bg}; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {popup_border};"
         f"  selection-background-color:{_rgba(accent, 44)}; selection-color:{theme.PANEL_TEXT_PRIMARY};"
         f"}}"
     )
@@ -377,6 +431,66 @@ def _machine_card_style(scale: float, status_value: object) -> str:
         f"}}"
         f"QFrame#productionCard:hover {{ border-color:{border_hover}; }}"
     )
+
+
+def _machine_table_qss(scale: float, status_value: object = "") -> str:
+    if not _is_machine_in_maintenance(status_value):
+        return theme.neon_table_qss(scale)
+
+    header_fg = theme.TEXT_WHITE if not theme.is_dark else theme.PANEL_TEXT_PRIMARY
+    fs_item = max(8, int(9 * scale))
+    fs_head = max(7, int(8 * scale))
+    base = _blend(theme.PANEL_SURFACE_BG, theme.WARNING, 18)
+    alt = _blend(theme.PANEL_SURFACE_ALT, theme.WARNING, 24)
+    header_start = _blend(theme.PANEL_TABLE_HEADER_START, theme.WARNING, 52)
+    header_end = _blend(theme.PANEL_TABLE_HEADER_END, theme.WARNING, 42)
+    header_hover = _blend(theme.PANEL_TABLE_HEADER_END, theme.WARNING, 62)
+    border = _rgba(theme.WARNING, 34)
+    selected = _blend(base, theme.WARNING, 36)
+    return (
+        f"QTableWidget {{"
+        f"  border:none; outline:none; background:{base};"
+        f"  alternate-background-color:{alt};"
+        f"  color:{theme.PANEL_TEXT_PRIMARY}; border-radius:14px;"
+        f"  gridline-color:transparent; font-size:{fs_item}pt;"
+        f"}}"
+        f"QHeaderView::section {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        f"    stop:0 {header_start},"
+        f"    stop:1 {header_end});"
+        f"  color:{header_fg}; padding:9px 10px;"
+        f"  font-weight:800; font-size:{fs_head}pt; border:none;"
+        f"}}"
+        f"QHeaderView::section:hover {{ background:{header_hover}; }}"
+        f"QTableWidget::item {{"
+        f"  background:{base}; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"  padding:7px 6px; border-bottom:1px solid {border};"
+        f"}}"
+        f"QTableWidget::item:alternate {{"
+        f"  background:{alt}; color:{theme.PANEL_TEXT_PRIMARY};"
+        f"}}"
+        f"QTableWidget::item:selected {{"
+        f"  background:{selected};"
+        f"  color:{theme.PANEL_TEXT_PRIMARY};"
+        f"}}"
+    )
+
+
+def _apply_machine_table_palette(table: QTableWidget, status_value: object = "") -> None:
+    if not _is_machine_in_maintenance(status_value):
+        theme.apply_neon_table_palette(table)
+        return
+
+    base = _blend(theme.PANEL_SURFACE_BG, theme.WARNING, 18)
+    alt = _blend(theme.PANEL_SURFACE_ALT, theme.WARNING, 24)
+    highlight = _blend(base, theme.WARNING, 36)
+    pal = table.palette()
+    pal.setColor(QPalette.ColorRole.Base, QColor(base))
+    pal.setColor(QPalette.ColorRole.AlternateBase, QColor(alt))
+    pal.setColor(QPalette.ColorRole.Text, QColor(theme.PANEL_TEXT_PRIMARY))
+    pal.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.PANEL_TEXT_PRIMARY))
+    pal.setColor(QPalette.ColorRole.Highlight, QColor(highlight))
+    table.setPalette(pal)
 
 
 def _build_production_note(
@@ -1011,9 +1125,9 @@ class ProductionView(QWidget):
         stats_grid.setHorizontalSpacing(max(10, int(12 * s)))
         stats_grid.setVerticalSpacing(max(8, int(10 * s)))
         stat_blocks = [
-            self._machine_stat_block("Quantidade em Produção", str(machine.get("quantity_in_production") or 0)),
-            self._machine_stat_block("Finalizadas", str(machine.get("finalized_count") or 0)),
-            self._machine_stat_block("Tempo Médio", _format_duration(machine.get("average_seconds"))),
+            self._machine_stat_block("Quantidade em Produção", str(machine.get("quantity_in_production") or 0), current_status),
+            self._machine_stat_block("Finalizadas", str(machine.get("finalized_count") or 0), current_status),
+            self._machine_stat_block("Tempo Médio", _format_duration(machine.get("average_seconds")), current_status),
         ]
         stats_grid.addWidget(stat_blocks[0], 0, 0)
         stats_grid.addWidget(stat_blocks[1], 0, 1)
@@ -1085,6 +1199,7 @@ class ProductionView(QWidget):
                 "btn_cancel": btn_cancel,
             },
             s,
+            current_status,
         )
         btn_open.clicked.connect(lambda: self._open_selected_machine(int(machine["id"])))
         btn_finish.clicked.connect(lambda: self._finish_selected_machine(int(machine["id"])))
@@ -1112,6 +1227,7 @@ class ProductionView(QWidget):
         card.setStyleSheet(_machine_card_style(s, current_status))
         table.setMinimumHeight(max(180, int(210 * s)))
         rows = [row for row in (machine.get("rows") or []) if isinstance(row, dict)]
+        self._apply_table_style(table, current_status)
         self._fill_machine_table(table, rows)
         table.doubleClicked.connect(
             lambda index, machine_id=int(machine["id"]): self._open_machine_row(machine_id, index.row())
@@ -1139,6 +1255,7 @@ class ProductionView(QWidget):
                 "btn_send_to_dobra": btn_send_to_dobra,
                 "btn_prazo": btn_prazo,
                 "btn_cancel": btn_cancel,
+                "stat_blocks": stat_blocks,
                 "stat_titles": _stat_titles,
                 "stat_values": _stat_values,
             },
@@ -1180,26 +1297,34 @@ class ProductionView(QWidget):
             tw["status_label"].setStyleSheet(_machine_status_label_style(s, machine_status))
         if tw.get("status_combo") is not None:
             tw["status_combo"].setStyleSheet(_machine_combo_style(s, tw["status_combo"].currentData()))
-        _apply_machine_card_button_styles(tw, s)
-        # NOTE: title, operator_summary, stat_titles, stat_values nao sao
-        # reaplicados — seus styles nao tem cor (so font-size/weight). A cor
-        # vem do palette via property muted='1' / herança.
+        _apply_machine_card_button_styles(tw, s, machine_status)
+        for stat_box in tw.get("stat_blocks") or []:
+            if stat_box is not None:
+                stat_box.setStyleSheet(_machine_stat_box_style(s, machine_status))
+        for title_label in tw.get("stat_titles") or []:
+            if title_label is not None:
+                title_label.setStyleSheet(_machine_stat_title_style(s, machine_status))
+        for value_label in tw.get("stat_values") or []:
+            if value_label is not None:
+                value_label.setStyleSheet(_machine_stat_value_style(s, machine_status))
         if card_data.get("table") is not None:
-            self._apply_table_style(card_data["table"])
+            self._apply_table_style(card_data["table"], machine_status)
 
-    def _machine_stat_block(self, title_text: str, value_text: str) -> QWidget:
+    def _machine_stat_block(self, title_text: str, value_text: str, status_value: object = "") -> QWidget:
         s = self.scale
         box = QWidget()
+        box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        box.setStyleSheet(_machine_stat_box_style(s, status_value))
         layout = QVBoxLayout(box)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(max(8, int(10 * s)), max(6, int(8 * s)), max(8, int(10 * s)), max(6, int(8 * s)))
         layout.setSpacing(max(2, int(3 * s)))
 
         title = QLabel(title_text.upper())
         title.setProperty("muted", "1")
-        title.setStyleSheet(_machine_stat_title_style(s))
+        title.setStyleSheet(_machine_stat_title_style(s, status_value))
         value = QLabel(value_text)
         value.setWordWrap(True)
-        value.setStyleSheet(_machine_stat_value_style(s))
+        value.setStyleSheet(_machine_stat_value_style(s, status_value))
         layout.addWidget(title)
         layout.addWidget(value)
         # Anexa refs no próprio QWidget pra _build_machine_card coletar logo após.
@@ -2553,10 +2678,10 @@ class ProductionView(QWidget):
         self.refresh()
         self._show_info(success_message)
 
-    def _apply_table_style(self, table: QTableWidget) -> None:
+    def _apply_table_style(self, table: QTableWidget, status_value: object = "") -> None:
         s = self.scale
-        table.setStyleSheet(theme.neon_table_qss(self.scale))
-        theme.apply_neon_table_palette(table)
+        table.setStyleSheet(_machine_table_qss(self.scale, status_value))
+        _apply_machine_table_palette(table, status_value)
 
     def apply_theme(self) -> None:
         """Reaplica tema na ProductionView (A&R / Pinheiro Indústria).
