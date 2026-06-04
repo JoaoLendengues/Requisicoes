@@ -62,6 +62,16 @@ PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
 AR_DOBRA_SOURCE_MACHINE_NUMBERS = {1, 2, 3, 16}
+PINHEIRO_MACHINE_FORWARD_RULES = {
+    4: {
+        "button_label": "Enviar para prensa de cumeeira",
+        "target_number": 3,
+    },
+    5: {
+        "button_label": "Enviar para dobradeira mecânica",
+        "target_number": 6,
+    },
+}
 WORKER_ROLE_OPERADOR = "operador"
 WORKER_ROLE_AJUDANTE = "ajudante"
 WORKER_ROLE_LABELS = {
@@ -166,6 +176,36 @@ def _is_dobra_source_machine_name(machine_name: str) -> bool:
 
 def _is_ar_dobra_source_machine(destination: str, machine_name: str) -> bool:
     return _normalize_destination(destination) == "A&R" and _is_dobra_source_machine_name(machine_name)
+
+
+def _machine_number_prefix(machine_name: str) -> int | None:
+    match = re.match(r"\s*(\d+)\b", str(machine_name or "").strip())
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _machine_forward_action(destination: str, machine_name: str) -> dict | None:
+    normalized_destination = _normalize_destination(destination)
+    if normalized_destination == "A&R" and _is_dobra_source_machine_name(machine_name):
+        return {
+            "button_label": "Enviar para dobra",
+            "target_mode": "picker",
+            "window_title": "Enviar para dobra",
+            "prompt_text": (
+                f"Escolha a máquina de dobra de destino "
+                f"(origem: {str(machine_name or '').strip()}):"
+            ),
+        }
+
+    if normalized_destination == "Pinheiro Indústria":
+        machine_number = _machine_number_prefix(machine_name)
+        if machine_number is None:
+            return None
+        rule = PINHEIRO_MACHINE_FORWARD_RULES.get(machine_number)
+        if rule:
+            return dict(rule, target_mode="fixed")
+    return None
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -308,7 +348,7 @@ def _apply_machine_card_button_styles(theme_widgets: dict, scale: float, status_
         "status_button": secondary_style,
         "btn_open": secondary_style,
         "btn_finish": _primary_action_btn_style(scale),
-        "btn_send_to_dobra": _primary_action_btn_style(scale),
+        "btn_forward_machine": _primary_action_btn_style(scale),
         "btn_prazo": secondary_style,
         "btn_cancel": _danger_action_btn_style(scale),
     }
@@ -1258,20 +1298,24 @@ class ProductionView(QWidget):
         actions = QHBoxLayout()
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
-        is_dobra_source = _is_ar_dobra_source_machine(self.destination, machine_name)
+        machine_forward_action = _machine_forward_action(self.destination, machine_name)
         btn_finish = QPushButton("Finalizar")
-        btn_send_to_dobra = QPushButton("Enviar para dobra") if is_dobra_source else None
+        btn_forward_machine = (
+            QPushButton(str(machine_forward_action.get("button_label") or "Encaminhar"))
+            if machine_forward_action is not None
+            else None
+        )
         btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
         action_buttons = [btn_open, btn_finish, btn_prazo, btn_cancel]
-        if btn_send_to_dobra is not None:
-            action_buttons.insert(2, btn_send_to_dobra)
+        if btn_forward_machine is not None:
+            action_buttons.insert(2, btn_forward_machine)
         for btn in action_buttons:
             btn.setFixedHeight(max(34, int(38 * s)))
         btn_open.setProperty("productionBtn", "secondary")
         btn_finish.setProperty("productionBtn", "primary")
-        if btn_send_to_dobra is not None:
-            btn_send_to_dobra.setProperty("productionBtn", "primary")
+        if btn_forward_machine is not None:
+            btn_forward_machine.setProperty("productionBtn", "primary")
         btn_prazo.setProperty("productionBtn", "secondary")
         btn_cancel.setProperty("productionBtn", "danger")
         _apply_machine_card_button_styles(
@@ -1279,7 +1323,7 @@ class ProductionView(QWidget):
                 "status_button": status_button,
                 "btn_open": btn_open,
                 "btn_finish": btn_finish,
-                "btn_send_to_dobra": btn_send_to_dobra,
+                "btn_forward_machine": btn_forward_machine,
                 "btn_prazo": btn_prazo,
                 "btn_cancel": btn_cancel,
             },
@@ -1288,17 +1332,21 @@ class ProductionView(QWidget):
         )
         btn_open.clicked.connect(lambda: self._open_selected_machine(machine_id))
         btn_finish.clicked.connect(lambda: self._finish_selected_machine(machine_id))
-        if btn_send_to_dobra is not None:
-            btn_send_to_dobra.clicked.connect(lambda: self._send_selected_machine_to_dobra(machine_id))
+        if btn_forward_machine is not None:
+            btn_forward_machine.clicked.connect(
+                lambda checked=False, mid=machine_id, action=dict(machine_forward_action or {}): (
+                    self._forward_selected_machine(mid, action)
+                )
+            )
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(machine_id))
         btn_cancel.clicked.connect(lambda: self._return_selected_machine_to_queue(machine_id))
         actions.addWidget(btn_open)
-        if btn_send_to_dobra is not None:
-            dobra_actions = QVBoxLayout()
-            dobra_actions.setSpacing(max(6, int(8 * s)))
-            dobra_actions.addWidget(btn_finish)
-            dobra_actions.addWidget(btn_send_to_dobra)
-            actions.addLayout(dobra_actions)
+        if btn_forward_machine is not None:
+            forward_actions = QVBoxLayout()
+            forward_actions.setSpacing(max(6, int(8 * s)))
+            forward_actions.addWidget(btn_finish)
+            forward_actions.addWidget(btn_forward_machine)
+            actions.addLayout(forward_actions)
         else:
             actions.addWidget(btn_finish)
         actions.addWidget(btn_prazo)
@@ -1345,7 +1393,7 @@ class ProductionView(QWidget):
                 "status_button": status_button,
                 "btn_open": btn_open,
                 "btn_finish": btn_finish,
-                "btn_send_to_dobra": btn_send_to_dobra,
+                "btn_forward_machine": btn_forward_machine,
                 "btn_prazo": btn_prazo,
                 "btn_cancel": btn_cancel,
                 "stat_blocks": stat_blocks,
@@ -2486,6 +2534,79 @@ class ProductionView(QWidget):
             machine_name,
             split_id is not None,
             success_message="Parcela finalizada." if split_id is not None else "Requisição finalizada e faturada.",
+        )
+
+    def _find_machine_by_number(self, target_number: int) -> dict | None:
+        for machine in self._machines_data:
+            if _machine_number_prefix(str(machine.get("name") or "").strip()) == int(target_number):
+                return dict(machine)
+        return None
+
+    def _forward_selected_machine(self, machine_id: int, action: dict | None = None):
+        req, machine = self._selected_machine_row(machine_id)
+        if not req or not machine:
+            self._show_info("Selecione uma requisiÃ§Ã£o em produÃ§Ã£o dentro do card da mÃ¡quina.")
+            return
+
+        action = dict(action or {})
+        source_machine = str(machine.get("name") or "").strip()
+        target_mode = str(action.get("target_mode") or "picker").strip().lower()
+        target_machine_data: dict | None = None
+
+        if target_mode == "fixed":
+            target_number = int(action.get("target_number") or 0)
+            if target_number <= 0:
+                self._show_error("A configuraÃ§Ã£o da mÃ¡quina de destino estÃ¡ invÃ¡lida.")
+                return
+            target_machine_data = self._find_machine_by_number(target_number)
+        else:
+            target_machine = self._pick_machine(
+                exclude_machine=source_machine,
+                window_title=str(action.get("window_title") or "Selecionar MÃ¡quina"),
+                prompt_text=str(
+                    action.get("prompt_text")
+                    or f"Escolha a mÃ¡quina de destino (origem: {source_machine}):"
+                ),
+            )
+            if not target_machine:
+                return
+            target_machine_data = next(
+                (
+                    dict(machine_item)
+                    for machine_item in self._machines_data
+                    if str(machine_item.get("name") or "").strip() == target_machine
+                ),
+                None,
+            )
+
+        if not target_machine_data:
+            self._show_error("Nao foi possivel localizar a maquina de destino selecionada.")
+            return
+
+        target_machine = str(target_machine_data.get("name") or "").strip()
+        if _is_machine_in_maintenance(target_machine_data):
+            self._show_info(
+                f"A maquina {target_machine} esta em manutencao e nao pode receber requisicoes."
+            )
+            return
+
+        selected_team = self._pick_machine_operators(target_machine_data)
+        if not selected_team:
+            return
+
+        split_id = self._row_split_id(req)
+        self._run_action(
+            self._transfer_machine_requisition,
+            split_id if split_id is not None else self._row_requisition_id(req),
+            source_machine,
+            target_machine,
+            selected_team,
+            split_id is not None,
+            success_message=(
+                f"Parcela enviada para {target_machine}."
+                if split_id is not None
+                else f"RequisiÃ§Ã£o enviada para {target_machine}."
+            ),
         )
 
     def _send_selected_machine_to_dobra(self, machine_id: int):
