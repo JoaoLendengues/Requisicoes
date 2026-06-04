@@ -3600,7 +3600,7 @@ class _DragHandle(QFrame):
         self.setStyleSheet(
             f"background:{theme.rgba(theme.PRIMARY, 110)}; border-radius:3px;"
         )
-        self.setToolTip("Arraste pra reposicionar a toolbar")
+        self.setToolTip("Arraste pra reposicionar a toolbar\nDuplo-clique = resetar posição")
         self._press_offset: QPointF | None = None
 
     def mousePressEvent(self, event):  # noqa: N802
@@ -3639,6 +3639,17 @@ class _DragHandle(QFrame):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):  # noqa: N802
+        """Duplo-clique no handle reseta a posição da pílula pra padrão."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            try:
+                self._canvas.reset_overlay_position()
+            except Exception:
+                pass
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
 
 class _CanvasDrawingMouseFilter(QObject):
@@ -4160,6 +4171,125 @@ class DrawingCanvas(QWidget):
         self._overlay_fade_anim = anim
         anim.start()
 
+    def _toggle_overlay_visibility(self):
+        """Alterna a pílula entre escondida e visível.
+
+        Escondida: fade-out 0→0 + slide-down 24px (160ms InCubic), depois
+        marca como transparent-for-mouse (não consome cliques).
+        Visível: mesma animação de entrada (slide-up + fade-in, 280ms OutCubic).
+
+        Disparado por Tab (atalho registrado em _setup_shortcuts).
+        """
+        overlay = getattr(self, "_toolbar_overlay", None)
+        effect = getattr(self, "_overlay_opacity_effect", None)
+        if overlay is None or effect is None:
+            return
+
+        hidden_now = bool(getattr(self, "_overlay_hidden", False))
+
+        if not hidden_now:
+            # ESCONDER
+            final_geo = overlay.geometry()
+            target_geo = final_geo.translated(0, 24)
+
+            prev_fade = getattr(self, "_overlay_fade_anim", None)
+            if prev_fade is not None:
+                try:
+                    prev_fade.stop()
+                except Exception:
+                    pass
+
+            opacity_anim = QPropertyAnimation(effect, b"opacity", self)
+            opacity_anim.setDuration(160)
+            opacity_anim.setStartValue(effect.opacity())
+            opacity_anim.setEndValue(0.0)
+            opacity_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+
+            geo_anim = QPropertyAnimation(overlay, b"geometry", self)
+            geo_anim.setDuration(180)
+            geo_anim.setStartValue(final_geo)
+            geo_anim.setEndValue(target_geo)
+            geo_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+
+            def _on_hidden(saved_geo=final_geo):
+                # Após esconder, marca como transparente pra cliques e RESETA
+                # a geometria final pra que a próxima abertura comece do lugar
+                # correto (a animação subsequente recalcula start = end + 24).
+                overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+                overlay.setGeometry(saved_geo)
+
+            opacity_anim.finished.connect(_on_hidden)
+            self._overlay_fade_anim = opacity_anim
+            self._overlay_intro_geo_anim = geo_anim
+            opacity_anim.start()
+            geo_anim.start()
+            self._overlay_hidden = True
+        else:
+            # MOSTRAR — espelho da animação de entrada.
+            overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+            final_geo = overlay.geometry()
+            start_geo = final_geo.translated(0, 24)
+            overlay.setGeometry(start_geo)
+            effect.setOpacity(0.0)
+
+            opacity_anim = QPropertyAnimation(effect, b"opacity", self)
+            opacity_anim.setDuration(220)
+            opacity_anim.setStartValue(0.0)
+            opacity_anim.setEndValue(1.0)
+            opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+            geo_anim = QPropertyAnimation(overlay, b"geometry", self)
+            geo_anim.setDuration(240)
+            geo_anim.setStartValue(start_geo)
+            geo_anim.setEndValue(final_geo)
+            geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+            self._overlay_fade_anim = opacity_anim
+            self._overlay_intro_geo_anim = geo_anim
+            opacity_anim.start()
+            geo_anim.start()
+            self._overlay_hidden = False
+
+    def reset_overlay_position(self):
+        """Reseta a posição da pílula pra padrão (base centralizada) com animação.
+
+        Chamado pelo duplo-clique no drag handle.
+        """
+        overlay = getattr(self, "_toolbar_overlay", None)
+        view = getattr(self, "view", None)
+        if overlay is None or view is None:
+            return
+        # Calcula posição padrão (sem mexer no flag ainda).
+        view_geo = view.geometry()
+        margin_x = max(16, int(20 * self.scale))
+        margin_y = max(14, int(18 * self.scale))
+        overlay_w = overlay.width()
+        overlay_h = overlay.height()
+        target_x = view_geo.x() + (view_geo.width() - overlay_w) // 2
+        target_y = view_geo.y() + view_geo.height() - overlay_h - margin_y
+        target_x = max(view_geo.x() + margin_x, target_x)
+        target_y = max(view_geo.y() + margin_y, target_y)
+
+        current_geo = overlay.geometry()
+        target_geo = current_geo.translated(target_x - current_geo.x(),
+                                            target_y - current_geo.y())
+        if current_geo == target_geo:
+            self._overlay_user_moved = False
+            return
+
+        geo_anim = QPropertyAnimation(overlay, b"geometry", self)
+        geo_anim.setDuration(260)
+        geo_anim.setStartValue(current_geo)
+        geo_anim.setEndValue(target_geo)
+        geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def _on_finished():
+            self._overlay_user_moved = False
+
+        geo_anim.finished.connect(_on_finished)
+        self._overlay_intro_geo_anim = geo_anim
+        geo_anim.start()
+
     def _animate_overlay_intro(self):
         """Animação de entrada da pílula: slide-up 24px + fade-in 0→1.
 
@@ -4373,6 +4503,7 @@ class DrawingCanvas(QWidget):
     def _build_shortcuts_help_text(self) -> str:
         """Texto do tooltip do botão '?' — antes era um label fixo gigante."""
         return (
+            "Tab = esconder / mostrar a barra de ferramentas\n"
             "Shift = traço reto\n"
             "V = pen vetorial   |   Q = esquadro (ângulo guiado)\n"
             "U = ângulo   |   A = seta   |   C = curva na linha/curva selecionada\n"
@@ -4386,7 +4517,8 @@ class DrawingCanvas(QWidget):
             "M = cota manual (2 cliques na linha)\n"
             "Ângulo selecionado: +/- = tamanho\n"
             "Alt+←/→ = girar (Shift = passos de 15°)\n"
-            "Enter / Esc = confirmar   |   2× clique = editar texto"
+            "Enter / Esc = confirmar   |   2× clique = editar texto\n"
+            "Duplo-clique na alça da toolbar = resetar posição"
         )
 
     def _hint_style(self) -> str:
@@ -4659,6 +4791,15 @@ class DrawingCanvas(QWidget):
         manual_dimension_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         manual_dimension_action.triggered.connect(self._trigger_manual_dimension_shortcut)
         self.addAction(manual_dimension_action)
+
+        # Tab → toggle visibilidade da toolbar flutuante (estilo Figma/tldraw).
+        # WidgetWithChildrenShortcut: ativa quando o foco está no canvas ou em
+        # qualquer widget filho (ferramentas, view, etc).
+        toggle_overlay_action = QAction(self)
+        toggle_overlay_action.setShortcut(QKeySequence(Qt.Key.Key_Tab))
+        toggle_overlay_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        toggle_overlay_action.triggered.connect(self._toggle_overlay_visibility)
+        self.addAction(toggle_overlay_action)
 
         scale_up_action = QAction(self)
         scale_up_action.setShortcut(QKeySequence("Ctrl++"))
