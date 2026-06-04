@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QObject, QPoint, Qt
+from PySide6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QObject,
+    QPoint,
+    QPropertyAnimation,
+    QRect,
+    Qt,
+    QTimer,
+)
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
@@ -305,12 +314,71 @@ def apply_dialog_theme(dialog: QDialog) -> QDialog:
     return dialog
 
 
+def _animate_dialog_entrance(dialog: QDialog) -> None:
+    """Anima a entrada do diálogo: fade-in + pop sutil (escala 96% → 100%).
+
+    Roda em paralelo (~200ms). Usa `windowOpacity` em vez de
+    `QGraphicsOpacityEffect` porque o diálogo já tem `QGraphicsDropShadowEffect`
+    (Qt só permite UM efeito gráfico por widget).
+    """
+    # Esconde IMEDIATAMENTE (antes do próximo paint) pra evitar flash visual.
+    dialog.setWindowOpacity(0.0)
+
+    # Aguarda o layout calcular a geometria final (Show vem antes do layout
+    # estabilizar; sem isso, capturamos um rect vazio/incorreto).
+    def _start_animation():
+        final_geo = dialog.geometry()
+        if final_geo.width() <= 0 or final_geo.height() <= 0:
+            # diálogo ainda não posicionado — restaura visibilidade e desiste
+            dialog.setWindowOpacity(1.0)
+            return
+
+        # Geometria inicial: 96% do tamanho final, mesmo centro
+        cx = final_geo.center().x()
+        cy = final_geo.center().y()
+        scale = 0.96
+        sw = max(1, int(final_geo.width() * scale))
+        sh = max(1, int(final_geo.height() * scale))
+        start_geo = QRect(cx - sw // 2, cy - sh // 2, sw, sh)
+
+        dialog.setGeometry(start_geo)
+
+        opacity_anim = QPropertyAnimation(dialog, b"windowOpacity", dialog)
+        opacity_anim.setDuration(180)
+        opacity_anim.setStartValue(0.0)
+        opacity_anim.setEndValue(1.0)
+        opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        geo_anim = QPropertyAnimation(dialog, b"geometry", dialog)
+        geo_anim.setDuration(200)
+        geo_anim.setStartValue(start_geo)
+        geo_anim.setEndValue(final_geo)
+        # OutBack dá um leve "overshoot" que adiciona vida sem exagero.
+        geo_anim.setEasingCurve(QEasingCurve.Type.OutBack)
+
+        # Mantém as animações vivas até terminarem (sem ref, GC mata cedo).
+        dialog.setProperty("_fp_anim_opacity", opacity_anim)
+        dialog.setProperty("_fp_anim_geo", geo_anim)
+        opacity_anim.start()
+        geo_anim.start()
+
+    # 0ms = próximo tick do event loop, depois do layout
+    QTimer.singleShot(0, _start_animation)
+
+
 class _DialogThemeFilter(QObject):
     def eventFilter(self, obj, event):
         if not isinstance(obj, QDialog):
             return False
-        if event.type() in (QEvent.Type.Polish, QEvent.Type.Show):
+        if event.type() == QEvent.Type.Polish:
             apply_dialog_theme(obj)
+        elif event.type() == QEvent.Type.Show:
+            apply_dialog_theme(obj)
+            # Anima a entrada só na primeira exibição (evita reanimar se o
+            # diálogo for escondido/reaparecido em outro fluxo).
+            if not obj.property("_fp_anim_played"):
+                obj.setProperty("_fp_anim_played", True)
+                _animate_dialog_entrance(obj)
         return False
 
 
