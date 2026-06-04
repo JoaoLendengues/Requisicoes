@@ -16,9 +16,8 @@ from enum import Enum
 from uuid import uuid4
 
 from PySide6.QtCore import (
-    Qt, QPointF, QRectF, Signal, QEvent, QObject,
+    Qt, QPointF, QRectF, Signal, QEvent,
     QByteArray, QBuffer, QIODevice, QMimeData, QUrl,
-    QPropertyAnimation, QEasingCurve, QTimer,
 )
 from PySide6.QtGui import (
     QColor, QFont, QPainter, QPainterPath, QPainterPathStroker, QPen, QBrush,
@@ -31,7 +30,7 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
     QSizePolicy, QFrame, QComboBox, QApplication, QDialog, QMessageBox,
-    QListWidget, QListWidgetItem, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
+    QListWidget, QListWidgetItem,
 )
 from ..core import theme
 from ..core.text_case import normalize_upper_text
@@ -3583,145 +3582,6 @@ class DrawingView(QGraphicsView):
         self.setCursor(cursor)
 
 
-class _DragHandle(QFrame):
-    """Alça discreta no topo da pílula da toolbar — arraste pra mover.
-
-    Cursor open-hand no idle, closed-hand quando arrastando. Calcula o
-    deslocamento em globalPosition pra evitar 'jitter' quando o overlay
-    se move junto com o mouse.
-    """
-
-    def __init__(self, overlay: QFrame, canvas: "DrawingCanvas"):
-        super().__init__(overlay)
-        self._overlay = overlay
-        self._canvas = canvas
-        self.setFixedSize(56, 6)
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
-        self.setStyleSheet(
-            f"background:{theme.rgba(theme.PRIMARY, 110)}; border-radius:3px;"
-        )
-        self.setToolTip("Arraste pra reposicionar a toolbar\nDuplo-clique = resetar posição")
-        self._press_offset: QPointF | None = None
-
-    def mousePressEvent(self, event):  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Posição global do clique - posição global do overlay = offset interno.
-            global_pos = event.globalPosition()
-            overlay_global = self._overlay.mapToGlobal(self._overlay.rect().topLeft())
-            self._press_offset = global_pos - QPointF(overlay_global)
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
-            event.accept()
-            return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):  # noqa: N802
-        if self._press_offset is not None and (event.buttons() & Qt.MouseButton.LeftButton):
-            # Calcula nova posição global do overlay
-            new_global = event.globalPosition() - self._press_offset
-            # Converte pra coords locais do canvas (parent do overlay)
-            local = self._canvas.mapFromGlobal(new_global.toPoint())
-            # Clamp dentro do canvas (com margem)
-            margin = 8
-            max_x = self._canvas.width() - self._overlay.width() - margin
-            max_y = self._canvas.height() - self._overlay.height() - margin
-            local.setX(max(margin, min(local.x(), max_x)))
-            local.setY(max(margin, min(local.y(), max_y)))
-            self._overlay.move(local)
-            self._canvas._overlay_user_moved = True
-            event.accept()
-            return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):  # noqa: N802
-        if self._press_offset is not None:
-            self._press_offset = None
-            self.setCursor(Qt.CursorShape.OpenHandCursor)
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
-
-    def mouseDoubleClickEvent(self, event):  # noqa: N802
-        """Duplo-clique no handle reseta a posição da pílula pra padrão."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            try:
-                self._canvas.reset_overlay_position()
-            except Exception:
-                pass
-            event.accept()
-            return
-        super().mouseDoubleClickEvent(event)
-
-
-class _OverlayToggleTabFilter(QObject):
-    """Intercepta Tab pra toggle da toolbar — apenas quando NÃO está em campo de input.
-
-    Diferença em relação a um QAction(Tab): QAction consome Tab antes do widget
-    com foco poder processar, quebrando a navegação entre campos (SpinBox →
-    ComboBox → ...). Esse filter checa o focusWidget() antes — se for um widget
-    de entrada de dados, deixa Tab passar (return False). Caso contrário,
-    dispara o toggle e consome (return True).
-    """
-
-    def __init__(self, canvas: "DrawingCanvas"):
-        super().__init__(canvas)
-        self._canvas = canvas
-
-    def eventFilter(self, obj, event):  # noqa: N802
-        if event.type() != QEvent.Type.KeyPress:
-            return False
-        if event.key() != Qt.Key.Key_Tab:
-            return False
-        if event.modifiers() != Qt.KeyboardModifier.NoModifier:
-            return False
-        # Se o foco está em widget de entrada de dados, deixa Tab fazer a
-        # navegação default entre campos. Checa AMBOS: o focusWidget do app
-        # (pode ser None em alguns contextos) e o widget que recebeu o evento.
-        from PySide6.QtWidgets import QLineEdit, QTextEdit, QPlainTextEdit
-        input_types = (QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit, QTextEdit, QPlainTextEdit)
-        focus = QApplication.focusWidget()
-        if isinstance(focus, input_types):
-            return False
-        # Se focusWidget é None, usa o widget que processa o evento como fallback.
-        if focus is None and isinstance(obj, input_types):
-            return False
-        # Se obj é um filho do canvas (ex: spin direto), também respeita.
-        if isinstance(obj, input_types):
-            return False
-        # Caso geral: consome Tab e dispara o toggle da pílula.
-        try:
-            self._canvas._toggle_overlay_visibility()
-        except Exception:
-            pass
-        return True
-
-
-class _CanvasDrawingMouseFilter(QObject):
-    """Detecta drag no canvas pra fazer fade da toolbar enquanto o usuário desenha.
-
-    Ouvimos o viewport do view: MouseButtonPress (left) + tool != SELECT inicia o
-    fade-out; MouseButtonRelease retorna pro 100%. Não esconde quando a ferramenta
-    é SELECT (clique simples ou rubber-band não atrapalham a toolbar).
-    """
-
-    def __init__(self, canvas: "DrawingCanvas"):
-        super().__init__(canvas)
-        self._canvas = canvas
-        self._was_drawing = False
-
-    def eventFilter(self, obj, event):  # noqa: N802
-        et = event.type()
-        if et == QEvent.Type.MouseButtonPress:
-            if event.button() == Qt.MouseButton.LeftButton:
-                if self._canvas.tool != Tool.SELECT:
-                    self._canvas._fade_overlay(target=0.25, duration=120)
-                    self._was_drawing = True
-        elif et == QEvent.Type.MouseButtonRelease:
-            if self._was_drawing:
-                self._canvas._fade_overlay(target=1.0, duration=180)
-                self._was_drawing = False
-        return False
-
-
 # Widget principal
 class DrawingCanvas(QWidget):
     changed = Signal()
@@ -3751,26 +3611,11 @@ class DrawingCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
-        # Linha do título: rótulo + botão "?" de ajuda (substitui a linha
-        # gigante de atalhos que ocupava o fim da toolbar).
-        title_row = QHBoxLayout()
-        title_row.setContentsMargins(0, 0, 0, 0)
-        title_row.setSpacing(8)
         title = QLabel("DESENHO / REFERENCIA")
         self._title_label = title
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(self._title_style())
-        title_row.addWidget(title)
-        title_row.addStretch(1)
-        # Botão help — tooltip lista os atalhos ao passar o mouse.
-        help_size = max(24, int(28 * self.scale))
-        self._help_btn = QPushButton("?")
-        self._help_btn.setFixedSize(help_size, help_size)
-        self._help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._help_btn.setStyleSheet(self._help_btn_style())
-        self._help_btn.setToolTip(self._build_shortcuts_help_text())
-        title_row.addWidget(self._help_btn)
-        layout.addLayout(title_row)
+        layout.addWidget(title)
 
         s  = self.scale
         fh = max(28, int(34 * s))
@@ -4011,46 +3856,22 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
+        toolbar_stack.addWidget(actions_frame)
+        layout.addLayout(toolbar_stack)
 
-        # ====== TOOLBAR FLUTUANTE (estilo tldraw + dinâmicas) ======
-        # As 3 seções (ferramentas + propriedades + ações) ficam dentro de uma
-        # "pílula" que flutua sobre o canvas, posicionada via resizeEvent.
-        # Comportamentos dinâmicos:
-        #  • Drag handle no topo — usuário arrasta pra reposicionar.
-        #  • Auto-hide (opacity → 0.25) enquanto desenha no canvas.
-        #  • Animação de entrada (slide-up + fade-in) ao abrir o editor.
-        self._toolbar_overlay = QFrame(self)
-        self._toolbar_overlay.setStyleSheet(self._toolbar_overlay_style())
-        self._toolbar_overlay.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        overlay_v = QVBoxLayout(self._toolbar_overlay)
-        overlay_v.setContentsMargins(14, 8, 14, 12)
-        overlay_v.setSpacing(6)
-        # Drag handle no topo (alça discreta), centralizado.
-        handle_row = QHBoxLayout()
-        handle_row.setContentsMargins(0, 0, 0, 0)
-        self._overlay_drag_handle = _DragHandle(self._toolbar_overlay, self)
-        handle_row.addStretch(1)
-        handle_row.addWidget(self._overlay_drag_handle)
-        handle_row.addStretch(1)
-        overlay_v.addLayout(handle_row)
-        overlay_v.addWidget(tools_frame)
-        overlay_v.addWidget(props_frame)
-        overlay_v.addWidget(actions_frame)
-        # Effect: opacity (Qt permite só 1 effect por widget — preferimos opacity
-        # pra suportar fade dinâmico em vez de sombra estática). Compensamos a
-        # perda da sombra com borda mais marcada no _toolbar_overlay_style.
-        self._overlay_opacity_effect = QGraphicsOpacityEffect(self._toolbar_overlay)
-        self._overlay_opacity_effect.setOpacity(1.0)
-        self._toolbar_overlay.setGraphicsEffect(self._overlay_opacity_effect)
-        # Flag pra que o resizeEvent NÃO sobrescreva a posição se o user
-        # já arrastou a toolbar pra um lugar customizado.
-        self._overlay_user_moved = False
-        # Refs pra animações vivas durante o ciclo de vida do canvas.
-        self._overlay_fade_anim: QPropertyAnimation | None = None
-        self._overlay_intro_geo_anim: QPropertyAnimation | None = None
-        self._overlay_intro_played = False
-        # Remove o atributo de hint pra não quebrar refs antigas no _apply_theme.
-        self._hint_label = None
+        # Dica de teclado
+        hint = QLabel(
+            "Shift = traco reto  |  V = pen vetorial  |  Q = esquadro (angulo guiado)  |  U = angulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
+            "Botão do meio / Space+drag = mover  |  "
+            "Ctrl+C / Ctrl+V = duplicar e colar  |  "
+            "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
+            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  Angulo selecionado: +/- = tamanho  |  Alt+<-/> = girar (Shift = 15 deg)  |  "
+            "Enter / Esc = confirmar  |  2x clique = editar texto"
+        )
+        hint.setWordWrap(True)
+        self._hint_label = hint
+        hint.setStyleSheet(self._hint_style())
+        layout.addWidget(hint)
 
         # Cena + View
         self.scene = DrawingScene(self)
@@ -4074,11 +3895,6 @@ class DrawingCanvas(QWidget):
         # Garante que a origem (0,0) da cena começa centralizada no viewport
         self.view.centerOn(QPointF(0, 0))
         layout.addWidget(self.view)
-
-        # Auto-hide da toolbar: instala filtro de mouse no viewport do view pra
-        # detectar drag (ferramentas != SELECT) e reduzir opacity da pílula.
-        self._drawing_mouse_filter = _CanvasDrawingMouseFilter(self)
-        self.view.viewport().installEventFilter(self._drawing_mouse_filter)
 
         # Painel de PDF
         self.pdf_panel = QFrame()
@@ -4128,301 +3944,6 @@ class DrawingCanvas(QWidget):
 
         self._set_tool(Tool.SELECT)
         self._setup_shortcuts()
-
-    def resizeEvent(self, event):
-        """Reposiciona o overlay da toolbar a cada resize do canvas."""
-        super().resizeEvent(event)
-        self._reposition_toolbar_overlay()
-
-    def showEvent(self, event):
-        """Garante posição correta do overlay na primeira exibição (resizeEvent
-        pode não disparar com layout estabilizado se o tamanho não mudou).
-
-        Também dispara a animação de entrada da pílula uma única vez por sessão.
-        """
-        super().showEvent(event)
-        # Adiamos pro próximo tick pra layout calcular tamanhos finais.
-        QTimer.singleShot(0, self._reposition_toolbar_overlay)
-        if not getattr(self, "_overlay_intro_played", False):
-            # Pequeno delay garante que a posição final já foi calculada antes
-            # de capturar o destino da animação de slide.
-            QTimer.singleShot(40, self._animate_overlay_intro)
-
-    def _reposition_toolbar_overlay(self):
-        """Coloca o overlay flutuante centralizado na base do canvas (view).
-
-        Coordenadas são relativas ao DrawingCanvas (parent do overlay), mas
-        baseadas em `view.geometry()` pra que a pílula fique exatamente sobre
-        a área de desenho, não sobre o título nem painéis auxiliares.
-
-        Se o usuário já arrastou a toolbar (`_overlay_user_moved=True`), só
-        garante que ela continua DENTRO do canvas após o resize (clamp), sem
-        re-centralizar.
-        """
-        overlay = getattr(self, "_toolbar_overlay", None)
-        view = getattr(self, "view", None)
-        if overlay is None or view is None:
-            return
-        overlay.adjustSize()
-        view_geo = view.geometry()
-        margin_x = max(16, int(20 * self.scale))
-        margin_y = max(14, int(18 * self.scale))
-        overlay_w = overlay.width()
-        overlay_h = overlay.height()
-        if getattr(self, "_overlay_user_moved", False):
-            # Usuário moveu — só faz clamp pra que a pílula não saia da tela
-            # quando o canvas é redimensionado.
-            cur_x, cur_y = overlay.x(), overlay.y()
-            max_x = self.width() - overlay_w - 8
-            max_y = self.height() - overlay_h - 8
-            cur_x = max(8, min(cur_x, max_x))
-            cur_y = max(8, min(cur_y, max_y))
-            overlay.move(cur_x, cur_y)
-            overlay.raise_()
-            return
-        # Centralizado horizontalmente sobre a view, base com margem.
-        x = view_geo.x() + (view_geo.width() - overlay_w) // 2
-        y = view_geo.y() + view_geo.height() - overlay_h - margin_y
-        # Não deixa sair pela esquerda/topo (se o overlay for maior que a view).
-        x = max(view_geo.x() + margin_x, x)
-        y = max(view_geo.y() + margin_y, y)
-        overlay.move(x, y)
-        overlay.raise_()
-
-    def _fade_overlay(self, target: float, duration: int = 150):
-        """Anima opacity do overlay até `target` (0.0 a 1.0) em `duration` ms.
-
-        Usado pelo auto-hide enquanto o usuário desenha (target=0.25) e pelo
-        retorno após mouse-release (target=1.0). Para qualquer fade em
-        andamento antes de iniciar o novo.
-        """
-        effect = getattr(self, "_overlay_opacity_effect", None)
-        if effect is None:
-            return
-        # Cancela animação anterior pra não competir.
-        prev = getattr(self, "_overlay_fade_anim", None)
-        if prev is not None:
-            try:
-                prev.stop()
-            except Exception:
-                pass
-        anim = QPropertyAnimation(effect, b"opacity", self)
-        anim.setDuration(duration)
-        anim.setStartValue(effect.opacity())
-        anim.setEndValue(float(target))
-        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._overlay_fade_anim = anim
-        anim.start()
-
-    def _toggle_overlay_visibility(self):
-        """Alterna a pílula entre escondida e visível.
-
-        IMPORTANTE: sempre parte de uma POSIÇÃO ESTÁVEL recalculada via
-        `_reposition_toolbar_overlay` antes de animar. Sem isso, toggles
-        repetidos (ou Tab durante uma animação) capturam a posição
-        intermediária da anim em curso e *acumulam* deslocamento — a
-        pílula vai descendo 24px a cada toggle até sair da tela.
-
-        Também para qualquer animação anterior, força opacity=1.0 e
-        desliga WA_TransparentForMouseEvents ao mostrar.
-        """
-        overlay = getattr(self, "_toolbar_overlay", None)
-        effect = getattr(self, "_overlay_opacity_effect", None)
-        if overlay is None or effect is None:
-            return
-
-        # 1) Para QUALQUER animação anterior pra evitar conflito de geometry.
-        for prop_name in ("_overlay_fade_anim", "_overlay_intro_geo_anim"):
-            prev = getattr(self, prop_name, None)
-            if prev is not None:
-                try:
-                    prev.stop()
-                except Exception:
-                    pass
-
-        # 2) RECALCULA a posição padrão (a menos que o user tenha arrastado a
-        #    pílula manualmente — nesse caso respeitamos a posição escolhida).
-        #    PORÉM: se a pílula está completamente fora do canvas (perdida por
-        #    bug ou clamp falho), FORÇA reset — Tab vira "resgate de emergência".
-        view = getattr(self, "view", None)
-        current_geo = overlay.geometry()
-        canvas_rect = self.rect()
-        out_of_view = (
-            current_geo.right() < canvas_rect.x() + 4
-            or current_geo.x() > canvas_rect.right() - 4
-            or current_geo.bottom() < canvas_rect.y() + 4
-            or current_geo.y() > canvas_rect.bottom() - 4
-        )
-        if out_of_view:
-            self._overlay_user_moved = False
-        if not getattr(self, "_overlay_user_moved", False):
-            self._reposition_toolbar_overlay()
-            overlay.adjustSize()
-        base_geo = overlay.geometry()
-
-        hidden_now = bool(getattr(self, "_overlay_hidden", False))
-
-        if not hidden_now:
-            # ESCONDER: garante que partimos da posição estável e opacity=1.
-            overlay.setGeometry(base_geo)
-            effect.setOpacity(1.0)
-            target_geo = base_geo.translated(0, 24)
-
-            opacity_anim = QPropertyAnimation(effect, b"opacity", self)
-            opacity_anim.setDuration(160)
-            opacity_anim.setStartValue(1.0)
-            opacity_anim.setEndValue(0.0)
-            opacity_anim.setEasingCurve(QEasingCurve.Type.InCubic)
-
-            geo_anim = QPropertyAnimation(overlay, b"geometry", self)
-            geo_anim.setDuration(180)
-            geo_anim.setStartValue(base_geo)
-            geo_anim.setEndValue(target_geo)
-            geo_anim.setEasingCurve(QEasingCurve.Type.InCubic)
-
-            def _on_hidden(saved_geo=base_geo):
-                # Após esconder, marca transparent-for-mouse e VOLTA pra
-                # base_geo (a posição estável, NÃO o final da anim de slide).
-                # Assim a próxima abertura sempre parte do lugar correto.
-                overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-                overlay.setGeometry(saved_geo)
-
-            opacity_anim.finished.connect(_on_hidden)
-            self._overlay_fade_anim = opacity_anim
-            self._overlay_intro_geo_anim = geo_anim
-            opacity_anim.start()
-            geo_anim.start()
-            self._overlay_hidden = True
-        else:
-            # MOSTRAR: garante visibilidade ao mouse e parte de base + 24px.
-            overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-            start_geo = base_geo.translated(0, 24)
-            overlay.setGeometry(start_geo)
-            effect.setOpacity(0.0)
-
-            opacity_anim = QPropertyAnimation(effect, b"opacity", self)
-            opacity_anim.setDuration(220)
-            opacity_anim.setStartValue(0.0)
-            opacity_anim.setEndValue(1.0)
-            opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-            geo_anim = QPropertyAnimation(overlay, b"geometry", self)
-            geo_anim.setDuration(240)
-            geo_anim.setStartValue(start_geo)
-            geo_anim.setEndValue(base_geo)
-            geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-            def _on_shown(saved_geo=base_geo):
-                # Garante posição EXATA + opacity 1.0 no fim (anti-arredondamento).
-                overlay.setGeometry(saved_geo)
-                effect.setOpacity(1.0)
-
-            opacity_anim.finished.connect(_on_shown)
-            self._overlay_fade_anim = opacity_anim
-            self._overlay_intro_geo_anim = geo_anim
-            opacity_anim.start()
-            geo_anim.start()
-            self._overlay_hidden = False
-
-    def reset_overlay_position(self):
-        """Reseta a posição da pílula pra padrão (base centralizada) com animação.
-
-        Chamado pelo duplo-clique no drag handle.
-        """
-        overlay = getattr(self, "_toolbar_overlay", None)
-        view = getattr(self, "view", None)
-        if overlay is None or view is None:
-            return
-        # Calcula posição padrão (sem mexer no flag ainda).
-        view_geo = view.geometry()
-        margin_x = max(16, int(20 * self.scale))
-        margin_y = max(14, int(18 * self.scale))
-        overlay_w = overlay.width()
-        overlay_h = overlay.height()
-        target_x = view_geo.x() + (view_geo.width() - overlay_w) // 2
-        target_y = view_geo.y() + view_geo.height() - overlay_h - margin_y
-        target_x = max(view_geo.x() + margin_x, target_x)
-        target_y = max(view_geo.y() + margin_y, target_y)
-
-        current_geo = overlay.geometry()
-        target_geo = current_geo.translated(target_x - current_geo.x(),
-                                            target_y - current_geo.y())
-        if current_geo == target_geo:
-            self._overlay_user_moved = False
-            return
-
-        geo_anim = QPropertyAnimation(overlay, b"geometry", self)
-        geo_anim.setDuration(260)
-        geo_anim.setStartValue(current_geo)
-        geo_anim.setEndValue(target_geo)
-        geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        def _on_finished():
-            self._overlay_user_moved = False
-
-        geo_anim.finished.connect(_on_finished)
-        self._overlay_intro_geo_anim = geo_anim
-        geo_anim.start()
-
-    def _animate_overlay_intro(self):
-        """Animação de entrada da pílula: slide-up 24px + fade-in 0→1.
-
-        Roda uma vez por instância (controlada por `_overlay_intro_played`).
-        ~280ms OutCubic.
-
-        Reposiciona ANTES de capturar `final_geo` pra evitar o bug em que
-        o showEvent disparava a animação enquanto o layout do canvas
-        ainda não havia estabilizado — a pílula nascia no canto superior
-        esquerdo porque a view tinha geometry 0×0 nesse momento.
-        """
-        overlay = getattr(self, "_toolbar_overlay", None)
-        effect = getattr(self, "_overlay_opacity_effect", None)
-        view = getattr(self, "view", None)
-        if overlay is None or effect is None or view is None:
-            return
-        if getattr(self, "_overlay_intro_played", False):
-            return
-
-        # Garante que a view já tem tamanho útil antes de calcular a posição
-        # destino. Se ainda for 0×0 (layout não estabilizou), adia mais um
-        # tick e tenta de novo — sem marcar como "played" ainda.
-        if view.width() <= 0 or view.height() <= 0:
-            QTimer.singleShot(60, self._animate_overlay_intro)
-            return
-
-        # Reposiciona AGORA com geometria correta da view; só então capturamos
-        # a posição final pra animação.
-        self._reposition_toolbar_overlay()
-        overlay.adjustSize()
-        final_geo = overlay.geometry()
-        if final_geo.width() <= 0 or final_geo.height() <= 0:
-            QTimer.singleShot(60, self._animate_overlay_intro)
-            return
-
-        self._overlay_intro_played = True
-
-        # Posição inicial: 24px abaixo, opacity zero.
-        start_geo = final_geo.translated(0, 24)
-        overlay.setGeometry(start_geo)
-        effect.setOpacity(0.0)
-
-        opacity_anim = QPropertyAnimation(effect, b"opacity", self)
-        opacity_anim.setDuration(260)
-        opacity_anim.setStartValue(0.0)
-        opacity_anim.setEndValue(1.0)
-        opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        geo_anim = QPropertyAnimation(overlay, b"geometry", self)
-        geo_anim.setDuration(280)
-        geo_anim.setStartValue(start_geo)
-        geo_anim.setEndValue(final_geo)
-        geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        # Mantém refs vivas (sem isso, GC mata antes do finished).
-        self._overlay_fade_anim = opacity_anim
-        self._overlay_intro_geo_anim = geo_anim
-        opacity_anim.start()
-        geo_anim.start()
 
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
@@ -4557,62 +4078,6 @@ class DrawingCanvas(QWidget):
             f" border:1px solid {theme.rgba(theme.PRIMARY, 34)};"
             f" border-radius:14px;"
             f"}}"
-        )
-
-    def _toolbar_overlay_style(self) -> str:
-        """Estilo da 'pílula' que envolve as 3 seções da toolbar flutuante.
-
-        Borda mais pronunciada (1.5px equivalente via cor saturada) pra
-        compensar a remoção da sombra (substituída por QGraphicsOpacityEffect
-        pra suportar o fade dinâmico do auto-hide).
-        """
-        return (
-            f"QFrame {{"
-            f" background:{theme.rgba(theme.CARD_BG, 240)};"
-            f" border:1px solid {theme.rgba(theme.PRIMARY, 110)};"
-            f" border-radius:22px;"
-            f"}}"
-        )
-
-    def _help_btn_style(self) -> str:
-        """Botão '?' que substitui a linha de atalhos. Circular, primário sutil."""
-        fs = max(9, int(11 * self.scale))
-        return (
-            f"QPushButton {{"
-            f" background:{theme.rgba(theme.PRIMARY, 28)};"
-            f" color:{theme.PRIMARY};"
-            f" border:1px solid {theme.rgba(theme.PRIMARY, 80)};"
-            f" border-radius:14px;"
-            f" font-weight:800; font-size:{fs}pt;"
-            f"}}"
-            f"QPushButton:hover {{"
-            f" background:{theme.rgba(theme.PRIMARY, 60)};"
-            f" border-color:{theme.PRIMARY};"
-            f"}}"
-            f"QPushButton:pressed {{"
-            f" background:{theme.rgba(theme.PRIMARY, 90)};"
-            f"}}"
-        )
-
-    def _build_shortcuts_help_text(self) -> str:
-        """Texto do tooltip do botão '?' — antes era um label fixo gigante."""
-        return (
-            "Tab = esconder / mostrar a barra de ferramentas\n"
-            "Shift = traço reto\n"
-            "V = pen vetorial   |   Q = esquadro (ângulo guiado)\n"
-            "U = ângulo   |   A = seta   |   C = curva na linha/curva selecionada\n"
-            "G = triângulo   |   N = pentágono   |   H = hexágono\n"
-            "Del = apagar   |   Scroll = zoom\n"
-            "Botão do meio / Space+drag = mover\n"
-            "Ctrl+C / Ctrl+V = duplicar e colar\n"
-            "Ctrl+Shift+H = espelhar com cópia horizontal\n"
-            "Ctrl+J = espelhar com cópia vertical\n"
-            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)\n"
-            "M = cota manual (2 cliques na linha)\n"
-            "Ângulo selecionado: +/- = tamanho\n"
-            "Alt+←/→ = girar (Shift = passos de 15°)\n"
-            "Enter / Esc = confirmar   |   2× clique = editar texto\n"
-            "Duplo-clique na alça da toolbar = resetar posição"
         )
 
     def _hint_style(self) -> str:
@@ -4777,11 +4242,6 @@ class DrawingCanvas(QWidget):
             special_btns.add(self.btn_color)
         if hasattr(self, "_btn_clear"):
             special_btns.add(self._btn_clear)
-        # Botão de ajuda do título tem estilo próprio (pill primária), não deve
-        # ser sobrescrito pelo loop genérico que aplica _tool_btn_style.
-        help_btn = getattr(self, "_help_btn", None)
-        if help_btn is not None:
-            special_btns.add(help_btn)
 
         for btn in self.findChildren(QPushButton):
             if btn in special_btns:
@@ -4791,23 +4251,12 @@ class DrawingCanvas(QWidget):
             # que é o que queremos quando troca o tema.
             btn.setStyleSheet(tool_style)
 
-        # Toolbar overlay flutuante — re-estiliza a "pílula" e o botão de ajuda
-        overlay = getattr(self, "_toolbar_overlay", None)
-        if overlay is not None:
-            overlay.setStyleSheet(self._toolbar_overlay_style())
-        help_btn = getattr(self, "_help_btn", None)
-        if help_btn is not None:
-            help_btn.setStyleSheet(self._help_btn_style())
-
         # Labels: detecta o título (cor PRIMARY/bold/maior) e re-estiliza
         for lbl in self.findChildren(QLabel):
             if hasattr(self, "_title_label") and lbl is self._title_label:
                 lbl.setStyleSheet(self._title_style())
                 continue
-            # _hint_label foi removido na refator pro overlay flutuante; mantém
-            # o check só por compat com sessões antigas (sempre None agora).
-            hint_lbl = getattr(self, "_hint_label", None)
-            if hint_lbl is not None and lbl is hint_lbl:
+            if hasattr(self, "_hint_label") and lbl is self._hint_label:
                 lbl.setStyleSheet(self._hint_style())
                 continue
             current = lbl.styleSheet() or ""
@@ -4885,15 +4334,6 @@ class DrawingCanvas(QWidget):
         manual_dimension_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         manual_dimension_action.triggered.connect(self._trigger_manual_dimension_shortcut)
         self.addAction(manual_dimension_action)
-
-        # Tab → toggle visibilidade da toolbar flutuante (estilo Figma/tldraw).
-        # IMPORTANTE: NÃO usamos QAction porque QAction consome o Tab antes de
-        # qualquer widget de input poder receber (SpinBox/ComboBox/LineEdit
-        # precisam de Tab pra navegar entre campos). Em vez disso, instalamos
-        # um event filter inteligente que só intercepta Tab quando o foco NÃO
-        # está num widget de entrada de dados — ver _OverlayToggleTabFilter.
-        self._overlay_toggle_filter = _OverlayToggleTabFilter(self)
-        self.installEventFilter(self._overlay_toggle_filter)
 
         scale_up_action = QAction(self)
         scale_up_action.setShortcut(QKeySequence("Ctrl++"))
