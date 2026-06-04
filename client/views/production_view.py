@@ -222,13 +222,11 @@ def _machine_stat_box_style(s: float, status_value: object = "") -> str:
     radius = max(10, int(12 * s))
     if _is_machine_in_maintenance(status_value):
         background = _blend(theme.PANEL_SURFACE_BG, theme.WARNING, 18)
-        border = _rgba(theme.WARNING, 112)
     else:
         background = theme.PANEL_SURFACE_BG
-        border = _rgba(theme.PANEL_NEON_PRIMARY, 42)
     return (
         f"background:{background};"
-        f"border:1px solid {border};"
+        f"border:none;"
         f"border-radius:{radius}px;"
     )
 
