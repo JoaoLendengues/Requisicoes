@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -90,7 +90,7 @@ from ..services.text_normalizer import (
     normalize_upper_required,
 )
 
-router = APIRouter(prefix="/requisitions", tags=["RequisiÃ§Ãµes"])
+router = APIRouter(prefix="/requisitions", tags=["Requisições"])
 
 _LOAD_OPTS = [
     selectinload(Requisition.items),
@@ -101,8 +101,8 @@ _LOAD_OPTS = [
     selectinload(Requisition.vendor),
 ]
 
-# Listagens nÃ£o precisam de itens nem do canvas (desenho); status_history Ã©
-# necessÃ¡rio sÃ³ para derivar os campos de produÃ§Ã£o. Carrega o mÃ­nimo.
+# Listagens não precisam de itens nem do canvas (desenho); status_history é
+# necessário só para derivar os campos de produção. Carrega o mínimo.
 _LIST_LOAD_OPTS = [
     selectinload(Requisition.status_history),
     selectinload(Requisition.production_splits).selectinload(RequisitionProductionSplit.status_history),
@@ -121,7 +121,7 @@ _PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
 _PROD_FINISHED = "FINALIZADA"
 _PROD_CANCELED = "CANCELADA"
 _DESTINATION_AR = "A&R"
-_DESTINATION_PINHEIRO = "Pinheiro IndÃºstria"
+_DESTINATION_PINHEIRO = "Pinheiro Indústria"
 _MACHINE_DASHBOARD_PERIODS = {"30d", "7d", "today", "last_month"}
 _PERFORMANCE_DASHBOARD_PERIODS = {"today", "week", "month", "year", "custom"}
 _SHIFT_START_HOUR = 8
@@ -245,7 +245,7 @@ def _normalize_machine_dashboard_period(value: str) -> str:
     if key not in _MACHINE_DASHBOARD_PERIODS:
         raise HTTPException(
             status_code=400,
-            detail="PerÃ­odo do dashboard invÃ¡lido. Use 30d, 7d, today ou last_month.",
+            detail="Período do dashboard inválido. Use 30d, 7d, today ou last_month.",
         )
     return key
 
@@ -259,7 +259,7 @@ def _normalize_performance_dashboard_period(value: str) -> str:
     if key not in _PERFORMANCE_DASHBOARD_PERIODS:
         raise HTTPException(
             status_code=400,
-            detail="PerÃƒÂ­odo de performance invÃƒÂ¡lido. Use today, week, month, year ou custom.",
+            detail="Período de performance inválido. Use today, week, month, year ou custom.",
         )
     return key
 
@@ -316,12 +316,12 @@ def _performance_period_bounds(
     if start_date is None or end_date is None:
         raise HTTPException(
             status_code=400,
-            detail="Informe a data inicial e final para o perÃƒÂ­odo personalizado.",
+            detail="Informe a data inicial e final para o período personalizado.",
         )
     if end_date < start_date:
         raise HTTPException(
             status_code=400,
-            detail="A data final do perÃƒÂ­odo personalizado nÃƒÂ£o pode ser menor que a inicial.",
+            detail="A data final do período personalizado não pode ser menor que a inicial.",
         )
 
     range_start = datetime.combine(start_date, time.min, _LOCAL_TIMEZONE)
@@ -476,7 +476,7 @@ def _normalize_dashboard_destination(value: str | None) -> str:
     if canonical not in {_DESTINATION_AR, _DESTINATION_PINHEIRO}:
         raise HTTPException(
             status_code=400,
-            detail="ProduÃ§Ã£o do dashboard invÃ¡lida. Use A&R ou Pinheiro IndÃºstria.",
+            detail="Produção do dashboard inválida. Use A&R ou Pinheiro Indústria.",
         )
     return canonical
 
@@ -491,7 +491,7 @@ def _role_key(role: Role | str) -> str:
 def _is_industry_role(role: Role | str) -> bool:
     # NOTA (Jun/2026): ENTREGA foi removida desse agrupamento. Antes, ENTREGA
     # era tratada como INDUSTRIA, fazendo com que o perfil so visse pedidos
-    # com destino Pinheiro Industria â€” invisivel para pedidos da A&R.
+    # com destino Pinheiro Industria ”” invisivel para pedidos da A&R.
     # Agora ENTREGA tem caso explicito em _can_view_requisition/_can_edit_requisition.
     return _role_key(role) == Role.INDUSTRIA.value
 
@@ -516,14 +516,14 @@ def _ensure_destination_access(current_user: User, destination: str):
     if not _user_can_access_destination(current_user, destination):
         raise HTTPException(
             status_code=403,
-            detail="Sem permissÃ£o para acessar este destino de produÃ§Ã£o",
+            detail="Sem permissão para acessar este destino de produção",
         )
 
 
 def _get_or_404(db: Session, req_id: int) -> Requisition:
     req = db.query(Requisition).options(*_LOAD_OPTS).filter(Requisition.id == req_id).first()
     if not req:
-        raise HTTPException(status_code=404, detail="RequisiÃ§Ã£o nÃ£o encontrada")
+        raise HTTPException(status_code=404, detail="Requisição não encontrada")
     return req
 
 
@@ -567,29 +567,29 @@ def _ensure_unique_ped_number(
     if duplicate:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"O nÃºmero de PED {ped_number} jÃ¡ estÃ¡ salvo em outra requisiÃ§Ã£o.",
+            detail=f"O número de PED {ped_number} já está salvo em outra requisição.",
         )
 
 
 def _commit_or_ped_conflict(db: Session, ped_number: str) -> None:
-    """Commit que converte a violaÃ§Ã£o de unicidade do PED (constraint do banco)
-    em um 409 limpo. Rede de seguranÃ§a contra condiÃ§Ã£o de corrida que escapa da
-    checagem prÃ©via em `_ensure_unique_ped_number`."""
+    """Commit que converte a violação de unicidade do PED (constraint do banco)
+    em um 409 limpo. Rede de segurança contra condição de corrida que escapa da
+    checagem prévia em `_ensure_unique_ped_number`."""
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"O nÃºmero de PED {ped_number} jÃ¡ estÃ¡ salvo em outra requisiÃ§Ã£o.",
+            detail=f"O número de PED {ped_number} já está salvo em outra requisição.",
         )
 
 
 def _as_naive_utc(dt: datetime) -> datetime:
-    """Normaliza para datetime naive em UTC (precisÃ£o total).
+    """Normaliza para datetime naive em UTC (precisão total).
 
-    MantÃ©m microssegundos: o round-trip via ISO preserva o valor exato, entÃ£o
-    qualquer alteraÃ§Ã£o do registro Ã© detectada (truncar mascararia mudanÃ§as
+    Mantém microssegundos: o round-trip via ISO preserva o valor exato, então
+    qualquer alteração do registro é detectada (truncar mascararia mudanças
     ocorridas dentro do mesmo segundo)."""
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
@@ -597,17 +597,17 @@ def _as_naive_utc(dt: datetime) -> datetime:
 
 
 def _ensure_not_stale(req: Requisition, expected_updated_at: datetime | None) -> None:
-    """Trava otimista de concorrÃªncia (P1.6): se a requisiÃ§Ã£o foi alterada por
+    """Trava otimista de concorrência (P1.6): se a requisição foi alterada por
     outra pessoa desde que o cliente a carregou, rejeita com 409 em vez de
-    sobrescrever silenciosamente. ComparaÃ§Ã£o na granularidade de segundos."""
+    sobrescrever silenciosamente. Comparação na granularidade de segundos."""
     if expected_updated_at is None or req.updated_at is None:
         return
     if _as_naive_utc(req.updated_at) != _as_naive_utc(expected_updated_at):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Esta requisiÃ§Ã£o foi alterada por outra pessoa enquanto vocÃª "
-                "editava. Recarregue a requisiÃ§Ã£o e refaÃ§a suas alteraÃ§Ãµes."
+                "Esta requisição foi alterada por outra pessoa enquanto você "
+                "editava. Recarregue a requisição e refaça suas alterações."
             ),
         )
 
@@ -730,18 +730,18 @@ def _ensure_editable(req: Requisition):
     if req.status == RequisitionStatus.CANCELADA:
         raise HTTPException(
             status_code=400,
-            detail="RequisiÃ§Ã£o cancelada nÃ£o pode ser editada",
+            detail="Requisição cancelada não pode ser editada",
         )
     if _is_locked_for_edit(req):
         raise HTTPException(
             status_code=400,
-            detail="RequisiÃ§Ã£o em produÃ§Ã£o recebida ou finalizada nÃ£o pode ser editada",
+            detail="Requisição em produção recebida ou finalizada não pode ser editada",
         )
 
 
 def _add_business_days(start: date, n: int) -> date:
-    """Soma n dias Ãºteis (segunda a sexta) a partir de `start`.
-    SÃ¡bado e domingo nÃ£o contam. Feriados nÃ£o sÃ£o considerados."""
+    """Soma n dias úteis (segunda a sexta) a partir de `start`.
+    Sábado e domingo não contam. Feriados não são considerados."""
     if n <= 0:
         return start
     current = start
@@ -754,8 +754,8 @@ def _add_business_days(start: date, n: int) -> date:
 
 
 def _ensure_delivery_within_min(delivery_date: date | None, current_user: User) -> None:
-    """Bloqueia datas de entrega abaixo do prazo mÃ­nimo em dias Ãºteis.
-    Admin e gerente podem salvar abaixo do mÃ­nimo."""
+    """Bloqueia datas de entrega abaixo do prazo mínimo em dias úteis.
+    Admin e gerente podem salvar abaixo do mínimo."""
     if delivery_date is None:
         return
     role = _role_key(current_user.role)
@@ -769,8 +769,8 @@ def _ensure_delivery_within_min(delivery_date: date | None, current_user: User) 
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Prazo de entrega abaixo do mÃ­nimo: sÃ£o necessÃ¡rios pelo menos "
-                f"{min_days} dia(s) Ãºtil(eis). Data mais prÃ³xima permitida: "
+                f"Prazo de entrega abaixo do mínimo: são necessários pelo menos "
+                f"{min_days} dia(s) útil(eis). Data mais próxima permitida: "
                 f"{earliest.strftime('%d/%m/%Y')}."
             ),
         )
@@ -802,12 +802,12 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         ):
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisiÃ§Ãµes aguardando recebimento podem confirmar recebimento",
+                detail="Somente requisições aguardando recebimento podem confirmar recebimento",
             )
         if req.finalized_at is not None:
             raise HTTPException(
                 status_code=400,
-                detail="O recebimento desta requisiÃ§Ã£o jÃ¡ foi confirmado",
+                detail="O recebimento desta requisição já foi confirmado",
             )
         req.status = RequisitionStatus.EM_PRODUCAO
         req.finalized_at = req.finalized_at or datetime.utcnow()
@@ -821,7 +821,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         ):
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisiÃ§Ãµes aguardando recebimento podem entrar na fila",
+                detail="Somente requisições aguardando recebimento podem entrar na fila",
             )
         req.status = RequisitionStatus.AGUARDANDO_NA_FILA
         req.finalized_at = req.finalized_at or datetime.utcnow()
@@ -836,17 +836,17 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         ):
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisiÃ§Ãµes aguardando recebimento ou em fila podem entrar em produÃ§Ã£o",
+                detail="Somente requisições aguardando recebimento ou em fila podem entrar em produção",
             )
         if not machine:
             raise HTTPException(
                 status_code=400,
-                detail="Informe a mÃ¡quina de destino para iniciar a produÃ§Ã£o",
+                detail="Informe a máquina de destino para iniciar a produção",
             )
         if req.status == RequisitionStatus.EM_PRODUCAO and req.production_machine:
             raise HTTPException(
                 status_code=400,
-                detail="Esta requisiÃ§Ã£o jÃ¡ estÃ¡ vinculada a uma mÃ¡quina",
+                detail="Esta requisição já está vinculada a uma máquina",
             )
         req.status = RequisitionStatus.EM_PRODUCAO
         req.finalized_at = req.finalized_at or datetime.utcnow()
@@ -857,7 +857,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         if req.status != RequisitionStatus.EM_PRODUCAO:
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisiÃ§Ãµes em produÃ§Ã£o podem voltar para a fila",
+                detail="Somente requisições em produção podem voltar para a fila",
             )
         req.status = RequisitionStatus.AGUARDANDO_NA_FILA
         req.production_machine = None
@@ -867,12 +867,12 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         if req.status != RequisitionStatus.EM_PRODUCAO:
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisiÃ§Ãµes em produÃ§Ã£o podem ser finalizadas",
+                detail="Somente requisições em produção podem ser finalizadas",
             )
         if req.finalized_at is None:
             raise HTTPException(
                 status_code=400,
-                detail="Confirme o recebimento antes de finalizar a produÃ§Ã£o",
+                detail="Confirme o recebimento antes de finalizar a produção",
             )
         req.status = RequisitionStatus.FINALIZADO
         req.production_machine = None
@@ -882,7 +882,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         if len(reason.strip()) < 5:
             raise HTTPException(
                 status_code=400,
-                detail="Informe um motivo de cancelamento vÃ¡lido",
+                detail="Informe um motivo de cancelamento válido",
             )
         req.status = RequisitionStatus.RASCUNHO
         req.cancel_reason = reason.strip()
@@ -899,7 +899,7 @@ def _apply_manual_status_transition(
         if new_status == RequisitionStatus.FINALIZADO:
             raise HTTPException(
                 status_code=400,
-                detail="RequisiÃ§Ãµes canceladas nÃ£o podem ser faturadas diretamente",
+                detail="Requisições canceladas não podem ser faturadas diretamente",
             )
         req.status = new_status
         req.finalized_at = None
@@ -907,13 +907,13 @@ def _apply_manual_status_transition(
         return
 
     # NOTA: a branch que validava transicao para AGUARDANDO_FATURAMENTO foi
-    # removida â€” esse status foi descontinuado (Jun/2026). Para FATURADO, a
+    # removida ”” esse status foi descontinuado (Jun/2026). Para FATURADO, a
     # semantica sera redefinida no Commit 2 (registro do envio para producao).
 
     if req.status == RequisitionStatus.FINALIZADO:
         raise HTTPException(
             status_code=400,
-            detail="Pedidos faturados nÃ£o podem retornar para outro status operacional",
+            detail="Pedidos faturados não podem retornar para outro status operacional",
         )
 
     req.status = new_status
@@ -1210,10 +1210,10 @@ def _production_events(req: Requisition) -> list[dict]:
 
 
 def _cancel_reason_for(req: Requisition) -> str | None:
-    """Retorna o motivo de cancelamento da requisiÃ§Ã£o.
+    """Retorna o motivo de cancelamento da requisição.
     Usa a coluna `cancel_reason` (preenchida nos cancelamentos novos) e,
-    como fallback para registros antigos, extrai o motivo do Ãºltimo evento
-    de produÃ§Ã£o CANCELADA registrado no histÃ³rico de status."""
+    como fallback para registros antigos, extrai o motivo do último evento
+    de produção CANCELADA registrado no histórico de status."""
     direct = (getattr(req, "cancel_reason", None) or "").strip()
     if direct:
         return direct
@@ -1365,7 +1365,7 @@ def _invalidate_list_caches() -> None:
     veja o estado atualizado, em troca de aceitar 1 cache miss.
 
     Mais barato que invalidar entrada-por-entrada porque os keys incluem
-    o user_id â€” seriam dezenas de keys para limpar com lookup.
+    o user_id ”” seriam dezenas de keys para limpar com lookup.
     """
     cache.invalidate("order_center:")
     cache.invalidate("delivery_center:")
@@ -1376,21 +1376,21 @@ def _invalidate_list_caches() -> None:
 def _visibility_filter_sql(query, current_user: User):
     """Aplica filtros de visibilidade DIRETAMENTE NO SQL.
 
-    VersÃ£o paralela do _can_view_requisition (Python). Use ANTES de
-    `query.all()` para evitar carregar a tabela inteira em memÃ³ria sÃ³
+    Versão paralela do _can_view_requisition (Python). Use ANTES de
+    `query.all()` para evitar carregar a tabela inteira em memória só
     para descartar a maioria das linhas.
 
-    LÃ³gica equivalente a _can_view_requisition:
-      - ADMIN/GERENTE: vÃª tudo (sem filtro)
-      - VENDEDOR: vÃª sÃ³ do prÃ³prio (vendor_id)
-      - ENTREGAS: vÃª sÃ³ reqs marcadas como entrega
-      - PRODUCAO/INDUSTRIA: vÃª sÃ³ reqs com production_destination compatÃ­vel
-      - outros: nada visÃ­vel
+    Lógica equivalente a _can_view_requisition:
+      - ADMIN/GERENTE: vê tudo (sem filtro)
+      - VENDEDOR: vê só do próprio (vendor_id)
+      - ENTREGAS: vê só reqs marcadas como entrega
+      - PRODUCAO/INDUSTRIA: vê só reqs com production_destination compatível
+      - outros: nada visível
 
-    DiferenÃ§a sutil: para PRODUCAO/INDUSTRIA, filtra por
+    Diferença sutil: para PRODUCAO/INDUSTRIA, filtra por
     `Requisition.production_destination` direto, sem considerar eventos
-    de production_notes histÃ³ricos. Em uso operacional nÃ£o importa â€”
-    reqs sempre tÃªm production_destination setado quando vÃ£o pra fila.
+    de production_notes históricos. Em uso operacional não importa ””
+    reqs sempre têm production_destination setado quando vão pra fila.
     """
     role = _role_key(current_user.role)
     if role in (Role.ADMIN.value, Role.GERENTE.value):
@@ -3410,9 +3410,9 @@ def _is_backup_candidate(path: Path) -> bool:
 
 
 def _find_latest_backup_at() -> datetime | None:
-    # A pasta configurada em BACKUP_FOLDER Ã© o destino real do pg_dump
+    # A pasta configurada em BACKUP_FOLDER é o destino real do pg_dump
     # (backup_service.run_backup). Precisa ser o primeiro local verificado;
-    # caso contrÃ¡rio backups jÃ¡ realizados nunca sÃ£o detectados.
+    # caso contrário backups já realizados nunca são detectados.
     roots: list[Path] = []
     if settings.BACKUP_FOLDER:
         roots.append(Path(settings.BACKUP_FOLDER))
@@ -3555,7 +3555,7 @@ def list_requisitions(
             Client.code.ilike(search_term),
         ))
 
-    # Vendedor e gerente sÃ³ veem as prÃ³prias requisiÃ§Ãµes
+    # Vendedor e gerente só veem as próprias requisições
     reqs = q.order_by(Requisition.emission_date.desc(), Requisition.created_at.desc()).all()
     visible = _filter_requisitions_for_user(reqs, current_user)
 
@@ -3644,7 +3644,7 @@ def list_requisition_history_rows(
 ):
     q = db.query(Requisition).options(*_LIST_LOAD_OPTS)
 
-    # Visibilidade no SQL â€” antes carregava TUDO e filtrava em Python.
+    # Visibilidade no SQL ”” antes carregava TUDO e filtrava em Python.
     q = _visibility_filter_sql(q, current_user)
 
     # Cutoff temporal padrao: 2 anos. Reqs mais antigas que isso so aparecem
@@ -3712,7 +3712,7 @@ def list_requisition_history_rows(
         rows = [row for row in rows if str(row.get("status") or "") == str(expected_status)]
 
     # NOTA: emission_date_start/end agora sao aplicados no SQL acima (Fase 2).
-    # O bloco Python que filtrava aqui foi removido â€” era trabalho duplicado.
+    # O bloco Python que filtrava aqui foi removido ”” era trabalho duplicado.
 
     if production_destination:
         normalized_destination = _canonical_destination(production_destination)
@@ -3763,7 +3763,7 @@ def list_requisition_history_rows(
 
 
 def _check_invoice_alerts(db: Session) -> None:
-    """Verifica alertas de faturamento pendentes e envia notificaÃ§Ãµes SSE."""
+    """Verifica alertas de faturamento pendentes e envia notificações SSE."""
     notifications = ensure_pending_invoice_notifications(db)
     notifications += ensure_delivery_deadline_notifications(db)
     if notifications:
@@ -3795,7 +3795,7 @@ def get_management_dashboard(
     normalized_people_destination = _normalize_dashboard_destination(people_destination)
 
     # Cache TTL 30s (mais longo que order/delivery porque dashboard tem
-    # 9 params â€” chance maior de re-fetch identico). Key inclui todos
+    # 9 params ”” chance maior de re-fetch identico). Key inclui todos
     # os params normalizados para evitar colisao entre filtros diferentes.
     cache_key = (
         f"dashboard:{normalized_ar_period}:{normalized_industria_period}:"
@@ -3808,7 +3808,7 @@ def get_management_dashboard(
     def _compute():
         # Cutoff temporal no SQL: dashboard nao precisa de reqs criadas ha mais
         # de 13 meses (todas as metricas operam em janelas <= 1 ano). Reqs em
-        # estado aberto sao incluidas independente da idade â€” operacional vive.
+        # estado aberto sao incluidas independente da idade ”” operacional vive.
         cutoff = datetime.utcnow() - timedelta(days=400)
         q = db.query(Requisition).options(*_LOAD_OPTS).filter(
             or_(
@@ -3862,12 +3862,12 @@ def get_order_center(
 
     def _compute():
         # _check_invoice_alerts movido para background (alert_scheduler).
-        # Visibilidade aplicada no SQL â€” antes carregava TUDO e filtrava em Python.
+        # Visibilidade aplicada no SQL ”” antes carregava TUDO e filtrava em Python.
         q = db.query(Requisition).options(*_LOAD_OPTS)
         q = _visibility_filter_sql(q, current_user)
-        # Cutoff temporal: reqs finalizadas/canceladas hÃ¡ mais de 1 ano nÃ£o aparecem
-        # na Central de Pedidos (vÃ£o para o HistÃ³rico). Reqs em estado aberto
-        # ignoram o cutoff â€” operacional precisa vÃª-las sempre.
+        # Cutoff temporal: reqs finalizadas/canceladas há mais de 1 ano não aparecem
+        # na Central de Pedidos (vão para o Histórico). Reqs em estado aberto
+        # ignoram o cutoff ”” operacional precisa vê-las sempre.
         cutoff = datetime.utcnow() - timedelta(days=365)
         q = q.filter(
             or_(
@@ -3926,7 +3926,7 @@ def get_production_summary(
 
     # Filtros SQL: visibilidade por role + destination (direto ou via splits).
     # Reqs com production_destination diferente OU sem splits para esse destino
-    # nao precisam ser carregadas â€” eram filtradas em Python depois.
+    # nao precisam ser carregadas ”” eram filtradas em Python depois.
     split_req_ids = db.query(RequisitionProductionSplit.requisition_id).filter(
         RequisitionProductionSplit.destination == normalized_destination
     )
@@ -4322,7 +4322,7 @@ def update_production_machine_status(
         .first()
     )
     if not machine:
-        raise HTTPException(status_code=404, detail="MÃ¡quina nÃ£o encontrada")
+        raise HTTPException(status_code=404, detail="Máquina não encontrada")
 
     _ensure_destination_access(current_user, machine.destination)
 
@@ -4363,7 +4363,7 @@ def create_requisition(
     for item in items_data:
         db.add(RequisitionItem(**item.model_dump(), requisition_id=req.id))
 
-    # Canvas (desenho) gravado na MESMA transaÃ§Ã£o â€” atÃ´mico com a requisiÃ§Ã£o.
+    # Canvas (desenho) gravado na MESMA transação ”” atômico com a requisição.
     db.add(CanvasData(
         requisition_id=req.id,
         json_data=normalize_canvas_json_text(data.canvas_json) or "{}",
@@ -4394,7 +4394,7 @@ def get_requisition(
 ):
     req = _get_or_404(db, req_id)
     if not _can_view_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃ£o para visualizar esta requisiÃ§Ã£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para visualizar esta requisição")
     setattr(req, "production_destination_display", _current_production_destination(req) or None)
     setattr(req, "production_machine_display", _history_production_machine(req) or None)
     operator_names = _history_production_operator_names(req)
@@ -4420,7 +4420,7 @@ def update_requisition(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃ£o para editar esta requisiÃ§Ã£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_not_stale(req, data.expected_updated_at)
     _ensure_editable(req)
     ped_number = data.ped_number if data.ped_number is not None else req.ped_number
@@ -4453,7 +4453,7 @@ def update_requisition(
     elif data.weight is not None:
         req.weight = data.weight
 
-    # Canvas (desenho) na MESMA transaÃ§Ã£o â€” atÃ´mico com a requisiÃ§Ã£o.
+    # Canvas (desenho) na MESMA transação ”” atômico com a requisição.
     if data.canvas_json is not None:
         normalized_canvas = normalize_canvas_json_text(data.canvas_json) or "{}"
         if req.canvas:
@@ -4465,9 +4465,9 @@ def update_requisition(
         log_action(db, entity="requisition", entity_id=req.id, action="UPDATE",
                    changed_by=current_user, changes=changes)
 
-    # AvanÃ§a a versÃ£o SEMPRE (mesmo quando sÃ³ itens/canvas mudaram, que ficam em
-    # outras tabelas e nÃ£o disparam o onupdate da linha). Garante que a trava
-    # otimista (P1.6) detecte qualquer gravaÃ§Ã£o concorrente.
+    # Avança a versão SEMPRE (mesmo quando só itens/canvas mudaram, que ficam em
+    # outras tabelas e não disparam o onupdate da linha). Garante que a trava
+    # otimista (P1.6) detecte qualquer gravação concorrente.
     req.updated_at = datetime.utcnow()
 
     _commit_or_ped_conflict(db, ped_number)
@@ -4483,7 +4483,7 @@ def update_status(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃ£o para atualizar esta requisiÃ§Ã£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
     old_status = req.status
     prod = _parse_production_note(data.note)
     is_sending_to_production = (
@@ -4546,7 +4546,7 @@ def update_status(
     # IMPORTANTE: so registramos na PRIMEIRA vez que a req e enviada para
     # producao. Em fluxos de reabertura (cancelada -> aguardando, ou alteracao
     # de prazo + reenvio) a req ja tem entrada FATURADO no historico e nao
-    # devemos duplicar â€” o pedido nao foi "faturado de novo".
+    # devemos duplicar ”” o pedido nao foi "faturado de novo".
     is_first_send_to_production = (
         prod is not None
         and prod["action"] == _PROD_SEND
@@ -4565,7 +4565,7 @@ def update_status(
             note="Pedido faturado no envio para producao",
         ))
 
-    # Cria notificaÃ§Ãµes dentro da mesma transaÃ§Ã£o
+    # Cria notificações dentro da mesma transação
     notifications: list = []
     if prod:
         action = prod["action"]
@@ -4607,7 +4607,7 @@ def update_canvas(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃ£o para editar esta requisiÃ§Ã£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_editable(req)
     normalized_json = normalize_canvas_json_text(data.json_data) or "{}"
     if req.canvas:
@@ -4627,7 +4627,7 @@ def attach_nf(
 ):
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃ£o para editar esta requisiÃ§Ã£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para editar esta requisição")
     _ensure_editable(req)
     req.nf_attachment = nf_path
     db.commit()
@@ -4641,32 +4641,32 @@ def update_delivery_date(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """ProduÃ§Ã£o (A&R / IndÃºstria) altera o prazo de entrega com justificativa.
-    A requisiÃ§Ã£o volta para o vendedor com status 'prazo_alterado' e notificaÃ§Ã£o."""
+    """Produção (A&R / Indústria) altera o prazo de entrega com justificativa.
+    A requisição volta para o vendedor com status 'prazo_alterado' e notificação."""
     role = _role_key(current_user.role)
     if role not in (Role.ADMIN.value, Role.PRODUCAO.value, Role.INDUSTRIA.value):
         raise HTTPException(
             status_code=403,
-            detail="Apenas a produÃ§Ã£o pode alterar o prazo de entrega",
+            detail="Apenas a produção pode alterar o prazo de entrega",
         )
 
     req = _get_or_404(db, req_id)
     if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FINALIZADO):
         raise HTTPException(
             status_code=400,
-            detail="NÃ£o Ã© possÃ­vel alterar o prazo de uma requisiÃ§Ã£o cancelada ou faturada",
+            detail="Não é possível alterar o prazo de uma requisição cancelada ou faturada",
         )
 
     destination = _destination_for_role(role)
     if destination and _current_production_destination(req) != destination:
         raise HTTPException(
             status_code=403,
-            detail="Sem permissÃ£o para alterar o prazo desta requisiÃ§Ã£o",
+            detail="Sem permissão para alterar o prazo desta requisição",
         )
 
     old_date = req.delivery_date
     old_status = req.status
-    old_str = old_date.strftime("%d/%m/%Y") if old_date else "â€”"
+    old_str = old_date.strftime("%d/%m/%Y") if old_date else "””"
     new_str = data.delivery_date.strftime("%d/%m/%Y")
 
     req.delivery_date = data.delivery_date
@@ -4719,7 +4719,7 @@ def update_delivery_date_and_resend(
 
     Se a segunda chamada falhasse (rede, lock otimista, etc), a req ficava
     em prazo_alterado quando deveria ter voltado para aguardando_recebimento.
-    Agora ambas operacoes acontecem no mesmo commit â€” atomicas.
+    Agora ambas operacoes acontecem no mesmo commit ”” atomicas.
 
     Permissao: ADMIN, PRODUCAO, INDUSTRIA (igual ao /delivery-date original).
     """
@@ -4746,7 +4746,7 @@ def update_delivery_date_and_resend(
 
     old_date = req.delivery_date
     old_status = req.status
-    old_str = old_date.strftime("%d/%m/%Y") if old_date else "â€”"
+    old_str = old_date.strftime("%d/%m/%Y") if old_date else "””"
     new_str = data.delivery_date.strftime("%d/%m/%Y")
 
     # Passo 1: alterar prazo + registrar prazo_alterado no historico
@@ -4791,7 +4791,7 @@ def update_delivery_date_and_resend(
         },
     )
 
-    # NOTA: nao adicionamos entrada FATURADO no historico aqui â€” req ja foi
+    # NOTA: nao adicionamos entrada FATURADO no historico aqui ”” req ja foi
     # faturada antes (esta voltando para producao, nao sendo enviada pela
     # primeira vez). Mesma regra do bug fix em update_status (commit 884d995).
 
@@ -4819,23 +4819,23 @@ def update_delivery_schedule(
     if not req.entrega:
         raise HTTPException(
             status_code=400,
-            detail="Esta requisiÃ§Ã£o nÃ£o estÃ¡ marcada como entrega",
+            detail="Esta requisição não está marcada como entrega",
         )
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃ£o para atualizar esta requisiÃ§Ã£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
     if req.status == RequisitionStatus.CANCELADA:
         raise HTTPException(
             status_code=400,
-            detail="NÃ£o Ã© possÃ­vel alterar o prazo de uma requisiÃ§Ã£o cancelada",
+            detail="Não é possível alterar o prazo de uma requisição cancelada",
         )
     if req.delivered_at is not None:
         raise HTTPException(
             status_code=400,
-            detail="Esta entrega jÃ¡ foi concluÃ­da",
+            detail="Esta entrega já foi concluída",
         )
 
     old_date = req.delivery_date
-    old_str = old_date.strftime("%d/%m/%Y") if old_date else "â€”"
+    old_str = old_date.strftime("%d/%m/%Y") if old_date else "””"
     new_str = data.delivery_date.strftime("%d/%m/%Y")
     current_status = getattr(req.status, "value", req.status)
 
@@ -4881,14 +4881,14 @@ def mark_delivery_split_delivered(
     if not req.entrega:
         raise HTTPException(
             status_code=400,
-            detail="Esta requisiÃƒÂ§ÃƒÂ£o nÃƒÂ£o estÃƒÂ¡ marcada como entrega",
+            detail="Esta requisição não está marcada como entrega",
         )
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃƒÂ£o para atualizar esta requisiÃƒÂ§ÃƒÂ£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
     if req.status == RequisitionStatus.CANCELADA:
         raise HTTPException(
             status_code=400,
-            detail="NÃƒÂ£o ÃƒÂ© possÃƒÂ­vel concluir a entrega de uma requisiÃƒÂ§ÃƒÂ£o cancelada",
+            detail="Não é possível concluir a entrega de uma requisição cancelada",
         )
     if split.status != RequisitionStatus.FINALIZADO:
         raise HTTPException(
@@ -4898,7 +4898,7 @@ def mark_delivery_split_delivered(
     if split.delivered_at is not None:
         raise HTTPException(
             status_code=400,
-            detail="Esta parcela jÃƒÂ¡ foi concluÃƒÂ­da",
+            detail="Esta parcela já foi concluída",
         )
 
     delivered_at = datetime.utcnow()
@@ -4908,7 +4908,7 @@ def mark_delivery_split_delivered(
     synced_parent_delivered_at = _sync_requisition_delivery_after_splits(req)
 
     note = (
-        f"Entrega da parcela P{int(split.sequence or 0):02d} concluÃƒÂ­da em "
+        f"Entrega da parcela P{int(split.sequence or 0):02d} concluída em "
         f"{delivered_at.strftime('%d/%m/%Y %H:%M')}"
     )
     db.add(StatusHistory(
@@ -4952,10 +4952,10 @@ def mark_delivery_delivered(
     if not req.entrega:
         raise HTTPException(
             status_code=400,
-            detail="Esta requisiÃ§Ã£o nÃ£o estÃ¡ marcada como entrega",
+            detail="Esta requisição não está marcada como entrega",
         )
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃ£o para atualizar esta requisiÃ§Ã£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
     if _has_production_splits(req):
         raise HTTPException(
             status_code=400,
@@ -4964,7 +4964,7 @@ def mark_delivery_delivered(
     if req.status == RequisitionStatus.CANCELADA:
         raise HTTPException(
             status_code=400,
-            detail="NÃ£o Ã© possÃ­vel concluir a entrega de uma requisiÃ§Ã£o cancelada",
+            detail="Não é possível concluir a entrega de uma requisição cancelada",
         )
     if _has_production_splits(req):
         raise HTTPException(
@@ -4979,14 +4979,14 @@ def mark_delivery_delivered(
     if req.delivered_at is not None:
         raise HTTPException(
             status_code=400,
-            detail="Esta entrega jÃ¡ foi concluÃ­da",
+            detail="Esta entrega já foi concluída",
         )
 
     delivered_at = datetime.utcnow()
     current_status = getattr(req.status, "value", req.status)
     req.delivered_at = delivered_at
 
-    note = f"Entrega concluÃ­da em {delivered_at.strftime('%d/%m/%Y %H:%M')}"
+    note = f"Entrega concluída em {delivered_at.strftime('%d/%m/%Y %H:%M')}"
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=current_status,
@@ -5021,19 +5021,19 @@ def cancel_delivery_split_delivered(
     if not req.entrega:
         raise HTTPException(
             status_code=400,
-            detail="Esta requisiÃƒÂ§ÃƒÂ£o nÃƒÂ£o estÃƒÂ¡ marcada como entrega",
+            detail="Esta requisição não está marcada como entrega",
         )
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃƒÂ£o para atualizar esta requisiÃƒÂ§ÃƒÂ£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
     if req.status == RequisitionStatus.CANCELADA:
         raise HTTPException(
             status_code=400,
-            detail="NÃƒÂ£o ÃƒÂ© possÃƒÂ­vel reabrir a entrega de uma requisiÃƒÂ§ÃƒÂ£o cancelada",
+            detail="Não é possível reabrir a entrega de uma requisição cancelada",
         )
     if split.delivered_at is None:
         raise HTTPException(
             status_code=400,
-            detail="Esta parcela nÃƒÂ£o estÃƒÂ¡ com entrega concluÃƒÂ­da",
+            detail="Esta parcela não está com entrega concluída",
         )
 
     current_status = getattr(split.status, "value", split.status)
@@ -5092,10 +5092,10 @@ def cancel_delivery_delivered(
     if not req.entrega:
         raise HTTPException(
             status_code=400,
-            detail="Esta requisiÃ§Ã£o nÃ£o estÃ¡ marcada como entrega",
+            detail="Esta requisição não está marcada como entrega",
         )
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃ£o para atualizar esta requisiÃ§Ã£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
     if _has_production_splits(req):
         raise HTTPException(
             status_code=400,
@@ -5104,7 +5104,7 @@ def cancel_delivery_delivered(
     if req.status == RequisitionStatus.CANCELADA:
         raise HTTPException(
             status_code=400,
-            detail="NÃ£o Ã© possÃ­vel reabrir a entrega de uma requisiÃ§Ã£o cancelada",
+            detail="Não é possível reabrir a entrega de uma requisição cancelada",
         )
     if _has_production_splits(req):
         raise HTTPException(
@@ -5114,7 +5114,7 @@ def cancel_delivery_delivered(
     if req.delivered_at is None:
         raise HTTPException(
             status_code=400,
-            detail="Esta requisiÃ§Ã£o nÃ£o estÃ¡ com entrega concluÃ­da",
+            detail="Esta requisição não está com entrega concluída",
         )
 
     current_status = getattr(req.status, "value", req.status)
@@ -5271,7 +5271,7 @@ def cancel_requisition(
 
     req = _get_or_404(db, req_id)
     if not _can_edit_requisition(req, current_user):
-        raise HTTPException(status_code=403, detail="Sem permissÃ£o para cancelar esta requisiÃ§Ã£o")
+        raise HTTPException(status_code=403, detail="Sem permissão para cancelar esta requisição")
     old_status = req.status
     req.status = RequisitionStatus.CANCELADA
     db.add(StatusHistory(
@@ -5293,11 +5293,11 @@ def cancel_requisition(
     if req.vendor_id != current_user.id:
         notifications.extend(build_vendor_event(db, req, "cancelada"))
     else:
-        # Mesmo que o vendedor cancele a prÃ³pria req, admins/gerentes sÃ£o notificados
+        # Mesmo que o vendedor cancele a própria req, admins/gerentes são notificados
         notifications.extend(
             _notify_admins_gerentes(
                 db, "cancelada",
-                "RequisiÃ§Ã£o Cancelada âŒ",
+                "Requisição Cancelada âŒ",
                 f"PED #{req.ped_number} foi cancelada.",
                 req.id,
                 exclude_ids={current_user.id},

@@ -820,9 +820,9 @@ class DashboardView(QWidget):
         self._performance_period_options = [
             ("Hoje", "today"),
             ("Semana", "week"),
-            ("MÃªs", "month"),
+            ("Mês", "month"),
             ("Ano", "year"),
-            ("PerÃ­odo personalizado", "custom"),
+            ("Período personalizado", "custom"),
         ]
         self._performance_period_options = [
             ("Hoje", "today"),
@@ -1134,7 +1134,7 @@ class DashboardView(QWidget):
         )
         self._register_hover_tooltip(title_label, _IAR_TOOLTIP_TEXTS["iar_geral"])
         subtitle_label = QLabel(
-            "KPI principal da operaÃ§Ã£o, calculado por prazo, produtividade e eficiÃªncia de cancelamentos."
+            "KPI principal da operação, calculado por prazo, produtividade e eficiência de cancelamentos."
         )
         subtitle_label.setWordWrap(True)
         subtitle_label.setProperty("muted", "1")
@@ -1169,7 +1169,7 @@ class DashboardView(QWidget):
         self.performance_date_from.setStyleSheet(_field_style(s))
         self.performance_date_from.dateChanged.connect(self._on_performance_date_changed)
 
-        to_label = QLabel("AtÃ©")
+        to_label = QLabel("Até")
         to_label.setStyleSheet(
             f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
         )
