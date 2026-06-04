@@ -16,7 +16,7 @@ from enum import Enum
 from uuid import uuid4
 
 from PySide6.QtCore import (
-    Qt, QPointF, QRectF, Signal, QEvent,
+    Qt, QPointF, QRect, QRectF, Signal, QEvent,
     QByteArray, QBuffer, QIODevice, QMimeData, QUrl,
     QPropertyAnimation, QEasingCurve, QTimer, QParallelAnimationGroup,
 )
@@ -4066,41 +4066,67 @@ class DrawingCanvas(QWidget):
         else:
             self._animate_toolbar_close()
 
+    def _toolbar_open_target_rect(self) -> QRect:
+        """Calcula o rect FINAL do overlay quando aberto (posição + tamanho).
+
+        Posição: canto sup esq do canvas, logo abaixo do botão toggle.
+        Tamanho: sizeHint do layout interno do overlay (3 seções empilhadas).
+        """
+        view = self.view
+        toggle_btn = self._toolbar_toggle_btn
+        overlay = self._toolbar_overlay
+        margin = max(10, int(12 * self.scale))
+        gap = max(4, int(6 * self.scale))
+        view_geo = view.geometry()
+        # Tamanho ideal vem do layout (não de overlay.sizeHint() que pode ser 0
+        # quando o widget está com altura artificialmente forçada).
+        if overlay.layout() is not None:
+            ideal = overlay.layout().sizeHint()
+            margins = overlay.layout().contentsMargins()
+            final_w = ideal.width() + margins.left() + margins.right()
+            final_h = ideal.height() + margins.top() + margins.bottom()
+        else:
+            ideal = overlay.sizeHint()
+            final_w, final_h = ideal.width(), ideal.height()
+        x = view_geo.x() + margin
+        y = view_geo.y() + margin + toggle_btn.height() + gap
+        return QRect(x, y, final_w, final_h)
+
     def _animate_toolbar_open(self):
+        """Abre a toolbar com animação de gaveta (geometry) + stagger nas seções.
+
+        Animamos `geometry` (não `maximumHeight`) porque o overlay NÃO está em
+        um layout — ele é posicionado via move()/setGeometry(). Mudar
+        maximumHeight num widget fora de layout não dispara reflow, então
+        anims de maximumHeight não tinham efeito visível (bug reportado).
+        """
         overlay = self._toolbar_overlay
         toggle_btn = self._toolbar_toggle_btn
-        sections = self._toolbar_section_frames
         effects = self._toolbar_section_effects
 
-        # Garante posição correta + reset estado das seções (opacity 0 antes
-        # de aparecer pra evitar flash).
+        # Opacity inicial 0 em todas as seções (evita flash).
         for eff in effects:
             eff.setOpacity(0.0)
 
-        overlay.setVisible(True)
-        overlay.adjustSize()
-        final_h = overlay.sizeHint().height()
-        # Posiciona o overlay na coord correta ANTES de animar.
-        self._reposition_toolbar_overlay()
-        # Começa com altura 0 (gaveta fechada).
-        overlay.setMaximumHeight(0)
-        overlay.setMinimumHeight(0)
-        overlay.updateGeometry()
+        target = self._toolbar_open_target_rect()
+        start = QRect(target.x(), target.y(), target.width(), 0)
 
-        # Configuração do stagger pra calcular duração total ANTES da height.
-        SECTION_STEP_MS = 70   # delay entre cada seção
-        SECTION_DUR_MS = 220   # duração do fade-in de cada seção
+        overlay.setGeometry(start)
+        overlay.setVisible(True)
+        overlay.raise_()
+
+        SECTION_STEP_MS = 70
+        SECTION_DUR_MS = 220
         last_section_end = (len(effects) - 1) * SECTION_STEP_MS + SECTION_DUR_MS
 
-        # === Animação de altura (gaveta abrindo) ===
-        # Duração casa com o fim do último stagger pra _on_finished não cortar.
-        height_anim = QPropertyAnimation(overlay, b"maximumHeight", self)
-        height_anim.setDuration(last_section_end)
-        height_anim.setStartValue(0)
-        height_anim.setEndValue(final_h)
-        height_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        # === Animação de gaveta (geometry: altura 0 → final) ===
+        geo_anim = QPropertyAnimation(overlay, b"geometry", self)
+        geo_anim.setDuration(last_section_end)
+        geo_anim.setStartValue(start)
+        geo_anim.setEndValue(target)
+        geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
-        # === Animação de opacity das seções em cascata (stagger) ===
+        # === Stagger das seções (opacity 0 → 1 em cascata) ===
         section_anims = []
         for i, eff in enumerate(effects):
             anim = QPropertyAnimation(eff, b"opacity", self)
@@ -4112,32 +4138,32 @@ class DrawingCanvas(QWidget):
             section_anims.append(anim)
 
         def _on_finished():
-            # Libera maxHeight pra não limitar conteúdo futuramente.
-            overlay.setMaximumHeight(16777215)
+            overlay.setGeometry(target)  # garante geo exata
             for eff in effects:
                 eff.setOpacity(1.0)
             self._toolbar_anim_in_progress = False
             toggle_btn.setText(self._toolbar_toggle_text(True))
             toggle_btn.setChecked(True)
 
-        height_anim.finished.connect(_on_finished)
+        geo_anim.finished.connect(_on_finished)
 
-        self._toolbar_anim_height = height_anim
+        self._toolbar_anim_height = geo_anim
         self._toolbar_anim_sections = section_anims
         self._toolbar_anim_in_progress = True
-        height_anim.start()
+        geo_anim.start()
 
     def _animate_toolbar_close(self):
+        """Fecha com stagger reverso nas seções + geometry colapsando."""
         overlay = self._toolbar_overlay
         toggle_btn = self._toolbar_toggle_btn
-        sections = self._toolbar_section_frames
         effects = self._toolbar_section_effects
 
-        current_h = overlay.height()
-        if current_h <= 0:
-            current_h = overlay.sizeHint().height()
+        current_geo = overlay.geometry()
+        target_collapsed = QRect(
+            current_geo.x(), current_geo.y(), current_geo.width(), 0
+        )
 
-        # === Stagger reverso nas seções (última some primeiro) ===
+        # === Stagger reverso nas seções ===
         section_anims = []
         n = len(effects)
         for i, eff in enumerate(effects):
@@ -4146,34 +4172,30 @@ class DrawingCanvas(QWidget):
             anim.setStartValue(eff.opacity())
             anim.setEndValue(0.0)
             anim.setEasingCurve(QEasingCurve.Type.InCubic)
-            # Reverso: índice maior começa primeiro (ações > propriedades > ferramentas).
             delay = (n - 1 - i) * 50
             QTimer.singleShot(delay, anim.start)
             section_anims.append(anim)
 
-        # === Anim de altura (gaveta fechando), começa um pouco depois ===
-        height_anim = QPropertyAnimation(overlay, b"maximumHeight", self)
-        height_anim.setDuration(240)
-        height_anim.setStartValue(current_h)
-        height_anim.setEndValue(0)
-        height_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+        # === Gaveta fechando (geometry: altura atual → 0), começa após 80ms ===
+        geo_anim = QPropertyAnimation(overlay, b"geometry", self)
+        geo_anim.setDuration(240)
+        geo_anim.setStartValue(current_geo)
+        geo_anim.setEndValue(target_collapsed)
+        geo_anim.setEasingCurve(QEasingCurve.Type.InCubic)
 
         def _on_finished():
             overlay.setVisible(False)
-            overlay.setMaximumHeight(16777215)
-            # Reseta opacity pra próxima abertura começar limpa.
+            # Restaura geometry pra estado "fechado" no rect alvo (limpo).
             for eff in effects:
                 eff.setOpacity(1.0)
             self._toolbar_anim_in_progress = False
             toggle_btn.setText(self._toolbar_toggle_text(False))
             toggle_btn.setChecked(False)
 
-        height_anim.finished.connect(_on_finished)
+        geo_anim.finished.connect(_on_finished)
+        QTimer.singleShot(80, geo_anim.start)
 
-        # Começa altura depois de ~80ms (deixa as seções somerem visualmente).
-        QTimer.singleShot(80, height_anim.start)
-
-        self._toolbar_anim_height = height_anim
+        self._toolbar_anim_height = geo_anim
         self._toolbar_anim_sections = section_anims
         self._toolbar_anim_in_progress = True
 
