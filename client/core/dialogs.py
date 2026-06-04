@@ -10,7 +10,7 @@ from PySide6.QtCore import (
     Qt,
     QTimer,
 )
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QPainterPath, QPalette, QRegion
 from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
@@ -549,6 +549,56 @@ def install_message_box_theme_hooks() -> None:
     QMessageBox._fp_theme_hooks_installed = True
 
 
+# Raio (px) dos cantos arredondados do popup de QComboBox. Casa com o
+# border-radius aplicado em theme.py QComboBox QAbstractItemView.
+_COMBO_POPUP_RADIUS = 10
+
+
+def _apply_rounded_mask(widget: QWidget, radius: int) -> None:
+    """Aplica máscara arredondada no widget — corta fisicamente os 4 cantos.
+
+    A mask é em coordenadas locais (`widget.rect()`), então acompanha a
+    posição do widget na tela; só precisa ser reaplicada se o tamanho mudar.
+    """
+    rect = widget.rect()
+    if rect.width() <= 0 or rect.height() <= 0:
+        return
+    path = QPainterPath()
+    path.addRoundedRect(0, 0, rect.width(), rect.height(), radius, radius)
+    region = QRegion(path.toFillPolygon().toPolygon())
+    widget.setMask(region)
+
+
+class _ComboPopupResizeMaskFilter(QObject):
+    """Reaplica a máscara arredondada quando o container do popup é redimensionado.
+
+    O Qt pode redimensionar o popup do QComboBox conforme o número de items
+    ou após o show inicial. Sem reaplicar a mask, o arredondado fica
+    desalinhado com a nova geometria.
+    """
+
+    def __init__(self, container: QWidget, radius: int):
+        super().__init__(container)
+        self._radius = radius
+
+    def eventFilter(self, obj, event):  # noqa: N802
+        if event.type() == QEvent.Type.Resize:
+            try:
+                _apply_rounded_mask(obj, self._radius)
+            except Exception:
+                pass
+        return False
+
+
+def _install_resize_remask_filter(container: QWidget, radius: int) -> None:
+    """Instala o filtro de re-mask uma única vez por container (idempotente)."""
+    if container.property("_fp_combo_remask_filter"):
+        return
+    filt = _ComboPopupResizeMaskFilter(container, radius)
+    container.installEventFilter(filt)
+    container.setProperty("_fp_combo_remask_filter", filt)  # mantém ref viva
+
+
 def install_combo_popup_chrome() -> None:
     """Limpa o chrome do popup de TODOS os QComboBox.
 
@@ -604,6 +654,16 @@ def install_combo_popup_chrome() -> None:
                 container.setAutoFillBackground(True)
         except Exception:
             container = None
+        # 2.5) Aplica máscara arredondada no container — corta fisicamente os
+        #      4 cantos da janela popup, permitindo border-radius no QSS sem
+        #      mostrar abas nos cantos. Reaplica via eventFilter em Resize
+        #      pra cobrir mudanças de tamanho do popup.
+        if container is not None:
+            try:
+                _apply_rounded_mask(container, _COMBO_POPUP_RADIUS)
+                _install_resize_remask_filter(container, _COMBO_POPUP_RADIUS)
+            except Exception:
+                pass
         # 3) Animação de entrada: fade-in + leve slide-down (6px). Usa
         #    windowOpacity no container do popup (top-level Qt.Popup) — o DWM
         #    gerencia, não tem o bug do composit do WA_TranslucentBackground.
