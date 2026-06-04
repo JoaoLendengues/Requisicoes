@@ -2374,7 +2374,7 @@ def _history_row_from_requisition(
         "production_finished_at": _history_production_finished_at(req) if include_production_details else None,
         "cancel_reason": _cancel_reason_for(req),
         "invoiced": req.status == RequisitionStatus.FINALIZADO,
-        "delivered_at": split.delivered_at,
+        "delivered_at": req.delivered_at,
         "finalized_at": req.finalized_at,
         "created_at": req.created_at,
         "updated_at": req.updated_at,
