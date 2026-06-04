@@ -413,7 +413,10 @@ class _DialogThemeFilter(QObject):
             apply_dialog_theme(obj)
             # Anima a entrada só na primeira exibição (evita reanimar se o
             # diálogo for escondido/reaparecido em outro fluxo).
-            if not obj.property("_fp_anim_played"):
+            if obj.property("_fp_skip_entrance_anim"):
+                obj.setWindowOpacity(1.0)
+                obj.setProperty("_fp_anim_played", True)
+            elif not obj.property("_fp_anim_played"):
                 obj.setProperty("_fp_anim_played", True)
                 _animate_dialog_entrance(obj)
         return False

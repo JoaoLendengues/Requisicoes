@@ -7055,6 +7055,7 @@ class DrawingCanvas(QWidget):
     # Limpar
     def _clear(self):
         box = QMessageBox(self)
+        box.setProperty("_fp_skip_entrance_anim", True)
         box.setWindowTitle("Confirmar limpeza")
         box.setText("Deseja realmente limpar todo o desenho?")
         box.setIcon(QMessageBox.Icon.Question)
