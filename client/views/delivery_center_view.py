@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.dialogs import ask_confirmation
 from ..core.formatters import format_weight_kg
 from ..core.datetime_utils import (
     format_date as _format_date,
@@ -298,6 +299,7 @@ class DeliveryCenterView(QWidget):
         card_layout.addLayout(title_row)
 
         self.table = self._create_table(self._open_row)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.itemSelectionChanged.connect(self._on_pending_selection_changed)
         card_layout.addWidget(self.table, 1)
         content_layout.addWidget(table_card, 1)
@@ -685,29 +687,51 @@ class DeliveryCenterView(QWidget):
             return f"a parcela {ped}"
         return f"o pedido {ped}"
 
+    def _selected_rows(self) -> list[dict]:
+        selection_model = self.table.selectionModel()
+        if selection_model is None:
+            return []
+        rows: list[dict] = []
+        for index in selection_model.selectedRows(0):
+            item = self.table.item(index.row(), 0)
+            if item is None:
+                continue
+            row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+            if not row_key:
+                continue
+            row = self._row_by_id.get(row_key)
+            if isinstance(row, dict):
+                rows.append(row)
+        return rows
+
     def _selected_row(self) -> dict | None:
-        row_index = self.table.currentRow()
-        if row_index < 0:
+        rows = self._selected_rows()
+        if len(rows) != 1:
             return None
-        item = self.table.item(row_index, 0)
-        if item is None:
-            return None
-        row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
-        if not row_key:
-            return None
-        return self._row_by_id.get(row_key)
+        return rows[0]
+
+    def _selected_completed_rows(self) -> list[dict]:
+        selection_model = self.completed_table.selectionModel()
+        if selection_model is None:
+            return []
+        rows: list[dict] = []
+        for index in selection_model.selectedRows(0):
+            item = self.completed_table.item(index.row(), 0)
+            if item is None:
+                continue
+            row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+            if not row_key:
+                continue
+            row = self._completed_row_by_id.get(row_key)
+            if isinstance(row, dict):
+                rows.append(row)
+        return rows
 
     def _selected_completed_row(self) -> dict | None:
-        row_index = self.completed_table.currentRow()
-        if row_index < 0:
+        rows = self._selected_completed_rows()
+        if len(rows) != 1:
             return None
-        item = self.completed_table.item(row_index, 0)
-        if item is None:
-            return None
-        row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
-        if not row_key:
-            return None
-        return self._completed_row_by_id.get(row_key)
+        return rows[0]
 
     def _row_key(self, row: dict) -> str:
         if not isinstance(row, dict):
@@ -730,13 +754,40 @@ class DeliveryCenterView(QWidget):
             return False
         return str(row.get("status") or "").strip().lower() == "finalizado"
 
+    def _can_mark_rows_delivered(self, rows: list[dict]) -> bool:
+        return bool(rows) and all(self._can_mark_row_delivered(row) for row in rows)
+
+    def _mark_delivery_target(self, row: dict) -> tuple[callable, int]:
+        split_id = self._production_split_id(row)
+        if split_id:
+            return api.mark_split_delivery_delivered, split_id
+        return api.mark_delivery_delivered, self._row_requisition_id(row)
+
+    def _mark_rows_delivered(self, rows: list[dict]) -> int:
+        delivered_count = 0
+        for row in rows:
+            fn, target_id = self._mark_delivery_target(row)
+            fn(int(target_id))
+            delivered_count += 1
+        return delivered_count
+
+    def _delivery_confirmation_message(self, rows: list[dict]) -> str:
+        if len(rows) == 1:
+            return f"Confirmar a entrega de {self._row_subject_label(rows[0])}?"
+        return f"Confirmar a entrega de {len(rows)} itens selecionados?"
+
+    def _delivery_success_message(self, count: int) -> str:
+        if count == 1:
+            return "Entrega registrada com sucesso."
+        return f"{count} entregas registradas com sucesso."
+
     def _update_action_buttons(self) -> None:
-        pending_row = self._selected_row()
-        completed_row = self._selected_completed_row()
-        self.btn_change_deadline.setEnabled(isinstance(pending_row, dict))
-        self.btn_mark_delivered.setEnabled(self._can_mark_row_delivered(pending_row))
+        pending_rows = self._selected_rows()
+        completed_rows = self._selected_completed_rows()
+        self.btn_change_deadline.setEnabled(len(pending_rows) == 1)
+        self.btn_mark_delivered.setEnabled(self._can_mark_rows_delivered(pending_rows))
         if hasattr(self, "btn_cancel_delivered"):
-            self.btn_cancel_delivered.setEnabled(isinstance(completed_row, dict))
+            self.btn_cancel_delivered.setEnabled(len(completed_rows) == 1)
 
     def _on_pending_selection_changed(self) -> None:
         if self.table.selectionModel() is not None and self.table.selectionModel().hasSelection():
@@ -778,10 +829,8 @@ class DeliveryCenterView(QWidget):
         if not row:
             QMessageBox.information(self, "Entregas", "Selecione um pedido ou parcela primeiro.")
             return
-        if row.get("delivered_at"):
-            QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
+        if not self._can_mark_rows_delivered(rows):
             return
-
         result = self._ask_delivery_date(row)
         if result is None:
             return
@@ -796,9 +845,9 @@ class DeliveryCenterView(QWidget):
         )
 
     def _mark_selected_delivered(self):
-        row = self._selected_row()
-        if not row:
-            QMessageBox.information(self, "Entregas", "Selecione um pedido ou parcela primeiro.")
+        rows = self._selected_rows()
+        if not rows:
+            QMessageBox.information(self, "Entregas", "Selecione ao menos um pedido ou parcela primeiro.")
             return
         if row.get("delivered_at"):
             QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
@@ -1042,6 +1091,56 @@ class DeliveryCenterView(QWidget):
 
         reason = str(dlg.property("_reason") or "").strip()
         return reason or None
+
+    def _change_selected_deadline(self):
+        row = self._selected_row()
+        if not row:
+            QMessageBox.information(self, "Entregas", "Selecione um pedido ou parcela primeiro.")
+            return
+        if row.get("delivered_at"):
+            QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
+            return
+
+        result = self._ask_delivery_date(row)
+        if result is None:
+            return
+
+        new_date, reason = result
+        self._run_action(
+            api.update_delivery_schedule,
+            self._row_requisition_id(row),
+            new_date,
+            reason,
+            success_message="Prazo de entrega alterado com sucesso.",
+        )
+
+    def _mark_selected_delivered(self):
+        rows = self._selected_rows()
+        if not rows:
+            QMessageBox.information(self, "Entregas", "Selecione ao menos um pedido ou parcela primeiro.")
+            return
+        if not self._can_mark_rows_delivered(rows):
+            QMessageBox.information(
+                self,
+                "Entregas",
+                "Somente pedidos ja finalizados podem ser marcados como entregues.",
+            )
+            return
+        if not ask_confirmation(
+            self,
+            "Entregue",
+            self._delivery_confirmation_message(rows),
+            yes_text="Sim",
+            no_text="Não",
+            default_to_yes=False,
+        ):
+            return
+
+        self._run_action(
+            self._mark_rows_delivered,
+            rows,
+            success_message=self._delivery_success_message(len(rows)),
+        )
 
     def apply_theme(self) -> None:
         """Reaplica o tema na view.
