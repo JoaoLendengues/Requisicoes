@@ -2545,7 +2545,7 @@ class ProductionView(QWidget):
     def _forward_selected_machine(self, machine_id: int, action: dict | None = None):
         req, machine = self._selected_machine_row(machine_id)
         if not req or not machine:
-            self._show_info("Selecione uma requisiÃ§Ã£o em produÃ§Ã£o dentro do card da mÃ¡quina.")
+            self._show_info("Selecione uma requisição em produção dentro do card da máquina.")
             return
 
         action = dict(action or {})
@@ -2556,16 +2556,16 @@ class ProductionView(QWidget):
         if target_mode == "fixed":
             target_number = int(action.get("target_number") or 0)
             if target_number <= 0:
-                self._show_error("A configuraÃ§Ã£o da mÃ¡quina de destino estÃ¡ invÃ¡lida.")
+                self._show_error("A configuração da máquina de destino está inválida.")
                 return
             target_machine_data = self._find_machine_by_number(target_number)
         else:
             target_machine = self._pick_machine(
                 exclude_machine=source_machine,
-                window_title=str(action.get("window_title") or "Selecionar MÃ¡quina"),
+                window_title=str(action.get("window_title") or "Selecionar Máquina"),
                 prompt_text=str(
                     action.get("prompt_text")
-                    or f"Escolha a mÃ¡quina de destino (origem: {source_machine}):"
+                    or f"Escolha a máquina de destino (origem: {source_machine}):"
                 ),
             )
             if not target_machine:
@@ -2605,7 +2605,7 @@ class ProductionView(QWidget):
             success_message=(
                 f"Parcela enviada para {target_machine}."
                 if split_id is not None
-                else f"RequisiÃ§Ã£o enviada para {target_machine}."
+                else f"Requisição enviada para {target_machine}."
             ),
         )
 
