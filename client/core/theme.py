@@ -350,8 +350,13 @@ def input_style(scale: float = 1.0) -> str:
         f"  border:none; width:24px;"
         f"}}"
         f"QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{"
-        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
+        f"  border:1px solid {rgba(PANEL_NEON_PRIMARY, 80)}; border-radius:8px;"  # noqa: F821
+        f"  padding:4px; outline:none;"
         f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 56)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
+        f"}}"
+        f"QComboBox QAbstractItemView::item, QDateEdit QAbstractItemView::item {{"
+        f"  padding:7px 12px; border:none; border-radius:6px;"
         f"}}"
     )
 
@@ -611,8 +616,13 @@ def global_style() -> str:
         f"  border:none; width:24px;"
         f"}}"
         f"QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{"
-        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY}; border:1px solid {PANEL_BORDER_SOFT};"  # noqa: F821
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
+        f"  border:1px solid {rgba(PANEL_NEON_PRIMARY, 80)}; border-radius:8px;"  # noqa: F821
+        f"  padding:4px; outline:none;"
         f"  selection-background-color:{rgba(PANEL_NEON_PRIMARY, 56)}; selection-color:{PANEL_TEXT_PRIMARY};"  # noqa: F821
+        f"}}"
+        f"QComboBox QAbstractItemView::item, QDateEdit QAbstractItemView::item {{"
+        f"  padding:7px 12px; border:none; border-radius:6px;"
         f"}}"
         f"QCheckBox {{ spacing:8px; background:transparent; }}"
         f"QCheckBox::indicator {{"

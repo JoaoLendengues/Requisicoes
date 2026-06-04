@@ -331,8 +331,12 @@ def _machine_combo_style(scale: float, status_value: object = "") -> str:
         f"QComboBox::drop-down {{ border:none; width:24px; }}"
         f"QComboBox QAbstractItemView {{"
         f"  background:{popup_bg}; color:{theme.PANEL_TEXT_PRIMARY};"
-        f"  border:1px solid {popup_border};"
+        f"  border:1px solid {popup_border}; border-radius:8px;"
+        f"  padding:4px; outline:none;"
         f"  selection-background-color:{_rgba(accent, 44)}; selection-color:{theme.PANEL_TEXT_PRIMARY};"
+        f"}}"
+        f"QComboBox QAbstractItemView::item {{"
+        f"  padding:7px 12px; border:none; border-radius:6px;"
         f"}}"
     )
 
