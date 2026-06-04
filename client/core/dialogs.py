@@ -662,8 +662,24 @@ def install_combo_popup_chrome() -> None:
         return
 
     original_show_popup = QComboBox.showPopup
+    original_hide_popup = QComboBox.hidePopup
 
     def _patched_show_popup(self):
+        # Se o popup ainda está animando o fechamento de uma seleção anterior,
+        # cancela a animação de saída e reseta opacity/geometry pra abertura
+        # começar do zero. Evita "tremida" se o usuário abre/seleciona/abre rápido.
+        prev_view = self.view()
+        if prev_view is not None:
+            prev_container = prev_view.parentWidget()
+            if prev_container is not None:
+                for prop in ("_fp_combo_close_anim_opacity", "_fp_combo_close_anim_geo"):
+                    anim = prev_container.property(prop)
+                    if anim is not None:
+                        try:
+                            anim.stop()
+                        except Exception:
+                            pass
+
         original_show_popup(self)
         view = self.view()
         if view is None:
@@ -712,7 +728,23 @@ def install_combo_popup_chrome() -> None:
                 except Exception:
                     pass
 
+    def _patched_hide_popup(self):
+        view = self.view()
+        if view is None:
+            original_hide_popup(self)
+            return
+        container = view.parentWidget()
+        if container is None:
+            original_hide_popup(self)
+            return
+        try:
+            _animate_combo_popup_exit(container, lambda: original_hide_popup(self))
+        except Exception:
+            # Qualquer falha → fecha de imediato (comportamento original).
+            original_hide_popup(self)
+
     QComboBox.showPopup = _patched_show_popup
+    QComboBox.hidePopup = _patched_hide_popup
     QComboBox._fp_combo_chrome_installed = True
 
 
@@ -755,6 +787,69 @@ def _animate_combo_popup_entrance(container: QWidget) -> None:
     # Mantém refs vivas até as anims terminarem (sem isso, GC mata cedo).
     container.setProperty("_fp_combo_anim_opacity", opacity_anim)
     container.setProperty("_fp_combo_anim_geo", geo_anim)
+    opacity_anim.start()
+    geo_anim.start()
+
+
+def _animate_combo_popup_exit(container: QWidget, do_hide) -> None:
+    """Anima saída do popup do QComboBox: fade-out 140ms + slide-up 6px.
+
+    Espelha _animate_combo_popup_entrance, mas no sentido inverso:
+    - windowOpacity 1 → 0 (InCubic, 140ms)
+    - geometria desloca de y → y-6 (InCubic, 160ms)
+
+    `do_hide` é uma callable que chama o `hidePopup` original do Qt. A gente
+    adia essa chamada até a animação terminar — assim o popup permanece
+    visível enquanto desaparece suavemente. Depois resetamos
+    windowOpacity/geometry pra que a próxima abertura comece do estado limpo.
+    """
+    current_geo = container.geometry()
+    if current_geo.width() <= 0 or current_geo.height() <= 0:
+        do_hide()
+        return
+
+    target_geo = QRect(
+        current_geo.x(),
+        current_geo.y() - 6,
+        current_geo.width(),
+        current_geo.height(),
+    )
+    start_opacity = container.windowOpacity()
+    if start_opacity <= 0.0:
+        start_opacity = 1.0  # se já estava 0 por algum motivo, anima do 1
+
+    opacity_anim = QPropertyAnimation(container, b"windowOpacity", container)
+    opacity_anim.setDuration(140)
+    opacity_anim.setStartValue(start_opacity)
+    opacity_anim.setEndValue(0.0)
+    opacity_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+
+    geo_anim = QPropertyAnimation(container, b"geometry", container)
+    geo_anim.setDuration(160)
+    geo_anim.setStartValue(current_geo)
+    geo_anim.setEndValue(target_geo)
+    geo_anim.setEasingCurve(QEasingCurve.Type.InCubic)
+
+    def _on_finished(saved_geo=current_geo):
+        # 1) Fecha o popup de verdade (chamada Qt original).
+        try:
+            do_hide()
+        except Exception:
+            pass
+        # 2) Reseta estado pra próxima abertura começar limpa
+        #    (windowOpacity=1 + geometria final original).
+        try:
+            container.setWindowOpacity(1.0)
+            container.setGeometry(saved_geo)
+        except Exception:
+            pass
+
+    # Usa o `finished` da opacity (que termina primeiro) pra disparar o hide.
+    # Geo continua animando até completar — sem efeito visual já que opacity=0.
+    opacity_anim.finished.connect(_on_finished)
+
+    container.setProperty("_fp_combo_close_anim_opacity", opacity_anim)
+    container.setProperty("_fp_combo_close_anim_geo", geo_anim)
     opacity_anim.start()
     geo_anim.start()
 
