@@ -3,7 +3,16 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QObject, QThread, Qt, Signal
+from PySide6.QtCore import (
+    QDate,
+    QEasingCurve,
+    QEvent,
+    QObject,
+    QPropertyAnimation,
+    QThread,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import QColor, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -597,6 +606,22 @@ class UiCallback(QObject):
     error = Signal(str)
 
 
+class _ClickableFrame(QFrame):
+    """QFrame que emite `clicked` ao receber mousePressEvent com botão esquerdo.
+
+    Usado como header clicável dos cards-acordeão de máquinas — alternativa
+    leve a QPushButton flat quando o header precisa de layout rico (chevron +
+    título + stats inline + status text).
+    """
+
+    clicked = Signal()
+
+    def mousePressEvent(self, event):  # noqa: N802 - Qt API
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
 class ProductionView(QWidget):
     open_requisition = Signal(int)
     guide_requested  = Signal()          # emitido pelo botão ? de ajuda
@@ -1066,14 +1091,17 @@ class ProductionView(QWidget):
             self.machines_grid.addWidget(empty, 0, 0)
             return
 
+        # Layout vertical: cada máquina ocupa uma linha inteira (col=0).
+        # Cards são acordeões — fechados ficam compactos (~60-80px de altura),
+        # liberando muito espaço vertical mesmo com 15+ máquinas.
         for index, machine in enumerate(self._machines_data):
             machine_card = self._build_machine_card(machine)
-            row = index // 2
-            col = index % 2
-            self.machines_grid.addWidget(machine_card["card"], row, col)
+            self.machines_grid.addWidget(machine_card["card"], index, 0)
             self._machine_cards[int(machine["id"])] = machine_card
 
     def _build_machine_card(self, machine: dict) -> dict:
+        """Constrói um card-acordeão de máquina (header sempre visível +
+        content expansível com lazy table)."""
         s = self.scale
         meta = _destination_card_meta(self.destination) or {}
         current_status = str(machine.get("status") or "funcionando")
@@ -1082,7 +1110,11 @@ class ProductionView(QWidget):
             if _is_machine_in_maintenance(current_status)
             else (meta.get("accent") or theme.PRIMARY)
         )
+        machine_id = int(machine["id"])
+        machine_name = str(machine.get("name") or "").strip()
+        rows = [row for row in (machine.get("rows") or []) if isinstance(row, dict)]
 
+        # ====== CARD CONTAINER ======
         card = _make_card(
             s,
             theme.CARD_BG,
@@ -1090,20 +1122,74 @@ class ProductionView(QWidget):
             radius=max(18, int(20 * s)),
             hover_background=theme.CARD_BG,
         )
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(max(14, int(18 * s)), max(14, int(18 * s)), max(14, int(18 * s)), max(14, int(18 * s)))
-        layout.setSpacing(max(8, int(10 * s)))
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(0)
 
+        # Faixa de accent (compacta, sempre visível)
         accent = QFrame()
         accent.setFixedHeight(max(4, int(5 * s)))
         accent.setStyleSheet(_machine_accent_style(accent_color, s))
-        layout.addWidget(accent)
+        card_layout.addWidget(accent)
 
-        title = QLabel(str(machine.get("name") or "Máquina"))
-        title.setWordWrap(True)
+        # ====== HEADER (sempre visível, clicável) ======
+        header = _ClickableFrame()
+        header.setCursor(Qt.CursorShape.PointingHandCursor)
+        h_margin = max(14, int(18 * s))
+        v_margin = max(10, int(12 * s))
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(h_margin, v_margin, h_margin, v_margin)
+        header_layout.setSpacing(max(10, int(12 * s)))
+
+        # Chevron (▸ recolhido / ▾ expandido). Animação de rotação não é
+        # trivial em QLabel sem QGraphicsView; alternamos o texto, que é
+        # suficiente visualmente e zero-custo.
+        chevron = QLabel("▸")
+        chevron_font_size = max(11, int(14 * s))
+        chevron.setStyleSheet(
+            f"background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+            f"font-size:{chevron_font_size}pt; font-weight:700;"
+        )
+        chevron.setFixedWidth(max(18, int(22 * s)))
+        chevron.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_layout.addWidget(chevron)
+
+        # Nome da máquina
+        title = QLabel(machine_name or "Máquina")
         title.setStyleSheet(_machine_title_style(s))
-        layout.addWidget(title)
+        header_layout.addWidget(title)
 
+        header_layout.addStretch(1)
+
+        # Summary inline: status atual + qtd em produção + finalizadas
+        status_text = next(
+            (text for value, text in MACHINE_STATUS_OPTIONS if value == current_status),
+            current_status.title(),
+        )
+        qty_in_prod = int(machine.get("quantity_in_production") or 0)
+        finalized = int(machine.get("finalized_count") or 0)
+        summary_label = QLabel(
+            f"{status_text}  ·  {qty_in_prod} em produção  ·  {finalized} finalizadas"
+        )
+        summary_fs = max(8, int(10 * s))
+        # Cor do status_text segue o accent (vermelho/amarelo se manutenção)
+        summary_label.setStyleSheet(
+            f"background:transparent; color:{accent_color};"
+            f"font-size:{summary_fs}pt; font-weight:600;"
+        )
+        summary_label.setProperty("muted", "1")
+        header_layout.addWidget(summary_label)
+
+        card_layout.addWidget(header)
+
+        # ====== CONTENT (expansível, fechado por padrão) ======
+        content = QFrame()
+        content.setMaximumHeight(0)  # FECHADO inicialmente
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(h_margin, 0, h_margin, max(14, int(18 * s)))
+        content_layout.setSpacing(max(8, int(10 * s)))
+
+        # Operadores / ajudantes
         operator_names, helper_names = _split_team_members(machine)
         operator_summary = QLabel(
             "Operadores cadastrados: "
@@ -1121,24 +1207,25 @@ class ProductionView(QWidget):
                 + "\nAjudantes: "
                 + (", ".join(helper_names) if helper_names else "nenhum")
             )
-        layout.addWidget(operator_summary)
+        content_layout.addWidget(operator_summary)
 
+        # Stats grid completo
         stats_grid = QGridLayout()
         stats_grid.setHorizontalSpacing(max(10, int(12 * s)))
         stats_grid.setVerticalSpacing(max(8, int(10 * s)))
         stat_blocks = [
-            self._machine_stat_block("Quantidade em Produção", str(machine.get("quantity_in_production") or 0), current_status),
-            self._machine_stat_block("Finalizadas", str(machine.get("finalized_count") or 0), current_status),
+            self._machine_stat_block("Quantidade em Produção", str(qty_in_prod), current_status),
+            self._machine_stat_block("Finalizadas", str(finalized), current_status),
             self._machine_stat_block("Tempo Médio", _format_duration(machine.get("average_seconds")), current_status),
         ]
         stats_grid.addWidget(stat_blocks[0], 0, 0)
         stats_grid.addWidget(stat_blocks[1], 0, 1)
         stats_grid.addWidget(stat_blocks[2], 1, 0, 1, 2)
-        layout.addLayout(stats_grid)
-        # Refs dos labels dos stat blocks (preenchidos no dict de retorno)
+        content_layout.addLayout(stats_grid)
         _stat_titles = [getattr(b, "_stat_title_lbl", None) for b in stat_blocks if getattr(b, "_stat_title_lbl", None)]
         _stat_values = [getattr(b, "_stat_value_lbl", None) for b in stat_blocks if getattr(b, "_stat_value_lbl", None)]
 
+        # Linha de status (label + combo + botão Atualizar Status)
         status_row = QHBoxLayout()
         status_row.setSpacing(max(8, int(10 * s)))
         status_label = QLabel("Status da Máquina")
@@ -1157,22 +1244,20 @@ class ProductionView(QWidget):
         )
         status_button = QPushButton("Atualizar Status")
         status_button.setFixedHeight(max(34, int(38 * s)))
-        # Property-based: estilo aplicado uma única vez no apply_theme da view,
-        # evita 18× setStyleSheet em runtime (1 por card × 18 máquinas).
         status_button.setProperty("productionBtn", "secondary")
         status_button.clicked.connect(
-            lambda checked=False, mid=int(machine["id"]), combo=status_combo: self._update_machine_status(mid, combo)
+            lambda checked=False, mid=machine_id, combo=status_combo: self._update_machine_status(mid, combo)
         )
         status_row.addWidget(status_label)
         status_row.addStretch()
         status_row.addWidget(status_combo)
         status_row.addWidget(status_button)
-        layout.addLayout(status_row)
+        content_layout.addLayout(status_row)
 
+        # Linha de ações (Abrir, Finalizar, [Enviar pra dobra], Alterar Prazo, Cancelar)
         actions = QHBoxLayout()
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
-        machine_name = str(machine.get("name") or "").strip()
         is_dobra_source = _is_ar_dobra_source_machine(self.destination, machine_name)
         btn_finish = QPushButton("Finalizar")
         btn_send_to_dobra = QPushButton("Enviar para dobra") if is_dobra_source else None
@@ -1183,8 +1268,6 @@ class ProductionView(QWidget):
             action_buttons.insert(2, btn_send_to_dobra)
         for btn in action_buttons:
             btn.setFixedHeight(max(34, int(38 * s)))
-        # Property-based: 4 botões × N cards usavam setStyleSheet individual.
-        # Agora o estilo vem do QSS view-level (1 chamada cobre todos).
         btn_open.setProperty("productionBtn", "secondary")
         btn_finish.setProperty("productionBtn", "primary")
         if btn_send_to_dobra is not None:
@@ -1203,12 +1286,12 @@ class ProductionView(QWidget):
             s,
             current_status,
         )
-        btn_open.clicked.connect(lambda: self._open_selected_machine(int(machine["id"])))
-        btn_finish.clicked.connect(lambda: self._finish_selected_machine(int(machine["id"])))
+        btn_open.clicked.connect(lambda: self._open_selected_machine(machine_id))
+        btn_finish.clicked.connect(lambda: self._finish_selected_machine(machine_id))
         if btn_send_to_dobra is not None:
-            btn_send_to_dobra.clicked.connect(lambda: self._send_selected_machine_to_dobra(int(machine["id"])))
-        btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(int(machine["id"])))
-        btn_cancel.clicked.connect(lambda: self._return_selected_machine_to_queue(int(machine["id"])))
+            btn_send_to_dobra.clicked.connect(lambda: self._send_selected_machine_to_dobra(machine_id))
+        btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(machine_id))
+        btn_cancel.clicked.connect(lambda: self._return_selected_machine_to_queue(machine_id))
         actions.addWidget(btn_open)
         if btn_send_to_dobra is not None:
             dobra_actions = QVBoxLayout()
@@ -1220,30 +1303,38 @@ class ProductionView(QWidget):
             actions.addWidget(btn_finish)
         actions.addWidget(btn_prazo)
         actions.addWidget(btn_cancel)
-        layout.addLayout(actions)
+        content_layout.addLayout(actions)
 
-        table = self._build_table(
-            ["PED", "CLIENTE", "VENDEDOR", "OPERADOR", "AJUDANTE", "INICIADO EM", "PESO(kg)"],
-            stretch_columns={1, 2, 3, 4},
-        )
+        # Placeholder onde a TABELA será inserida LAZY na 1ª expansão.
+        # Mantemos um container vazio aqui pra que o layout não pule quando
+        # a tabela aparecer pela primeira vez.
+        table_container = QFrame()
+        table_container.setStyleSheet("background:transparent; border:none;")
+        table_container_layout = QVBoxLayout(table_container)
+        table_container_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addWidget(table_container, 1)
+
+        card_layout.addWidget(content)
+
         card.setStyleSheet(_machine_card_style(s, current_status))
-        table.setMinimumHeight(max(180, int(210 * s)))
-        rows = [row for row in (machine.get("rows") or []) if isinstance(row, dict)]
-        self._apply_table_style(table, current_status)
-        self._fill_machine_table(table, rows)
-        table.doubleClicked.connect(
-            lambda index, machine_id=int(machine["id"]): self._open_machine_row(machine_id, index.row())
-        )
-        layout.addWidget(table, 1)
+
+        # Click no header alterna expandido/recolhido
+        header.clicked.connect(lambda mid=machine_id: self._toggle_machine_card(mid))
 
         return {
             "card": card,
-            "table": table,
+            "header": header,
+            "content": content,
+            "chevron": chevron,
+            "table_container": table_container,
+            "table_container_layout": table_container_layout,
+            "table": None,          # LAZY: criada na 1ª expansão
+            "table_built": False,
+            "expanded": False,
+            "expand_anim": None,    # ref pra QPropertyAnimation viva
             "combo": status_combo,
             "rows": rows,
             "machine": dict(machine),
-            # Referências dos widgets dependentes do tema — usadas por
-            # _apply_theme_to_machine_card() em vez de recriar o card inteiro.
             "_theme_widgets": {
                 "accent": accent,
                 "accent_color": accent_color,
@@ -1260,8 +1351,96 @@ class ProductionView(QWidget):
                 "stat_blocks": stat_blocks,
                 "stat_titles": _stat_titles,
                 "stat_values": _stat_values,
+                "summary_label": summary_label,
             },
         }
+
+    def _ensure_machine_table_built(self, card_data: dict) -> None:
+        """Cria e popula a tabela do card na primeira expansão (lazy load).
+
+        Idempotente: chamadas posteriores são no-op (flag `table_built`).
+        Sem isso, abrir A&R com 18 máquinas custaria 18 × build_table +
+        18 × fill + 18 × apply_table_style mesmo se nenhum card tivesse
+        sido expandido.
+        """
+        if card_data.get("table_built"):
+            return
+        machine = card_data.get("machine") or {}
+        machine_id = int(machine.get("id") or 0)
+        current_status = str(machine.get("status") or "funcionando")
+        s = self.scale
+
+        table = self._build_table(
+            ["PED", "CLIENTE", "VENDEDOR", "OPERADOR", "AJUDANTE", "INICIADO EM", "PESO(kg)"],
+            stretch_columns={1, 2, 3, 4},
+        )
+        table.setMinimumHeight(max(180, int(210 * s)))
+        self._apply_table_style(table, current_status)
+        self._fill_machine_table(table, card_data.get("rows") or [])
+        table.doubleClicked.connect(
+            lambda index, mid=machine_id: self._open_machine_row(mid, index.row())
+        )
+        card_data["table_container_layout"].addWidget(table)
+        card_data["table"] = table
+        card_data["table_built"] = True
+
+    def _toggle_machine_card(self, machine_id: int) -> None:
+        """Alterna expandido/recolhido de um card-acordeão com animação.
+
+        Na primeira expansão de cada card, a tabela é construída lazily
+        (`_ensure_machine_table_built`) — daí a tela inicial só renderiza
+        os headers, sem custo de QTableWidget × N máquinas.
+        """
+        card_data = self._machine_cards.get(machine_id)
+        if not card_data:
+            return
+
+        content: QFrame = card_data["content"]
+        chevron: QLabel = card_data["chevron"]
+        is_expanded = bool(card_data.get("expanded"))
+
+        if not is_expanded:
+            # EXPANDIR — garante tabela criada e anima maximumHeight.
+            self._ensure_machine_table_built(card_data)
+            # Força o layout a recalcular sizeHint depois de inserir a tabela.
+            content.adjustSize()
+            target_height = max(
+                content.sizeHint().height(),
+                content.layout().sizeHint().height() if content.layout() else 0,
+            )
+            if target_height <= 0:
+                # Fallback: abre sem animar se o sizeHint ainda não estabilizou.
+                content.setMaximumHeight(16777215)  # QWIDGETSIZE_MAX
+                card_data["expanded"] = True
+                chevron.setText("▾")
+                return
+
+            anim = QPropertyAnimation(content, b"maximumHeight", content)
+            anim.setDuration(220)
+            anim.setStartValue(content.maximumHeight())
+            anim.setEndValue(target_height)
+            anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            # Após terminar, liberar maximumHeight pra não limitar o conteúdo
+            # se a tabela crescer (ex: usuário recebe nova requisição).
+            anim.finished.connect(lambda c=content: c.setMaximumHeight(16777215))
+            card_data["expand_anim"] = anim  # mantém ref viva
+            anim.start()
+
+            card_data["expanded"] = True
+            chevron.setText("▾")
+        else:
+            # RECOLHER — anima maximumHeight de current → 0.
+            current_height = content.height()
+            anim = QPropertyAnimation(content, b"maximumHeight", content)
+            anim.setDuration(200)
+            anim.setStartValue(current_height)
+            anim.setEndValue(0)
+            anim.setEasingCurve(QEasingCurve.Type.InCubic)
+            card_data["expand_anim"] = anim
+            anim.start()
+
+            card_data["expanded"] = False
+            chevron.setText("▸")
 
     def _apply_theme_to_machine_card(self, card_data: dict) -> None:
         """Re-aplica APENAS o QSS dependente do tema em um card de máquina existente.
@@ -1311,6 +1490,14 @@ class ProductionView(QWidget):
                 value_label.setStyleSheet(_machine_stat_value_style(s, machine_status))
         if card_data.get("table") is not None:
             self._apply_table_style(card_data["table"], machine_status)
+        # summary_label do header (acordeão) — cor segue o accent
+        summary_lbl = tw.get("summary_label")
+        if summary_lbl is not None:
+            summary_fs = max(8, int(10 * s))
+            summary_lbl.setStyleSheet(
+                f"background:transparent; color:{accent_color};"
+                f"font-size:{summary_fs}pt; font-weight:600;"
+            )
 
     def _machine_stat_block(self, title_text: str, value_text: str, status_value: object = "") -> QWidget:
         s = self.scale
@@ -1383,7 +1570,13 @@ class ProductionView(QWidget):
         card = self._machine_cards.get(machine_id)
         if not card:
             return None, None
-        row = card["table"].currentRow()
+        # Tabela é criada lazy na 1ª expansão. Se o usuário invocar uma ação
+        # antes (cenário defensivo — botões só ficam visíveis no expandido),
+        # retornamos sem currentRow.
+        table = card.get("table")
+        if table is None:
+            return None, card["machine"]
+        row = table.currentRow()
         rows = card["rows"]
         if 0 <= row < len(rows):
             return rows[row], card["machine"]
