@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
     QSizePolicy, QFrame, QComboBox, QApplication, QDialog, QMessageBox,
-    QListWidget, QListWidgetItem,
+    QListWidget, QListWidgetItem, QGraphicsDropShadowEffect,
 )
 from ..core import theme
 from ..core.text_case import normalize_upper_text
@@ -3611,11 +3611,26 @@ class DrawingCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
+        # Linha do título: rótulo + botão "?" de ajuda (substitui a linha
+        # gigante de atalhos que ocupava o fim da toolbar).
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(8)
         title = QLabel("DESENHO / REFERENCIA")
         self._title_label = title
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(self._title_style())
-        layout.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+        # Botão help — tooltip lista os atalhos ao passar o mouse.
+        help_size = max(24, int(28 * self.scale))
+        self._help_btn = QPushButton("?")
+        self._help_btn.setFixedSize(help_size, help_size)
+        self._help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._help_btn.setStyleSheet(self._help_btn_style())
+        self._help_btn.setToolTip(self._build_shortcuts_help_text())
+        title_row.addWidget(self._help_btn)
+        layout.addLayout(title_row)
 
         s  = self.scale
         fh = max(28, int(34 * s))
@@ -3856,22 +3871,29 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
-        toolbar_stack.addWidget(actions_frame)
-        layout.addLayout(toolbar_stack)
 
-        # Dica de teclado
-        hint = QLabel(
-            "Shift = traco reto  |  V = pen vetorial  |  Q = esquadro (angulo guiado)  |  U = angulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
-            "Botão do meio / Space+drag = mover  |  "
-            "Ctrl+C / Ctrl+V = duplicar e colar  |  "
-            "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
-            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  Angulo selecionado: +/- = tamanho  |  Alt+<-/> = girar (Shift = 15 deg)  |  "
-            "Enter / Esc = confirmar  |  2x clique = editar texto"
-        )
-        hint.setWordWrap(True)
-        self._hint_label = hint
-        hint.setStyleSheet(self._hint_style())
-        layout.addWidget(hint)
+        # ====== TOOLBAR FLUTUANTE (estilo tldraw) ======
+        # As 3 seções (ferramentas + propriedades + ações) ficam dentro de uma
+        # "pílula" que flutua sobre o canvas, posicionada via resizeEvent.
+        # NÃO entra no layout principal — o canvas ocupa toda a altura
+        # disponível abaixo do título.
+        self._toolbar_overlay = QFrame(self)
+        self._toolbar_overlay.setStyleSheet(self._toolbar_overlay_style())
+        self._toolbar_overlay.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        overlay_v = QVBoxLayout(self._toolbar_overlay)
+        overlay_v.setContentsMargins(14, 12, 14, 12)
+        overlay_v.setSpacing(6)
+        overlay_v.addWidget(tools_frame)
+        overlay_v.addWidget(props_frame)
+        overlay_v.addWidget(actions_frame)
+        # Sombra suave pra destacar do canvas branco.
+        overlay_shadow = QGraphicsDropShadowEffect(self._toolbar_overlay)
+        overlay_shadow.setBlurRadius(32)
+        overlay_shadow.setOffset(0, 6)
+        overlay_shadow.setColor(QColor(0, 0, 0, 96))
+        self._toolbar_overlay.setGraphicsEffect(overlay_shadow)
+        # Remove o atributo de hint pra não quebrar refs antigas no _apply_theme.
+        self._hint_label = None
 
         # Cena + View
         self.scene = DrawingScene(self)
@@ -3944,6 +3966,45 @@ class DrawingCanvas(QWidget):
 
         self._set_tool(Tool.SELECT)
         self._setup_shortcuts()
+
+    def resizeEvent(self, event):
+        """Reposiciona o overlay da toolbar a cada resize do canvas."""
+        super().resizeEvent(event)
+        self._reposition_toolbar_overlay()
+
+    def showEvent(self, event):
+        """Garante posição correta do overlay na primeira exibição (resizeEvent
+        pode não disparar com layout estabilizado se o tamanho não mudou)."""
+        super().showEvent(event)
+        # Adiamos pro próximo tick pra layout calcular tamanhos finais.
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._reposition_toolbar_overlay)
+
+    def _reposition_toolbar_overlay(self):
+        """Coloca o overlay flutuante centralizado na base do canvas (view).
+
+        Coordenadas são relativas ao DrawingCanvas (parent do overlay), mas
+        baseadas em `view.geometry()` pra que a pílula fique exatamente sobre
+        a área de desenho, não sobre o título nem painéis auxiliares.
+        """
+        overlay = getattr(self, "_toolbar_overlay", None)
+        view = getattr(self, "view", None)
+        if overlay is None or view is None:
+            return
+        overlay.adjustSize()
+        view_geo = view.geometry()
+        margin_x = max(16, int(20 * self.scale))
+        margin_y = max(14, int(18 * self.scale))
+        overlay_w = overlay.width()
+        overlay_h = overlay.height()
+        # Centralizado horizontalmente sobre a view, base com margem.
+        x = view_geo.x() + (view_geo.width() - overlay_w) // 2
+        y = view_geo.y() + view_geo.height() - overlay_h - margin_y
+        # Não deixa sair pela esquerda/topo (se o overlay for maior que a view).
+        x = max(view_geo.x() + margin_x, x)
+        y = max(view_geo.y() + margin_y, y)
+        overlay.move(x, y)
+        overlay.raise_()
 
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
@@ -4078,6 +4139,55 @@ class DrawingCanvas(QWidget):
             f" border:1px solid {theme.rgba(theme.PRIMARY, 34)};"
             f" border-radius:14px;"
             f"}}"
+        )
+
+    def _toolbar_overlay_style(self) -> str:
+        """Estilo da 'pílula' que envolve as 3 seções da toolbar flutuante."""
+        return (
+            f"QFrame {{"
+            f" background:{theme.rgba(theme.CARD_BG, 235)};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 60)};"
+            f" border-radius:22px;"
+            f"}}"
+        )
+
+    def _help_btn_style(self) -> str:
+        """Botão '?' que substitui a linha de atalhos. Circular, primário sutil."""
+        fs = max(9, int(11 * self.scale))
+        return (
+            f"QPushButton {{"
+            f" background:{theme.rgba(theme.PRIMARY, 28)};"
+            f" color:{theme.PRIMARY};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 80)};"
+            f" border-radius:14px;"
+            f" font-weight:800; font-size:{fs}pt;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f" background:{theme.rgba(theme.PRIMARY, 60)};"
+            f" border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QPushButton:pressed {{"
+            f" background:{theme.rgba(theme.PRIMARY, 90)};"
+            f"}}"
+        )
+
+    def _build_shortcuts_help_text(self) -> str:
+        """Texto do tooltip do botão '?' — antes era um label fixo gigante."""
+        return (
+            "Shift = traço reto\n"
+            "V = pen vetorial   |   Q = esquadro (ângulo guiado)\n"
+            "U = ângulo   |   A = seta   |   C = curva na linha/curva selecionada\n"
+            "G = triângulo   |   N = pentágono   |   H = hexágono\n"
+            "Del = apagar   |   Scroll = zoom\n"
+            "Botão do meio / Space+drag = mover\n"
+            "Ctrl+C / Ctrl+V = duplicar e colar\n"
+            "Ctrl+Shift+H = espelhar com cópia horizontal\n"
+            "Ctrl+J = espelhar com cópia vertical\n"
+            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)\n"
+            "M = cota manual (2 cliques na linha)\n"
+            "Ângulo selecionado: +/- = tamanho\n"
+            "Alt+←/→ = girar (Shift = passos de 15°)\n"
+            "Enter / Esc = confirmar   |   2× clique = editar texto"
         )
 
     def _hint_style(self) -> str:
@@ -4242,6 +4352,11 @@ class DrawingCanvas(QWidget):
             special_btns.add(self.btn_color)
         if hasattr(self, "_btn_clear"):
             special_btns.add(self._btn_clear)
+        # Botão de ajuda do título tem estilo próprio (pill primária), não deve
+        # ser sobrescrito pelo loop genérico que aplica _tool_btn_style.
+        help_btn = getattr(self, "_help_btn", None)
+        if help_btn is not None:
+            special_btns.add(help_btn)
 
         for btn in self.findChildren(QPushButton):
             if btn in special_btns:
@@ -4251,12 +4366,23 @@ class DrawingCanvas(QWidget):
             # que é o que queremos quando troca o tema.
             btn.setStyleSheet(tool_style)
 
+        # Toolbar overlay flutuante — re-estiliza a "pílula" e o botão de ajuda
+        overlay = getattr(self, "_toolbar_overlay", None)
+        if overlay is not None:
+            overlay.setStyleSheet(self._toolbar_overlay_style())
+        help_btn = getattr(self, "_help_btn", None)
+        if help_btn is not None:
+            help_btn.setStyleSheet(self._help_btn_style())
+
         # Labels: detecta o título (cor PRIMARY/bold/maior) e re-estiliza
         for lbl in self.findChildren(QLabel):
             if hasattr(self, "_title_label") and lbl is self._title_label:
                 lbl.setStyleSheet(self._title_style())
                 continue
-            if hasattr(self, "_hint_label") and lbl is self._hint_label:
+            # _hint_label foi removido na refator pro overlay flutuante; mantém
+            # o check só por compat com sessões antigas (sempre None agora).
+            hint_lbl = getattr(self, "_hint_label", None)
+            if hint_lbl is not None and lbl is hint_lbl:
                 lbl.setStyleSheet(self._hint_style())
                 continue
             current = lbl.styleSheet() or ""
