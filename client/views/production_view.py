@@ -1874,7 +1874,7 @@ class ProductionView(QWidget):
             f"QPushButton {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
-            f"  padding:12px 14px; font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+            f"  padding:0px;"
             f"}}"
             f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 80)}; }}"
             f"QPushButton:pressed {{ background:{theme.SELECTION_BG}; }}"
@@ -1889,14 +1889,41 @@ class ProductionView(QWidget):
             ]
             status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
             operator_summary = ", ".join(operator_names) if operator_names else "Sem operadores cadastrados"
-            btn = QPushButton(
-                f"{machine_name}\n"
-                f"Status: {status_label}\n"
-                f"Operadores: {operator_summary}"
-            )
-            btn.setMinimumHeight(max(78, int(92 * self.scale)))
+            btn = QPushButton()
+            btn.setMinimumHeight(max(104, int(126 * self.scale)))
             btn.setStyleSheet(btn_style)
             btn.setEnabled(bool(operator_names))
+            btn_layout = QVBoxLayout(btn)
+            btn_layout.setContentsMargins(14, 12, 14, 12)
+            btn_layout.setSpacing(max(3, int(4 * self.scale)))
+
+            title_lbl = QLabel(machine_name)
+            title_lbl.setStyleSheet(
+                f"background:transparent; color:{theme.TEXT_DARK};"
+                f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+            )
+            title_lbl.setWordWrap(True)
+            title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+            status_lbl = QLabel(f"Status: {status_label}")
+            status_lbl.setStyleSheet(
+                f"background:transparent; color:{theme.TEXT_DARK};"
+                f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+            )
+            status_lbl.setWordWrap(True)
+            status_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+            operators_lbl = QLabel(f"Operadores: {operator_summary}")
+            operators_lbl.setStyleSheet(
+                f"background:transparent; color:{theme.TEXT_DARK};"
+                f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+            )
+            operators_lbl.setWordWrap(True)
+            operators_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+            btn_layout.addWidget(title_lbl)
+            btn_layout.addWidget(status_lbl)
+            btn_layout.addWidget(operators_lbl)
             btn.clicked.connect(
                 lambda checked=False, current_machine=dict(machine): _select_machine(current_machine)
             )
