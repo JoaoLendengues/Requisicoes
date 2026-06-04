@@ -3893,14 +3893,14 @@ class DrawingCanvas(QWidget):
         overlay_v.addWidget(actions_frame)
         # Guarda refs dos 3 frames pra animação em cascata (stagger).
         self._toolbar_section_frames = [tools_frame, props_frame, actions_frame]
-        # Cada seção tem seu QGraphicsOpacityEffect próprio (Qt permite 1 por
-        # widget; usamos no FRAME interno, não no overlay container).
+        # IMPORTANTE: NÃO criamos QGraphicsOpacityEffect aqui!
+        # Effects ativos permanentemente cacheiam o widget num pixmap offscreen
+        # e quebram os hovers dos botões filhos — o hover atualiza o stylesheet
+        # mas o cache do effect não invalida, dando a impressão de que o botão
+        # "some" no hover. Os effects são criados sob demanda em
+        # _create_section_effects() durante as animações de abrir/fechar e
+        # removidos no finished.
         self._toolbar_section_effects = []
-        for frame in self._toolbar_section_frames:
-            eff = QGraphicsOpacityEffect(frame)
-            eff.setOpacity(1.0)
-            frame.setGraphicsEffect(eff)
-            self._toolbar_section_effects.append(eff)
         # Estado inicial: ESCONDIDO. Só o botão "Barra de Ferramentas" abaixo
         # fica visível até o usuário clicar.
         self._toolbar_overlay.setVisible(False)
@@ -4094,30 +4094,46 @@ class DrawingCanvas(QWidget):
         y = view_geo.y() + margin + toggle_btn.height() + gap
         return QRect(x, y, final_w, final_h)
 
+    def _create_section_effects(self, initial_opacity: float = 0.0):
+        """Cria e aplica QGraphicsOpacityEffect em cada seção da toolbar.
+
+        Effects são criados sob demanda APENAS durante as animações de
+        abrir/fechar — e removidos no `finished` (ver _remove_section_effects).
+        Manter effects ativos permanentemente quebra o hover dos botões
+        filhos: o effect cacheia um pixmap offscreen do widget e mudanças
+        de QSS por hover não invalidam o cache, fazendo o botão "sumir"
+        visualmente no hover.
+        """
+        self._toolbar_section_effects = []
+        for frame in self._toolbar_section_frames:
+            eff = QGraphicsOpacityEffect(frame)
+            eff.setOpacity(initial_opacity)
+            frame.setGraphicsEffect(eff)
+            self._toolbar_section_effects.append(eff)
+
+    def _remove_section_effects(self):
+        """Remove os QGraphicsOpacityEffect das seções (restaura hover nativo)."""
+        for frame in self._toolbar_section_frames:
+            frame.setGraphicsEffect(None)
+        self._toolbar_section_effects = []
+
     def _animate_toolbar_open(self):
-        """Abre a toolbar com efeito de gaveta usando MASK (clipping) animada.
+        """Abre a toolbar com efeito de gaveta (mask) + stagger nas seções.
 
-        Por que mask e não geometry: animar geometry redimensiona o widget,
-        e o QVBoxLayout interno tenta reorganizar os 3 children a cada
-        frame com altura insuficiente → botões ficam comprimidos/cortados
-        durante a anim e ficam visualmente sumidos no fim.
-
-        Mask resolve isso: o widget JÁ tem altura final desde o início
-        (layout interno organiza tudo certo), e a mask QRegion crescente
-        só CORTA visualmente o que está fora. Resultado: gaveta abrindo
-        com o conteúdo aparecendo intacto e correto.
+        - Mask QRegion cresce de altura 0 → final pra simular "gaveta abrindo"
+          sem mexer no layout interno do overlay.
+        - Effects de opacidade são CRIADOS aqui (não existem permanentemente)
+          pra evitar quebra do hover dos botões. Removidos no finished.
         """
         overlay = self._toolbar_overlay
         toggle_btn = self._toolbar_toggle_btn
+
+        # Cria effects pra esta animação (com opacity 0 → fade-in)
+        self._create_section_effects(initial_opacity=0.0)
         effects = self._toolbar_section_effects
 
-        for eff in effects:
-            eff.setOpacity(0.0)
-
         target = self._toolbar_open_target_rect()
-        # Posiciona o widget JÁ no tamanho final (layout faz placement correto).
         overlay.setGeometry(target)
-        # Mask começa em 0 — nada visível ainda.
         overlay.setMask(QRegion(0, 0, target.width(), 1))
         overlay.setVisible(True)
         overlay.raise_()
@@ -4126,7 +4142,6 @@ class DrawingCanvas(QWidget):
         SECTION_DUR_MS = 220
         last_section_end = (len(effects) - 1) * SECTION_STEP_MS + SECTION_DUR_MS
 
-        # === Animação da MASK (gaveta abrindo) ===
         mask_anim = QVariantAnimation(self)
         mask_anim.setDuration(last_section_end)
         mask_anim.setStartValue(0)
@@ -4141,7 +4156,6 @@ class DrawingCanvas(QWidget):
 
         mask_anim.valueChanged.connect(_update_mask)
 
-        # === Stagger das seções (opacity 0 → 1) ===
         section_anims = []
         for i, eff in enumerate(effects):
             anim = QPropertyAnimation(eff, b"opacity", self)
@@ -4153,10 +4167,9 @@ class DrawingCanvas(QWidget):
             section_anims.append(anim)
 
         def _on_finished():
-            # Remove mask totalmente pra não cortar conteúdo futuro.
             overlay.clearMask()
-            for eff in effects:
-                eff.setOpacity(1.0)
+            # Remove os effects pra hover dos botões voltar a funcionar.
+            self._remove_section_effects()
             self._toolbar_anim_in_progress = False
             toggle_btn.setText(self._toolbar_toggle_text(True))
             toggle_btn.setChecked(True)
@@ -4172,25 +4185,27 @@ class DrawingCanvas(QWidget):
         """Fecha com stagger reverso nas seções + mask colapsando."""
         overlay = self._toolbar_overlay
         toggle_btn = self._toolbar_toggle_btn
+
+        # Cria effects pra esta animação (a opacity inicial é 1.0 — visível —
+        # e vai animar pra 0.0 no fechamento).
+        self._create_section_effects(initial_opacity=1.0)
         effects = self._toolbar_section_effects
 
         current_geo = overlay.geometry()
         full_h = current_geo.height()
 
-        # === Stagger reverso nas seções ===
         section_anims = []
         n = len(effects)
         for i, eff in enumerate(effects):
             anim = QPropertyAnimation(eff, b"opacity", self)
             anim.setDuration(160)
-            anim.setStartValue(eff.opacity())
+            anim.setStartValue(1.0)
             anim.setEndValue(0.0)
             anim.setEasingCurve(QEasingCurve.Type.InCubic)
             delay = (n - 1 - i) * 50
             QTimer.singleShot(delay, anim.start)
             section_anims.append(anim)
 
-        # === Mask colapsando (gaveta fechando) ===
         mask_anim = QVariantAnimation(self)
         mask_anim.setDuration(240)
         mask_anim.setStartValue(full_h)
@@ -4208,8 +4223,8 @@ class DrawingCanvas(QWidget):
         def _on_finished():
             overlay.setVisible(False)
             overlay.clearMask()
-            for eff in effects:
-                eff.setOpacity(1.0)
+            # Remove effects pra próxima abertura criar zerados.
+            self._remove_section_effects()
             self._toolbar_anim_in_progress = False
             toggle_btn.setText(self._toolbar_toggle_text(False))
             toggle_btn.setChecked(False)
