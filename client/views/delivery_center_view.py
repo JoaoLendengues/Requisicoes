@@ -752,7 +752,7 @@ class DeliveryCenterView(QWidget):
             return False
         if row.get("delivered_at"):
             return False
-        return str(row.get("status") or "").strip().lower() == "finalizado"
+        return str(row.get("status") or "").strip().lower() in {"finalizado", "prazo_alterado"}
 
     def _can_mark_rows_delivered(self, rows: list[dict]) -> bool:
         return bool(rows) and all(self._can_mark_row_delivered(row) for row in rows)
@@ -1123,7 +1123,7 @@ class DeliveryCenterView(QWidget):
             QMessageBox.information(
                 self,
                 "Entregas",
-                "Somente pedidos ja finalizados podem ser marcados como entregues.",
+                "Somente pedidos finalizados ou com prazo alterado podem ser marcados como entregues.",
             )
             return
         if not ask_confirmation(

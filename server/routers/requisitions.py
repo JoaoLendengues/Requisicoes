@@ -240,6 +240,24 @@ def _delivery_deadline_changed_at(req: Requisition) -> datetime | None:
     return None
 
 
+def _apply_early_delivery_date_if_needed(
+    req: Requisition,
+    delivered_at: datetime,
+) -> tuple[date | None, date | None]:
+    old_date = req.delivery_date if isinstance(req.delivery_date, date) else None
+    if old_date is None:
+        return None, None
+    if _delivery_deadline_changed_at(req) is None:
+        return old_date, old_date
+
+    delivered_local = _to_local_datetime(delivered_at) or datetime.now(_LOCAL_TIMEZONE)
+    delivered_date = delivered_local.date()
+    if delivered_date < old_date:
+        req.delivery_date = delivered_date
+        return old_date, delivered_date
+    return old_date, old_date
+
+
 def _normalize_machine_dashboard_period(value: str) -> str:
     key = str(value or "").strip().casefold() or "30d"
     if key not in _MACHINE_DASHBOARD_PERIODS:
@@ -4368,6 +4386,8 @@ def create_requisition(
         requisition_id=req.id,
         json_data=normalize_canvas_json_text(data.canvas_json) or "{}",
     ))
+    if old_delivery_date and new_delivery_date and new_delivery_date != old_delivery_date:
+        note += f" Data prevista ajustada para {new_delivery_date.strftime('%d/%m/%Y')} por entrega antecipada."
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=None,
@@ -4903,6 +4923,7 @@ def mark_delivery_split_delivered(
 
     delivered_at = datetime.utcnow()
     old_parent_delivered_at = req.delivered_at
+    old_delivery_date, new_delivery_date = _apply_early_delivery_date_if_needed(req, delivered_at)
     current_status = getattr(split.status, "value", split.status)
     split.delivered_at = delivered_at
     synced_parent_delivered_at = _sync_requisition_delivery_after_splits(req)
@@ -4911,6 +4932,8 @@ def mark_delivery_split_delivered(
         f"Entrega da parcela P{int(split.sequence or 0):02d} concluída em "
         f"{delivered_at.strftime('%d/%m/%Y %H:%M')}"
     )
+    if old_delivery_date and new_delivery_date and new_delivery_date != old_delivery_date:
+        note += f" Data prevista ajustada para {new_delivery_date.strftime('%d/%m/%Y')} por entrega antecipada."
     db.add(StatusHistory(
         requisition_id=req.id,
         production_split_id=split.id,
@@ -4928,6 +4951,11 @@ def mark_delivery_split_delivered(
         changes["delivered_at"] = {
             "old": old_parent_delivered_at.isoformat() if isinstance(old_parent_delivered_at, datetime) else "",
             "new": synced_parent_delivered_at.isoformat() if isinstance(synced_parent_delivered_at, datetime) else "",
+        }
+    if old_delivery_date and new_delivery_date and new_delivery_date != old_delivery_date:
+        changes["delivery_date"] = {
+            "old": old_delivery_date.isoformat(),
+            "new": new_delivery_date.isoformat(),
         }
     log_action(
         db,
@@ -4971,10 +4999,10 @@ def mark_delivery_delivered(
             status_code=400,
             detail="Esta requisicao possui parcelas desmembradas. Conclua a entrega por parcela.",
         )
-    if req.status != RequisitionStatus.FINALIZADO:
+    if req.status not in (RequisitionStatus.FINALIZADO, RequisitionStatus.PRAZO_ALTERADO):
         raise HTTPException(
             status_code=400,
-            detail="Somente pedidos finalizados podem ser marcados como entregues",
+            detail="Somente pedidos finalizados ou com prazo alterado podem ser marcados como entregues",
         )
     if req.delivered_at is not None:
         raise HTTPException(
@@ -4984,6 +5012,7 @@ def mark_delivery_delivered(
 
     delivered_at = datetime.utcnow()
     current_status = getattr(req.status, "value", req.status)
+    old_delivery_date, new_delivery_date = _apply_early_delivery_date_if_needed(req, delivered_at)
     req.delivered_at = delivered_at
 
     note = f"Entrega concluída em {delivered_at.strftime('%d/%m/%Y %H:%M')}"
@@ -5002,6 +5031,16 @@ def mark_delivery_delivered(
         changed_by=current_user,
         changes={
             "delivered_at": delivered_at.isoformat(),
+            **(
+                {
+                    "delivery_date": {
+                        "old": old_delivery_date.isoformat(),
+                        "new": new_delivery_date.isoformat(),
+                    }
+                }
+                if old_delivery_date and new_delivery_date and new_delivery_date != old_delivery_date
+                else {}
+            ),
         },
     )
 
@@ -5177,10 +5216,13 @@ def mark_split_delivery_delivered(
         raise HTTPException(status_code=400, detail="Esta parcela ja foi entregue")
 
     delivered_at = datetime.utcnow()
+    old_delivery_date, new_delivery_date = _apply_early_delivery_date_if_needed(req, delivered_at)
     split.delivered_at = delivered_at
     _sync_requisition_delivery_from_splits(req)
 
     note = f"Entrega da parcela {int(split.sequence or 0):02d} concluida em {delivered_at.strftime('%d/%m/%Y %H:%M')}"
+    if old_delivery_date and new_delivery_date and new_delivery_date != old_delivery_date:
+        note += f" Data prevista ajustada para {new_delivery_date.strftime('%d/%m/%Y')} por entrega antecipada."
     db.add(StatusHistory(
         requisition_id=req.id,
         production_split_id=split.id,
@@ -5200,7 +5242,17 @@ def mark_split_delivery_delivered(
                 "split_id": int(split.id),
                 "split_sequence": int(split.sequence or 0),
                 "delivered_at": delivered_at.isoformat(),
-            }
+            },
+            **(
+                {
+                    "delivery_date": {
+                        "old": old_delivery_date.isoformat(),
+                        "new": new_delivery_date.isoformat(),
+                    }
+                }
+                if old_delivery_date and new_delivery_date and new_delivery_date != old_delivery_date
+                else {}
+            ),
         },
     )
 
