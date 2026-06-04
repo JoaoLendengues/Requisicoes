@@ -3611,11 +3611,25 @@ class DrawingCanvas(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
+        # Linha do título: rótulo + botão "?" de ajuda (tooltip lista atalhos).
+        # Substitui a linha gigante de atalhos que ocupava o fim da toolbar.
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(8)
         title = QLabel("DESENHO / REFERENCIA")
         self._title_label = title
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(self._title_style())
-        layout.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+        help_size = max(24, int(28 * self.scale))
+        self._help_btn = QPushButton("?")
+        self._help_btn.setFixedSize(help_size, help_size)
+        self._help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._help_btn.setStyleSheet(self._help_btn_style())
+        self._help_btn.setToolTip(self._build_shortcuts_help_text())
+        title_row.addWidget(self._help_btn)
+        layout.addLayout(title_row)
 
         s  = self.scale
         fh = max(28, int(34 * s))
@@ -3856,22 +3870,26 @@ class DrawingCanvas(QWidget):
         row2.addWidget(btn_dim)
         row2.addWidget(btn_clear)
         row2.addStretch()
-        toolbar_stack.addWidget(actions_frame)
-        layout.addLayout(toolbar_stack)
 
-        # Dica de teclado
-        hint = QLabel(
-            "Shift = traco reto  |  V = pen vetorial  |  Q = esquadro (angulo guiado)  |  U = angulo  |  A = seta  |  C = curva na linha/curva selecionada  |  G = triangulo  |  N = pentagono  |  H = hexagono  |  Del = apagar  |  Scroll = zoom  |  "
-            "Botão do meio / Space+drag = mover  |  "
-            "Ctrl+C / Ctrl+V = duplicar e colar  |  "
-            "Ctrl+Shift+H = espelhar com cópia horizontal  |  Ctrl+J = espelhar com cópia vertical  |  "
-            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)  |  M = cota manual, 2 cliques na linha  |  Angulo selecionado: +/- = tamanho  |  Alt+<-/> = girar (Shift = 15 deg)  |  "
-            "Enter / Esc = confirmar  |  2x clique = editar texto"
-        )
-        hint.setWordWrap(True)
-        self._hint_label = hint
-        hint.setStyleSheet(self._hint_style())
-        layout.addWidget(hint)
+        # ====== TOOLBAR FLUTUANTE (canto superior esquerdo) ======
+        # As 3 seções (ferramentas + propriedades + ações) saem do layout
+        # principal e entram dentro de QFrame _toolbar_overlay que é
+        # FILHO direto do DrawingCanvas (não vai pro layout). Posicionado
+        # via resizeEvent no canto superior esquerdo do canvas.
+        #
+        # Sem pílula arredondada, sem opacity effect, sem drag handle,
+        # sem auto-hide, sem Tab toggle — apenas card retangular fixo.
+        self._toolbar_overlay = QFrame(self)
+        self._toolbar_overlay.setStyleSheet(self._toolbar_overlay_style())
+        self._toolbar_overlay.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        overlay_v = QVBoxLayout(self._toolbar_overlay)
+        overlay_v.setContentsMargins(10, 10, 10, 10)
+        overlay_v.setSpacing(6)
+        overlay_v.addWidget(tools_frame)
+        overlay_v.addWidget(props_frame)
+        overlay_v.addWidget(actions_frame)
+        # Hint label removido — virou tooltip do botão "?" no título.
+        self._hint_label = None
 
         # Cena + View
         self.scene = DrawingScene(self)
@@ -3944,6 +3962,38 @@ class DrawingCanvas(QWidget):
 
         self._set_tool(Tool.SELECT)
         self._setup_shortcuts()
+
+    def resizeEvent(self, event):
+        """Reposiciona a toolbar flutuante a cada resize do canvas."""
+        super().resizeEvent(event)
+        self._reposition_toolbar_overlay()
+
+    def showEvent(self, event):
+        """Garante posição da toolbar na primeira exibição."""
+        super().showEvent(event)
+        # Adia pro próximo tick pra layout calcular tamanhos finais.
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._reposition_toolbar_overlay)
+
+    def _reposition_toolbar_overlay(self):
+        """Posiciona a toolbar no CANTO SUPERIOR ESQUERDO do canvas (view).
+
+        Margem de ~12px da borda esquerda e do topo da área de desenho.
+        Coordenadas relativas ao DrawingCanvas (parent do overlay), mas
+        baseadas em `view.geometry()` pra que a toolbar fique exatamente
+        sobre o canvas branco, não sobre o título.
+        """
+        overlay = getattr(self, "_toolbar_overlay", None)
+        view = getattr(self, "view", None)
+        if overlay is None or view is None:
+            return
+        overlay.adjustSize()
+        view_geo = view.geometry()
+        margin = max(10, int(12 * self.scale))
+        x = view_geo.x() + margin
+        y = view_geo.y() + margin
+        overlay.move(x, y)
+        overlay.raise_()
 
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
@@ -4078,6 +4128,59 @@ class DrawingCanvas(QWidget):
             f" border:1px solid {theme.rgba(theme.PRIMARY, 34)};"
             f" border-radius:14px;"
             f"}}"
+        )
+
+    def _toolbar_overlay_style(self) -> str:
+        """Card retangular discreto que envolve as 3 seções da toolbar.
+
+        Sem arredondamento exagerado, sem pílula. Borda discreta + leve
+        background pra separar visualmente do canvas branco.
+        """
+        return (
+            f"QFrame {{"
+            f" background:{theme.rgba(theme.CARD_BG, 245)};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 80)};"
+            f" border-radius:12px;"
+            f"}}"
+        )
+
+    def _help_btn_style(self) -> str:
+        """Botão '?' que substitui a linha de atalhos."""
+        fs = max(9, int(11 * self.scale))
+        return (
+            f"QPushButton {{"
+            f" background:{theme.rgba(theme.PRIMARY, 28)};"
+            f" color:{theme.PRIMARY};"
+            f" border:1px solid {theme.rgba(theme.PRIMARY, 80)};"
+            f" border-radius:14px;"
+            f" font-weight:800; font-size:{fs}pt;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f" background:{theme.rgba(theme.PRIMARY, 60)};"
+            f" border-color:{theme.PRIMARY};"
+            f"}}"
+            f"QPushButton:pressed {{"
+            f" background:{theme.rgba(theme.PRIMARY, 90)};"
+            f"}}"
+        )
+
+    def _build_shortcuts_help_text(self) -> str:
+        """Tooltip do botão '?' — antes era um label fixo gigante."""
+        return (
+            "Shift = traço reto\n"
+            "V = pen vetorial   |   Q = esquadro (ângulo guiado)\n"
+            "U = ângulo   |   A = seta   |   C = curva na linha/curva selecionada\n"
+            "G = triângulo   |   N = pentágono   |   H = hexágono\n"
+            "Del = apagar   |   Scroll = zoom\n"
+            "Botão do meio / Space+drag = mover\n"
+            "Ctrl+C / Ctrl+V = duplicar e colar\n"
+            "Ctrl+Shift+H = espelhar com cópia horizontal\n"
+            "Ctrl+J = espelhar com cópia vertical\n"
+            "Ctrl+T = Free Transform (arrastar fora dos cantos = girar)\n"
+            "M = cota manual (2 cliques na linha)\n"
+            "Ângulo selecionado: +/- = tamanho\n"
+            "Alt+←/→ = girar (Shift = passos de 15°)\n"
+            "Enter / Esc = confirmar   |   2× clique = editar texto"
         )
 
     def _hint_style(self) -> str:
@@ -4242,6 +4345,16 @@ class DrawingCanvas(QWidget):
             special_btns.add(self.btn_color)
         if hasattr(self, "_btn_clear"):
             special_btns.add(self._btn_clear)
+        # Botão de ajuda no título tem estilo próprio.
+        help_btn = getattr(self, "_help_btn", None)
+        if help_btn is not None:
+            special_btns.add(help_btn)
+        # Toolbar overlay e botão help re-estilizados aqui.
+        overlay = getattr(self, "_toolbar_overlay", None)
+        if overlay is not None:
+            overlay.setStyleSheet(self._toolbar_overlay_style())
+        if help_btn is not None:
+            help_btn.setStyleSheet(self._help_btn_style())
 
         for btn in self.findChildren(QPushButton):
             if btn in special_btns:
@@ -4256,7 +4369,10 @@ class DrawingCanvas(QWidget):
             if hasattr(self, "_title_label") and lbl is self._title_label:
                 lbl.setStyleSheet(self._title_style())
                 continue
-            if hasattr(self, "_hint_label") and lbl is self._hint_label:
+            # _hint_label foi removido (virou tooltip do botão "?") — guard só
+            # por compat caso volte; sempre None na versão atual.
+            hint_lbl = getattr(self, "_hint_label", None)
+            if hint_lbl is not None and lbl is hint_lbl:
                 lbl.setStyleSheet(self._hint_style())
                 continue
             current = lbl.styleSheet() or ""
