@@ -142,6 +142,7 @@ class RequisitionProductionSplit(Base):
         SAEnum(RequisitionStatus, values_callable=lambda x: [e.value for e in x], native_enum=False),
         default=RequisitionStatus.EM_PRODUCAO,
     )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     destination: Mapped[str | None] = mapped_column(String(120), nullable=True)
     production_machine: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -13,6 +13,10 @@ class DeliveryCenterStatsResponse(BaseModel):
 
 class DeliveryCenterItemResponse(BaseModel):
     id: int
+    source_requisition_id: Optional[int] = None
+    production_split_id: Optional[int] = None
+    split_sequence: Optional[int] = None
+    is_partial_split: bool = False
     ped_number: str
     client_name: Optional[str] = None
     vendor_name: Optional[str] = None

@@ -1056,6 +1056,19 @@ def _split_display_ped_number(req: Requisition, split: RequisitionProductionSpli
     return f"{req.ped_number}/P{int(split.sequence or 0):02d}"
 
 
+def _sync_requisition_delivery_from_splits(req: Requisition) -> None:
+    if not _has_production_splits(req):
+        return
+
+    splits = _sorted_requisition_splits(req)
+    delivered_times = [
+        delivered_at
+        for delivered_at in (getattr(split, "delivered_at", None) for split in splits)
+        if isinstance(delivered_at, datetime)
+    ]
+    req.delivered_at = max(delivered_times) if splits and len(delivered_times) == len(splits) else None
+
+
 def _coerce_requisition_status(value: object) -> RequisitionStatus:
     try:
         return RequisitionStatus(str(value or "").strip())
@@ -1118,6 +1131,7 @@ def _sync_requisition_after_splits(
                 note=note,
             )
         )
+    _sync_requisition_delivery_from_splits(req)
     return desired_status
 
 
@@ -2369,6 +2383,7 @@ def _history_row_from_split(req: Requisition, split: RequisitionProductionSplit)
     production_status = str(split_status or "")
     if split.status == RequisitionStatus.FINALIZADO:
         production_status = "finalizada_producao"
+    split_delivered_at = getattr(split, "delivered_at", None)
     return {
         "id": int(split.id),
         "source_requisition_id": int(req.id),
@@ -2408,11 +2423,72 @@ def _history_row_from_split(req: Requisition, split: RequisitionProductionSplit)
         "production_finished_at": (latest_cycle or {}).get("finished_at"),
         "cancel_reason": None,
         "invoiced": split.status == RequisitionStatus.FINALIZADO,
-        "delivered_at": req.delivered_at,
+        "delivered_at": split_delivered_at if isinstance(split_delivered_at, datetime) else None,
         "finalized_at": req.finalized_at,
         "created_at": split.created_at,
         "updated_at": split.updated_at,
     }
+
+
+def _split_delivery_status(req: Requisition, split: RequisitionProductionSplit) -> str:
+    split_status = str(getattr(split.status, "value", split.status) or "")
+    delivered_at = getattr(split, "delivered_at", None)
+    deadline_changed_at = _delivery_deadline_changed_at(req)
+
+    if isinstance(delivered_at, datetime):
+        return "entregue"
+    if deadline_changed_at is not None:
+        return RequisitionStatus.PRAZO_ALTERADO.value
+    return split_status
+
+
+def _delivery_row_is_visible(
+    *,
+    status_value: str,
+    delivered_at: datetime | None,
+    deadline_changed_at: datetime | None,
+) -> bool:
+    if isinstance(delivered_at, datetime):
+        return True
+    if deadline_changed_at is not None:
+        return True
+    return status_value in (
+        RequisitionStatus.EM_PRODUCAO.value,
+        RequisitionStatus.FINALIZADO.value,
+        RequisitionStatus.PRAZO_ALTERADO.value,
+    )
+
+
+def _delivery_row_from_split(req: Requisition, split: RequisitionProductionSplit) -> DeliveryCenterItemResponse | None:
+    split_delivered_at = getattr(split, "delivered_at", None)
+    deadline_changed_at = _delivery_deadline_changed_at(req)
+    split_status = str(getattr(split.status, "value", split.status) or "")
+    normalized_delivered_at = split_delivered_at if isinstance(split_delivered_at, datetime) else None
+    if not _delivery_row_is_visible(
+        status_value=split_status,
+        delivered_at=normalized_delivered_at,
+        deadline_changed_at=deadline_changed_at,
+    ):
+        return None
+
+    return DeliveryCenterItemResponse(
+        id=int(split.id),
+        source_requisition_id=int(req.id),
+        production_split_id=int(split.id),
+        split_sequence=int(split.sequence or 0),
+        is_partial_split=True,
+        ped_number=_split_display_ped_number(req, split),
+        client_name=req.client_name,
+        vendor_name=req.vendor_name,
+        weight=float(split.weight or 0.0),
+        destination=_split_destination(split) or _current_production_destination(req) or None,
+        delivery_date=req.delivery_date,
+        status=_split_delivery_status(req, split),
+        delivered_at=normalized_delivered_at,
+        finalized_at=req.finalized_at if isinstance(req.finalized_at, datetime) else None,
+        deadline_changed_at=deadline_changed_at,
+        deadline_change_reason=str(getattr(req, "delivery_deadline_change_reason", "") or ""),
+    )
 
 
 def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
@@ -2426,80 +2502,87 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
     completed_deliveries = 0
 
     for req in reqs:
-        delivered_at = getattr(req, "delivered_at", None)
-        status_value = getattr(req.status, "value", req.status)
-        current_status = str(status_value or "")
-        production_status = _history_production_status(req)
-        effective_status = current_status
-        if effective_status not in (
-            RequisitionStatus.PRAZO_ALTERADO.value,
-            RequisitionStatus.FINALIZADO.value,
-            RequisitionStatus.CANCELADA.value,
-        ):
-            effective_status = str(production_status or effective_status)
-        visible_pending_status = (
-            RequisitionStatus.EM_PRODUCAO.value
-            if current_status == RequisitionStatus.EM_PRODUCAO.value
-            else effective_status
-        )
-
-        # A tela de Entregas lista pedidos marcados para entrega que estejam
-        # em produção, faturados, com prazo alterado ou já entregues.
-        if (
-            not req.entrega
-            or req.status == RequisitionStatus.CANCELADA
-            or (
-                delivered_at is None
-                and visible_pending_status not in (
-                    RequisitionStatus.EM_PRODUCAO.value,
-                    RequisitionStatus.FINALIZADO.value,
-                    RequisitionStatus.PRAZO_ALTERADO.value,
-                )
-            )
-        ):
+        if not req.entrega or req.status == RequisitionStatus.CANCELADA:
             continue
 
         deadline_changed_at = _delivery_deadline_changed_at(req)
-        delivery_date = req.delivery_date
-
-        if delivered_at is not None:
-            completed_deliveries += 1
-
-        if delivered_at is None and delivery_date is not None:
-            if delivery_date == today:
-                deliveries_today += 1
-            elif delivery_date < today:
-                delayed_deliveries += 1
-
-        if delivered_at is None and deadline_changed_at is not None:
-            changed_delivery_deadlines += 1
-
-        display_status = visible_pending_status
-        if delivered_at is not None:
-            display_status = "entregue"
-        elif (
-            display_status != RequisitionStatus.PRAZO_ALTERADO.value
-            and delivered_at is None
-            and deadline_changed_at is not None
-        ):
-            display_status = RequisitionStatus.PRAZO_ALTERADO.value
-
-        rows.append(
-            DeliveryCenterItemResponse(
-                id=req.id,
-                ped_number=req.ped_number,
-                client_name=req.client_name,
-                vendor_name=req.vendor_name,
-                weight=float(req.weight or 0.0),
-                destination=_current_production_destination(req) or None,
-                delivery_date=delivery_date,
-                status=display_status,
-                delivered_at=delivered_at if isinstance(delivered_at, datetime) else None,
-                finalized_at=req.finalized_at if isinstance(req.finalized_at, datetime) else None,
-                deadline_changed_at=deadline_changed_at,
-                deadline_change_reason=str(getattr(req, "delivery_deadline_change_reason", "") or ""),
+        delivery_rows: list[DeliveryCenterItemResponse] = []
+        if _has_production_splits(req):
+            for split in _sorted_requisition_splits(req):
+                item = _delivery_row_from_split(req, split)
+                if item is not None:
+                    delivery_rows.append(item)
+            delivered_at = None
+            visible_pending_status = ""
+        else:
+            delivered_at = getattr(req, "delivered_at", None)
+            status_value = getattr(req.status, "value", req.status)
+            current_status = str(status_value or "")
+            production_status = _history_production_status(req)
+            effective_status = current_status
+            if effective_status not in (
+                RequisitionStatus.PRAZO_ALTERADO.value,
+                RequisitionStatus.FINALIZADO.value,
+                RequisitionStatus.CANCELADA.value,
+            ):
+                effective_status = str(production_status or effective_status)
+            visible_pending_status = (
+                RequisitionStatus.EM_PRODUCAO.value
+                if current_status == RequisitionStatus.EM_PRODUCAO.value
+                else effective_status
             )
-        )
+
+        # A tela de Entregas lista pedidos marcados para entrega que estejam
+        # em produção, faturados, com prazo alterado ou já entregues.
+        if not _has_production_splits(req):
+            normalized_delivered_at = delivered_at if isinstance(delivered_at, datetime) else None
+            if _delivery_row_is_visible(
+                status_value=visible_pending_status,
+                delivered_at=normalized_delivered_at,
+                deadline_changed_at=deadline_changed_at,
+            ):
+                display_status = visible_pending_status
+                if normalized_delivered_at is not None:
+                    display_status = "entregue"
+                elif (
+                    display_status != RequisitionStatus.PRAZO_ALTERADO.value
+                    and deadline_changed_at is not None
+                ):
+                    display_status = RequisitionStatus.PRAZO_ALTERADO.value
+
+                delivery_rows.append(
+                    DeliveryCenterItemResponse(
+                        id=req.id,
+                        source_requisition_id=req.id,
+                        production_split_id=None,
+                        split_sequence=None,
+                        is_partial_split=False,
+                        ped_number=req.ped_number,
+                        client_name=req.client_name,
+                        vendor_name=req.vendor_name,
+                        weight=float(req.weight or 0.0),
+                        destination=_current_production_destination(req) or None,
+                        delivery_date=req.delivery_date,
+                        status=display_status,
+                        delivered_at=normalized_delivered_at,
+                        finalized_at=req.finalized_at if isinstance(req.finalized_at, datetime) else None,
+                        deadline_changed_at=deadline_changed_at,
+                        deadline_change_reason=str(getattr(req, "delivery_deadline_change_reason", "") or ""),
+                    )
+                )
+
+        for item in delivery_rows:
+            rows.append(item)
+            if item.delivered_at is not None:
+                completed_deliveries += 1
+            elif item.delivery_date is not None:
+                if item.delivery_date == today:
+                    deliveries_today += 1
+                elif item.delivery_date < today:
+                    delayed_deliveries += 1
+
+            if item.delivered_at is None and item.deadline_changed_at is not None:
+                changed_delivery_deadlines += 1
 
     rows.sort(
         key=lambda item: (
@@ -4676,6 +4759,11 @@ def mark_delivery_delivered(
             status_code=400,
             detail="Não é possível concluir a entrega de uma requisição cancelada",
         )
+    if _has_production_splits(req):
+        raise HTTPException(
+            status_code=400,
+            detail="Esta requisicao possui parcelas desmembradas. Conclua a entrega por parcela.",
+        )
     if req.status != RequisitionStatus.FINALIZADO:
         raise HTTPException(
             status_code=400,
@@ -4734,6 +4822,11 @@ def cancel_delivery_delivered(
             status_code=400,
             detail="Não é possível reabrir a entrega de uma requisição cancelada",
         )
+    if _has_production_splits(req):
+        raise HTTPException(
+            status_code=400,
+            detail="Esta requisicao possui parcelas desmembradas. Reabra a entrega pela parcela correspondente.",
+        )
     if req.delivered_at is None:
         raise HTTPException(
             status_code=400,
@@ -4778,6 +4871,111 @@ def cancel_delivery_delivered(
 
     db.commit()
     return _get_or_404(db, req_id)
+
+
+@router.patch("/production-splits/{split_id}/mark-delivered", response_model=RequisitionResponse)
+def mark_split_delivery_delivered(
+    split_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_delivery_handler),
+):
+    split = _get_split_or_404(db, split_id)
+    req = split.requisition
+    if not req.entrega:
+        raise HTTPException(status_code=400, detail="Esta requisicao nao esta marcada como entrega")
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
+    if req.status == RequisitionStatus.CANCELADA:
+        raise HTTPException(status_code=400, detail="Nao e possivel concluir a entrega de uma requisicao cancelada")
+    if split.status != RequisitionStatus.FINALIZADO:
+        raise HTTPException(status_code=400, detail="Somente parcelas finalizadas podem ser marcadas como entregues")
+    if getattr(split, "delivered_at", None) is not None:
+        raise HTTPException(status_code=400, detail="Esta parcela ja foi entregue")
+
+    delivered_at = datetime.utcnow()
+    split.delivered_at = delivered_at
+    _sync_requisition_delivery_from_splits(req)
+
+    note = f"Entrega da parcela {int(split.sequence or 0):02d} concluida em {delivered_at.strftime('%d/%m/%Y %H:%M')}"
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        production_split_id=split.id,
+        old_status=getattr(split.status, "value", split.status),
+        new_status=getattr(split.status, "value", split.status),
+        changed_by_id=current_user.id,
+        note=note,
+    ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "production_split_delivery": {
+                "split_id": int(split.id),
+                "split_sequence": int(split.sequence or 0),
+                "delivered_at": delivered_at.isoformat(),
+            }
+        },
+    )
+
+    db.commit()
+    return _get_or_404(db, req.id)
+
+
+@router.patch("/production-splits/{split_id}/cancel-delivered", response_model=RequisitionResponse)
+def cancel_split_delivery_delivered(
+    split_id: int,
+    data: DeliveryCancellationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_delivery_handler),
+):
+    split = _get_split_or_404(db, split_id)
+    req = split.requisition
+    if not req.entrega:
+        raise HTTPException(status_code=400, detail="Esta requisicao nao esta marcada como entrega")
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
+    if req.status == RequisitionStatus.CANCELADA:
+        raise HTTPException(status_code=400, detail="Nao e possivel reabrir a entrega de uma requisicao cancelada")
+    old_delivered_at = getattr(split, "delivered_at", None)
+    if old_delivered_at is None:
+        raise HTTPException(status_code=400, detail="Esta parcela nao esta com entrega concluida")
+
+    split.delivered_at = None
+    _sync_requisition_delivery_from_splits(req)
+
+    note = f"Entrega da parcela {int(split.sequence or 0):02d} cancelada e retornada para agenda. Motivo: {data.reason}"
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        production_split_id=split.id,
+        old_status=getattr(split.status, "value", split.status),
+        new_status=getattr(split.status, "value", split.status),
+        changed_by_id=current_user.id,
+        note=note,
+    ))
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "production_split_delivery": {
+                "split_id": int(split.id),
+                "split_sequence": int(split.sequence or 0),
+                "delivered_at": {
+                    "old": old_delivered_at.isoformat() if isinstance(old_delivered_at, datetime) else "",
+                    "new": "",
+                },
+                "delivery_reopen_reason": data.reason,
+            }
+        },
+    )
+
+    db.commit()
+    return _get_or_404(db, req.id)
 
 
 @router.delete("/{req_id}", status_code=status.HTTP_204_NO_CONTENT)

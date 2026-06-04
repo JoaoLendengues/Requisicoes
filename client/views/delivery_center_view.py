@@ -139,8 +139,8 @@ class DeliveryCenterView(QWidget):
         self._completed_rows: list[dict] = []
         self._delivery_cancel_reason_rows: list[dict[str, str]] = []
         self._delivery_deadline_reason_rows: list[dict[str, str]] = []
-        self._row_by_id: dict[int, dict] = {}
-        self._completed_row_by_id: dict[int, dict] = {}
+        self._row_by_id: dict[str, dict] = {}
+        self._completed_row_by_id: dict[str, dict] = {}
         self._metric_labels: dict[str, QLabel] = {}
         self._setup_ui()
 
@@ -565,7 +565,7 @@ class DeliveryCenterView(QWidget):
         self,
         table: QTableWidget,
         rows: list[dict],
-        row_map: dict[int, dict],
+        row_map: dict[str, dict],
         empty_message: str,
         sort_column: int,
         sort_order: Qt.SortOrder,
@@ -585,13 +585,14 @@ class DeliveryCenterView(QWidget):
             row = table.rowCount()
             table.insertRow(row)
 
-            req_id = int(row_data.get("id") or 0)
-            if req_id:
-                row_map[req_id] = row_data
+            row_key = self._row_key(row_data)
+            if row_key:
+                row_map[row_key] = row_data
 
             ped_raw = row_data.get("ped_number")
+            ped_sort_source = str(ped_raw or "").split("/", 1)[0]
             try:
-                ped_sort = int(ped_raw)
+                ped_sort = int(ped_sort_source)
             except (TypeError, ValueError):
                 ped_sort = 0
             try:
@@ -641,8 +642,8 @@ class DeliveryCenterView(QWidget):
 
                 sk = sort_keys[col] if col < len(sort_keys) else None
                 item = SortableItem(value, sort_key=sk) if sk is not None else QTableWidgetItem(value)
-                if col == 0 and req_id:
-                    item.setData(Qt.ItemDataRole.UserRole, req_id)
+                if col == 0 and row_key:
+                    item.setData(Qt.ItemDataRole.UserRole, row_key)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(row, col, item)
 
@@ -664,10 +665,10 @@ class DeliveryCenterView(QWidget):
         item = self.table.item(row_index, 0)
         if item is None:
             return None
-        req_id = item.data(Qt.ItemDataRole.UserRole)
-        if not req_id:
+        row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+        if not row_key:
             return None
-        return self._row_by_id.get(int(req_id))
+        return self._row_by_id.get(row_key)
 
     def _selected_completed_row(self) -> dict | None:
         row_index = self.completed_table.currentRow()
@@ -676,10 +677,24 @@ class DeliveryCenterView(QWidget):
         item = self.completed_table.item(row_index, 0)
         if item is None:
             return None
-        req_id = item.data(Qt.ItemDataRole.UserRole)
-        if not req_id:
+        row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+        if not row_key:
             return None
-        return self._completed_row_by_id.get(int(req_id))
+        return self._completed_row_by_id.get(row_key)
+
+    def _row_key(self, row: dict) -> str:
+        if not isinstance(row, dict):
+            return ""
+        split_id = int(row.get("production_split_id") or 0)
+        if split_id:
+            return f"split:{split_id}"
+        req_id = int(row.get("id") or row.get("source_requisition_id") or 0)
+        return f"req:{req_id}" if req_id else ""
+
+    def _row_requisition_id(self, row: dict | None) -> int:
+        if not isinstance(row, dict):
+            return 0
+        return int(row.get("source_requisition_id") or row.get("id") or 0)
 
     def _can_mark_row_delivered(self, row: dict | None) -> bool:
         if not isinstance(row, dict):
@@ -717,22 +732,24 @@ class DeliveryCenterView(QWidget):
         item = self.table.item(row_index, 0)
         if item is None:
             return
-        req_id = item.data(Qt.ItemDataRole.UserRole)
+        row = self._row_by_id.get(str(item.data(Qt.ItemDataRole.UserRole) or "").strip())
+        req_id = self._row_requisition_id(row)
         if req_id:
-            self.open_requisition.emit(int(req_id))
+            self.open_requisition.emit(req_id)
 
     def _open_completed_row(self, row_index: int):
         item = self.completed_table.item(row_index, 0)
         if item is None:
             return
-        req_id = item.data(Qt.ItemDataRole.UserRole)
+        row = self._completed_row_by_id.get(str(item.data(Qt.ItemDataRole.UserRole) or "").strip())
+        req_id = self._row_requisition_id(row)
         if req_id:
-            self.open_requisition.emit(int(req_id))
+            self.open_requisition.emit(req_id)
 
     def _change_selected_deadline(self):
         row = self._selected_row()
         if not row:
-            QMessageBox.information(self, "Entregas", "Selecione um pedido primeiro.")
+            QMessageBox.information(self, "Entregas", "Selecione um pedido ou parcela primeiro.")
             return
         if row.get("delivered_at"):
             QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
@@ -745,7 +762,7 @@ class DeliveryCenterView(QWidget):
         new_date, reason = result
         self._run_action(
             api.update_delivery_schedule,
-            int(row["id"]),
+            self._row_requisition_id(row),
             new_date,
             reason,
             success_message="Prazo de entrega alterado com sucesso.",
@@ -754,7 +771,7 @@ class DeliveryCenterView(QWidget):
     def _mark_selected_delivered(self):
         row = self._selected_row()
         if not row:
-            QMessageBox.information(self, "Entregas", "Selecione um pedido primeiro.")
+            QMessageBox.information(self, "Entregas", "Selecione um pedido ou parcela primeiro.")
             return
         if row.get("delivered_at"):
             QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
@@ -776,15 +793,15 @@ class DeliveryCenterView(QWidget):
             return
 
         self._run_action(
-            api.mark_delivery_delivered,
-            int(row["id"]),
+            api.mark_split_delivery_delivered if row.get("production_split_id") else api.mark_delivery_delivered,
+            int(row.get("production_split_id") or row["id"]),
             success_message="Entrega registrada com sucesso.",
         )
 
     def _cancel_selected_delivered(self):
         row = self._selected_completed_row()
         if not row:
-            QMessageBox.information(self, "Entregas", "Selecione uma entrega realizada primeiro.")
+            QMessageBox.information(self, "Entregas", "Selecione um pedido ou parcela entregue primeiro.")
             return
 
         if not row.get("delivered_at"):
@@ -796,8 +813,8 @@ class DeliveryCenterView(QWidget):
             return
 
         self._run_action(
-            api.cancel_delivery_delivered,
-            int(row["id"]),
+            api.cancel_split_delivery_delivered if row.get("production_split_id") else api.cancel_delivery_delivered,
+            int(row.get("production_split_id") or row["id"]),
             reason,
             success_message="Entrega cancelada e retornada para a agenda.",
         )

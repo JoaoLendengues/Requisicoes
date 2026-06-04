@@ -55,12 +55,14 @@ def _migrate():
         " sequence INTEGER NOT NULL DEFAULT 1,"
         " weight DOUBLE PRECISION NOT NULL DEFAULT 0,"
         " status TEXT NOT NULL DEFAULT 'em_producao',"
+        " delivered_at TIMESTAMP,"
         " destination TEXT,"
         " production_machine TEXT,"
         " created_at TIMESTAMP NOT NULL DEFAULT NOW(),"
         " updated_at TIMESTAMP NOT NULL DEFAULT NOW(),"
         " CONSTRAINT uq_req_prod_split_sequence UNIQUE (requisition_id, sequence)"
         ")",
+        "ALTER TABLE requisition_production_splits ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP",
         "ALTER TABLE status_history ADD COLUMN IF NOT EXISTS production_split_id INTEGER "
         "REFERENCES requisition_production_splits(id) ON DELETE CASCADE",
         "UPDATE users SET must_change_password = FALSE WHERE must_change_password IS NULL",
