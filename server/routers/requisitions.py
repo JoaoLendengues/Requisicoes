@@ -2447,7 +2447,6 @@ def _history_row_from_split(req: Requisition, split: RequisitionProductionSplit)
     }
 
 
-<<<<<<< HEAD
 def _split_delivery_status(req: Requisition, split: RequisitionProductionSplit) -> str:
     split_status = str(getattr(split.status, "value", split.status) or "")
     delivered_at = getattr(split, "delivered_at", None)
@@ -2493,102 +2492,6 @@ def _delivery_row_from_split(req: Requisition, split: RequisitionProductionSplit
         id=int(split.id),
         source_requisition_id=int(req.id),
         production_split_id=int(split.id),
-=======
-def _delivery_center_row_from_requisition(req: Requisition) -> DeliveryCenterItemResponse | None:
-    delivered_at = req.delivered_at if isinstance(req.delivered_at, datetime) else None
-    status_value = getattr(req.status, "value", req.status)
-    current_status = str(status_value or "")
-    production_status = _history_production_status(req)
-    effective_status = current_status
-    if effective_status not in (
-        RequisitionStatus.PRAZO_ALTERADO.value,
-        RequisitionStatus.FINALIZADO.value,
-        RequisitionStatus.CANCELADA.value,
-    ):
-        effective_status = str(production_status or effective_status)
-    visible_pending_status = (
-        RequisitionStatus.EM_PRODUCAO.value
-        if current_status == RequisitionStatus.EM_PRODUCAO.value
-        else effective_status
-    )
-
-    if (
-        not req.entrega
-        or req.status == RequisitionStatus.CANCELADA
-        or (
-            delivered_at is None
-            and visible_pending_status not in (
-                RequisitionStatus.EM_PRODUCAO.value,
-                RequisitionStatus.FINALIZADO.value,
-                RequisitionStatus.PRAZO_ALTERADO.value,
-            )
-        )
-    ):
-        return None
-
-    deadline_changed_at = _delivery_deadline_changed_at(req)
-    display_status = visible_pending_status
-    if delivered_at is not None:
-        display_status = "entregue"
-    elif (
-        display_status != RequisitionStatus.PRAZO_ALTERADO.value
-        and deadline_changed_at is not None
-    ):
-        display_status = RequisitionStatus.PRAZO_ALTERADO.value
-
-    return DeliveryCenterItemResponse(
-        id=req.id,
-        source_requisition_id=req.id,
-        ped_number=req.ped_number,
-        client_name=req.client_name,
-        vendor_name=req.vendor_name,
-        weight=float(req.weight or 0.0),
-        destination=_current_production_destination(req) or None,
-        delivery_date=req.delivery_date,
-        status=display_status,
-        delivered_at=delivered_at,
-        finalized_at=req.finalized_at if isinstance(req.finalized_at, datetime) else None,
-        deadline_changed_at=deadline_changed_at,
-        deadline_change_reason=str(getattr(req, "delivery_deadline_change_reason", "") or ""),
-    )
-
-
-def _delivery_center_row_from_split(
-    req: Requisition,
-    split: RequisitionProductionSplit,
-) -> DeliveryCenterItemResponse | None:
-    if not req.entrega or req.status == RequisitionStatus.CANCELADA:
-        return None
-
-    delivered_at = split.delivered_at if isinstance(split.delivered_at, datetime) else None
-    split_status = str(getattr(split.status, "value", split.status) or "")
-    if (
-        delivered_at is None
-        and split_status not in (
-            RequisitionStatus.EM_PRODUCAO.value,
-            RequisitionStatus.FINALIZADO.value,
-        )
-    ):
-        return None
-
-    deadline_changed_at = _delivery_deadline_changed_at(req)
-    latest_finished = _split_all_finished_cycles(split)
-    latest_cycle = latest_finished[-1] if latest_finished else None
-    finalized_at = (latest_cycle or {}).get("finished_at")
-    if not isinstance(finalized_at, datetime) and split.status == RequisitionStatus.FINALIZADO:
-        finalized_at = split.updated_at or req.finalized_at
-
-    display_status = split_status
-    if delivered_at is not None:
-        display_status = "entregue"
-    elif deadline_changed_at is not None:
-        display_status = RequisitionStatus.PRAZO_ALTERADO.value
-
-    return DeliveryCenterItemResponse(
-        id=int(split.id or 0),
-        source_requisition_id=req.id,
-        production_split_id=int(split.id or 0),
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
         split_sequence=int(split.sequence or 0),
         is_partial_split=True,
         ped_number=_split_display_ped_number(req, split),
@@ -2597,15 +2500,9 @@ def _delivery_center_row_from_split(
         weight=float(split.weight or 0.0),
         destination=_split_destination(split) or _current_production_destination(req) or None,
         delivery_date=req.delivery_date,
-<<<<<<< HEAD
         status=_split_delivery_status(req, split),
         delivered_at=normalized_delivered_at,
         finalized_at=req.finalized_at if isinstance(req.finalized_at, datetime) else None,
-=======
-        status=display_status,
-        delivered_at=delivered_at,
-        finalized_at=finalized_at if isinstance(finalized_at, datetime) else None,
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
         deadline_changed_at=deadline_changed_at,
         deadline_change_reason=str(getattr(req, "delivery_deadline_change_reason", "") or ""),
     )
@@ -2622,7 +2519,6 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
     completed_deliveries = 0
 
     for req in reqs:
-<<<<<<< HEAD
         if not req.entrega or req.status == RequisitionStatus.CANCELADA:
             continue
 
@@ -2651,103 +2547,6 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
                 RequisitionStatus.EM_PRODUCAO.value
                 if current_status == RequisitionStatus.EM_PRODUCAO.value
                 else effective_status
-=======
-        if _has_production_splits(req):
-            for item in (
-                _delivery_center_row_from_split(req, split)
-                for split in _sorted_requisition_splits(req)
-            ):
-                if item is None:
-                    continue
-                rows.append(item)
-
-                if item.delivered_at is not None:
-                    completed_deliveries += 1
-
-                if item.delivered_at is None and item.delivery_date is not None:
-                    if item.delivery_date == today:
-                        deliveries_today += 1
-                    elif item.delivery_date < today:
-                        delayed_deliveries += 1
-
-                if item.delivered_at is None and item.deadline_changed_at is not None:
-                    changed_delivery_deadlines += 1
-            continue
-
-        delivered_at = getattr(req, "delivered_at", None)
-        status_value = getattr(req.status, "value", req.status)
-        current_status = str(status_value or "")
-        production_status = _history_production_status(req)
-        effective_status = current_status
-        if effective_status not in (
-            RequisitionStatus.PRAZO_ALTERADO.value,
-            RequisitionStatus.FINALIZADO.value,
-            RequisitionStatus.CANCELADA.value,
-        ):
-            effective_status = str(production_status or effective_status)
-        visible_pending_status = (
-            RequisitionStatus.EM_PRODUCAO.value
-            if current_status == RequisitionStatus.EM_PRODUCAO.value
-            else effective_status
-        )
-
-        # A tela de Entregas lista pedidos marcados para entrega que estejam
-        # em produÃ§Ã£o, faturados, com prazo alterado ou jÃ¡ entregues.
-        if (
-            not req.entrega
-            or req.status == RequisitionStatus.CANCELADA
-            or (
-                delivered_at is None
-                and visible_pending_status not in (
-                    RequisitionStatus.EM_PRODUCAO.value,
-                    RequisitionStatus.FINALIZADO.value,
-                    RequisitionStatus.PRAZO_ALTERADO.value,
-                )
-            )
-        ):
-            continue
-
-        deadline_changed_at = _delivery_deadline_changed_at(req)
-        delivery_date = req.delivery_date
-
-        if delivered_at is not None:
-            completed_deliveries += 1
-
-        if delivered_at is None and delivery_date is not None:
-            if delivery_date == today:
-                deliveries_today += 1
-            elif delivery_date < today:
-                delayed_deliveries += 1
-
-        if delivered_at is None and deadline_changed_at is not None:
-            changed_delivery_deadlines += 1
-
-        display_status = visible_pending_status
-        if delivered_at is not None:
-            display_status = "entregue"
-        elif (
-            display_status != RequisitionStatus.PRAZO_ALTERADO.value
-            and delivered_at is None
-            and deadline_changed_at is not None
-        ):
-            display_status = RequisitionStatus.PRAZO_ALTERADO.value
-
-        rows.append(
-            DeliveryCenterItemResponse(
-                id=req.id,
-                source_requisition_id=req.id,
-                ped_number=req.ped_number,
-                client_name=req.client_name,
-                vendor_name=req.vendor_name,
-                weight=float(req.weight or 0.0),
-                destination=_current_production_destination(req) or None,
-                delivery_date=delivery_date,
-                status=display_status,
-                delivered_at=delivered_at if isinstance(delivered_at, datetime) else None,
-                finalized_at=req.finalized_at if isinstance(req.finalized_at, datetime) else None,
-                deadline_changed_at=deadline_changed_at,
-                deadline_change_reason=str(getattr(req, "delivery_deadline_change_reason", "") or ""),
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
             )
 
         # A tela de Entregas lista pedidos marcados para entrega que estejam

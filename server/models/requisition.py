@@ -145,7 +145,6 @@ class RequisitionProductionSplit(Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     destination: Mapped[str | None] = mapped_column(String(120), nullable=True)
     production_machine: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

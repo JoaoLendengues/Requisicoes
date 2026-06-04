@@ -58,7 +58,6 @@ def _migrate():
         " delivered_at TIMESTAMP,"
         " destination TEXT,"
         " production_machine TEXT,"
-        " delivered_at TIMESTAMP,"
         " created_at TIMESTAMP NOT NULL DEFAULT NOW(),"
         " updated_at TIMESTAMP NOT NULL DEFAULT NOW(),"
         " CONSTRAINT uq_req_prod_split_sequence UNIQUE (requisition_id, sequence)"
