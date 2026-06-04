@@ -139,13 +139,8 @@ class DeliveryCenterView(QWidget):
         self._completed_rows: list[dict] = []
         self._delivery_cancel_reason_rows: list[dict[str, str]] = []
         self._delivery_deadline_reason_rows: list[dict[str, str]] = []
-<<<<<<< HEAD
         self._row_by_id: dict[str, dict] = {}
         self._completed_row_by_id: dict[str, dict] = {}
-=======
-        self._row_by_key: dict[str, dict] = {}
-        self._completed_row_by_key: dict[str, dict] = {}
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
         self._metric_labels: dict[str, QLabel] = {}
         self._setup_ui()
 
@@ -595,15 +590,11 @@ class DeliveryCenterView(QWidget):
                 row_map[row_key] = row_data
 
             ped_raw = row_data.get("ped_number")
-<<<<<<< HEAD
             ped_sort_source = str(ped_raw or "").split("/", 1)[0]
             try:
                 ped_sort = int(ped_sort_source)
             except (TypeError, ValueError):
                 ped_sort = 0
-=======
-            ped_sort = str(ped_raw or "")
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
             try:
                 weight_sort = float(row_data.get("weight") or 0.0)
             except (TypeError, ValueError):
@@ -704,11 +695,7 @@ class DeliveryCenterView(QWidget):
         row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
         if not row_key:
             return None
-<<<<<<< HEAD
         return self._row_by_id.get(row_key)
-=======
-        return self._row_by_key.get(row_key)
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
 
     def _selected_completed_row(self) -> dict | None:
         row_index = self.completed_table.currentRow()
@@ -720,7 +707,6 @@ class DeliveryCenterView(QWidget):
         row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
         if not row_key:
             return None
-<<<<<<< HEAD
         return self._completed_row_by_id.get(row_key)
 
     def _row_key(self, row: dict) -> str:
@@ -736,9 +722,6 @@ class DeliveryCenterView(QWidget):
         if not isinstance(row, dict):
             return 0
         return int(row.get("source_requisition_id") or row.get("id") or 0)
-=======
-        return self._completed_row_by_key.get(row_key)
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
 
     def _can_mark_row_delivered(self, row: dict | None) -> bool:
         if not isinstance(row, dict):
@@ -776,14 +759,8 @@ class DeliveryCenterView(QWidget):
         item = self.table.item(row_index, 0)
         if item is None:
             return
-<<<<<<< HEAD
         row = self._row_by_id.get(str(item.data(Qt.ItemDataRole.UserRole) or "").strip())
         req_id = self._row_requisition_id(row)
-=======
-        row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
-        row = self._row_by_key.get(row_key)
-        req_id = self._source_requisition_id(row)
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
         if req_id:
             self.open_requisition.emit(req_id)
 
@@ -791,25 +768,15 @@ class DeliveryCenterView(QWidget):
         item = self.completed_table.item(row_index, 0)
         if item is None:
             return
-<<<<<<< HEAD
         row = self._completed_row_by_id.get(str(item.data(Qt.ItemDataRole.UserRole) or "").strip())
         req_id = self._row_requisition_id(row)
-=======
-        row_key = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
-        row = self._completed_row_by_key.get(row_key)
-        req_id = self._source_requisition_id(row)
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
         if req_id:
             self.open_requisition.emit(req_id)
 
     def _change_selected_deadline(self):
         row = self._selected_row()
         if not row:
-<<<<<<< HEAD
             QMessageBox.information(self, "Entregas", "Selecione um pedido ou parcela primeiro.")
-=======
-            QMessageBox.information(self, "Entregas", "Selecione uma entrega primeiro.")
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
             return
         if row.get("delivered_at"):
             QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
@@ -822,11 +789,7 @@ class DeliveryCenterView(QWidget):
         new_date, reason = result
         self._run_action(
             api.update_delivery_schedule,
-<<<<<<< HEAD
             self._row_requisition_id(row),
-=======
-            self._source_requisition_id(row),
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
             new_date,
             reason,
             success_message="Prazo de entrega alterado com sucesso.",
@@ -835,11 +798,7 @@ class DeliveryCenterView(QWidget):
     def _mark_selected_delivered(self):
         row = self._selected_row()
         if not row:
-<<<<<<< HEAD
             QMessageBox.information(self, "Entregas", "Selecione um pedido ou parcela primeiro.")
-=======
-            QMessageBox.information(self, "Entregas", "Selecione uma entrega primeiro.")
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
             return
         if row.get("delivered_at"):
             QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
@@ -862,13 +821,8 @@ class DeliveryCenterView(QWidget):
 
         split_id = self._production_split_id(row)
         self._run_action(
-<<<<<<< HEAD
             api.mark_split_delivery_delivered if row.get("production_split_id") else api.mark_delivery_delivered,
             int(row.get("production_split_id") or row["id"]),
-=======
-            api.mark_delivery_split_delivered if split_id else api.mark_delivery_delivered,
-            split_id or self._source_requisition_id(row),
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
             success_message="Entrega registrada com sucesso.",
         )
 
@@ -888,13 +842,8 @@ class DeliveryCenterView(QWidget):
 
         split_id = self._production_split_id(row)
         self._run_action(
-<<<<<<< HEAD
             api.cancel_split_delivery_delivered if row.get("production_split_id") else api.cancel_delivery_delivered,
             int(row.get("production_split_id") or row["id"]),
-=======
-            api.cancel_delivery_split_delivered if split_id else api.cancel_delivery_delivered,
-            split_id or self._source_requisition_id(row),
->>>>>>> b60a0152f6804d55bbaffd348262e73fb09cfd83
             reason,
             success_message="Entrega cancelada e retornada para a agenda.",
         )
