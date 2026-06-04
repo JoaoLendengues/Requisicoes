@@ -592,6 +592,7 @@ def install_combo_popup_chrome() -> None:
         # 2) Força o background do CONTAINER do popup (parent do view) pra
         #    cor do tema. Sem isso o Fusion pinta preto nos cantos onde o
         #    border-radius do view não cobre.
+        container = None
         try:
             container = view.parentWidget()
             if container is not None:
@@ -602,10 +603,65 @@ def install_combo_popup_chrome() -> None:
                 container.setPalette(pal)
                 container.setAutoFillBackground(True)
         except Exception:
-            pass
+            container = None
+        # 3) Animação de entrada: fade-in + leve slide-down (6px). Usa
+        #    windowOpacity no container do popup (top-level Qt.Popup) — o DWM
+        #    gerencia, não tem o bug do composit do WA_TranslucentBackground.
+        if container is not None:
+            try:
+                _animate_combo_popup_entrance(container)
+            except Exception:
+                # Em qualquer falha, garante que o popup fique visível.
+                try:
+                    container.setWindowOpacity(1.0)
+                except Exception:
+                    pass
 
     QComboBox.showPopup = _patched_show_popup
     QComboBox._fp_combo_chrome_installed = True
+
+
+def _animate_combo_popup_entrance(container: QWidget) -> None:
+    """Anima entrada do popup do QComboBox: fade-in 140ms + slide-down 6px.
+
+    - windowOpacity 0 → 1 (OutCubic, 140ms)
+    - geometria desloca de y-6 → y final (OutCubic, 160ms)
+
+    Roda em CADA showPopup (o popup pode ser reusado entre aberturas, e cada
+    abertura merece a animação). Refs ficam guardadas no container até a
+    proxima abertura (ou GC junto com o container).
+    """
+    final_geo = container.geometry()
+    if final_geo.width() <= 0 or final_geo.height() <= 0:
+        return
+
+    start_geo = QRect(
+        final_geo.x(),
+        final_geo.y() - 6,
+        final_geo.width(),
+        final_geo.height(),
+    )
+
+    container.setWindowOpacity(0.0)
+    container.setGeometry(start_geo)
+
+    opacity_anim = QPropertyAnimation(container, b"windowOpacity", container)
+    opacity_anim.setDuration(140)
+    opacity_anim.setStartValue(0.0)
+    opacity_anim.setEndValue(1.0)
+    opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    geo_anim = QPropertyAnimation(container, b"geometry", container)
+    geo_anim.setDuration(160)
+    geo_anim.setStartValue(start_geo)
+    geo_anim.setEndValue(final_geo)
+    geo_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    # Mantém refs vivas até as anims terminarem (sem isso, GC mata cedo).
+    container.setProperty("_fp_combo_anim_opacity", opacity_anim)
+    container.setProperty("_fp_combo_anim_geo", geo_anim)
+    opacity_anim.start()
+    geo_anim.start()
 
 
 def install_dialog_theme_hooks(app: QApplication | None = None) -> None:
