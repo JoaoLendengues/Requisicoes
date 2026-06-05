@@ -256,6 +256,21 @@ def _refresh_rank_column(table: QTableWidget) -> None:
             item._sort_value = row_index + 1
 
 
+def _shadow_card_qss(accent: str, radius: int) -> str:
+    """QSS dos shadow cards do Dashboard. Extraído para que apply_theme()
+    consiga reaplicar lendo os parâmetros guardados como property em cada
+    card (theme_card_accent / theme_card_radius)."""
+    return (
+        f"QFrame#dashboardCard {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {theme.PANEL_CARD_BG_START}, stop:0.55 {theme.PANEL_CARD_BG_MID}, stop:1 {theme.PANEL_CARD_BG_END});"
+        f"  border:1px solid {_rgba(accent, 126)};"
+        f"  border-radius:{radius}px;"
+        f"}}"
+        f"QFrame#dashboardCard:hover {{ border-color:{_rgba(accent, 210)}; }}"
+    )
+
+
 def _make_shadow_card(
     scale: float,
     background: str,
@@ -268,16 +283,12 @@ def _make_shadow_card(
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
     accent = border_color or theme.PANEL_BORDER_SOFT
+    # Properties usadas por apply_theme() para reaplicar o stylesheet ao
+    # trocar de tema (sem isso, as cores ficavam burnadas no __init__).
     card.setProperty("theme_bg", "card")
-    card.setStyleSheet(
-        f"QFrame#dashboardCard {{"
-        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
-        f"    stop:0 {theme.PANEL_CARD_BG_START}, stop:0.55 {theme.PANEL_CARD_BG_MID}, stop:1 {theme.PANEL_CARD_BG_END});"
-        f"  border:1px solid {_rgba(accent, 126)};"
-        f"  border-radius:{radius}px;"
-        f"}}"
-        f"QFrame#dashboardCard:hover {{ border-color:{_rgba(accent, 210)}; }}"
-    )
+    card.setProperty("theme_card_accent", accent)
+    card.setProperty("theme_card_radius", int(radius))
+    card.setStyleSheet(_shadow_card_qss(accent, int(radius)))
     _apply_shadow(card, blur=max(28, int(34 * scale)), y_offset=max(4, int(5 * scale)), alpha=56)
     return card
 
@@ -2563,6 +2574,19 @@ class DashboardView(QWidget):
         ]:
             if tbl is not None:
                 self._refresh_machine_status_labels(tbl)
+
+        # Cards individuais — o setStyleSheet inline de cada QFrame#dashboardCard
+        # tem precedência sobre o QSS view-level, então precisa reaplicar com
+        # as cores do tema atual usando o accent/radius guardados como property.
+        for card in self.findChildren(QFrame, "dashboardCard"):
+            accent = card.property("theme_card_accent") or theme.PANEL_BORDER_SOFT
+            radius = card.property("theme_card_radius") or 18
+            card.setStyleSheet(_shadow_card_qss(str(accent), int(radius)))
+
+        # NeonComparisonWidget pinta via QPainter lendo theme.PANEL_CARD_BG_*.
+        # Sem forçar update(), mantém o pixmap cacheado do tema antigo.
+        for widget in self.findChildren(NeonComparisonWidget):
+            widget.update()
 
         # Labels com cor explicita (precisam reaplicar)
         for lbl in self._metric_labels.values():

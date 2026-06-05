@@ -406,25 +406,28 @@ class Sidebar(QWidget):
         panel_layout.setSpacing(0)
 
         # ── Logo ──────────────────────────────────────────────────────────────
-        logo_container = QWidget()
-        logo_container.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
-        logo_layout = QVBoxLayout(logo_container)
+        # IMPORTANTE: guardar self._logo_container e self._logo_label para que
+        # apply_theme() consiga reaplicar SIDEBAR_BG ao trocar de tema. Sem
+        # isso, o container do logo ficava com a cor do tema do __init__.
+        self._logo_container = QWidget()
+        self._logo_container.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
+        logo_layout = QVBoxLayout(self._logo_container)
         logo_layout.setContentsMargins(16, 20, 16, 18)
 
-        logo_label = QLabel()
+        self._logo_label = QLabel()
         pix = QPixmap(LOGO_PATH)
         if not pix.isNull():
             width = max(100, int(176 * self.scale))
             pix = pix.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
-            logo_label.setPixmap(pix)
+            self._logo_label.setPixmap(pix)
         else:
-            logo_label.setText("PINHEIRO FERRAGENS")
-            logo_label.setStyleSheet(
+            self._logo_label.setText("PINHEIRO FERRAGENS")
+            self._logo_label.setStyleSheet(
                 f"background:transparent; color:{theme.TEXT_WHITE}; font-size:{max(11, int(13 * self.scale))}pt; font-weight:bold;"
             )
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo_layout.addWidget(logo_label)
-        panel_layout.addWidget(logo_container)
+        self._logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_layout.addWidget(self._logo_label)
+        panel_layout.addWidget(self._logo_container)
         panel_layout.addWidget(self._separator())
 
         # ── Navegação principal ───────────────────────────────────────────────
@@ -649,3 +652,16 @@ class Sidebar(QWidget):
         self._theme_toggle.set_dark(theme.is_dark, animate=False)
         self._theme_toggle.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
         self._bell.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
+        # Container do logo no topo — sem isso, mantém SIDEBAR_BG do __init__.
+        if hasattr(self, "_logo_container") and self._logo_container is not None:
+            self._logo_container.setStyleSheet(f"background:{theme.SIDEBAR_BG};")
+        if (
+            hasattr(self, "_logo_label")
+            and self._logo_label is not None
+            and self._logo_label.pixmap() is None
+        ):
+            # Só estiliza texto se for fallback (sem pixmap carregado).
+            self._logo_label.setStyleSheet(
+                f"background:transparent; color:{theme.TEXT_WHITE};"
+                f"font-size:{max(11, int(13 * self.scale))}pt; font-weight:bold;"
+            )
