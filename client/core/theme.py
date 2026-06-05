@@ -7,13 +7,25 @@ Uso:
     theme.set_dark(True)           # troca para modo escuro
     theme.is_dark                  # bool
 
+Theme registry (ver themed/themed_callback abaixo):
+    Sempre que um widget tem setStyleSheet com cores do tema, usar
+    `theme.themed(widget, lambda: f"... {theme.PANEL_TEXT_PRIMARY} ...")`.
+    O helper aplica o stylesheet agora E registra a closure num registry.
+    Quando `set_dark()` for chamado, o registry reaplica todas as
+    closures automaticamente — sem precisar que cada view tenha um
+    apply_theme() exaustivo.
+
 Troca de tema em tempo de execução:
-    Após chamar set_dark(), faça um soft-restart da MainWindow para que
-    todos os widgets sejam reconstruídos com as novas cores.
+    `set_dark(True/False)` atualiza paleta, invalida cache do global_style
+    e dispara `_reapply_themed_registry()` (reaplica todos os widgets
+    registrados via themed/themed_callback).
 """
 import sys
+import weakref
+from typing import Callable
 
 from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QWidget
 
 # ── Paleta clara (padrão) ─────────────────────────────────────────────────────
 
@@ -282,7 +294,8 @@ def _sync_external_panel_tokens() -> None:
 def set_dark(dark: bool) -> None:
     """
     Alterna entre modo escuro e claro.
-    Após chamar, faça um soft-restart da MainWindow para reconstruir os widgets.
+    Após chamar, todos os widgets registrados em `themed()`/`themed_callback()`
+    têm seus stylesheets reaplicados automaticamente.
     """
     global is_dark, _global_style_cache
     is_dark = dark
@@ -290,6 +303,78 @@ def set_dark(dark: bool) -> None:
     _sync_external_panel_tokens()
     # Invalida o cache do global_style — paleta nova exige regeneração da string.
     _global_style_cache = None
+    # Dispara reaplicação automática dos widgets registrados.
+    _reapply_themed_registry()
+
+
+# ── Theme registry ────────────────────────────────────────────────────────────
+# Lista de (weakref do widget, callback que aplica o estilo). Cada entrada é
+# reexecutada em set_dark(). weakref permite GC normal dos widgets — não
+# vazamos memória quando uma view é destruída.
+
+_themed_registry: list[tuple[weakref.ref, Callable[[QWidget], None]]] = []
+
+
+def themed(widget: QWidget, style_fn: Callable[[], str]) -> QWidget:
+    """Aplica `style_fn()` no widget agora E registra para reaplicar a cada
+    troca de tema. Use sempre que um stylesheet tem cores do tema dentro.
+
+    Substituto direto de `widget.setStyleSheet(...)` quando há cor de tema:
+
+        # Antes (cor congelada no momento da criação):
+        label.setStyleSheet(f"color:{theme.PANEL_TEXT_PRIMARY};")
+
+        # Depois (cor sempre atual):
+        theme.themed(label, lambda: f"color:{theme.PANEL_TEXT_PRIMARY};")
+
+    Retorna o widget para permitir chaining.
+    """
+    def _apply(w: QWidget) -> None:
+        w.setStyleSheet(style_fn())
+
+    _apply(widget)
+    _themed_registry.append((weakref.ref(widget), _apply))
+    return widget
+
+
+def themed_callback(widget: QWidget, apply_fn: Callable[[QWidget], None]) -> QWidget:
+    """Variante de `themed()` para casos onde aplicar tema não é só
+    setStyleSheet — ex: setPalette, setIcon, addResource, ou um conjunto
+    de operações coordenadas.
+
+        theme.themed_callback(widget, lambda w: (
+            w.setStyleSheet(f"color:{theme.PANEL_TEXT_PRIMARY};"),
+            w.setIcon(theme.icon("foo")),
+        ))
+
+    A callback recebe o widget e é chamada agora + em toda troca de tema.
+    """
+    apply_fn(widget)
+    _themed_registry.append((weakref.ref(widget), apply_fn))
+    return widget
+
+
+def _reapply_themed_registry() -> None:
+    """Reaplica todas as closures registradas, descartando widgets que já
+    foram garbage-coletados. Chamado por set_dark()."""
+    alive: list[tuple[weakref.ref, Callable[[QWidget], None]]] = []
+    for ref, apply_fn in _themed_registry:
+        w = ref()
+        if w is None:
+            continue  # widget morreu, sai do registry
+        try:
+            apply_fn(w)
+        except RuntimeError:
+            # Qt C++ object já deletado mesmo com Python ref ainda válido.
+            # Ignora e remove do registry.
+            continue
+        alive.append((ref, apply_fn))
+    _themed_registry[:] = alive
+
+
+def themed_registry_size() -> int:
+    """Conta widgets registrados (para diagnóstico/debug)."""
+    return len(_themed_registry)
 
 
 # Cache do global_style(): a string CSS é gigante (~30 KB) e era regerada a cada
