@@ -825,6 +825,11 @@ class DashboardView(QWidget):
         self.scale = scale
         self._threads: list[tuple[QThread, QObject]] = []
         self._metric_labels: dict[str, QLabel] = {}
+        # Títulos e helpers dos metric cards — registrados para reaplicar cor
+        # em apply_theme (antes ficavam burnados com PANEL_TEXT_PRIMARY/MUTED
+        # do tema do init).
+        self._metric_title_labels: dict[str, QLabel] = {}
+        self._metric_helper_labels: dict[str, QLabel] = {}
         self._comparison_period = "monthly"
         self._comparison_period_buttons: dict[str, QPushButton] = {}
         self._machine_period_options = [
@@ -1377,6 +1382,8 @@ class DashboardView(QWidget):
         layout.addWidget(accent_line)
 
         self._metric_labels[key] = value_label
+        self._metric_title_labels[key] = title_label
+        self._metric_helper_labels[key] = helper_label
         return card
 
     def _build_metric_icon_label(self, key: str) -> QLabel | None:
@@ -2588,11 +2595,50 @@ class DashboardView(QWidget):
         for widget in self.findChildren(NeonComparisonWidget):
             widget.update()
 
+        # Combos e date pickers — setStyleSheet inline no __init__ tem
+        # precedência sobre o QSS scoped do parent, então reaplicar com
+        # _field_style() pega as cores PANEL_SURFACE_BG/PANEL_TEXT_PRIMARY
+        # atualizadas pelo tema.
+        field_qss = _field_style(s)
+        for combo in (
+            getattr(self, "performance_period_combo", None),
+            getattr(self, "performance_destination_combo", None),
+            getattr(self, "comparison_destination_combo", None),
+            getattr(self, "people_period_combo", None),
+            getattr(self, "people_destination_combo", None),
+            getattr(self, "ar_period_combo", None),
+            getattr(self, "industria_period_combo", None),
+        ):
+            if combo is not None:
+                combo.setStyleSheet(field_qss)
+        for date_edit in (
+            getattr(self, "performance_date_from", None),
+            getattr(self, "performance_date_to", None),
+        ):
+            if date_edit is not None:
+                date_edit.setStyleSheet(field_qss)
+
+        # Chips MENSAL/SEMANAL/DIÁRIO — mesmo problema do combos.
+        chip_qss = _neon_period_chip_style(s)
+        for btn in self._comparison_period_buttons.values():
+            btn.setStyleSheet(chip_qss)
+
         # Labels com cor explicita (precisam reaplicar)
         for lbl in self._metric_labels.values():
             lbl.setStyleSheet(
                 f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
                 f"color:{theme.PANEL_TEXT_PRIMARY};"
+            )
+        # Titulos e helpers dos metric cards — sem isso somem no tema oposto.
+        for lbl in self._metric_title_labels.values():
+            lbl.setStyleSheet(
+                f"font-size:{max(9, int(11 * s))}pt; font-weight:700; background:transparent; border:none;"
+                f"color:{theme.PANEL_TEXT_PRIMARY};"
+            )
+        for lbl in self._metric_helper_labels.values():
+            lbl.setStyleSheet(
+                f"font-size:{max(7, int(8 * s))}pt; background:transparent; border:none;"
+                f"color:{theme.PANEL_TEXT_MUTED};"
             )
         for lbl in self.iar_detail_value_labels.values():
             lbl.setStyleSheet(
