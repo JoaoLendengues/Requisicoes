@@ -33,7 +33,7 @@ from ..core import theme
 from ..core.formatters import format_weight_kg
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..widgets.sortable_item import SortableItem
-from ..core.dialogs import apply_message_box_theme
+from ..core.dialogs import apply_message_box_theme, fit_dialog_button_widths
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -1339,18 +1339,13 @@ class OrderCenterView(QWidget):
         btn_close = QPushButton("Fechar")
         btn_close.setStyleSheet(theme.secondary_btn_style(self.scale))
 
-        metrics = QFontMetrics(btn_edit.font())
-        horizontal_padding = max(64, int(78 * self.scale))
-        btn_edit_w = max(230, metrics.horizontalAdvance(btn_edit.text()) + horizontal_padding)
-        btn_receipt_w = max(300, metrics.horizontalAdvance(btn_receipt.text()) + horizontal_padding)
-        btn_close_w = max(170, metrics.horizontalAdvance(btn_close.text()) + horizontal_padding)
+        button_widths = fit_dialog_button_widths(
+            [btn_edit, btn_receipt, btn_close],
+            scale=self.scale,
+            expanding=True,
+        )
         btn_height = max(50, int(58 * self.scale))
-        for btn, width in (
-            (btn_edit, btn_edit_w),
-            (btn_receipt, btn_receipt_w),
-            (btn_close, btn_close_w),
-        ):
-            btn.setMinimumWidth(width)
+        for btn in (btn_edit, btn_receipt, btn_close):
             btn.setMinimumHeight(btn_height)
             buttons.addWidget(btn)
 
@@ -1358,7 +1353,7 @@ class OrderCenterView(QWidget):
         layout.addLayout(buttons)
 
         row_padding = max(120, int(148 * self.scale))
-        dlg.setMinimumWidth(max(980, btn_edit_w + btn_receipt_w + btn_close_w + row_padding))
+        dlg.setMinimumWidth(max(980, sum(button_widths) + row_padding))
 
         btn_edit.clicked.connect(lambda: (dlg.setProperty("_action", "edit"), dlg.accept()))
         btn_receipt.clicked.connect(lambda: (dlg.setProperty("_action", "receipt"), dlg.accept()))

@@ -3154,20 +3154,7 @@ class RequisitionForm(QWidget):
         btn_ar = msg.addButton("A&&R", QMessageBox.ButtonRole.AcceptRole)
         btn_pinheiro = msg.addButton("Pinheiro Indústria", QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
-        apply_message_box_theme(msg)
-
-        buttons = (btn_ar, btn_pinheiro, btn_cancel)
-        button_gap = max(12, int(14 * self.scale))
-        horizontal_padding = max(52, int(64 * self.scale))
-        total_buttons_width = 0
-        for button in buttons:
-            visible_text = button.text().replace("&&", "&").replace("&", "")
-            text_width = button.fontMetrics().horizontalAdvance(visible_text)
-            min_width = max(124, text_width + max(48, int(58 * self.scale)))
-            button.setMinimumWidth(min_width)
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            total_buttons_width += min_width
-        msg.setMinimumWidth(total_buttons_width + button_gap * (len(buttons) - 1) + horizontal_padding)
+        apply_message_box_theme(msg, self.scale)
 
         msg.exec()
         clicked = msg.clickedButton()

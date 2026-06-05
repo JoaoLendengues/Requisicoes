@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QWidget,
 )
 
@@ -62,6 +63,43 @@ class _MessageBoxShortcutFilter(QObject):
 
 def _clean_button_text(text: str) -> str:
     return (text or "").replace("&", "").strip().lower()
+
+
+def fit_dialog_button_widths(
+    buttons: list[QPushButton] | tuple[QPushButton, ...],
+    *,
+    scale: float = 1.0,
+    expanding: bool = False,
+) -> list[int]:
+    """Garantir largura suficiente para o texto completo dos botoes."""
+    widths: list[int] = []
+    text_padding = max(42, int(52 * scale))
+    extra_buffer = max(14, int(18 * scale))
+
+    for button in buttons:
+        if not isinstance(button, QPushButton):
+            continue
+
+        button.ensurePolished()
+        visible_text = button.text().replace("&&", "&").replace("&", "")
+        target_width = max(
+            button.minimumWidth(),
+            button.minimumSizeHint().width(),
+            button.sizeHint().width(),
+        )
+        if visible_text:
+            target_width = max(
+                target_width,
+                button.fontMetrics().horizontalAdvance(visible_text) + text_padding,
+            )
+
+        target_width += extra_buffer
+        button.setMinimumWidth(target_width)
+        if expanding:
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        widths.append(target_width)
+
+    return widths
 
 
 def _resolve_message_box_button(box: QMessageBox, letter: str):
@@ -502,10 +540,16 @@ def _message_box_button_style() -> str:
     return ""
 
 
-def apply_message_box_theme(box: QMessageBox) -> QMessageBox:
+def apply_message_box_theme(box: QMessageBox, scale: float = 1.0) -> QMessageBox:
     apply_dialog_theme(box)
     box.installEventFilter(_MESSAGE_BOX_SHORTCUT_FILTER)
     _style_dialog_buttons(box)
+    button_widths = fit_dialog_button_widths(box.buttons(), scale=scale, expanding=True)
+    if button_widths:
+        button_gap = max(10, int(12 * scale))
+        horizontal_padding = max(56, int(68 * scale))
+        total_width = sum(button_widths) + button_gap * max(0, len(button_widths) - 1) + horizontal_padding
+        box.setMinimumWidth(max(box.minimumWidth(), total_width))
     return box
 
 
