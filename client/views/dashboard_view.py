@@ -912,12 +912,20 @@ class DashboardView(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(max(4, int(5 * s)))
         title = QLabel("Painel de Produção")
-        title.setStyleSheet(f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;")
+        # Cor explicita: palette nao propaga consistentemente para widgets
+        # com setStyleSheet inline (mesmo que o stylesheet nao mexa em color).
+        theme.themed(title, lambda: (
+            f"background:transparent; font-size:{max(18, int(24 * s))}pt;"
+            f"font-weight:800; color:{theme.PANEL_TEXT_PRIMARY};"
+        ))
         subtitle = QLabel(
             "Visão executiva da operação industrial com indicadores, alertas e ritmo de produção."
         )
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"background:transparent; font-size:{max(8, int(10 * s))}pt;")
+        theme.themed(subtitle, lambda: (
+            f"background:transparent; font-size:{max(8, int(10 * s))}pt;"
+            f"color:{theme.PANEL_TEXT_MUTED};"
+        ))
         subtitle.setWordWrap(True)
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
@@ -1928,10 +1936,10 @@ class DashboardView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(max(6, int(8 * self.scale)))
         label = QLabel(title)
-        label.setStyleSheet(
+        theme.themed(label, lambda: (
             f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
             f"color:{theme.PANEL_TEXT_PRIMARY};"
-        )
+        ))
         layout.addWidget(label)
         layout.addWidget(table, 1)
         return wrapper
