@@ -3619,7 +3619,7 @@ class DrawingCanvas(QWidget):
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
-        title = QLabel("DESENHO / REFERENCIA")
+        title = QLabel("DESENHO / REFERÊNCIA")
         self._title_label = title
         fs = max(9, int(11 * self.scale))
         title.setStyleSheet(self._title_style())
