@@ -844,6 +844,7 @@ class CanvasDialog(QDialog):
         self._footer_buttons_layout.addWidget(self.btn_cancel)
         self._footer_buttons_layout.addWidget(self.btn_ok)
         btn_row.addLayout(self._footer_buttons_layout)
+        btn_row.addStretch()
         layout.addLayout(btn_row)
         self._update_footer_button_layout()
 
