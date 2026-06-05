@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect, QSizePolicy, QGraphicsScene, QGraphicsView,
     QListWidget, QListWidgetItem, QStyle, QApplication, QAbstractItemView, QPlainTextEdit,
     QAbstractSpinBox, QToolButton, QDateTimeEdit, QTableWidget, QTableWidgetItem,
+    QBoxLayout,
     QHeaderView,
 )
 from PySide6.QtCore import (
@@ -823,22 +824,28 @@ class CanvasDialog(QDialog):
 
         # Botões inferiores
         btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.setSpacing(0)
         btn_row.addStretch()
 
-        btn_cancel = QPushButton("✕ Descartar alterações")
-        btn_cancel.setFixedHeight(max(34, int(38 * scale)))
-        btn_cancel.setStyleSheet(_req_secondary_btn_style(scale))
-        btn_cancel.clicked.connect(self.reject)
+        self.btn_cancel = QPushButton("✕ Descartar alterações")
+        self.btn_cancel.setFixedHeight(max(34, int(38 * scale)))
+        self.btn_cancel.setStyleSheet(_req_secondary_btn_style(scale))
+        self.btn_cancel.clicked.connect(self.reject)
 
-        btn_ok = QPushButton("✓ Salvar desenho e fechar")
-        btn_ok.setFixedHeight(max(34, int(38 * scale)))
-        btn_ok.setStyleSheet(_req_primary_btn_style(scale))
-        btn_ok.clicked.connect(self.accept)
+        self.btn_ok = QPushButton("✓ Salvar desenho e fechar")
+        self.btn_ok.setFixedHeight(max(34, int(38 * scale)))
+        self.btn_ok.setStyleSheet(_req_primary_btn_style(scale))
+        self.btn_ok.clicked.connect(self.accept)
 
-        btn_row.addWidget(btn_cancel)
-        btn_row.addSpacing(8)
-        btn_row.addWidget(btn_ok)
+        self._footer_buttons_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self._footer_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self._footer_buttons_layout.setSpacing(8)
+        self._footer_buttons_layout.addWidget(self.btn_cancel)
+        self._footer_buttons_layout.addWidget(self.btn_ok)
+        btn_row.addLayout(self._footer_buttons_layout)
         layout.addLayout(btn_row)
+        self._update_footer_button_layout()
 
         # Carrega dados existentes
         if json_data and json_data not in ("{}", ""):
@@ -889,6 +896,32 @@ class CanvasDialog(QDialog):
         # que o gerenciador de janelas do Windows terminar qualquer ajuste próprio.
         from PySide6.QtCore import QTimer
         QTimer.singleShot(0, self._pin_to_primary_screen)
+        QTimer.singleShot(0, self._update_footer_button_layout)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._update_footer_button_layout()
+
+    def _update_footer_button_layout(self) -> None:
+        if not hasattr(self, "_footer_buttons_layout"):
+            return
+        root_layout = self.layout()
+        margins = root_layout.contentsMargins() if root_layout else None
+        horizontal_padding = (margins.left() + margins.right()) if margins else 0
+        available_width = max(0, self.width() - horizontal_padding)
+        required_width = (
+            self.btn_cancel.sizeHint().width()
+            + self.btn_ok.sizeHint().width()
+            + self._footer_buttons_layout.spacing()
+        )
+        stacked = available_width < (required_width + 24)
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if stacked
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if self._footer_buttons_layout.direction() != direction:
+            self._footer_buttons_layout.setDirection(direction)
 
 
 class _CanvasReadOnlyView(QGraphicsView):
