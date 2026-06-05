@@ -55,6 +55,23 @@ def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int
     widget.setGraphicsEffect(shadow)
 
 
+def _delivery_card_qss(border_color: str | None, radius: int) -> str:
+    """QSS dos cards do delivery center. Cobre background gradient +
+    border (que muda com tema) num único stylesheet do widget.
+    Chamado via theme.themed() para reaplicar a cada troca de tema."""
+    accent = border_color or theme.PANEL_BORDER_SOFT
+    return (
+        f"QFrame#deliveryCenterCard {{"
+        f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+        f"    stop:0 {theme.PANEL_CARD_BG_START},"
+        f"    stop:0.55 {theme.PANEL_CARD_BG_MID},"
+        f"    stop:1 {theme.PANEL_CARD_BG_END});"
+        f"  border:1px solid {_rgba(accent, 126)};"
+        f"  border-radius:{radius}px;"
+        f"}}"
+    )
+
+
 def _make_card(
     scale: float,
     background: str | None = None,
@@ -67,7 +84,8 @@ def _make_card(
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
     card.setProperty("theme_bg", "card_bordered" if border_color else "card")
-    card.setStyleSheet(f"QFrame#deliveryCenterCard {{ border-radius:{radius}px; }}")
+    radius_int = int(radius)
+    theme.themed(card, lambda: _delivery_card_qss(border_color, radius_int))
     _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
     return card
 
@@ -178,17 +196,18 @@ class DeliveryCenterView(QWidget):
         status_col.setSpacing(max(6, int(8 * s)))
         self.date_label = QLabel(_format_header_date())
         self.date_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.date_label.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:700; color:{theme.TEXT_MEDIUM};"
-        )
+        theme.themed(self.date_label, lambda: (
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"font-weight:700; color:{theme.TEXT_MEDIUM};"
+        ))
         self.updated_label = QLabel("Atualizado em -")
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.updated_label.setStyleSheet(
+        theme.themed(self.updated_label, lambda: (
             f"background:transparent; font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM};"
-        )
+        ))
         self.refresh_btn = QPushButton("ATUALIZAR")
         self.refresh_btn.setFixedHeight(max(34, int(38 * s)))
-        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        theme.themed(self.refresh_btn, lambda: _flat_secondary_btn_style(s))
         self.refresh_btn.clicked.connect(self.refresh)
         status_col.addWidget(self.date_label)
         status_col.addWidget(self.updated_label)
@@ -286,13 +305,13 @@ class DeliveryCenterView(QWidget):
 
         self.btn_change_deadline = QPushButton("ALTERAR PRAZO")
         self.btn_change_deadline.setFixedHeight(max(34, int(38 * s)))
-        self.btn_change_deadline.setStyleSheet(_flat_secondary_btn_style(s))
+        theme.themed(self.btn_change_deadline, lambda: _flat_secondary_btn_style(s))
         self.btn_change_deadline.clicked.connect(self._change_selected_deadline)
         title_row.addWidget(self.btn_change_deadline)
 
         self.btn_mark_delivered = QPushButton("ENTREGUE")
         self.btn_mark_delivered.setFixedHeight(max(34, int(38 * s)))
-        self.btn_mark_delivered.setStyleSheet(_primary_action_btn_style(s))
+        theme.themed(self.btn_mark_delivered, lambda: _primary_action_btn_style(s))
         self.btn_mark_delivered.clicked.connect(self._mark_selected_delivered)
         title_row.addWidget(self.btn_mark_delivered)
 
@@ -344,7 +363,7 @@ class DeliveryCenterView(QWidget):
         completed_actions_row.addStretch()
         self.btn_cancel_delivered = QPushButton("CANCELAR ENTREGA")
         self.btn_cancel_delivered.setFixedHeight(max(34, int(38 * s)))
-        self.btn_cancel_delivered.setStyleSheet(_flat_secondary_btn_style(s))
+        theme.themed(self.btn_cancel_delivered, lambda: _flat_secondary_btn_style(s))
         self.btn_cancel_delivered.clicked.connect(self._cancel_selected_delivered)
         completed_actions_row.addWidget(self.btn_cancel_delivered)
         completed_layout.addLayout(completed_actions_row)
@@ -1177,12 +1196,10 @@ class DeliveryCenterView(QWidget):
         )
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
 
-        # Botoes — QSS depende de tema (cores PRIMARY/hover/border)
-        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_change_deadline.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_mark_delivered.setStyleSheet(_primary_action_btn_style(s))
-        if hasattr(self, "btn_cancel_delivered"):
-            self.btn_cancel_delivered.setStyleSheet(_flat_secondary_btn_style(s))
+        # NOTE: refresh_btn, btn_change_deadline, btn_mark_delivered,
+        # btn_cancel_delivered, date_label, updated_label e os cards do
+        # _make_card foram migrados para theme.themed() no __init__.
+        # O registry global os reaplica em set_dark() automaticamente.
 
         # Error label — cores DANGER (alpha) precisam ser regeneradas
         self.error_label.setStyleSheet(
