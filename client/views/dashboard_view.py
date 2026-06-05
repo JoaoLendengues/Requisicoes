@@ -60,7 +60,7 @@ _RADAR_PERIOD_COLORS = {
 _NEON_PERIOD_LABELS = {
     "monthly": "MENSAL",
     "weekly": "SEMANAL",
-    "daily": "DIARIO",
+    "daily": "DIÁRIO",
 }
 _IAR_TOOLTIP_TEXTS = {
     "iar_geral": (
