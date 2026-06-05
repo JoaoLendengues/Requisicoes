@@ -824,7 +824,7 @@ class CanvasDialog(QDialog):
 
         # Botões inferiores
         btn_row = QHBoxLayout()
-        btn_row.setContentsMargins(0, max(2, int(3 * scale)), 0, max(6, int(8 * scale)))
+        btn_row.setContentsMargins(0, max(1, int(2 * scale)), 0, max(12, int(14 * scale)))
         btn_row.setSpacing(0)
         btn_row.addStretch()
 
