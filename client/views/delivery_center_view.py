@@ -165,10 +165,12 @@ class DeliveryCenterView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = theme.CONTENT_BG
         self.setObjectName("deliveryCenterView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"QWidget#deliveryCenterView {{ background:{page_bg}; }}")
+        # Background da view via theme.themed() — sem isso, o page_bg capturado
+        # no init do tema escuro permanecia ao trocar pra claro (a area entre
+        # cards continuava escura mesmo apos a troca).
+        theme.themed(self, lambda: f"QWidget#deliveryCenterView {{ background:{theme.CONTENT_BG}; }}")
 
         root = QVBoxLayout(self)
         root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
@@ -237,15 +239,14 @@ class DeliveryCenterView(QWidget):
         self._page_scroll = SmoothScrollArea()
         self._page_scroll.setWidgetResizable(True)
         self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{page_bg}; }}")
+        theme.themed(self._page_scroll, lambda: f"QScrollArea {{ border:none; background:{theme.CONTENT_BG}; }}")
+        theme.themed(self._page_scroll.viewport(), lambda: f"background:{theme.CONTENT_BG}; border:none;")
         root.addWidget(self._page_scroll, 1)
 
         self._page_content = QWidget()
         self._page_content.setObjectName("deliveryCenterContent")
         self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._page_content.setStyleSheet(
-            f"QWidget#deliveryCenterContent {{ background:{page_bg}; }}"
-        )
+        theme.themed(self._page_content, lambda: f"QWidget#deliveryCenterContent {{ background:{theme.CONTENT_BG}; }}")
         self._page_scroll.setWidget(self._page_content)
 
         content_layout = QVBoxLayout(self._page_content)
