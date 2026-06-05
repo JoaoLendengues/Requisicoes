@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem, QGraphicsItem, QInputDialog, QFileDialog,
     QPushButton, QLabel, QColorDialog, QSpinBox, QDoubleSpinBox,
     QSizePolicy, QFrame, QComboBox, QApplication, QDialog, QMessageBox,
-    QListWidget, QListWidgetItem, QGraphicsOpacityEffect,
+    QListWidget, QListWidgetItem, QGraphicsOpacityEffect, QScrollArea,
 )
 from ..core import theme
 from ..core.text_case import normalize_upper_text
@@ -3672,9 +3672,9 @@ class DrawingCanvas(QWidget):
             (Tool.TEXT, "Texto", "T"),
         ]
 
-        # Linha 1a: Ferramentas (separado das propriedades para não cortar nomes)
-        tools_frame, row_tools = self._create_toolbar_section()
-        row_tools.setSpacing(4)
+        # Bloco 1: Ferramentas — uma por linha (empilhadas verticalmente)
+        tools_frame, col_tools = self._create_toolbar_section()
+        col_tools.setSpacing(3)
         for t, label, key in tools:
             btn = QPushButton(label)
             btn.setCheckable(True)
@@ -3683,56 +3683,44 @@ class DrawingCanvas(QWidget):
             btn.clicked.connect(lambda checked, tool=t: self._set_tool(tool))
             btn.setStyleSheet(self._tool_btn_style())
             self._tool_btns[t] = btn
-            row_tools.addWidget(btn)
-        row_tools.addStretch()
+            col_tools.addWidget(btn)
         toolbar_stack.addWidget(tools_frame)
 
-        # Linha 1b: Propriedades do traço
-        props_frame, row_props = self._create_toolbar_section()
-        row_props.setSpacing(4)
+        # Bloco 2: Propriedades do traço — cada par label+campo em sua linha
+        props_frame, col_props = self._create_toolbar_section()
+        col_props.setSpacing(4)
 
-        # Cor
+        # Cor (label + swatch lado a lado)
         self.btn_color = QPushButton("")
         self.btn_color.setFixedSize(fh, fh)
         self.btn_color.setToolTip("Cor do traço")
         self.btn_color.setStyleSheet(self._color_swatch_style())
         self.btn_color.clicked.connect(self._pick_color)
-        row_props.addWidget(self.btn_color)
-
-        row_props.addSpacing(8)
+        col_props.addLayout(self._hpair(_lbl("Cor:"), self.btn_color))
 
         # Espessura
-        row_props.addWidget(_lbl("Esp.:"))
         self.spin_width = QSpinBox()
         self.spin_width.setRange(1, 26)
         self.spin_width.setValue(self.pen_width)
-        self.spin_width.setFixedWidth(max(56, int(68 * s)))
         self.spin_width.setFixedHeight(fh)
         self.spin_width.setStyleSheet(self._field_style())
         self.spin_width.valueChanged.connect(self._on_pen_width_changed)
-        row_props.addWidget(self.spin_width)
-
-        row_props.addSpacing(8)
+        col_props.addLayout(self._hpair(_lbl("Esp.:"), self.spin_width))
 
         # Estilo de linha
-        row_props.addWidget(_lbl("Linha:"))
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
-        self.combo_style.setFixedWidth(max(126, int(152 * s)))
         self.combo_style.addItem("___ Solida", Qt.PenStyle.SolidLine)
         self.combo_style.addItem("- - Tracejada",  Qt.PenStyle.DashLine)
         self.combo_style.addItem("··· Pontilhada", Qt.PenStyle.DotLine)
         self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
         self.combo_style.setStyleSheet(self._field_style())
         self.combo_style.currentIndexChanged.connect(self._on_pen_style_changed)
-        row_props.addWidget(self.combo_style)
+        col_props.addLayout(self._hpair(_lbl("Linha:"), self.combo_style))
 
-        row_props.addSpacing(8)
-
-        row_props.addWidget(_lbl("Esq.:"))
+        # Esquadro
         self.combo_esquadro = QComboBox()
         self.combo_esquadro.setFixedHeight(fh)
-        self.combo_esquadro.setFixedWidth(max(116, int(136 * s)))
         self.combo_esquadro.addItem("90°", 90.0)
         self.combo_esquadro.addItem("45°", 45.0)
         self.combo_esquadro.addItem("30°/60°", 30.0)
@@ -3742,39 +3730,34 @@ class DrawingCanvas(QWidget):
         self.combo_esquadro.setToolTip("Passo angular da ferramenta Esquadro")
         self.combo_esquadro.setEnabled(False)
         self.combo_esquadro.setStyleSheet(self._field_style())
-        row_props.addWidget(self.combo_esquadro)
-
-        row_props.addSpacing(8)
+        col_props.addLayout(self._hpair(_lbl("Esq.:"), self.combo_esquadro))
 
         # Tamanho da fonte
-        row_props.addWidget(_lbl("Fonte:"))
         self.spin_font = QSpinBox()
         self.spin_font.setRange(6, 180)
         self.spin_font.setValue(self.font_size)
         self.spin_font.setSuffix(" pt")
-        self.spin_font.setFixedWidth(max(76, int(92 * s)))
         self.spin_font.setFixedHeight(fh)
         self.spin_font.setStyleSheet(self._field_style())
         self.spin_font.valueChanged.connect(self._on_font_size_changed)
-        row_props.addWidget(self.spin_font)
+        col_props.addLayout(self._hpair(_lbl("Fonte:"), self.spin_font))
 
-        row_props.addSpacing(8)
-
+        # Botão Desenho (linha cheia)
         self.btn_desenho = QPushButton("Desenho")
         self.btn_desenho.setFixedHeight(fh)
         self.btn_desenho.setToolTip("Escolher categoria de desenho pré-definido")
         self.btn_desenho.clicked.connect(self._open_desenho_popup)
         self.btn_desenho.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(self.btn_desenho)
-        row_props.addWidget(self.btn_desenho)
+        col_props.addWidget(self.btn_desenho)
 
-        row_props.addStretch()
         toolbar_stack.addWidget(props_frame)
 
-        # Linha 2: Ações
-        actions_frame, row2 = self._create_toolbar_section()
-        row2.setSpacing(4)
+        # Bloco 3: Ações — agrupadas em sub-linhas pareadas onde fizer sentido
+        actions_frame, col_actions = self._create_toolbar_section()
+        col_actions.setSpacing(4)
 
+        # Desfazer | Refazer (par horizontal)
         btn_undo = QPushButton("Desfazer")
         btn_undo.setFixedHeight(fh)
         btn_undo.clicked.connect(self._undo)
@@ -3787,36 +3770,37 @@ class DrawingCanvas(QWidget):
         btn_redo.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(btn_redo)
 
-        row2.addWidget(btn_undo)
-        row2.addWidget(btn_redo)
-        row2.addSpacing(8)
+        pair_undo = QHBoxLayout()
+        pair_undo.setContentsMargins(0, 0, 0, 0)
+        pair_undo.setSpacing(4)
+        pair_undo.addWidget(btn_undo, 1)
+        pair_undo.addWidget(btn_redo, 1)
+        col_actions.addLayout(pair_undo)
 
-        # Rotação via toolbar (mantida para precisão numérica)
-        row2.addWidget(_lbl("Girar:"))
+        # Rotação (mantida para precisão numérica): "Girar:" + spin
         self.spin_rotate = QDoubleSpinBox()
         self.spin_rotate.setRange(-360, 360)
         self.spin_rotate.setValue(45)
         self.spin_rotate.setSingleStep(15)
         self.spin_rotate.setSuffix("°")
-        self.spin_rotate.setFixedWidth(max(68, int(80 * s)))
         self.spin_rotate.setFixedHeight(fh)
         self.spin_rotate.setStyleSheet(self._field_style())
-        row2.addWidget(self.spin_rotate)
+        col_actions.addLayout(self._hpair(_lbl("Girar:"), self.spin_rotate))
 
         btn_rotate = QPushButton("Aplicar")
         btn_rotate.setFixedHeight(fh)
         btn_rotate.clicked.connect(self._rotate_selected)
         btn_rotate.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(btn_rotate)
-        row2.addWidget(btn_rotate)
+        col_actions.addWidget(btn_rotate)
 
+        # Espelhar Horizontal | Vertical (par horizontal)
         btn_mirror_h = QPushButton("Horizontal")
         btn_mirror_h.setFixedHeight(fh)
         btn_mirror_h.setToolTip("Espelhar com cópia na horizontal (Ctrl+Shift+H)")
         btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
         btn_mirror_h.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(btn_mirror_h)
-        row2.addWidget(btn_mirror_h)
 
         btn_mirror_v = QPushButton("Vertical")
         btn_mirror_v.setFixedHeight(fh)
@@ -3824,10 +3808,15 @@ class DrawingCanvas(QWidget):
         btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
         btn_mirror_v.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(btn_mirror_v)
-        row2.addWidget(btn_mirror_v)
 
-        row2.addSpacing(8)
+        pair_mirror = QHBoxLayout()
+        pair_mirror.setContentsMargins(0, 0, 0, 0)
+        pair_mirror.setSpacing(4)
+        pair_mirror.addWidget(btn_mirror_h, 1)
+        pair_mirror.addWidget(btn_mirror_v, 1)
+        col_actions.addLayout(pair_mirror)
 
+        # Imagem | PDF (par)
         btn_img = QPushButton("🖼️ Imagem")
         btn_img.setFixedHeight(fh)
         btn_img.clicked.connect(lambda: self._insert_image())
@@ -3840,6 +3829,14 @@ class DrawingCanvas(QWidget):
         btn_pdf.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(btn_pdf)
 
+        pair_media = QHBoxLayout()
+        pair_media.setContentsMargins(0, 0, 0, 0)
+        pair_media.setSpacing(4)
+        pair_media.addWidget(btn_img, 1)
+        pair_media.addWidget(btn_pdf, 1)
+        col_actions.addLayout(pair_media)
+
+        # Anexos | 3D (par)
         btn_attachments = QPushButton("Anexos")
         btn_attachments.setFixedHeight(fh)
         btn_attachments.setToolTip("Anexar arquivo DWG")
@@ -3854,43 +3851,72 @@ class DrawingCanvas(QWidget):
         btn_3d.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(btn_3d)
 
+        pair_extra = QHBoxLayout()
+        pair_extra.setContentsMargins(0, 0, 0, 0)
+        pair_extra.setSpacing(4)
+        pair_extra.addWidget(btn_attachments, 1)
+        pair_extra.addWidget(btn_3d, 1)
+        col_actions.addLayout(pair_extra)
+
+        # Régua (linha cheia)
         btn_dim = QPushButton("Régua")
         btn_dim.setFixedHeight(fh)
         btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
         btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
         btn_dim.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(btn_dim)
+        col_actions.addWidget(btn_dim)
 
+        # Limpar (linha cheia, em destaque)
         btn_clear = QPushButton("Limpar")
         self._btn_clear = btn_clear
         btn_clear.setFixedHeight(fh)
         btn_clear.clicked.connect(self._clear)
         btn_clear.setStyleSheet(self._danger_tool_btn_style())
-        row2.addWidget(btn_img)
-        row2.addWidget(btn_pdf)
-        row2.addWidget(btn_attachments)
-        row2.addWidget(btn_3d)
-        row2.addWidget(btn_dim)
-        row2.addWidget(btn_clear)
-        row2.addStretch()
+        col_actions.addWidget(btn_clear)
 
-        # ====== TOOLBAR FLUTUANTE (canto superior esquerdo) ======
-        # As 3 seções (ferramentas + propriedades + ações) saem do layout
-        # principal e entram dentro de QFrame _toolbar_overlay que é
-        # FILHO direto do DrawingCanvas (não vai pro layout). Posicionado
-        # via resizeEvent no canto superior esquerdo do canvas.
-        #
-        # Sem pílula arredondada, sem opacity effect, sem drag handle,
-        # sem auto-hide, sem Tab toggle — apenas card retangular fixo.
+        # ====== TOOLBAR VERTICAL (canto superior esquerdo) ======
+        # As 3 seções (ferramentas + propriedades + ações) entram dentro de
+        # um QFrame _toolbar_overlay (filho direto do DrawingCanvas). O
+        # overlay contém um QScrollArea que mostra as 3 seções empilhadas
+        # verticalmente. Quando o conteúdo passa da altura disponível, o
+        # scroll vertical aparece automaticamente.
         self._toolbar_overlay = QFrame(self)
         self._toolbar_overlay.setStyleSheet(self._toolbar_overlay_style())
         self._toolbar_overlay.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        overlay_v = QVBoxLayout(self._toolbar_overlay)
-        overlay_v.setContentsMargins(10, 10, 10, 10)
+        self._toolbar_overlay.setFixedWidth(max(200, int(230 * self.scale)))
+
+        # Outer layout do overlay — sem margem (margem fica no content).
+        overlay_outer = QVBoxLayout(self._toolbar_overlay)
+        overlay_outer.setContentsMargins(0, 0, 0, 0)
+        overlay_outer.setSpacing(0)
+
+        # ScrollArea acomoda toolbar alta em canvas curto.
+        self._toolbar_scroll = QScrollArea(self._toolbar_overlay)
+        self._toolbar_scroll.setWidgetResizable(True)
+        self._toolbar_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._toolbar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._toolbar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._toolbar_scroll.setStyleSheet(
+            "QScrollArea { background:transparent; border:none; }"
+            "QScrollBar:vertical { width:6px; background:transparent; margin:0; }"
+            "QScrollBar::handle:vertical { background:rgba(255,255,255,0.25);"
+            " border-radius:3px; min-height:30px; }"
+            "QScrollBar::handle:vertical:hover { background:rgba(255,255,255,0.45); }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background:none; }"
+        )
+
+        toolbar_content = QWidget()
+        overlay_v = QVBoxLayout(toolbar_content)
+        overlay_v.setContentsMargins(8, 8, 8, 8)
         overlay_v.setSpacing(6)
         overlay_v.addWidget(tools_frame)
         overlay_v.addWidget(props_frame)
         overlay_v.addWidget(actions_frame)
+        overlay_v.addStretch()
+        self._toolbar_scroll.setWidget(toolbar_content)
+        overlay_outer.addWidget(self._toolbar_scroll)
         # Guarda refs dos 3 frames pra animação em cascata (stagger).
         self._toolbar_section_frames = [tools_frame, props_frame, actions_frame]
         # IMPORTANTE: NÃO criamos QGraphicsOpacityEffect aqui!
@@ -4022,11 +4048,10 @@ class DrawingCanvas(QWidget):
         view_geo = view.geometry()
         margin = max(10, int(12 * self.scale))
         gap = max(4, int(6 * self.scale))
-        # Botão SEMPRE no canto sup esq.
-        toggle_btn.adjustSize()
-        # Fixa uma largura confortável pro botão (cabe label completo + ícone).
-        btn_min_w = max(180, int(220 * self.scale))
-        toggle_btn.setMinimumWidth(btn_min_w)
+        # Botão SEMPRE no canto sup esq, mesma largura do overlay vertical
+        # pra ficar alinhado visualmente.
+        overlay_w = overlay.width() if overlay.width() > 0 else max(200, int(230 * self.scale))
+        toggle_btn.setFixedWidth(overlay_w)
         toggle_btn.adjustSize()
         btn_x = view_geo.x() + margin
         btn_y = view_geo.y() + margin
@@ -4072,7 +4097,10 @@ class DrawingCanvas(QWidget):
         """Calcula o rect FINAL do overlay quando aberto (posição + tamanho).
 
         Posição: canto sup esq do canvas, logo abaixo do botão toggle.
-        Tamanho: sizeHint do layout interno do overlay (3 seções empilhadas).
+        Largura: fixa (definida em _setup_ui).
+        Altura: min(altura ideal do conteúdo, espaço disponível no canvas).
+                Quando o conteúdo passa, o QScrollArea interno mostra
+                barra de rolagem vertical.
         """
         view = self.view
         toggle_btn = self._toolbar_toggle_btn
@@ -4080,16 +4108,16 @@ class DrawingCanvas(QWidget):
         margin = max(10, int(12 * self.scale))
         gap = max(4, int(6 * self.scale))
         view_geo = view.geometry()
-        # Tamanho ideal vem do layout (não de overlay.sizeHint() que pode ser 0
-        # quando o widget está com altura artificialmente forçada).
-        if overlay.layout() is not None:
-            ideal = overlay.layout().sizeHint()
-            margins = overlay.layout().contentsMargins()
-            final_w = ideal.width() + margins.left() + margins.right()
-            final_h = ideal.height() + margins.top() + margins.bottom()
+        final_w = overlay.width() or max(200, int(230 * self.scale))
+        # Altura ideal do conteudo (dentro do scroll).
+        content = self._toolbar_scroll.widget() if self._toolbar_scroll is not None else None
+        if content is not None and content.layout() is not None:
+            content_h = content.layout().sizeHint().height()
         else:
-            ideal = overlay.sizeHint()
-            final_w, final_h = ideal.width(), ideal.height()
+            content_h = overlay.sizeHint().height()
+        # Espaço vertical disponível no canvas pra toolbar.
+        max_h = max(120, view_geo.height() - (toggle_btn.height() + gap + margin * 2))
+        final_h = min(content_h, max_h)
         x = view_geo.x() + margin
         y = view_geo.y() + margin + toggle_btn.height() + gap
         return QRect(x, y, final_w, final_h)
@@ -4473,14 +4501,30 @@ class DrawingCanvas(QWidget):
             f"background:transparent; color:{theme.PRIMARY}; font-size:{fs}pt; font-weight:700;"
         )
 
-    def _create_toolbar_section(self) -> tuple[QFrame, QHBoxLayout]:
+    def _create_toolbar_section(self) -> tuple[QFrame, QVBoxLayout]:
+        """Cria uma seção da toolbar vertical (canto sup esq).
+
+        Cada seção empilha seus widgets de cima pra baixo. Para emparelhar
+        label + widget (ex: "Esp.: [spin]") use _hpair() que retorna um
+        QHBoxLayout pronto pra adicionar ao layout retornado.
+        """
         frame = QFrame(self)
         frame.setStyleSheet(self._toolbar_section_style())
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
         self._toolbar_sections.append(frame)
         return frame, layout
+
+    def _hpair(self, label: QLabel, widget: QWidget) -> QHBoxLayout:
+        """Empilha label + widget em uma linha horizontal pra ser adicionada
+        dentro de uma seção vertical."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        row.addWidget(label, 0)
+        row.addWidget(widget, 1)
+        return row
 
     def _prepare_popup_dialog(self, dialog: QDialog | QMessageBox | QInputDialog) -> None:
         dialog.setObjectName("canvasPopupDialog")
