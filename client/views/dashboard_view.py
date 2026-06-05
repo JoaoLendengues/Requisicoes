@@ -1727,10 +1727,10 @@ class DashboardView(QWidget):
         )
 
         grid.addWidget(self.production_destination_chart, 0, 0, 1, 2)
-        grid.addWidget(self.production_machine_chart, 1, 0, 1, 2)
-        grid.addWidget(self.vendor_comparison_chart, 2, 0, 1, 2)
-        grid.addWidget(self.operator_comparison_chart, 3, 0, 1, 2)
-        grid.addWidget(self.helper_comparison_chart, 4, 0, 1, 2)
+        grid.addWidget(self.production_machine_chart, 1, 0)
+        grid.addWidget(self.vendor_comparison_chart, 1, 1)
+        grid.addWidget(self.operator_comparison_chart, 2, 0)
+        grid.addWidget(self.helper_comparison_chart, 2, 1)
         root.addLayout(grid)
         self._apply_comparison_period()
         return container
