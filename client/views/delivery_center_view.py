@@ -181,13 +181,22 @@ class DeliveryCenterView(QWidget):
         title_col.setSpacing(max(4, int(5 * s)))
 
         title = QLabel("Entregas")
-        title.setStyleSheet(f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;")
+        # Cor explicita ao inves de depender de palette herdada — palette
+        # nao propaga consistentemente quando ha setStyleSheet inline no
+        # widget, mesmo que o stylesheet nao mexa em color.
+        theme.themed(title, lambda: (
+            f"background:transparent; font-size:{max(18, int(24 * s))}pt;"
+            f"font-weight:800; color:{theme.TEXT_DARK};"
+        ))
         subtitle = QLabel(
             "Agenda operacional de entregas com acompanhamento de prazos, status e conclusao."
         )
         subtitle.setWordWrap(True)
         subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"background:transparent; font-size:{max(8, int(10 * s))}pt;")
+        theme.themed(subtitle, lambda: (
+            f"background:transparent; font-size:{max(8, int(10 * s))}pt;"
+            f"color:{theme.TEXT_MEDIUM};"
+        ))
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         header.addLayout(title_col, 1)
@@ -288,17 +297,19 @@ class DeliveryCenterView(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(max(2, int(3 * s)))
         section_title = QLabel("Agenda de Entregas")
-        section_title.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
-        )
+        theme.themed(section_title, lambda: (
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"background:transparent; color:{theme.TEXT_DARK};"
+        ))
         section_subtitle = QLabel(
             "Selecione uma entrega ou parcela para alterar o prazo ou registrar a conclusao."
         )
         section_subtitle.setWordWrap(True)
         section_subtitle.setProperty("muted", "1")
-        section_subtitle.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
-        )
+        theme.themed(section_subtitle, lambda: (
+            f"font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; color:{theme.TEXT_MEDIUM};"
+        ))
         title_col.addWidget(section_title)
         title_col.addWidget(section_subtitle)
         title_row.addLayout(title_col, 1)
@@ -345,15 +356,17 @@ class DeliveryCenterView(QWidget):
         completed_layout.addWidget(completed_accent)
 
         completed_title = QLabel("Entregas Realizadas")
-        completed_title.setStyleSheet(
-            f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
-        )
+        theme.themed(completed_title, lambda: (
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"background:transparent; color:{theme.TEXT_DARK};"
+        ))
         completed_subtitle = QLabel("Entregas e parcelas concluidas.")
         completed_subtitle.setWordWrap(True)
         completed_subtitle.setProperty("muted", "1")
-        completed_subtitle.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
-        )
+        theme.themed(completed_subtitle, lambda: (
+            f"font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; color:{theme.TEXT_MEDIUM};"
+        ))
         completed_layout.addWidget(completed_title)
         completed_layout.addWidget(completed_subtitle)
 
@@ -396,26 +409,26 @@ class DeliveryCenterView(QWidget):
         layout.setSpacing(max(6, int(8 * s)))
 
         value = QLabel("-")
-        value.setStyleSheet(
-            f"font-size:{max(20, int(26 * s))}pt;"
-            f"font-weight:800; background:transparent; border:none;"
-        )
+        theme.themed(value, lambda: (
+            f"font-size:{max(20, int(26 * s))}pt; font-weight:800;"
+            f"background:transparent; border:none; color:{theme.TEXT_DARK};"
+        ))
         value.setWordWrap(True)
 
         title = QLabel(title_text)
         title.setWordWrap(True)
-        title.setStyleSheet(
-            f"font-size:{max(9, int(11 * s))}pt;"
-            f"font-weight:700; background:transparent; border:none;"
-        )
+        theme.themed(title, lambda: (
+            f"font-size:{max(9, int(11 * s))}pt; font-weight:700;"
+            f"background:transparent; border:none; color:{theme.TEXT_DARK};"
+        ))
 
         helper = QLabel(helper_text)
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(
+        theme.themed(helper, lambda: (
             f"font-size:{max(7, int(8 * s))}pt;"
-            f"background:transparent; border:none;"
-        )
+            f"background:transparent; border:none; color:{theme.TEXT_MEDIUM};"
+        ))
 
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
