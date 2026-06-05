@@ -283,12 +283,12 @@ def _make_shadow_card(
     card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
     accent = border_color or theme.PANEL_BORDER_SOFT
-    # Properties usadas por apply_theme() para reaplicar o stylesheet ao
-    # trocar de tema (sem isso, as cores ficavam burnadas no __init__).
     card.setProperty("theme_bg", "card")
-    card.setProperty("theme_card_accent", accent)
-    card.setProperty("theme_card_radius", int(radius))
-    card.setStyleSheet(_shadow_card_qss(accent, int(radius)))
+    radius_int = int(radius)
+    # theme.themed: aplica agora E reaplica em toda troca de tema. As cores
+    # PANEL_CARD_BG_* viviam burnadas do __init__ — agora a closure lê o
+    # valor atual de theme.* na hora da reaplicação.
+    theme.themed(card, lambda a=accent, r=radius_int: _shadow_card_qss(a, r))
     _apply_shadow(card, blur=max(28, int(34 * scale)), y_offset=max(4, int(5 * scale)), alpha=56)
     return card
 
@@ -940,18 +940,20 @@ class DashboardView(QWidget):
 
         date_hint = QLabel("DATA ATUAL")
         date_hint.setProperty("muted", "1")
-        date_hint.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        theme.themed(date_hint, lambda: (
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        ))
         self.date_label = QLabel(_format_header_date())
-        self.date_label.setStyleSheet(
-            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
-        )
+        theme.themed(self.date_label, lambda: (
+            f"font-size:{max(13, int(16 * s))}pt; font-weight:800;"
+            f"background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+        ))
         self.updated_label = QLabel("Atualizando dados...")
         self.updated_label.setProperty("muted", "1")
-        self.updated_label.setStyleSheet(
+        theme.themed(self.updated_label, lambda: (
             f"font-size:{max(7, int(8 * s))}pt; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        ))
         self.updated_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         info_layout.addWidget(date_hint)
         info_layout.addWidget(self.date_label)
@@ -959,7 +961,7 @@ class DashboardView(QWidget):
 
         self.refresh_btn = QPushButton("ATUALIZAR")
         self.refresh_btn.setFixedHeight(max(38, int(44 * s)))
-        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
+        theme.themed(self.refresh_btn, lambda: _flat_secondary_btn_style(s))
         self.refresh_btn.clicked.connect(self.refresh)
         header_right.addWidget(info_card)
         header_right.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignTop)
@@ -969,12 +971,12 @@ class DashboardView(QWidget):
         self.btn_guide = QPushButton("?")
         self.btn_guide.setToolTip("Abrir guia rápido")
         self.btn_guide.setFixedSize(sz_g, sz_g)
-        self.btn_guide.setStyleSheet(
+        theme.themed(self.btn_guide, lambda: (
             f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
             f"color:{theme.PANEL_TEXT_MUTED}; background:transparent;"
             f"border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 102)};"
             f"border-radius:{sz_g // 2}px; padding:0;"
-        )
+        ))
         self.btn_guide.clicked.connect(self.guide_requested)
         header_right.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -1143,18 +1145,19 @@ class DashboardView(QWidget):
         title_col = QVBoxLayout()
         title_col.setSpacing(max(3, int(4 * s)))
         title_label = QLabel("IAR GERAL")
-        title_label.setStyleSheet(
-            f"font-size:{max(14, int(18 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
-        )
+        theme.themed(title_label, lambda: (
+            f"font-size:{max(14, int(18 * s))}pt; font-weight:900;"
+            f"background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
+        ))
         self._register_hover_tooltip(title_label, _IAR_TOOLTIP_TEXTS["iar_geral"])
         subtitle_label = QLabel(
             "KPI principal da operação, calculado por prazo, produtividade e eficiência de cancelamentos."
         )
         subtitle_label.setWordWrap(True)
         subtitle_label.setProperty("muted", "1")
-        subtitle_label.setStyleSheet(
+        theme.themed(subtitle_label, lambda: (
             f"font-size:{max(8, int(9 * s))}pt; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        ))
         subtitle_label.setText(
             "KPI principal da operacao, calculado por prazo, produtividade e eficiencia de cancelamentos."
         )
@@ -1171,22 +1174,24 @@ class DashboardView(QWidget):
         period_dates_layout.setSpacing(max(6, int(8 * s)))
 
         from_label = QLabel("De")
-        from_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        theme.themed(from_label, lambda: (
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        ))
         self.performance_date_from = QDateEdit()
         self.performance_date_from.setCalendarPopup(True)
         self.performance_date_from.setDisplayFormat("dd/MM/yyyy")
         self.performance_date_from.setDate(month_start)
         self.performance_date_from.setFixedHeight(max(34, int(38 * s)))
         self.performance_date_from.setMinimumWidth(max(120, int(134 * s)))
-        self.performance_date_from.setStyleSheet(_field_style(s))
+        theme.themed(self.performance_date_from, lambda: _field_style(s))
         self.performance_date_from.dateChanged.connect(self._on_performance_date_changed)
 
         to_label = QLabel("Até")
-        to_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        theme.themed(to_label, lambda: (
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        ))
         to_label.setText("Ate")
         self.performance_date_to = QDateEdit()
         self.performance_date_to.setCalendarPopup(True)
@@ -1194,7 +1199,7 @@ class DashboardView(QWidget):
         self.performance_date_to.setDate(today_qdate)
         self.performance_date_to.setFixedHeight(max(34, int(38 * s)))
         self.performance_date_to.setMinimumWidth(max(120, int(134 * s)))
-        self.performance_date_to.setStyleSheet(_field_style(s))
+        theme.themed(self.performance_date_to, lambda: _field_style(s))
         self.performance_date_to.dateChanged.connect(self._on_performance_date_changed)
 
         period_dates_layout.addWidget(from_label)
@@ -1205,7 +1210,7 @@ class DashboardView(QWidget):
         self.performance_period_combo = QComboBox()
         self.performance_period_combo.setFixedHeight(max(34, int(38 * s)))
         self.performance_period_combo.setMinimumWidth(max(170, int(220 * s)))
-        self.performance_period_combo.setStyleSheet(_field_style(s))
+        theme.themed(self.performance_period_combo, lambda: _field_style(s))
         for label, value in self._performance_period_options:
             self.performance_period_combo.addItem(label, value)
         selected_index = self.performance_period_combo.findData("month")
@@ -1214,13 +1219,14 @@ class DashboardView(QWidget):
         self.performance_period_combo.currentIndexChanged.connect(self._on_performance_filter_changed)
 
         production_filter_label = QLabel("PRODUÇÃO")
-        production_filter_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        theme.themed(production_filter_label, lambda: (
+            f"font-size:{max(7, int(8 * s))}pt; font-weight:700;"
+            f"background:transparent; color:{theme.PANEL_TEXT_MUTED};"
+        ))
         self.performance_destination_combo = QComboBox()
         self.performance_destination_combo.setFixedHeight(max(34, int(38 * s)))
         self.performance_destination_combo.setMinimumWidth(max(170, int(200 * s)))
-        self.performance_destination_combo.setStyleSheet(_field_style(s))
+        theme.themed(self.performance_destination_combo, lambda: _field_style(s))
         for label, value in self._production_filter_options:
             self.performance_destination_combo.addItem(label, value)
         self.performance_destination_combo.currentIndexChanged.connect(self._on_performance_filter_changed)
@@ -1339,25 +1345,26 @@ class DashboardView(QWidget):
         layout.setSpacing(max(6, int(8 * s)))
 
         value_label = QLabel("-")
-        value_label.setStyleSheet(
+        theme.themed(value_label, lambda: (
             f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
             f"color:{theme.PANEL_TEXT_PRIMARY};"
-        )
+        ))
         value_label.setWordWrap(True)
 
         title_label = QLabel(title)
         title_label.setWordWrap(True)
-        title_label.setStyleSheet(
+        theme.themed(title_label, lambda: (
             f"font-size:{max(9, int(11 * s))}pt; font-weight:700; background:transparent; border:none;"
             f"color:{theme.PANEL_TEXT_PRIMARY};"
-        )
+        ))
 
         helper_label = QLabel(helper_text)
         helper_label.setWordWrap(True)
         helper_label.setProperty("muted", "1")
-        helper_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; background:transparent; border:none; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        theme.themed(helper_label, lambda: (
+            f"font-size:{max(7, int(8 * s))}pt; background:transparent; border:none;"
+            f"color:{theme.PANEL_TEXT_MUTED};"
+        ))
 
         accent_line = QFrame()
         accent_line.setFixedHeight(max(4, int(5 * s)))
@@ -1433,17 +1440,17 @@ class DashboardView(QWidget):
         )
 
         title_label = QLabel(title)
-        title_label.setStyleSheet(
+        theme.themed(title_label, lambda: (
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
             f"color:{theme.PANEL_TEXT_PRIMARY};"
-        )
+        ))
 
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
         subtitle_label.setProperty("muted", "1")
-        subtitle_label.setStyleSheet(
+        theme.themed(subtitle_label, lambda: (
             f"font-size:{max(7, int(8 * s))}pt; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        ))
 
         layout.addWidget(accent)
         layout.addWidget(title_label)
@@ -1492,17 +1499,17 @@ class DashboardView(QWidget):
         title_row.setSpacing(max(10, int(12 * s)))
 
         title_label = QLabel(title)
-        title_label.setStyleSheet(
+        theme.themed(title_label, lambda: (
             f"font-size:{max(10, int(12 * s))}pt; font-weight:800; background:transparent;"
             f"color:{theme.PANEL_TEXT_PRIMARY};"
-        )
+        ))
 
         period_combo: QComboBox | None = None
         if combo_attr:
             period_combo = QComboBox()
             period_combo.setFixedHeight(max(34, int(38 * s)))
             period_combo.setMinimumWidth(max(170, int(210 * s)))
-            period_combo.setStyleSheet(_field_style(s))
+            theme.themed(period_combo, lambda: _field_style(s))
             for label, value in self._machine_period_options:
                 period_combo.addItem(label, value)
             selected_index = period_combo.findData(default_period)
@@ -1516,7 +1523,7 @@ class DashboardView(QWidget):
             extra_combo = QComboBox()
             extra_combo.setFixedHeight(max(34, int(38 * s)))
             extra_combo.setMinimumWidth(max(150, int(180 * s)))
-            extra_combo.setStyleSheet(_field_style(s))
+            theme.themed(extra_combo, lambda: _field_style(s))
             for label, value in (extra_combo_options or []):
                 extra_combo.addItem(label, value)
             selected_extra_index = extra_combo.findData(extra_combo_default)
@@ -1528,9 +1535,9 @@ class DashboardView(QWidget):
         subtitle_label = QLabel(subtitle)
         subtitle_label.setWordWrap(True)
         subtitle_label.setProperty("muted", "1")
-        subtitle_label.setStyleSheet(
+        theme.themed(subtitle_label, lambda: (
             f"font-size:{max(7, int(8 * s))}pt; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        ))
 
         title_row.addWidget(title_label, 1)
         if extra_combo is not None:
@@ -1664,10 +1671,10 @@ class DashboardView(QWidget):
         selector_row.setSpacing(max(8, int(10 * self.scale)))
 
         selector_label = QLabel("PERIODO DO COMPARATIVO:")
-        selector_label.setStyleSheet(
+        theme.themed(selector_label, lambda: (
             f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
             f"color:{theme.PANEL_TEXT_PRIMARY};"
-        )
+        ))
         selector_row.addWidget(selector_label)
 
         for period_key in ("monthly", "weekly", "daily"):
@@ -1675,7 +1682,7 @@ class DashboardView(QWidget):
             btn.setCheckable(True)
             btn.setChecked(period_key == self._comparison_period)
             btn.setFixedHeight(max(32, int(36 * self.scale)))
-            btn.setStyleSheet(_neon_period_chip_style(self.scale))
+            theme.themed(btn, lambda: _neon_period_chip_style(self.scale))
             btn.clicked.connect(lambda checked=False, key=period_key: self._set_comparison_period(key))
             self._comparison_period_buttons[period_key] = btn
             selector_row.addWidget(btn)
@@ -1683,14 +1690,14 @@ class DashboardView(QWidget):
         selector_row.addStretch()
 
         comparison_destination_label = QLabel("PRODUÇÃO:")
-        comparison_destination_label.setStyleSheet(
+        theme.themed(comparison_destination_label, lambda: (
             f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
             f"color:{theme.PANEL_TEXT_PRIMARY};"
-        )
+        ))
         self.comparison_destination_combo = QComboBox()
         self.comparison_destination_combo.setFixedHeight(max(34, int(38 * self.scale)))
         self.comparison_destination_combo.setMinimumWidth(max(170, int(210 * self.scale)))
-        self.comparison_destination_combo.setStyleSheet(_field_style(self.scale))
+        theme.themed(self.comparison_destination_combo, lambda: _field_style(self.scale))
         for label, value in self._production_filter_options:
             self.comparison_destination_combo.addItem(label, value)
         self.comparison_destination_combo.currentIndexChanged.connect(self._on_comparison_filter_changed)
@@ -2543,20 +2550,7 @@ class DashboardView(QWidget):
         )
         self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
 
-        # Botoes individuais (poucos, nao vale property)
-        self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
-        self.btn_guide.setStyleSheet(
-            f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
-            f"color:{theme.PANEL_TEXT_MUTED}; background:transparent;"
-            f"border:1px solid {_rgba(_NEON_PERIOD_COLORS['monthly'], 102)};"
-            f"border-radius:{self.btn_guide.width() // 2}px; padding:0;"
-        )
-        self.date_label.setStyleSheet(
-            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
-        )
-        self.updated_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; background:transparent; color:{theme.PANEL_TEXT_MUTED};"
-        )
+        # error_label tem cores DANGER (alpha) que precisam regenerar.
         self.error_label.setStyleSheet(
             f"background:{_rgba(theme.DANGER, 18)}; color:{theme.DANGER};"
             f"border:1px solid {_rgba(theme.DANGER, 48)}; border-radius:16px;"
@@ -2582,64 +2576,21 @@ class DashboardView(QWidget):
             if tbl is not None:
                 self._refresh_machine_status_labels(tbl)
 
-        # Cards individuais — o setStyleSheet inline de cada QFrame#dashboardCard
-        # tem precedência sobre o QSS view-level, então precisa reaplicar com
-        # as cores do tema atual usando o accent/radius guardados como property.
-        for card in self.findChildren(QFrame, "dashboardCard"):
-            accent = card.property("theme_card_accent") or theme.PANEL_BORDER_SOFT
-            radius = card.property("theme_card_radius") or 18
-            card.setStyleSheet(_shadow_card_qss(str(accent), int(radius)))
-
         # NeonComparisonWidget pinta via QPainter lendo theme.PANEL_CARD_BG_*.
         # Sem forçar update(), mantém o pixmap cacheado do tema antigo.
         for widget in self.findChildren(NeonComparisonWidget):
             widget.update()
 
-        # Combos e date pickers — setStyleSheet inline no __init__ tem
-        # precedência sobre o QSS scoped do parent, então reaplicar com
-        # _field_style() pega as cores PANEL_SURFACE_BG/PANEL_TEXT_PRIMARY
-        # atualizadas pelo tema.
-        field_qss = _field_style(s)
-        for combo in (
-            getattr(self, "performance_period_combo", None),
-            getattr(self, "performance_destination_combo", None),
-            getattr(self, "comparison_destination_combo", None),
-            getattr(self, "people_period_combo", None),
-            getattr(self, "people_destination_combo", None),
-            getattr(self, "ar_period_combo", None),
-            getattr(self, "industria_period_combo", None),
-        ):
-            if combo is not None:
-                combo.setStyleSheet(field_qss)
-        for date_edit in (
-            getattr(self, "performance_date_from", None),
-            getattr(self, "performance_date_to", None),
-        ):
-            if date_edit is not None:
-                date_edit.setStyleSheet(field_qss)
+        # NOTE: os loops para combos, date pickers, chips, cards
+        # (dashboardCard), refresh_btn, btn_guide, date_label, updated_label,
+        # _metric_labels, _metric_title_labels, _metric_helper_labels foram
+        # removidos porque agora todos esses widgets usam theme.themed() no
+        # __init__ — o registry os reaplica automaticamente em set_dark().
 
-        # Chips MENSAL/SEMANAL/DIÁRIO — mesmo problema do combos.
-        chip_qss = _neon_period_chip_style(s)
-        for btn in self._comparison_period_buttons.values():
-            btn.setStyleSheet(chip_qss)
-
-        # Labels com cor explicita (precisam reaplicar)
-        for lbl in self._metric_labels.values():
-            lbl.setStyleSheet(
-                f"font-size:{max(20, int(26 * s))}pt; font-weight:800; background:transparent; border:none;"
-                f"color:{theme.PANEL_TEXT_PRIMARY};"
-            )
-        # Titulos e helpers dos metric cards — sem isso somem no tema oposto.
-        for lbl in self._metric_title_labels.values():
-            lbl.setStyleSheet(
-                f"font-size:{max(9, int(11 * s))}pt; font-weight:700; background:transparent; border:none;"
-                f"color:{theme.PANEL_TEXT_PRIMARY};"
-            )
-        for lbl in self._metric_helper_labels.values():
-            lbl.setStyleSheet(
-                f"font-size:{max(7, int(8 * s))}pt; background:transparent; border:none;"
-                f"color:{theme.PANEL_TEXT_MUTED};"
-            )
+        # iar_detail_value_labels e iar_counts_label ainda usam setStyleSheet
+        # direto porque os iar_detail_blocks têm cores dinâmicas (baseadas no
+        # valor IAR) que mudam em runtime via _apply_iar_visuals — migrá-los
+        # para themed exigiria também migrar o flow de cor dinâmica.
         for lbl in self.iar_detail_value_labels.values():
             lbl.setStyleSheet(
                 f"font-size:{max(13, int(16 * s))}pt; font-weight:900; background:transparent; color:{theme.PANEL_TEXT_PRIMARY};"
