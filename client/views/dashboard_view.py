@@ -897,10 +897,11 @@ class DashboardView(QWidget):
 
     def _setup_ui(self):
         s = self.scale
-        page_bg = theme.CONTENT_BG
         self.setObjectName("dashboardView")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"QWidget#dashboardView {{ background:{page_bg}; }}")
+        # Background da view raiz. theme.themed() ao inves de capturar
+        # theme.CONTENT_BG no init: o registry reaplica em toda troca de tema.
+        theme.themed(self, lambda: f"QWidget#dashboardView {{ background:{theme.CONTENT_BG}; }}")
         root = QVBoxLayout(self)
         root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)),
                                 max(18, int(24 * s)), max(18, int(24 * s)))
@@ -1005,14 +1006,17 @@ class DashboardView(QWidget):
         self._page_scroll = SmoothScrollArea()
         self._page_scroll.setWidgetResizable(True)
         self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{page_bg}; }}")
-        self._page_scroll.viewport().setStyleSheet(f"background:{page_bg}; border:none;")
+        # Backgrounds tematicos via theme.themed(): o registry reaplica
+        # automaticamente. Sem isso, ficavam burnados com a cor capturada
+        # no init e nao atualizavam ao trocar de tema.
+        theme.themed(self._page_scroll, lambda: f"QScrollArea {{ border:none; background:{theme.CONTENT_BG}; }}")
+        theme.themed(self._page_scroll.viewport(), lambda: f"background:{theme.CONTENT_BG}; border:none;")
         root.addWidget(self._page_scroll, 1)
 
         self._page_content = QWidget()
         self._page_content.setObjectName("dashboardContent")
         self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._page_content.setStyleSheet(f"QWidget#dashboardContent {{ background:{page_bg}; }}")
+        theme.themed(self._page_content, lambda: f"QWidget#dashboardContent {{ background:{theme.CONTENT_BG}; }}")
         self._page_scroll.setWidget(self._page_content)
 
         layout = QVBoxLayout(self._page_content)
