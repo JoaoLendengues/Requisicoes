@@ -52,6 +52,11 @@ _NEON_PERIOD_COLORS = {
     "weekly": "#FB7185",
     "daily": "#A3E635",
 }
+_RADAR_PERIOD_COLORS = {
+    "monthly": "#0891B2",
+    "weekly": "#E11D48",
+    "daily": "#65A30D",
+}
 _NEON_PERIOD_LABELS = {
     "monthly": "MENSAL",
     "weekly": "SEMANAL",
@@ -350,11 +355,11 @@ def _neon_period_chip_style(scale: float) -> str:
         f"  border:1px solid rgba(148, 163, 184, 0.32); border-radius:{radius}px;"
         f"  padding:7px 14px; font-size:{fs}pt; font-weight:800;"
         f"}}"
-        f"QPushButton:hover {{ border-color:{_NEON_PERIOD_COLORS['monthly']}; color:{chip_text}; }}"
+        f"QPushButton:hover {{ border-color:{_RADAR_PERIOD_COLORS['monthly']}; color:{chip_text}; }}"
         f"QPushButton:checked {{"
-        f"  background:{theme.PANEL_SURFACE_ALT}; color:{chip_text}; border:1px solid {_NEON_PERIOD_COLORS['monthly']};"
+        f"  background:{theme.PANEL_SURFACE_ALT}; color:{chip_text}; border:1px solid {_RADAR_PERIOD_COLORS['monthly']};"
         f"}}"
-        f"QPushButton:checked:hover {{ border-color:{_NEON_PERIOD_COLORS['weekly']}; }}"
+        f"QPushButton:checked:hover {{ border-color:{_RADAR_PERIOD_COLORS['weekly']}; }}"
     )
 
 
@@ -513,7 +518,7 @@ class NeonComparisonWidget(QWidget):
         return QSize(max(320, int(360 * self._scale)), self._content_height())
 
     def set_selected_period(self, period_key: str) -> None:
-        if period_key not in _NEON_PERIOD_COLORS:
+        if period_key not in _RADAR_PERIOD_COLORS:
             period_key = "monthly"
         if self._selected_period == period_key:
             return
@@ -582,7 +587,7 @@ class NeonComparisonWidget(QWidget):
         painter.fillPath(path, background)
 
         border = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        active_color = _NEON_PERIOD_COLORS.get(self._selected_period, _NEON_PERIOD_COLORS["monthly"])
+        active_color = _RADAR_PERIOD_COLORS.get(self._selected_period, _RADAR_PERIOD_COLORS["monthly"])
         border.setColorAt(0.0, QColor(active_color).lighter(150))
         border.setColorAt(0.5, QColor(active_color))
         border.setColorAt(1.0, QColor(active_color).darker(170))
@@ -715,7 +720,7 @@ class NeonComparisonWidget(QWidget):
 
             fill_width = max(0.0, bar_width * ratio)
             if fill_width > 0:
-                glow_color = QColor(_NEON_PERIOD_COLORS[period_key])
+                glow_color = QColor(_RADAR_PERIOD_COLORS[period_key])
                 glow_color.setAlpha(58)
                 painter.setBrush(glow_color)
                 painter.drawRoundedRect(
@@ -725,8 +730,8 @@ class NeonComparisonWidget(QWidget):
                 )
 
                 fill_gradient = QLinearGradient(track_rect.left(), track_rect.top(), track_rect.left() + fill_width, track_rect.top())
-                fill_gradient.setColorAt(0.0, QColor(_NEON_PERIOD_COLORS[period_key]).lighter(140))
-                fill_gradient.setColorAt(1.0, QColor(_NEON_PERIOD_COLORS[period_key]))
+                fill_gradient.setColorAt(0.0, QColor(_RADAR_PERIOD_COLORS[period_key]).lighter(140))
+                fill_gradient.setColorAt(1.0, QColor(_RADAR_PERIOD_COLORS[period_key]))
                 painter.setBrush(fill_gradient)
                 painter.drawRoundedRect(
                     QRectF(track_rect.x(), track_rect.y(), fill_width, bar_height),
@@ -821,13 +826,6 @@ class DashboardView(QWidget):
             ("Hoje", "today"),
             ("Semana", "week"),
             ("Mês", "month"),
-            ("Ano", "year"),
-            ("Período personalizado", "custom"),
-        ]
-        self._performance_period_options = [
-            ("Hoje", "today"),
-            ("Semana", "week"),
-            ("MÊS", "month"),
             ("Ano", "year"),
             ("Periodo personalizado", "custom"),
         ]
