@@ -1263,26 +1263,35 @@ class SignatureDialog(QDialog):
         layout.addWidget(self.pad, 1)
 
         buttons = QHBoxLayout()
+        buttons.setContentsMargins(0, max(1, int(2 * scale)), 0, max(12, int(14 * scale)))
+        buttons.setSpacing(0)
         buttons.addStretch()
 
-        btn_clear = QPushButton("Limpar")
-        btn_clear.setFixedHeight(max(30, int(34 * scale)))
-        btn_clear.setStyleSheet(_req_secondary_btn_style(scale))
-        btn_clear.clicked.connect(lambda _checked=False: self.pad.clear())
-        buttons.addWidget(btn_clear)
+        self.btn_clear = QPushButton("Limpar")
+        self.btn_clear.setFixedHeight(max(30, int(34 * scale)))
+        self.btn_clear.setStyleSheet(_req_secondary_btn_style(scale))
+        self.btn_clear.clicked.connect(lambda _checked=False: self.pad.clear())
 
-        btn_cancel = QPushButton("Cancelar")
-        btn_cancel.setFixedHeight(max(30, int(34 * scale)))
-        btn_cancel.setStyleSheet(_req_secondary_btn_style(scale))
-        btn_cancel.clicked.connect(self.reject)
-        buttons.addWidget(btn_cancel)
+        self.btn_cancel = QPushButton("Cancelar")
+        self.btn_cancel.setFixedHeight(max(30, int(34 * scale)))
+        self.btn_cancel.setStyleSheet(_req_secondary_btn_style(scale))
+        self.btn_cancel.clicked.connect(self.reject)
 
         self.btn_apply = QPushButton("Aplicar Assinatura")
         self.btn_apply.setFixedHeight(max(30, int(34 * scale)))
         self.btn_apply.setStyleSheet(_req_primary_btn_style(scale))
         self.btn_apply.clicked.connect(self._apply_signature)
-        buttons.addWidget(self.btn_apply)
+
+        self._footer_buttons_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self._footer_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self._footer_buttons_layout.setSpacing(8)
+        self._footer_buttons_layout.addWidget(self.btn_clear)
+        self._footer_buttons_layout.addWidget(self.btn_cancel)
+        self._footer_buttons_layout.addWidget(self.btn_apply)
+        buttons.addLayout(self._footer_buttons_layout)
+        buttons.addStretch()
         layout.addLayout(buttons)
+        self._update_footer_button_layout()
 
         self.pad.changed.connect(self._sync_apply_state)
         if signature_png_bytes:
@@ -1302,6 +1311,32 @@ class SignatureDialog(QDialog):
 
     def signature_png_bytes(self) -> bytes | None:
         return self._signature_png_bytes
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._update_footer_button_layout()
+
+    def _update_footer_button_layout(self) -> None:
+        if not hasattr(self, "_footer_buttons_layout"):
+            return
+        root_layout = self.layout()
+        margins = root_layout.contentsMargins() if root_layout else None
+        horizontal_padding = (margins.left() + margins.right()) if margins else 0
+        available_width = max(0, self.width() - horizontal_padding)
+        required_width = (
+            self.btn_clear.sizeHint().width()
+            + self.btn_cancel.sizeHint().width()
+            + self.btn_apply.sizeHint().width()
+            + (self._footer_buttons_layout.spacing() * 2)
+        )
+        stacked = available_width < (required_width + 24)
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if stacked
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if self._footer_buttons_layout.direction() != direction:
+            self._footer_buttons_layout.setDirection(direction)
 
 
 # ── View principal ────────────────────────────────────────────────────────────
