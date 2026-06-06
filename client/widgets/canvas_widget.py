@@ -114,6 +114,8 @@ _CALHA_PRESET_LABELS = {
     "calha_com_angulo": "Calha com Angulo",
     "calha_dobrada": "Calha Dobrada",
     "calha_sem_aba": "Calha Sem Aba",
+    "calha_agua_furtada_1": "Calha Água Furtada 1",
+    "calha_agua_furtada_2": "Calha Água Furtada 2",
     "calha_3d": "Calha 3D",
 }
 _BANDEJA_PRESET_LABELS = {
@@ -6299,6 +6301,26 @@ class DrawingCanvas(QWidget):
             path.lineTo(QPointF(170.0, -18.0))
             path.moveTo(QPointF(-170.0, 72.0))
             path.lineTo(QPointF(20.0, 72.0))
+        elif preset == "calha_agua_furtada_1":
+            # Perfil fiel ao desenho de referência: "V" aberto com abas curtas superiores.
+            path.moveTo(QPointF(-118.0, -24.0))
+            path.lineTo(QPointF(-165.0, -82.0))
+            path.lineTo(QPointF(-218.0, -24.0))
+            path.lineTo(QPointF(0.0, 96.0))
+            path.lineTo(QPointF(218.0, -24.0))
+            path.lineTo(QPointF(165.0, -82.0))
+            path.lineTo(QPointF(118.0, -24.0))
+        elif preset == "calha_agua_furtada_2":
+            # Variante com ressalto central inferior, seguindo o segundo desenho enviado.
+            path.moveTo(QPointF(-122.0, -24.0))
+            path.lineTo(QPointF(-170.0, -82.0))
+            path.lineTo(QPointF(-224.0, -24.0))
+            path.lineTo(QPointF(-38.0, 96.0))
+            path.lineTo(QPointF(0.0, 40.0))
+            path.lineTo(QPointF(38.0, 96.0))
+            path.lineTo(QPointF(224.0, -24.0))
+            path.lineTo(QPointF(170.0, -82.0))
+            path.lineTo(QPointF(122.0, -24.0))
         elif preset in {"calha_foto", "calha_3d"}:
             # Perfil conforme a foto enviada: dois planos inclinados e ponte superior.
             left_bottom = QPointF(-170.0, 72.0)
@@ -6397,6 +6419,8 @@ class DrawingCanvas(QWidget):
             "calha_com_angulo",
             "calha_dobrada",
             "calha_sem_aba",
+            "calha_agua_furtada_1",
+            "calha_agua_furtada_2",
         ):
             item = QListWidgetItem(_CALHA_PRESET_LABELS[key])
             item.setData(Qt.ItemDataRole.UserRole, key)
