@@ -1084,9 +1084,9 @@ class ProductionView(QWidget):
         ]
         self._populate_machine_cards()
 
-        generated_at = _parse_datetime(payload.get("generated_at")) or local_now()
-        self.date_label.setText(_format_header_date(generated_at))
-        self.updated_label.setText(f"Atualizado em {_format_datetime(generated_at)}")
+        current = local_now()
+        self.date_label.setText(_format_header_date(current))
+        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
     def _fill_stage_table(self, panel: dict, rows: list[dict], stage: str):
         table = panel["table"]

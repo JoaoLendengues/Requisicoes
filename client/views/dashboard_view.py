@@ -2130,7 +2130,7 @@ class DashboardView(QWidget):
             else:
                 label.setText(str(value if value is not None else 0))
 
-        current = _parse_datetime(payload.get("generated_at")) or local_now()
+        current = local_now()
         self.date_label.setText(_format_header_date(current))
         self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
 
