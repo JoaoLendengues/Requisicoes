@@ -5256,7 +5256,10 @@ class DrawingCanvas(QWidget):
         if hasattr(self, "combo_esquadro"):
             self.combo_esquadro.setEnabled(tool == Tool.ESQUADRO)
         if tool == Tool.SELECT:
-            self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
+            # RubberBandDrag: arrastar com botao esquerdo desenha a "caixinha"
+            # de selecao retangular. setRubberBandSelectionMode (configurado
+            # na criacao da view) garante que respeita shape() de cada item.
+            self.view.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
             self.view.setCursor(Qt.CursorShape.ArrowCursor)
             if hasattr(self, "scene") and self.scene._ft_active:
                 self.scene._exit_ft()
