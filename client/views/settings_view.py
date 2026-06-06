@@ -2147,12 +2147,8 @@ class SettingsView(QWidget):
             self._backup_table.setItem(row, 1, QTableWidgetItem(size_str))
 
             raw_dt = entry.get("created_at", "")
-            try:
-                from datetime import datetime
-                dt = datetime.fromisoformat(raw_dt)
-                dt_str = dt.strftime("%d/%m/%Y %H:%M")
-            except Exception:
-                dt_str = raw_dt
+            formatted_dt = _format_datetime(raw_dt)
+            dt_str = formatted_dt if formatted_dt != "-" else str(raw_dt or "")
             self._backup_table.setItem(row, 2, QTableWidgetItem(dt_str))
 
     def _check_updates(self) -> None:

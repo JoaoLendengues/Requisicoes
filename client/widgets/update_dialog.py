@@ -14,7 +14,6 @@ UpdateAvailableDialog:
 from __future__ import annotations
 
 import re
-from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QUrl, QThread, Signal
 from PySide6.QtGui import QColor, QFont, QPalette, QPixmap, QImage, QTextDocument
@@ -35,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..core import theme
+from ..core.datetime_utils import format_date as _format_date
 from ..updater import UpdateDownloader, UpdateInstaller, get_update_log_path
 from .. import version as _version_mod
 
@@ -82,8 +82,8 @@ def _format_release_date(iso: str) -> str:
         return ""
     try:
         # Aceita formato '2026-06-02T15:30:00Z' do GitHub
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        return f"Lançado em {dt.strftime('%d/%m/%Y')}"
+        formatted = _format_date(iso)
+        return f"Lançado em {formatted}" if formatted != "-" else ""
     except Exception:
         return ""
 

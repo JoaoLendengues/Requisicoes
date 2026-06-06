@@ -1,7 +1,6 @@
 """Tela de Feedbacks — design moderno com métricas, chips e cards."""
 from __future__ import annotations
 
-from datetime import datetime
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor
@@ -23,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.datetime_utils import format_datetime as _format_datetime
 from ..core.session import session
 from ..widgets.smooth_scroll import SmoothScrollArea
 
@@ -88,11 +88,8 @@ def _category_color(category_value: str) -> str:
 def _fmt_datetime(value: object) -> str:
     if not value:
         return "—"
-    text = str(value)
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%d/%m/%Y %H:%M")
-    except Exception:
-        return text
+    formatted = _format_datetime(value)
+    return formatted if formatted != "-" else str(value)
 
 
 def _apply_shadow(widget: QWidget, blur: int = 24, y_offset: int = 4, alpha: int = 22) -> None:

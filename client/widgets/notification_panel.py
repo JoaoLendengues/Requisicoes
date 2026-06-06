@@ -7,7 +7,7 @@ _Overlay           — camada semitransparente com fade; fecha o drawer ao clica
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, Signal
 from PySide6.QtGui import QColor, QCursor
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..core import theme
+from ..core.datetime_utils import LOCAL_TIMEZONE, parse_datetime
 from ..core.resolution import res
 from .smooth_scroll import apply_smooth_scroll
 
@@ -75,10 +76,10 @@ def _relative_time(iso: str | None) -> str:
     if not iso:
         return ""
     try:
-        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        diff = (datetime.now(timezone.utc) - dt).total_seconds()
+        dt = parse_datetime(iso)
+        if dt is None:
+            return ""
+        diff = (datetime.now(LOCAL_TIMEZONE) - dt).total_seconds()
         if diff < 60:
             return "agora"
         if diff < 3_600:
