@@ -5581,7 +5581,7 @@ class DrawingCanvas(QWidget):
             QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
         )
         self.scene.addItem(item)
-        item.setSelected(True)
+        item.setSelected(False)
         self._undo_stack.append(item)
 
     def _scale_selected_items(self, factor: float):
