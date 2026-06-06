@@ -20,6 +20,7 @@ from ..core.datetime_utils import (
 from ..core.resolution import (
     res, SCALE_STEPS, FONT_SIZE_STEPS,
     NOTIFICATION_SIZE_STEPS, NOTIFICATION_SIZE_FACTOR,
+    DRAWING_TOOLBAR_MODE_STEPS,
 )
 from ..core.session import session
 from ..api import client as api
@@ -461,6 +462,37 @@ class SettingsView(QWidget):
         font_size_hint.setProperty("muted", "1")
         font_size_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
         lay_ap.addWidget(font_size_hint)
+
+        lay_ap.addWidget(_section("Editor de Desenho", s))
+        lay_ap.addWidget(_separator())
+
+        drawing_toolbar_row = QHBoxLayout()
+        drawing_toolbar_row.setSpacing(max(6, int(8 * s)))
+        drawing_toolbar_row.addWidget(self._lbl("Modo da barra:", s))
+        self._drawing_toolbar_mode_btns: dict[str, QPushButton] = {}
+        active_toolbar_mode = res.drawing_toolbar_mode
+        for label, mode in DRAWING_TOOLBAR_MODE_STEPS:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setChecked(mode == active_toolbar_mode)
+            btn.setFixedHeight(max(32, int(36 * s)))
+            btn.setStyleSheet(self._scale_btn_style(s))
+            btn.clicked.connect(
+                lambda checked=False, selected_mode=mode: self._on_drawing_toolbar_mode_btn(selected_mode)
+            )
+            drawing_toolbar_row.addWidget(btn)
+            self._drawing_toolbar_mode_btns[mode] = btn
+        drawing_toolbar_row.addStretch()
+        lay_ap.addLayout(drawing_toolbar_row)
+
+        drawing_toolbar_hint = QLabel(
+            "Clássico exibe a barra horizontal antiga, Técnico mantém o menu atual e "
+            "Escritório fixa a barra na lateral do editor."
+        )
+        drawing_toolbar_hint.setWordWrap(True)
+        drawing_toolbar_hint.setProperty("muted", "1")
+        drawing_toolbar_hint.setStyleSheet(f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;")
+        lay_ap.addWidget(drawing_toolbar_hint)
 
         lay_ap.addWidget(_section("Guia Rápido", s))
         lay_ap.addWidget(_separator())
@@ -1798,10 +1830,20 @@ class SettingsView(QWidget):
         for lbl, btn in self._notification_size_btns.items():
             btn.setChecked(lbl == label)
 
+    def _on_drawing_toolbar_mode_btn(self, mode: str):
+        for current_mode, btn in self._drawing_toolbar_mode_btns.items():
+            btn.setChecked(current_mode == mode)
+
     def _selected_notification_size(self) -> str:
         return next(
             (lbl for lbl, btn in self._notification_size_btns.items() if btn.isChecked()),
             "Normal",
+        )
+
+    def _selected_drawing_toolbar_mode(self) -> str:
+        return next(
+            (mode for mode, btn in self._drawing_toolbar_mode_btns.items() if btn.isChecked()),
+            "technical",
         )
 
     def _preview_notification(self):
@@ -1865,12 +1907,14 @@ class SettingsView(QWidget):
         font_size_changed = (selected_font_size != res.font_size_label)
 
         selected_notification_size = self._selected_notification_size()
+        selected_drawing_toolbar_mode = self._selected_drawing_toolbar_mode()
 
         # Coleta kwargs comuns (aparência + pasta de bg se visível)
         save_kwargs: dict = dict(
             font_scale=selected_scale,
             font_size=selected_font_size,
             notification_size=selected_notification_size,
+            drawing_toolbar_mode=selected_drawing_toolbar_mode,
         )
 
         if session.settings_show_billing:

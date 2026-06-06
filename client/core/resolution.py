@@ -43,6 +43,15 @@ NOTIFICATION_SIZE_FACTOR: dict[str, float] = {
     label: f for label, f in NOTIFICATION_SIZE_STEPS
 }
 
+DRAWING_TOOLBAR_MODE_STEPS: list[tuple[str, str]] = [
+    ("Clássico", "classic"),
+    ("Técnico", "technical"),
+    ("Escritório", "office"),
+]
+DRAWING_TOOLBAR_MODE_LABELS: dict[str, str] = {
+    value: label for label, value in DRAWING_TOOLBAR_MODE_STEPS
+}
+
 
 def _ratio_to_scale(ratio: float) -> float:
     """Mapeia ratio de resolução (vs 1920×1080) para o fator de escala discreto.
@@ -100,6 +109,9 @@ class ResolutionManager:
         self._user_scale      = self._load_setting("font_scale", "100%")
         self._font_size_label = self._load_setting("font_size", "Normal")
         self._notification_size_label = self._load_setting("notification_size", "Normal")
+        self._drawing_toolbar_mode = self._normalize_drawing_toolbar_mode(
+            self._load_setting("drawing_toolbar_mode", "technical")
+        )
         self._server_url      = self._load_setting("server_url") or "http://10.1.1.151:5000"
         self._maximized       = self._load_setting("maximized", True)
         self._dark_mode       = bool(self._load_setting("dark_mode", False))
@@ -209,6 +221,18 @@ class ResolutionManager:
         return NOTIFICATION_SIZE_FACTOR.get(self.notification_size_label, 1.0)
 
     @property
+    def drawing_toolbar_mode(self) -> str:
+        mode = getattr(self, "_drawing_toolbar_mode", "technical")
+        return self._normalize_drawing_toolbar_mode(mode)
+
+    @property
+    def drawing_toolbar_mode_label(self) -> str:
+        return DRAWING_TOOLBAR_MODE_LABELS.get(
+            self.drawing_toolbar_mode,
+            DRAWING_TOOLBAR_MODE_LABELS["technical"],
+        )
+
+    @property
     def effective_scale(self) -> float:
         """Escala efetiva = escala de interface × fator de fonte."""
         return round(self.scale * self.font_factor, 4)
@@ -248,6 +272,8 @@ class ResolutionManager:
                 self._font_size_label = v
             if k == "notification_size":
                 self._notification_size_label = v
+            if k == "drawing_toolbar_mode":
+                self._drawing_toolbar_mode = self._normalize_drawing_toolbar_mode(v)
             if k == "server_url":
                 self._server_url = v
             if k == "maximized":
@@ -276,6 +302,11 @@ class ResolutionManager:
     # ── Helpers ─────────────────────────────────────────────────────────────
     def _load_setting(self, key: str, default=None):
         return self._read_file().get(key, default)
+
+    def _normalize_drawing_toolbar_mode(self, value: object) -> str:
+        mode = str(value or "").strip().lower()
+        valid_modes = {item[1] for item in DRAWING_TOOLBAR_MODE_STEPS}
+        return mode if mode in valid_modes else "technical"
 
     def _read_file(self) -> dict:
         try:

@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QGraphicsOpacityEffect, QScrollArea,
 )
 from ..core import theme
+from ..core.resolution import res
 from ..core.text_case import normalize_upper_text
 
 
@@ -3592,6 +3593,7 @@ class DrawingCanvas(QWidget):
     def __init__(self, scale: float = 1.0, parent=None):
         super().__init__(parent)
         self.scale      = scale
+        self.toolbar_mode = self._normalize_toolbar_mode(res.drawing_toolbar_mode)
         self.tool       = Tool.SELECT
         self.color      = "#000000"
         self.pen_width  = 2
@@ -3611,6 +3613,7 @@ class DrawingCanvas(QWidget):
     # UI
     def _setup_ui(self):
         layout = QVBoxLayout(self)
+        self._main_layout = layout
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
@@ -3634,6 +3637,13 @@ class DrawingCanvas(QWidget):
         title_row.addWidget(self._help_btn)
         layout.addLayout(title_row)
 
+        self._toolbar_classic_host = QWidget(self)
+        self._toolbar_classic_host.setVisible(False)
+        self._toolbar_classic_layout = QVBoxLayout(self._toolbar_classic_host)
+        self._toolbar_classic_layout.setContentsMargins(0, 0, 0, 0)
+        self._toolbar_classic_layout.setSpacing(6)
+        layout.addWidget(self._toolbar_classic_host)
+
         s  = self.scale
         fh = max(28, int(34 * s))
         fs = max(8, int(9 * s))
@@ -3649,10 +3659,6 @@ class DrawingCanvas(QWidget):
         self._tool_btns: dict[Tool, QPushButton] = {}
         self._tool_misc_btns: list[QPushButton] = []
         self._toolbar_sections: list[QFrame] = []
-
-        toolbar_stack = QVBoxLayout()
-        toolbar_stack.setContentsMargins(0, 0, 0, 0)
-        toolbar_stack.setSpacing(6)
 
         tools = [
             (Tool.SELECT, "Selec.", "S"),
@@ -3674,6 +3680,8 @@ class DrawingCanvas(QWidget):
 
         # Bloco 1: Ferramentas — uma por linha (empilhadas verticalmente)
         tools_frame, col_tools = self._create_toolbar_section()
+        self._tools_frame = tools_frame
+        self._tools_layout = col_tools
         col_tools.setSpacing(3)
         for t, label, key in tools:
             btn = QPushButton(label)
@@ -3684,30 +3692,34 @@ class DrawingCanvas(QWidget):
             btn.setStyleSheet(self._tool_btn_style())
             self._tool_btns[t] = btn
             col_tools.addWidget(btn)
-        toolbar_stack.addWidget(tools_frame)
 
         # Bloco 2: Propriedades do traço — cada par label+campo em sua linha
         props_frame, col_props = self._create_toolbar_section()
+        self._props_frame = props_frame
+        self._props_layout = col_props
         col_props.setSpacing(4)
 
         # Cor (label + swatch lado a lado)
+        self._lbl_color = _lbl("Cor:")
         self.btn_color = QPushButton("")
         self.btn_color.setFixedSize(fh, fh)
         self.btn_color.setToolTip("Cor do traço")
         self.btn_color.setStyleSheet(self._color_swatch_style())
         self.btn_color.clicked.connect(self._pick_color)
-        col_props.addLayout(self._hpair(_lbl("Cor:"), self.btn_color))
+        col_props.addLayout(self._hpair(self._lbl_color, self.btn_color))
 
         # Espessura
+        self._lbl_width = _lbl("Esp.:")
         self.spin_width = QSpinBox()
         self.spin_width.setRange(1, 26)
         self.spin_width.setValue(self.pen_width)
         self.spin_width.setFixedHeight(fh)
         self.spin_width.setStyleSheet(self._field_style())
         self.spin_width.valueChanged.connect(self._on_pen_width_changed)
-        col_props.addLayout(self._hpair(_lbl("Esp.:"), self.spin_width))
+        col_props.addLayout(self._hpair(self._lbl_width, self.spin_width))
 
         # Estilo de linha
+        self._lbl_style = _lbl("Linha:")
         self.combo_style = QComboBox()
         self.combo_style.setFixedHeight(fh)
         self.combo_style.addItem("___ Solida", Qt.PenStyle.SolidLine)
@@ -3716,9 +3728,10 @@ class DrawingCanvas(QWidget):
         self.combo_style.addItem("-·- Misto",      Qt.PenStyle.DashDotLine)
         self.combo_style.setStyleSheet(self._field_style())
         self.combo_style.currentIndexChanged.connect(self._on_pen_style_changed)
-        col_props.addLayout(self._hpair(_lbl("Linha:"), self.combo_style))
+        col_props.addLayout(self._hpair(self._lbl_style, self.combo_style))
 
         # Esquadro
+        self._lbl_esquadro = _lbl("Esq.:")
         self.combo_esquadro = QComboBox()
         self.combo_esquadro.setFixedHeight(fh)
         self.combo_esquadro.addItem("90°", 90.0)
@@ -3730,9 +3743,10 @@ class DrawingCanvas(QWidget):
         self.combo_esquadro.setToolTip("Passo angular da ferramenta Esquadro")
         self.combo_esquadro.setEnabled(False)
         self.combo_esquadro.setStyleSheet(self._field_style())
-        col_props.addLayout(self._hpair(_lbl("Esq.:"), self.combo_esquadro))
+        col_props.addLayout(self._hpair(self._lbl_esquadro, self.combo_esquadro))
 
         # Tamanho da fonte
+        self._lbl_font = _lbl("Fonte:")
         self.spin_font = QSpinBox()
         self.spin_font.setRange(6, 180)
         self.spin_font.setValue(self.font_size)
@@ -3740,7 +3754,7 @@ class DrawingCanvas(QWidget):
         self.spin_font.setFixedHeight(fh)
         self.spin_font.setStyleSheet(self._field_style())
         self.spin_font.valueChanged.connect(self._on_font_size_changed)
-        col_props.addLayout(self._hpair(_lbl("Fonte:"), self.spin_font))
+        col_props.addLayout(self._hpair(self._lbl_font, self.spin_font))
 
         # Botão Desenho (linha cheia)
         self.btn_desenho = QPushButton("Desenho")
@@ -3751,33 +3765,34 @@ class DrawingCanvas(QWidget):
         self._tool_misc_btns.append(self.btn_desenho)
         col_props.addWidget(self.btn_desenho)
 
-        toolbar_stack.addWidget(props_frame)
-
         # Bloco 3: Ações — agrupadas em sub-linhas pareadas onde fizer sentido
         actions_frame, col_actions = self._create_toolbar_section()
+        self._actions_frame = actions_frame
+        self._actions_layout = col_actions
         col_actions.setSpacing(4)
 
         # Desfazer | Refazer (par horizontal)
-        btn_undo = QPushButton("Desfazer")
-        btn_undo.setFixedHeight(fh)
-        btn_undo.clicked.connect(self._undo)
-        btn_undo.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_undo)
+        self.btn_undo = QPushButton("Desfazer")
+        self.btn_undo.setFixedHeight(fh)
+        self.btn_undo.clicked.connect(self._undo)
+        self.btn_undo.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_undo)
 
-        btn_redo = QPushButton("Refazer")
-        btn_redo.setFixedHeight(fh)
-        btn_redo.clicked.connect(self._redo)
-        btn_redo.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_redo)
+        self.btn_redo = QPushButton("Refazer")
+        self.btn_redo.setFixedHeight(fh)
+        self.btn_redo.clicked.connect(self._redo)
+        self.btn_redo.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_redo)
 
         pair_undo = QHBoxLayout()
         pair_undo.setContentsMargins(0, 0, 0, 0)
         pair_undo.setSpacing(4)
-        pair_undo.addWidget(btn_undo, 1)
-        pair_undo.addWidget(btn_redo, 1)
+        pair_undo.addWidget(self.btn_undo, 1)
+        pair_undo.addWidget(self.btn_redo, 1)
         col_actions.addLayout(pair_undo)
 
         # Rotação (mantida para precisão numérica): "Girar:" + spin
+        self._lbl_rotate = _lbl("Girar:")
         self.spin_rotate = QDoubleSpinBox()
         self.spin_rotate.setRange(-360, 360)
         self.spin_rotate.setValue(45)
@@ -3785,87 +3800,87 @@ class DrawingCanvas(QWidget):
         self.spin_rotate.setSuffix("°")
         self.spin_rotate.setFixedHeight(fh)
         self.spin_rotate.setStyleSheet(self._field_style())
-        col_actions.addLayout(self._hpair(_lbl("Girar:"), self.spin_rotate))
+        col_actions.addLayout(self._hpair(self._lbl_rotate, self.spin_rotate))
 
-        btn_rotate = QPushButton("Aplicar")
-        btn_rotate.setFixedHeight(fh)
-        btn_rotate.clicked.connect(self._rotate_selected)
-        btn_rotate.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_rotate)
-        col_actions.addWidget(btn_rotate)
+        self.btn_rotate = QPushButton("Aplicar")
+        self.btn_rotate.setFixedHeight(fh)
+        self.btn_rotate.clicked.connect(self._rotate_selected)
+        self.btn_rotate.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_rotate)
+        col_actions.addWidget(self.btn_rotate)
 
         # Espelhar Horizontal | Vertical (par horizontal)
-        btn_mirror_h = QPushButton("Horizontal")
-        btn_mirror_h.setFixedHeight(fh)
-        btn_mirror_h.setToolTip("Espelhar com cópia na horizontal (Ctrl+Shift+H)")
-        btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
-        btn_mirror_h.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_mirror_h)
+        self.btn_mirror_h = QPushButton("Horizontal")
+        self.btn_mirror_h.setFixedHeight(fh)
+        self.btn_mirror_h.setToolTip("Espelhar com cópia na horizontal (Ctrl+Shift+H)")
+        self.btn_mirror_h.clicked.connect(self._mirror_selected_horizontal)
+        self.btn_mirror_h.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_mirror_h)
 
-        btn_mirror_v = QPushButton("Vertical")
-        btn_mirror_v.setFixedHeight(fh)
-        btn_mirror_v.setToolTip("Espelhar com cópia na vertical (Ctrl+J)")
-        btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
-        btn_mirror_v.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_mirror_v)
+        self.btn_mirror_v = QPushButton("Vertical")
+        self.btn_mirror_v.setFixedHeight(fh)
+        self.btn_mirror_v.setToolTip("Espelhar com cópia na vertical (Ctrl+J)")
+        self.btn_mirror_v.clicked.connect(self._mirror_selected_vertical)
+        self.btn_mirror_v.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_mirror_v)
 
         pair_mirror = QHBoxLayout()
         pair_mirror.setContentsMargins(0, 0, 0, 0)
         pair_mirror.setSpacing(4)
-        pair_mirror.addWidget(btn_mirror_h, 1)
-        pair_mirror.addWidget(btn_mirror_v, 1)
+        pair_mirror.addWidget(self.btn_mirror_h, 1)
+        pair_mirror.addWidget(self.btn_mirror_v, 1)
         col_actions.addLayout(pair_mirror)
 
         # Imagem | PDF (par)
-        btn_img = QPushButton("🖼️ Imagem")
-        btn_img.setFixedHeight(fh)
-        btn_img.clicked.connect(lambda: self._insert_image())
-        btn_img.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_img)
+        self.btn_img = QPushButton("🖼️ Imagem")
+        self.btn_img.setFixedHeight(fh)
+        self.btn_img.clicked.connect(lambda: self._insert_image())
+        self.btn_img.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_img)
 
-        btn_pdf = QPushButton("PDF")
-        btn_pdf.setFixedHeight(fh)
-        btn_pdf.clicked.connect(self._attach_pdf)
-        btn_pdf.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_pdf)
+        self.btn_pdf = QPushButton("PDF")
+        self.btn_pdf.setFixedHeight(fh)
+        self.btn_pdf.clicked.connect(self._attach_pdf)
+        self.btn_pdf.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_pdf)
 
         pair_media = QHBoxLayout()
         pair_media.setContentsMargins(0, 0, 0, 0)
         pair_media.setSpacing(4)
-        pair_media.addWidget(btn_img, 1)
-        pair_media.addWidget(btn_pdf, 1)
+        pair_media.addWidget(self.btn_img, 1)
+        pair_media.addWidget(self.btn_pdf, 1)
         col_actions.addLayout(pair_media)
 
         # Anexos | 3D (par)
-        btn_attachments = QPushButton("Anexos")
-        btn_attachments.setFixedHeight(fh)
-        btn_attachments.setToolTip("Anexar arquivo DWG")
-        btn_attachments.clicked.connect(self._attach_dwg)
-        btn_attachments.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_attachments)
+        self.btn_attachments = QPushButton("Anexos")
+        self.btn_attachments.setFixedHeight(fh)
+        self.btn_attachments.setToolTip("Anexar arquivo DWG")
+        self.btn_attachments.clicked.connect(self._attach_dwg)
+        self.btn_attachments.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_attachments)
 
-        btn_3d = QPushButton("3D")
-        btn_3d.setFixedHeight(fh)
-        btn_3d.setToolTip("Inserir desenho 3D pre-definido")
-        btn_3d.clicked.connect(self._open_3d_preset_popup)
-        btn_3d.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_3d)
+        self.btn_3d = QPushButton("3D")
+        self.btn_3d.setFixedHeight(fh)
+        self.btn_3d.setToolTip("Inserir desenho 3D pre-definido")
+        self.btn_3d.clicked.connect(self._open_3d_preset_popup)
+        self.btn_3d.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_3d)
 
         pair_extra = QHBoxLayout()
         pair_extra.setContentsMargins(0, 0, 0, 0)
         pair_extra.setSpacing(4)
-        pair_extra.addWidget(btn_attachments, 1)
-        pair_extra.addWidget(btn_3d, 1)
+        pair_extra.addWidget(self.btn_attachments, 1)
+        pair_extra.addWidget(self.btn_3d, 1)
         col_actions.addLayout(pair_extra)
 
         # Régua (linha cheia)
-        btn_dim = QPushButton("Régua")
-        btn_dim.setFixedHeight(fh)
-        btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
-        btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
-        btn_dim.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(btn_dim)
-        col_actions.addWidget(btn_dim)
+        self.btn_dim = QPushButton("Régua")
+        self.btn_dim.setFixedHeight(fh)
+        self.btn_dim.setToolTip("Adicionar/editar cota manual, atalho M")
+        self.btn_dim.clicked.connect(self._add_or_edit_manual_dimension)
+        self.btn_dim.setStyleSheet(self._tool_btn_style())
+        self._tool_misc_btns.append(self.btn_dim)
+        col_actions.addWidget(self.btn_dim)
 
         # Limpar (linha cheia, em destaque)
         btn_clear = QPushButton("Limpar")
@@ -3897,18 +3912,11 @@ class DrawingCanvas(QWidget):
         self._toolbar_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._toolbar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._toolbar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._toolbar_scroll.setStyleSheet(
-            "QScrollArea { background:transparent; border:none; }"
-            "QScrollBar:vertical { width:6px; background:transparent; margin:0; }"
-            "QScrollBar::handle:vertical { background:rgba(255,255,255,0.25);"
-            " border-radius:3px; min-height:30px; }"
-            "QScrollBar::handle:vertical:hover { background:rgba(255,255,255,0.45); }"
-            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }"
-            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background:none; }"
-        )
+        self._toolbar_scroll.setStyleSheet(self._toolbar_scroll_style())
 
         toolbar_content = QWidget()
         overlay_v = QVBoxLayout(toolbar_content)
+        self._toolbar_overlay_layout = overlay_v
         overlay_v.setContentsMargins(8, 8, 8, 8)
         overlay_v.setSpacing(6)
         overlay_v.addWidget(tools_frame)
@@ -3948,6 +3956,30 @@ class DrawingCanvas(QWidget):
         # Hint label removido — virou tooltip do botão "?" no título.
         self._hint_label = None
 
+        self._toolbar_docked_host = QFrame(self)
+        self._toolbar_docked_host.setStyleSheet(self._toolbar_overlay_style())
+        self._toolbar_docked_host.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._toolbar_docked_host.setFixedWidth(max(200, int(230 * self.scale)))
+        self._toolbar_docked_host.setVisible(False)
+
+        docked_outer = QVBoxLayout(self._toolbar_docked_host)
+        docked_outer.setContentsMargins(0, 0, 0, 0)
+        docked_outer.setSpacing(0)
+
+        self._toolbar_docked_scroll = QScrollArea(self._toolbar_docked_host)
+        self._toolbar_docked_scroll.setWidgetResizable(True)
+        self._toolbar_docked_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._toolbar_docked_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._toolbar_docked_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._toolbar_docked_scroll.setStyleSheet(self._toolbar_scroll_style())
+
+        docked_content = QWidget()
+        self._toolbar_docked_layout = QVBoxLayout(docked_content)
+        self._toolbar_docked_layout.setContentsMargins(8, 8, 8, 8)
+        self._toolbar_docked_layout.setSpacing(6)
+        self._toolbar_docked_scroll.setWidget(docked_content)
+        docked_outer.addWidget(self._toolbar_docked_scroll)
+
         # Cena + View
         self.scene = DrawingScene(self)
         # sceneRect fixo: impede que o viewport role quando o primeiro item é
@@ -3969,7 +4001,13 @@ class DrawingCanvas(QWidget):
         self.view.setMinimumHeight(max(250, int(300 * self.scale)))
         # Garante que a origem (0,0) da cena começa centralizada no viewport
         self.view.centerOn(QPointF(0, 0))
-        layout.addWidget(self.view)
+
+        self._canvas_row = QHBoxLayout()
+        self._canvas_row.setContentsMargins(0, 0, 0, 0)
+        self._canvas_row.setSpacing(max(8, int(10 * self.scale)))
+        self._canvas_row.addWidget(self._toolbar_docked_host)
+        self._canvas_row.addWidget(self.view, 1)
+        layout.addLayout(self._canvas_row, 1)
 
         # Painel de PDF
         self.pdf_panel = QFrame()
@@ -4017,8 +4055,158 @@ class DrawingCanvas(QWidget):
         self.attachment_panel.setVisible(False)
         layout.addWidget(self.attachment_panel)
 
+        self._apply_toolbar_mode(self.toolbar_mode)
         self._set_tool(Tool.SELECT)
         self._setup_shortcuts()
+
+    def _normalize_toolbar_mode(self, mode: object) -> str:
+        normalized = str(mode or "").strip().lower()
+        if normalized in {"classic", "technical", "office"}:
+            return normalized
+        return "technical"
+
+    def _clear_layout(self, layout) -> None:
+        while layout is not None and layout.count():
+            item = layout.takeAt(0)
+            child_layout = item.layout()
+            if child_layout is not None:
+                self._clear_layout(child_layout)
+
+    def _rebuild_toolbar_sections_for_vertical(self) -> None:
+        self._clear_layout(self._tools_layout)
+        self._tools_layout.setSpacing(3)
+        for btn in self._tool_btns.values():
+            self._tools_layout.addWidget(btn)
+
+        self._clear_layout(self._props_layout)
+        self._props_layout.setSpacing(4)
+        self._props_layout.addLayout(self._hpair(self._lbl_color, self.btn_color))
+        self._props_layout.addLayout(self._hpair(self._lbl_width, self.spin_width))
+        self._props_layout.addLayout(self._hpair(self._lbl_style, self.combo_style))
+        self._props_layout.addLayout(self._hpair(self._lbl_esquadro, self.combo_esquadro))
+        self._props_layout.addLayout(self._hpair(self._lbl_font, self.spin_font))
+        self._props_layout.addWidget(self.btn_desenho)
+
+        self._clear_layout(self._actions_layout)
+        self._actions_layout.setSpacing(4)
+
+        pair_undo = QHBoxLayout()
+        pair_undo.setContentsMargins(0, 0, 0, 0)
+        pair_undo.setSpacing(4)
+        pair_undo.addWidget(self.btn_undo, 1)
+        pair_undo.addWidget(self.btn_redo, 1)
+        self._actions_layout.addLayout(pair_undo)
+
+        self._actions_layout.addLayout(self._hpair(self._lbl_rotate, self.spin_rotate))
+        self._actions_layout.addWidget(self.btn_rotate)
+
+        pair_mirror = QHBoxLayout()
+        pair_mirror.setContentsMargins(0, 0, 0, 0)
+        pair_mirror.setSpacing(4)
+        pair_mirror.addWidget(self.btn_mirror_h, 1)
+        pair_mirror.addWidget(self.btn_mirror_v, 1)
+        self._actions_layout.addLayout(pair_mirror)
+
+        pair_media = QHBoxLayout()
+        pair_media.setContentsMargins(0, 0, 0, 0)
+        pair_media.setSpacing(4)
+        pair_media.addWidget(self.btn_img, 1)
+        pair_media.addWidget(self.btn_pdf, 1)
+        self._actions_layout.addLayout(pair_media)
+
+        pair_extra = QHBoxLayout()
+        pair_extra.setContentsMargins(0, 0, 0, 0)
+        pair_extra.setSpacing(4)
+        pair_extra.addWidget(self.btn_attachments, 1)
+        pair_extra.addWidget(self.btn_3d, 1)
+        self._actions_layout.addLayout(pair_extra)
+
+        self._actions_layout.addWidget(self.btn_dim)
+        self._actions_layout.addWidget(self._btn_clear)
+
+    def _rebuild_toolbar_sections_for_classic(self) -> None:
+        self._clear_layout(self._tools_layout)
+        self._tools_layout.setSpacing(6)
+        tools_row = QHBoxLayout()
+        tools_row.setContentsMargins(0, 0, 0, 0)
+        tools_row.setSpacing(6)
+        for btn in self._tool_btns.values():
+            tools_row.addWidget(btn)
+        tools_row.addStretch()
+        self._tools_layout.addLayout(tools_row)
+
+        self._clear_layout(self._props_layout)
+        self._props_layout.setSpacing(6)
+        props_row = QHBoxLayout()
+        props_row.setContentsMargins(0, 0, 0, 0)
+        props_row.setSpacing(8)
+        props_row.addLayout(self._hpair(self._lbl_color, self.btn_color))
+        props_row.addLayout(self._hpair(self._lbl_width, self.spin_width))
+        props_row.addLayout(self._hpair(self._lbl_style, self.combo_style))
+        props_row.addLayout(self._hpair(self._lbl_esquadro, self.combo_esquadro))
+        props_row.addLayout(self._hpair(self._lbl_font, self.spin_font))
+        props_row.addWidget(self.btn_desenho)
+        props_row.addStretch()
+        self._props_layout.addLayout(props_row)
+
+        self._clear_layout(self._actions_layout)
+        self._actions_layout.setSpacing(6)
+        actions_row = QHBoxLayout()
+        actions_row.setContentsMargins(0, 0, 0, 0)
+        actions_row.setSpacing(6)
+        for widget in (
+            self.btn_undo,
+            self.btn_redo,
+            self.spin_rotate,
+            self.btn_rotate,
+            self.btn_mirror_h,
+            self.btn_mirror_v,
+            self.btn_img,
+            self.btn_pdf,
+            self.btn_attachments,
+            self.btn_3d,
+            self.btn_dim,
+            self._btn_clear,
+        ):
+            if widget is self.spin_rotate:
+                actions_row.addLayout(self._hpair(self._lbl_rotate, self.spin_rotate))
+                continue
+            actions_row.addWidget(widget)
+        actions_row.addStretch()
+        self._actions_layout.addLayout(actions_row)
+
+    def _mount_toolbar_sections(self, target_layout: QVBoxLayout) -> None:
+        self._clear_layout(self._toolbar_classic_layout)
+        self._clear_layout(self._toolbar_overlay_layout)
+        self._clear_layout(self._toolbar_docked_layout)
+        for frame in self._toolbar_section_frames:
+            target_layout.addWidget(frame)
+        target_layout.addStretch()
+
+    def _apply_toolbar_mode(self, mode: object) -> None:
+        self.toolbar_mode = self._normalize_toolbar_mode(mode)
+        is_classic = self.toolbar_mode == "classic"
+        is_technical = self.toolbar_mode == "technical"
+        is_office = self.toolbar_mode == "office"
+
+        self._toolbar_anim_in_progress = False
+        self._toolbar_overlay.clearMask()
+        self._toolbar_overlay.setVisible(False)
+        self._toolbar_toggle_btn.setChecked(False)
+        self._toolbar_toggle_btn.setText(self._toolbar_toggle_text(False))
+
+        if is_classic:
+            self._rebuild_toolbar_sections_for_classic()
+            self._mount_toolbar_sections(self._toolbar_classic_layout)
+        else:
+            self._rebuild_toolbar_sections_for_vertical()
+            target_layout = self._toolbar_docked_layout if is_office else self._toolbar_overlay_layout
+            self._mount_toolbar_sections(target_layout)
+
+        self._toolbar_classic_host.setVisible(is_classic)
+        self._toolbar_docked_host.setVisible(is_office)
+        self._toolbar_toggle_btn.setVisible(is_technical)
+        self._reposition_toolbar_overlay()
 
     def resizeEvent(self, event):
         """Reposiciona a toolbar flutuante a cada resize do canvas."""
@@ -4044,6 +4232,10 @@ class DrawingCanvas(QWidget):
         toggle_btn = getattr(self, "_toolbar_toggle_btn", None)
         view = getattr(self, "view", None)
         if overlay is None or view is None or toggle_btn is None:
+            return
+        if self.toolbar_mode != "technical":
+            overlay.setVisible(False)
+            toggle_btn.setVisible(False)
             return
         view_geo = view.geometry()
         margin = max(10, int(12 * self.scale))
@@ -4080,7 +4272,7 @@ class DrawingCanvas(QWidget):
         """
         overlay = getattr(self, "_toolbar_overlay", None)
         toggle_btn = getattr(self, "_toolbar_toggle_btn", None)
-        if overlay is None or toggle_btn is None:
+        if overlay is None or toggle_btn is None or self.toolbar_mode != "technical":
             return
         # Bloqueia clicks repetidos durante anim em curso.
         if getattr(self, "_toolbar_anim_in_progress", False):
@@ -4413,6 +4605,17 @@ class DrawingCanvas(QWidget):
             f"}}"
         )
 
+    def _toolbar_scroll_style(self) -> str:
+        return (
+            "QScrollArea { background:transparent; border:none; }"
+            "QScrollBar:vertical { width:6px; background:transparent; margin:0; }"
+            "QScrollBar::handle:vertical { background:rgba(255,255,255,0.25);"
+            " border-radius:3px; min-height:30px; }"
+            "QScrollBar::handle:vertical:hover { background:rgba(255,255,255,0.45); }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background:none; }"
+        )
+
     def _toolbar_toggle_btn_style(self) -> str:
         """Estilo do botão '☰ Barra de Ferramentas' (trigger do overlay).
 
@@ -4671,6 +4874,15 @@ class DrawingCanvas(QWidget):
         overlay = getattr(self, "_toolbar_overlay", None)
         if overlay is not None:
             overlay.setStyleSheet(self._toolbar_overlay_style())
+        docked_host = getattr(self, "_toolbar_docked_host", None)
+        if docked_host is not None:
+            docked_host.setStyleSheet(self._toolbar_overlay_style())
+        toolbar_scroll = getattr(self, "_toolbar_scroll", None)
+        if toolbar_scroll is not None:
+            toolbar_scroll.setStyleSheet(self._toolbar_scroll_style())
+        docked_scroll = getattr(self, "_toolbar_docked_scroll", None)
+        if docked_scroll is not None:
+            docked_scroll.setStyleSheet(self._toolbar_scroll_style())
         if help_btn is not None:
             help_btn.setStyleSheet(self._help_btn_style())
         if toggle_btn is not None:
