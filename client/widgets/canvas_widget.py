@@ -1109,6 +1109,26 @@ class DrawingScene(QGraphicsScene):
             self._vp_corner_label_pos = None
             self.update()
 
+        for item in self.items():
+            item.update()
+        self.update()
+
+    def _top_selectable_item_at(self, scene_pos: QPointF) -> QGraphicsItem | None:
+        for item in self.items(scene_pos, Qt.ItemSelectionMode.IntersectsItemShape, Qt.SortOrder.DescendingOrder):
+            if not bool(item.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsSelectable):
+                continue
+            meta = item.data(0) or {}
+            if isinstance(meta, dict) and meta.get("type") in {
+                "ruler_overlay",
+                "manual_dimension_overlay",
+                "angle_dimension_overlay",
+                "mirror_axis_overlay",
+                "vector_pen_overlay",
+            }:
+                continue
+            return item
+        return None
+
     def _is_angle_marker(self, item: QGraphicsItem) -> bool:
         meta = item.data(0)
         return (
@@ -2853,6 +2873,16 @@ class DrawingScene(QGraphicsScene):
             return
 
         if tool == Tool.SELECT:
+            target_item = self._top_selectable_item_at(pos)
+            if target_item is not None:
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    target_item.setSelected(not target_item.isSelected())
+                else:
+                    if not target_item.isSelected() or len(self.selectedItems()) > 1:
+                        self.clearSelection()
+                        target_item.setSelected(True)
+                target_item.update()
+                self.update()
             super().mousePressEvent(event)
             return
 
