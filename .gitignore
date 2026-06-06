@@ -36,6 +36,9 @@ client/assets/login_backgrounds/
 # Pente Fino — auditoria interna privada (não versionar)
 pente_fino/
 
+# Pastas tmp_* — material de desenvolvimento (previews, mocks, sandboxes)
+tmp_*/
+
 # IDE
 .vscode/settings.json
 .idea/
