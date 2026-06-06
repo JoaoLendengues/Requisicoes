@@ -542,6 +542,40 @@ class CanvasImageItem(QGraphicsPixmapItem):
         outline.addRect(self.boundingRect())
         return outline
 
+    def paint(self, painter: QPainter, option, widget=None) -> None:
+        super().paint(painter, option, widget)
+        if not self.isSelected():
+            return
+
+        rect = self.boundingRect().adjusted(0.5, 0.5, -0.5, -0.5)
+        if rect.isEmpty():
+            return
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+
+        border_pen = QPen(QColor(theme.PRIMARY), 1.5, Qt.PenStyle.DashLine)
+        border_pen.setCosmetic(True)
+        painter.setPen(border_pen)
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        painter.drawRect(rect)
+
+        handle_size = 7.0
+        handle_half = handle_size / 2.0
+        painter.setPen(QPen(QColor("#FFFFFF"), 1.0))
+        painter.setBrush(QBrush(QColor(theme.PRIMARY)))
+        for corner in (rect.topLeft(), rect.topRight(), rect.bottomLeft(), rect.bottomRight()):
+            painter.drawRect(
+                QRectF(
+                    corner.x() - handle_half,
+                    corner.y() - handle_half,
+                    handle_size,
+                    handle_size,
+                )
+            )
+
+        painter.restore()
+
 
 # Cena personalizada
 class DrawingScene(QGraphicsScene):
