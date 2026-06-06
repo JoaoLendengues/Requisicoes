@@ -4944,6 +4944,22 @@ class DrawingCanvas(QWidget):
             else:
                 lbl.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{small}pt;")
 
+        # Força repaint dos widgets que receberam stylesheet novo. setStyleSheet
+        # invalida o stylesheet mas o Qt nem sempre repinta os filhos
+        # imediatamente — sem isso, o overlay/toolbar mantem o pixmap pintado
+        # do tema antigo ate o user hover/interagir.
+        for w in (
+            self,
+            getattr(self, "_toolbar_overlay", None),
+            getattr(self, "_toolbar_docked_host", None),
+            getattr(self, "_toolbar_classic_host", None),
+        ):
+            if w is None:
+                continue
+            w.style().unpolish(w)
+            w.style().polish(w)
+            w.update()
+
     def _setup_shortcuts(self):
         shortcuts = {
             Qt.Key.Key_S: Tool.SELECT,
