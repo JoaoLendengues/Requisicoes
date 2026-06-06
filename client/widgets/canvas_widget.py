@@ -5533,14 +5533,22 @@ class DrawingCanvas(QWidget):
             self._undo_stack.append(item)
             self.changed.emit()
 
+    def _pick_existing_file(self, title: str, file_filter: str) -> str:
+        dialog = QFileDialog(self, title)
+        dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
+        dialog.setNameFilter(file_filter)
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, False)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return ""
+        files = dialog.selectedFiles()
+        return str(files[0]).strip() if files else ""
+
     # Imagem
     def _insert_image(self, pos: QPointF = None):
-        path, _ = QFileDialog.getOpenFileName(
-            self,
+        path = self._pick_existing_file(
             "Selecionar imagem",
-            "",
             "Imagens (*.png *.jpg *.jpeg *.bmp *.gif *.webp)",
-            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if not path:
             return
@@ -5551,12 +5559,9 @@ class DrawingCanvas(QWidget):
 
     # PDF
     def _attach_pdf(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self,
+        path = self._pick_existing_file(
             "Selecionar PDF",
-            "",
             "PDF (*.pdf)",
-            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if path:
             self._attached_pdf = path
@@ -5576,12 +5581,9 @@ class DrawingCanvas(QWidget):
 
     # Anexos (DWG)
     def _attach_dwg(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self,
+        path = self._pick_existing_file(
             "Selecionar anexo DWG",
-            "",
             "Desenho CAD (*.dwg)",
-            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if path:
             self._attached_dwg = path
