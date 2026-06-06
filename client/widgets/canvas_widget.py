@@ -4073,6 +4073,7 @@ class DrawingCanvas(QWidget):
                 self._clear_layout(child_layout)
 
     def _rebuild_toolbar_sections_for_vertical(self) -> None:
+        self._apply_classic_field_widths(False)
         self._clear_layout(self._tools_layout)
         self._tools_layout.setSpacing(3)
         for btn in self._tool_btns.values():
@@ -4125,6 +4126,7 @@ class DrawingCanvas(QWidget):
         self._actions_layout.addWidget(self._btn_clear)
 
     def _rebuild_toolbar_sections_for_classic(self) -> None:
+        self._apply_classic_field_widths(True)
         self._clear_layout(self._tools_layout)
         self._tools_layout.setSpacing(6)
         tools_row = QHBoxLayout()
@@ -4139,12 +4141,12 @@ class DrawingCanvas(QWidget):
         self._props_layout.setSpacing(6)
         props_row = QHBoxLayout()
         props_row.setContentsMargins(0, 0, 0, 0)
-        props_row.setSpacing(8)
-        props_row.addLayout(self._hpair(self._lbl_color, self.btn_color))
-        props_row.addLayout(self._hpair(self._lbl_width, self.spin_width))
-        props_row.addLayout(self._hpair(self._lbl_style, self.combo_style))
-        props_row.addLayout(self._hpair(self._lbl_esquadro, self.combo_esquadro))
-        props_row.addLayout(self._hpair(self._lbl_font, self.spin_font))
+        props_row.setSpacing(10)
+        props_row.addLayout(self._hpair_compact(self._lbl_color, self.btn_color))
+        props_row.addLayout(self._hpair_compact(self._lbl_width, self.spin_width))
+        props_row.addLayout(self._hpair_compact(self._lbl_style, self.combo_style))
+        props_row.addLayout(self._hpair_compact(self._lbl_esquadro, self.combo_esquadro))
+        props_row.addLayout(self._hpair_compact(self._lbl_font, self.spin_font))
         props_row.addWidget(self.btn_desenho)
         props_row.addStretch()
         self._props_layout.addLayout(props_row)
@@ -4169,11 +4171,31 @@ class DrawingCanvas(QWidget):
             self._btn_clear,
         ):
             if widget is self.spin_rotate:
-                actions_row.addLayout(self._hpair(self._lbl_rotate, self.spin_rotate))
+                actions_row.addLayout(self._hpair_compact(self._lbl_rotate, self.spin_rotate))
                 continue
             actions_row.addWidget(widget)
         actions_row.addStretch()
         self._actions_layout.addLayout(actions_row)
+
+    def _apply_classic_field_widths(self, enabled: bool) -> None:
+        if enabled:
+            self.spin_width.setFixedWidth(max(54, int(62 * self.scale)))
+            self.combo_style.setFixedWidth(max(140, int(160 * self.scale)))
+            self.combo_esquadro.setFixedWidth(max(76, int(90 * self.scale)))
+            self.spin_font.setFixedWidth(max(92, int(108 * self.scale)))
+            self.spin_rotate.setFixedWidth(max(104, int(118 * self.scale)))
+            return
+
+        unrestricted = 16777215
+        for field in (
+            self.spin_width,
+            self.combo_style,
+            self.combo_esquadro,
+            self.spin_font,
+            self.spin_rotate,
+        ):
+            field.setMinimumWidth(0)
+            field.setMaximumWidth(unrestricted)
 
     def _mount_toolbar_sections(self, target_layout: QVBoxLayout) -> None:
         self._clear_layout(self._toolbar_classic_layout)
@@ -4727,6 +4749,15 @@ class DrawingCanvas(QWidget):
         row.setSpacing(6)
         row.addWidget(label, 0)
         row.addWidget(widget, 1)
+        return row
+
+    def _hpair_compact(self, label: QLabel, widget: QWidget) -> QHBoxLayout:
+        """Versão compacta usada no modo clássico horizontal."""
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        row.addWidget(label, 0)
+        row.addWidget(widget, 0)
         return row
 
     def _prepare_popup_dialog(self, dialog: QDialog | QMessageBox | QInputDialog) -> None:
