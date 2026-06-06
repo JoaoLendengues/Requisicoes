@@ -462,7 +462,7 @@ def build_canvas_item_from_dict(d: dict) -> QGraphicsItem | None:
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
-            item = QGraphicsPixmapItem(pix)
+            item = CanvasImageItem(pix)
             item.setPos(QPointF(d["x"], d["y"]))
             item.setData(0, {
                 "type": "image",
@@ -532,6 +532,15 @@ class HollowEllipseItem(QGraphicsEllipseItem):
         outline = QPainterPath()
         outline.addEllipse(self.rect())
         return stroker.createStroke(outline)
+
+
+class CanvasImageItem(QGraphicsPixmapItem):
+    """Imagem selecionável pelo retângulo completo, mesmo com transparência."""
+
+    def shape(self) -> QPainterPath:
+        outline = QPainterPath()
+        outline.addRect(self.boundingRect())
+        return outline
 
 
 # Cena personalizada
@@ -7635,7 +7644,7 @@ class DrawingCanvas(QWidget):
                 Qt.TransformationMode.SmoothTransformation,
             )
 
-        item = QGraphicsPixmapItem(display_pixmap)
+        item = CanvasImageItem(display_pixmap)
         item.setPos(pos or self._default_insert_pos(display_pixmap))
         item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
