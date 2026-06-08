@@ -614,7 +614,7 @@ def global_style() -> str:
         f"QMessageBox QPushButton, QMessageBox QDialogButtonBox QPushButton {{"
         f"  background:{SIDEBAR_BG}; background-color:{SIDEBAR_BG}; background-image:none;"  # noqa: F821
         f"  color:{TEXT_WHITE}; border:1px solid {SIDEBAR_BG};"  # noqa: F821
-        f"  border-radius:8px; padding:7px 16px; min-width:84px; min-height:34px; font-weight:600;"
+        f"  border-radius:8px; padding:4px 6px; min-width:84px; min-height:34px; font-weight:600;"
         f"}}"
         f"QMessageBox QPushButton:hover, QMessageBox QDialogButtonBox QPushButton:hover {{"
         f"  background:{SIDEBAR_HOVER}; background-color:{SIDEBAR_HOVER}; border-color:{SIDEBAR_HOVER};"  # noqa: F821
@@ -662,7 +662,7 @@ def global_style() -> str:
         f"QInputDialog QPushButton, QFileDialog QPushButton, QColorDialog QPushButton {{"
         f"  background:{SIDEBAR_BG}; background-color:{SIDEBAR_BG}; background-image:none;"  # noqa: F821
         f"  color:{TEXT_WHITE}; border:1px solid {SIDEBAR_BG};"  # noqa: F821
-        f"  border-radius:8px; padding:7px 16px; min-width:84px; min-height:34px; font-weight:600;"
+        f"  border-radius:8px; padding:4px 6px; min-width:84px; min-height:34px; font-weight:600;"
         f"}}"
         f"QInputDialog QPushButton:hover, QFileDialog QPushButton:hover, QColorDialog QPushButton:hover {{"
         f"  background:{SIDEBAR_HOVER}; background-color:{SIDEBAR_HOVER}; border-color:{SIDEBAR_HOVER};"  # noqa: F821

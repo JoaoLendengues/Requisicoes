@@ -233,7 +233,7 @@ def _dialog_surface_style() -> str:
         f"  color:{theme.PANEL_TEXT_PRIMARY};"
         f"  border:1px solid {theme.rgba(theme.PANEL_NEON_PRIMARY, 110)};"
         f"  border-radius:14px;"
-        f"  padding:9px 18px;"
+        f"  padding:4px 6px;"
         f"  min-height:36px;"
         f"  font-weight:700;"
         f"}}"
