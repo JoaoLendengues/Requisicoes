@@ -4499,29 +4499,28 @@ class DrawingCanvas(QWidget):
         mask_anim.start()
 
     def _animate_toolbar_close(self):
-        """Fecha com stagger reverso nas seções + mask colapsando."""
+        """Fecha colapsando um snapshot fixo para evitar reflow visual."""
         overlay = self._toolbar_overlay
         toggle_btn = self._toolbar_toggle_btn
 
-        # Cria effects pra esta animação (a opacity inicial é 1.0 — visível —
-        # e vai animar pra 0.0 no fechamento).
-        self._create_section_effects(initial_opacity=1.0)
-        effects = self._toolbar_section_effects
-
         current_geo = overlay.geometry()
-        full_h = current_geo.height()
+        full_h = max(1, current_geo.height())
+        full_w = max(1, current_geo.width())
 
-        section_anims = []
-        n = len(effects)
-        for i, eff in enumerate(effects):
-            anim = QPropertyAnimation(eff, b"opacity", self)
-            anim.setDuration(160)
-            anim.setStartValue(1.0)
-            anim.setEndValue(0.0)
-            anim.setEasingCurve(QEasingCurve.Type.InCubic)
-            delay = (n - 1 - i) * 50
-            QTimer.singleShot(delay, anim.start)
-            section_anims.append(anim)
+        old_snapshot = getattr(self, "_toolbar_close_snapshot", None)
+        if old_snapshot is not None:
+            old_snapshot.deleteLater()
+
+        # Congela o conteúdo no lugar: o fechamento anima um pixmap estático,
+        # então scrollbar/layout interno não tem chance de recalcular e "pular".
+        snapshot = QLabel(overlay)
+        snapshot.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        snapshot.setGeometry(0, 0, full_w, full_h)
+        snapshot.setPixmap(overlay.grab(QRect(0, 0, full_w, full_h)))
+        snapshot.show()
+        snapshot.raise_()
+        self._toolbar_close_snapshot = snapshot
+        self._toolbar_scroll.setVisible(False)
 
         mask_anim = QVariantAnimation(self)
         mask_anim.setDuration(240)
@@ -4538,20 +4537,21 @@ class DrawingCanvas(QWidget):
         mask_anim.valueChanged.connect(_update_mask)
 
         def _on_finished():
+            self._toolbar_scroll.setVisible(True)
+            snapshot.deleteLater()
+            self._toolbar_close_snapshot = None
             overlay.setVisible(False)
             overlay.clearMask()
-            # Remove effects pra próxima abertura criar zerados.
-            self._remove_section_effects()
             self._toolbar_anim_in_progress = False
             toggle_btn.setText(self._toolbar_toggle_text(False))
             toggle_btn.setChecked(False)
 
         mask_anim.finished.connect(_on_finished)
-        QTimer.singleShot(80, mask_anim.start)
 
         self._toolbar_anim_height = mask_anim
-        self._toolbar_anim_sections = section_anims
+        self._toolbar_anim_sections = []
         self._toolbar_anim_in_progress = True
+        mask_anim.start()
 
     def _compact_inline_padding(self, base: int, minimum: int, maximum: int) -> int:
         try:
