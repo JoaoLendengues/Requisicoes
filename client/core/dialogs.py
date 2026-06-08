@@ -80,8 +80,8 @@ def fit_dialog_button_widths(
     proporcionalmente e os textos longos sao truncados.
     """
     widths: list[int] = []
-    text_padding = max(42, int(52 * scale))
-    extra_buffer = max(14, int(18 * scale))
+    text_padding = max(50, int(62 * scale))
+    extra_buffer = max(18, int(24 * scale))
 
     for button in buttons:
         if not isinstance(button, QPushButton):
@@ -97,18 +97,24 @@ def fit_dialog_button_widths(
         if visible_text:
             # horizontalAdvance pode subestimar em algumas fontes — usar
             # boundingRect que considera ascender/descender de glifos.
+            metrics = button.fontMetrics()
+            text_width = max(
+                metrics.horizontalAdvance(visible_text),
+                metrics.boundingRect(visible_text).width(),
+            )
             target_width = max(
                 target_width,
-                button.fontMetrics().horizontalAdvance(visible_text) + text_padding,
+                text_width + text_padding,
             )
 
         target_width += extra_buffer
         # setFixedWidth garante que o layout do BOX respeite — caso
         # contrario, QDialogButtonBox impoe largura uniforme e textos
         # longos ficam cortados.
-        button.setMinimumWidth(target_width)
+        button.setFixedWidth(target_width)
+        button.setMinimumHeight(max(button.minimumHeight(), int(40 * scale)))
         if expanding:
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         widths.append(target_width)
 
     return widths
@@ -160,6 +166,14 @@ def _resolve_message_box_button(box: QMessageBox, letter: str):
 
 _MESSAGE_BOX_SHORTCUT_FILTER = _MessageBoxShortcutFilter()
 _DIALOG_THEME_FILTER: QObject | None = None
+
+
+def _dialog_scale_from_parent(parent: QWidget | None) -> float:
+    try:
+        value = getattr(parent, "scale", 1.0)
+        return max(0.75, float(value or 1.0))
+    except (TypeError, ValueError):
+        return 1.0
 
 
 def _dialog_surface_style() -> str:
@@ -552,7 +566,9 @@ def _message_box_button_style() -> str:
     return ""
 
 
-def apply_message_box_theme(box: QMessageBox, scale: float = 1.0) -> QMessageBox:
+def apply_message_box_theme(box: QMessageBox, scale: float | None = None) -> QMessageBox:
+    if scale is None:
+        scale = _dialog_scale_from_parent(box.parentWidget())
     apply_dialog_theme(box)
     box.installEventFilter(_MESSAGE_BOX_SHORTCUT_FILTER)
     _style_dialog_buttons(box)
@@ -581,7 +597,7 @@ def _exec_themed_message_box(
     box.setStandardButtons(buttons)
     if default_button != QMessageBox.StandardButton.NoButton:
         box.setDefaultButton(default_button)
-    apply_message_box_theme(box)
+    apply_message_box_theme(box, _dialog_scale_from_parent(parent))
     box.exec()
     clicked = box.clickedButton()
     return box.standardButton(clicked) if clicked else QMessageBox.StandardButton.NoButton
@@ -950,6 +966,6 @@ def ask_confirmation(
 
     box.setDefaultButton(yes_button if default_to_yes else no_button)
     box.setEscapeButton(no_button)
-    apply_message_box_theme(box)
+    apply_message_box_theme(box, _dialog_scale_from_parent(parent))
     box.exec()
     return box.clickedButton() == yes_button

@@ -47,7 +47,7 @@ from ..core.datetime_utils import (
     local_now,
     parse_datetime as _parse_datetime,
 )
-from ..core.dialogs import apply_message_box_theme, ask_confirmation
+from ..core.dialogs import apply_message_box_theme, ask_confirmation, fit_dialog_button_widths
 from ..core.session import session
 
 
@@ -2099,12 +2099,19 @@ class ProductionView(QWidget):
         btn_close = box.addButton("Fechar", QMessageBox.ButtonRole.RejectRole)
         apply_message_box_theme(box)
         # Evita corte de texto dos botões longos nessa confirmação.
-        btn_wide = max(150, int(170 * self.scale))
-        btn_narrow = max(120, int(132 * self.scale))
-        btn_queue.setMinimumWidth(btn_wide)
-        btn_cancel.setMinimumWidth(btn_wide)
-        btn_close.setMinimumWidth(btn_narrow)
-        box.setMinimumWidth(max(580, int(640 * self.scale)))
+        button_widths = fit_dialog_button_widths(
+            [btn_queue, btn_cancel, btn_close],
+            scale=self.scale,
+        )
+        button_gap = max(10, int(12 * self.scale))
+        horizontal_padding = max(72, int(92 * self.scale))
+        box.setMinimumWidth(
+            max(
+                580,
+                int(640 * self.scale),
+                sum(button_widths) + button_gap * 2 + horizontal_padding,
+            )
+        )
         box.exec()
         clicked = box.clickedButton()
 
