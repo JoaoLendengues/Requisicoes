@@ -70,8 +70,8 @@ def _compact_button_padding(scale: float = 1.0) -> tuple[int, int]:
         normalized = max(0.55, min(2.35, float(scale or 1.0)))
     except (TypeError, ValueError):
         normalized = 1.0
-    vertical = max(2, min(9, int(round(4 * normalized))))
-    horizontal = max(4, min(14, int(round(6 * normalized))))
+    vertical = max(2, min(8, int(round(3 * normalized))))
+    horizontal = max(3, min(12, int(round(5 * normalized))))
     return vertical, horizontal
 
 
@@ -91,8 +91,8 @@ def fit_dialog_button_widths(
     """
     widths: list[int] = []
     padding_v, padding_h = _compact_button_padding(scale)
-    text_padding = max(44, int(56 * scale) + (padding_h * 2))
-    extra_buffer = max(16, int(20 * scale))
+    text_padding = max(40, int(52 * scale) + (padding_h * 2))
+    extra_buffer = max(14, int(18 * scale))
 
     for button in buttons:
         if not isinstance(button, QPushButton):

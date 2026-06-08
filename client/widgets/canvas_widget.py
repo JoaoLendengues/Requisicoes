@@ -4563,7 +4563,7 @@ class DrawingCanvas(QWidget):
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
         radius = max(10, int(12 * self.scale))
-        pad_h = self._compact_inline_padding(4, 3, 10)
+        pad_h = self._compact_inline_padding(3, 2, 8)
         return (
             f"QPushButton {{"
             f" background:qlineargradient(x1:0, y1:0, x2:0, y2:1,"
@@ -4636,7 +4636,7 @@ class DrawingCanvas(QWidget):
     def _danger_tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
         radius = max(10, int(12 * self.scale))
-        pad_h = self._compact_inline_padding(4, 3, 10)
+        pad_h = self._compact_inline_padding(3, 2, 8)
         return (
             f"QPushButton {{"
             f" background:{theme.rgba(theme.DANGER, 24)}; color:{theme.DANGER};"
@@ -4651,7 +4651,7 @@ class DrawingCanvas(QWidget):
     def _field_style(self) -> str:
         fs = max(8, int(9 * self.scale))
         radius = max(11, int(12 * self.scale))
-        pad_h = self._compact_inline_padding(4, 3, 10)
+        pad_h = self._compact_inline_padding(3, 2, 8)
         return (
             f"QComboBox, QSpinBox, QDoubleSpinBox {{"
             f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
@@ -4731,7 +4731,7 @@ class DrawingCanvas(QWidget):
         """
         fs = max(8, int(10 * self.scale))
         radius = max(10, int(12 * self.scale))
-        pad_h = self._compact_inline_padding(6, 4, 14)
+        pad_h = self._compact_inline_padding(5, 3, 12)
         return (
             f"QPushButton {{"
             f" background:{theme.rgba(theme.CARD_BG, 245)};"

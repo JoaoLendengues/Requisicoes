@@ -551,8 +551,8 @@ def _compact_dialog_button_padding(scale: float | None = None) -> tuple[int, int
         normalized = max(0.55, min(2.35, float(normalized or 1.0)))
     except (TypeError, ValueError):
         normalized = 1.0
-    vertical = max(2, min(9, int(round(4 * normalized))))
-    horizontal = max(4, min(14, int(round(6 * normalized))))
+    vertical = max(2, min(8, int(round(3 * normalized))))
+    horizontal = max(3, min(12, int(round(5 * normalized))))
     return vertical, horizontal
 
 
@@ -566,8 +566,8 @@ def global_style() -> str:
         return _global_style_cache[1]
     table_header_fg = TEXT_WHITE if not is_dark else PANEL_TEXT_PRIMARY  # noqa: F821
     dialog_padding_v, dialog_padding_h = _compact_dialog_button_padding(dialog_scale)
-    dialog_button_min_width = max(76, int(round(84 * dialog_scale)))
-    dialog_button_min_height = max(30, int(round(34 * dialog_scale)))
+    dialog_button_min_width = max(72, int(round(80 * dialog_scale)))
+    dialog_button_min_height = max(28, int(round(32 * dialog_scale)))
     style = (
         f"QMainWindow {{"
         f"  background:{CONTENT_BG}; color:{TEXT_DARK};"  # noqa: F821
