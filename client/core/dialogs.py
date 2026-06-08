@@ -65,6 +65,16 @@ def _clean_button_text(text: str) -> str:
     return (text or "").replace("&", "").strip().lower()
 
 
+def _compact_button_padding(scale: float = 1.0) -> tuple[int, int]:
+    try:
+        normalized = max(0.55, min(2.35, float(scale or 1.0)))
+    except (TypeError, ValueError):
+        normalized = 1.0
+    vertical = max(2, min(9, int(round(4 * normalized))))
+    horizontal = max(4, min(14, int(round(6 * normalized))))
+    return vertical, horizontal
+
+
 def fit_dialog_button_widths(
     buttons: list[QPushButton] | tuple[QPushButton, ...],
     *,
@@ -80,8 +90,9 @@ def fit_dialog_button_widths(
     proporcionalmente e os textos longos sao truncados.
     """
     widths: list[int] = []
-    text_padding = max(50, int(62 * scale))
-    extra_buffer = max(18, int(24 * scale))
+    padding_v, padding_h = _compact_button_padding(scale)
+    text_padding = max(44, int(56 * scale) + (padding_h * 2))
+    extra_buffer = max(16, int(20 * scale))
 
     for button in buttons:
         if not isinstance(button, QPushButton):
@@ -112,7 +123,7 @@ def fit_dialog_button_widths(
         # contrario, QDialogButtonBox impoe largura uniforme e textos
         # longos ficam cortados.
         button.setFixedWidth(target_width)
-        button.setMinimumHeight(max(button.minimumHeight(), int(40 * scale)))
+        button.setMinimumHeight(max(button.minimumHeight(), 34 + (padding_v * 2), int(40 * scale)))
         if expanding:
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         widths.append(target_width)
@@ -171,13 +182,25 @@ _DIALOG_THEME_FILTER: QObject | None = None
 def _dialog_scale_from_parent(parent: QWidget | None) -> float:
     try:
         value = getattr(parent, "scale", 1.0)
-        return max(0.75, float(value or 1.0))
+        return max(0.55, float(value or 1.0))
     except (TypeError, ValueError):
+        return 1.0
+
+
+def _active_dialog_scale() -> float:
+    try:
+        from .resolution import res
+
+        return max(0.55, float(res.effective_scale or 1.0))
+    except Exception:
         return 1.0
 
 
 def _dialog_surface_style() -> str:
     primary_fg = "#04111F" if theme.is_dark else theme.TEXT_WHITE
+    dialog_scale = _active_dialog_scale()
+    padding_v, padding_h = _compact_button_padding(dialog_scale)
+    button_min_height = max(32, int(round(36 * dialog_scale)))
     return (
         f"QDialog[fp_dialog='1'] {{"
         f"  background:qlineargradient(x1:0, y1:0, x2:1, y2:1,"
@@ -233,8 +256,8 @@ def _dialog_surface_style() -> str:
         f"  color:{theme.PANEL_TEXT_PRIMARY};"
         f"  border:1px solid {theme.rgba(theme.PANEL_NEON_PRIMARY, 110)};"
         f"  border-radius:14px;"
-        f"  padding:4px 6px;"
-        f"  min-height:36px;"
+        f"  padding:{padding_v}px {padding_h}px;"
+        f"  min-height:{button_min_height}px;"
         f"  font-weight:700;"
         f"}}"
         f"QDialog[fp_dialog='1'] QPushButton:hover {{"

@@ -4553,15 +4553,23 @@ class DrawingCanvas(QWidget):
         self._toolbar_anim_sections = section_anims
         self._toolbar_anim_in_progress = True
 
+    def _compact_inline_padding(self, base: int, minimum: int, maximum: int) -> int:
+        try:
+            scale = max(0.55, min(2.35, float(self.scale or 1.0)))
+        except (TypeError, ValueError):
+            scale = 1.0
+        return max(minimum, min(maximum, int(round(base * scale))))
+
     def _tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
         radius = max(10, int(12 * self.scale))
+        pad_h = self._compact_inline_padding(4, 3, 10)
         return (
             f"QPushButton {{"
             f" background:qlineargradient(x1:0, y1:0, x2:0, y2:1,"
             f" stop:0 {theme.CARD_BG}, stop:1 {theme.SURFACE_SOFT});"
             f" border:1px solid {theme.rgba(theme.PRIMARY, 60)};"
-            f" border-radius:{radius}px; padding:0px 4px;"
+            f" border-radius:{radius}px; padding:0px {pad_h}px;"
             f" font-size:{fs}pt; color:{theme.TEXT_DARK}; font-weight:700;"
             f" text-align:center;"
             f"}}"
@@ -4628,11 +4636,12 @@ class DrawingCanvas(QWidget):
     def _danger_tool_btn_style(self) -> str:
         fs = max(8, int(9 * self.scale))
         radius = max(10, int(12 * self.scale))
+        pad_h = self._compact_inline_padding(4, 3, 10)
         return (
             f"QPushButton {{"
             f" background:{theme.rgba(theme.DANGER, 24)}; color:{theme.DANGER};"
             f" border:1px solid {theme.rgba(theme.DANGER, 86)}; border-radius:{radius}px;"
-            f" padding:0px 4px; font-size:{fs}pt; font-weight:800;"
+            f" padding:0px {pad_h}px; font-size:{fs}pt; font-weight:800;"
             f" text-align:center;"
             f"}}"
             f"QPushButton:hover {{ background:{theme.rgba(theme.DANGER, 42)}; }}"
@@ -4642,11 +4651,12 @@ class DrawingCanvas(QWidget):
     def _field_style(self) -> str:
         fs = max(8, int(9 * self.scale))
         radius = max(11, int(12 * self.scale))
+        pad_h = self._compact_inline_padding(4, 3, 10)
         return (
             f"QComboBox, QSpinBox, QDoubleSpinBox {{"
             f" background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
             f" border:1px solid {theme.rgba(theme.PRIMARY, 60)}; border-radius:{radius}px;"
-            f" padding:0px 4px; font-size:{fs}pt; font-weight:600;"
+            f" padding:0px {pad_h}px; font-size:{fs}pt; font-weight:600;"
             f" selection-background-color:{theme.rgba(theme.PRIMARY, 70)};"
             f"}}"
             f"QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover {{"
@@ -4721,13 +4731,14 @@ class DrawingCanvas(QWidget):
         """
         fs = max(8, int(10 * self.scale))
         radius = max(10, int(12 * self.scale))
+        pad_h = self._compact_inline_padding(6, 4, 14)
         return (
             f"QPushButton {{"
             f" background:{theme.rgba(theme.CARD_BG, 245)};"
             f" color:{theme.PRIMARY};"
             f" border:1px solid {theme.rgba(theme.PRIMARY, 90)};"
             f" border-radius:{radius}px;"
-            f" padding:0px 6px;"
+            f" padding:0px {pad_h}px;"
             f" font-size:{fs}pt; font-weight:700;"
             f" text-align:left;"
             f"}}"

@@ -379,7 +379,7 @@ def themed_registry_size() -> int:
 
 # Cache do global_style(): a string CSS é gigante (~30 KB) e era regerada a cada
 # chamada. Como a paleta só muda em set_dark(), basta invalidar lá.
-_global_style_cache: str | None = None
+_global_style_cache: tuple[tuple[bool, float], str] | None = None
 
 
 # Aplica paleta clara como padrão ao importar o módulo
@@ -536,14 +536,39 @@ def apply_neon_table_palette(table) -> None:
     table.viewport().setAutoFillBackground(True)
 
 
+def _active_ui_scale() -> float:
+    try:
+        from .resolution import res
+
+        return max(0.55, min(2.35, float(res.effective_scale or 1.0)))
+    except Exception:
+        return 1.0
+
+
+def _compact_dialog_button_padding(scale: float | None = None) -> tuple[int, int]:
+    normalized = _active_ui_scale() if scale is None else scale
+    try:
+        normalized = max(0.55, min(2.35, float(normalized or 1.0)))
+    except (TypeError, ValueError):
+        normalized = 1.0
+    vertical = max(2, min(9, int(round(4 * normalized))))
+    horizontal = max(4, min(14, int(round(6 * normalized))))
+    return vertical, horizontal
+
+
 def global_style() -> str:
     """QSS aplicado ao QApplication. Resultado cacheado por paleta — invalidado
     automaticamente em set_dark(). Chamadas adicionais retornam a string memoizada."""
     global _global_style_cache
-    if _global_style_cache is not None:
-        return _global_style_cache
+    dialog_scale = _active_ui_scale()
+    cache_key = (is_dark, round(dialog_scale, 3))
+    if _global_style_cache is not None and _global_style_cache[0] == cache_key:
+        return _global_style_cache[1]
     table_header_fg = TEXT_WHITE if not is_dark else PANEL_TEXT_PRIMARY  # noqa: F821
-    _global_style_cache = (
+    dialog_padding_v, dialog_padding_h = _compact_dialog_button_padding(dialog_scale)
+    dialog_button_min_width = max(76, int(round(84 * dialog_scale)))
+    dialog_button_min_height = max(30, int(round(34 * dialog_scale)))
+    style = (
         f"QMainWindow {{"
         f"  background:{CONTENT_BG}; color:{TEXT_DARK};"  # noqa: F821
         f"  font-family:'{FONT_PRIMARY}', '{FONT_FALLBACK}', 'Segoe UI';"
@@ -614,7 +639,8 @@ def global_style() -> str:
         f"QMessageBox QPushButton, QMessageBox QDialogButtonBox QPushButton {{"
         f"  background:{SIDEBAR_BG}; background-color:{SIDEBAR_BG}; background-image:none;"  # noqa: F821
         f"  color:{TEXT_WHITE}; border:1px solid {SIDEBAR_BG};"  # noqa: F821
-        f"  border-radius:8px; padding:4px 6px; min-width:84px; min-height:34px; font-weight:600;"
+        f"  border-radius:8px; padding:{dialog_padding_v}px {dialog_padding_h}px;"
+        f"  min-width:{dialog_button_min_width}px; min-height:{dialog_button_min_height}px; font-weight:600;"
         f"}}"
         f"QMessageBox QPushButton:hover, QMessageBox QDialogButtonBox QPushButton:hover {{"
         f"  background:{SIDEBAR_HOVER}; background-color:{SIDEBAR_HOVER}; border-color:{SIDEBAR_HOVER};"  # noqa: F821
@@ -662,7 +688,8 @@ def global_style() -> str:
         f"QInputDialog QPushButton, QFileDialog QPushButton, QColorDialog QPushButton {{"
         f"  background:{SIDEBAR_BG}; background-color:{SIDEBAR_BG}; background-image:none;"  # noqa: F821
         f"  color:{TEXT_WHITE}; border:1px solid {SIDEBAR_BG};"  # noqa: F821
-        f"  border-radius:8px; padding:4px 6px; min-width:84px; min-height:34px; font-weight:600;"
+        f"  border-radius:8px; padding:{dialog_padding_v}px {dialog_padding_h}px;"
+        f"  min-width:{dialog_button_min_width}px; min-height:{dialog_button_min_height}px; font-weight:600;"
         f"}}"
         f"QInputDialog QPushButton:hover, QFileDialog QPushButton:hover, QColorDialog QPushButton:hover {{"
         f"  background:{SIDEBAR_HOVER}; background-color:{SIDEBAR_HOVER}; border-color:{SIDEBAR_HOVER};"  # noqa: F821
@@ -746,4 +773,5 @@ def global_style() -> str:
         f"QLabel[muted='1'] {{ color:{TEXT_MEDIUM}; background:transparent; }}"  # noqa: F821
         f"QLabel[accent='1'] {{ color:{PANEL_NEON_PRIMARY}; background:transparent; }}"  # noqa: F821
     )
-    return _global_style_cache
+    _global_style_cache = (cache_key, style)
+    return style
