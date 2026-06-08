@@ -232,7 +232,8 @@ class UpdateAvailableDialog(QDialog):
         )
         # Janela mais alta se houver hero image (banner 180px)
         height = 760 if self._hero_image_url else 580
-        self.setFixedSize(640, height)
+        self.setMinimumSize(640, height)
+        self.resize(640, height)
         self.setModal(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setObjectName("updateDialog")
@@ -396,6 +397,7 @@ class UpdateAvailableDialog(QDialog):
         self._notes = QTextBrowser()
         self._notes.setOpenExternalLinks(True)
         self._notes.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._notes.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._notes.setStyleSheet(
             f"QTextBrowser {{"
             f"  background: {_rgba(theme.PANEL_SURFACE_BG, 220)};"
