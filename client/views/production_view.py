@@ -1838,19 +1838,31 @@ class ProductionView(QWidget):
             f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
         )
 
+        # Tamanhos derivados da escala (interface) e da fonte base — o
+        # diálogo se adapta automaticamente quando o usuário muda escala
+        # ou tamanho de fonte nas Configurações.
+        base_font_pt = max(9, int(10 * self.scale))
+        title_font_pt = max(10, int(11 * self.scale))
+        # Largura mínima generosa pra caber nomes longos de máquina + cota
+        # de operadores. Em scale 1.0 = 720px. Escala junto.
+        dlg_min_w = max(620, int(720 * self.scale))
+        dlg.setMinimumWidth(dlg_min_w)
+
         layout = QVBoxLayout(dlg)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(max(8, int(10 * self.scale)))
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(max(10, int(12 * self.scale)))
 
         ped = str(req.get("ped_number") or "-")
         header = QLabel(f"Requisicao PED #{ped}")
-        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(
+            f"background:transparent; font-weight:800; font-size:{title_font_pt}pt;"
+        )
         layout.addWidget(header)
 
         helper = QLabel("Clique na maquina que sera usada nesta producao.")
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{base_font_pt}pt;")
         layout.addWidget(helper)
 
         scroll = QScrollArea()
@@ -1859,22 +1871,26 @@ class ProductionView(QWidget):
         scroll.setStyleSheet(
             f"QScrollArea {{ border:1px solid {theme.BORDER_COLOR}; background:{theme.CARD_BG}; border-radius:12px; }}"
         )
-        scroll.setMinimumHeight(max(220, int(250 * self.scale)))
+        scroll.setMinimumHeight(max(280, int(330 * self.scale)))
         content = QWidget()
         scroll.setWidget(content)
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(12, 10, 12, 10)
-        content_layout.setSpacing(max(8, int(10 * self.scale)))
+        content_layout.setContentsMargins(14, 12, 14, 12)
+        content_layout.setSpacing(max(10, int(12 * self.scale)))
 
         def _select_machine(selected_machine: dict):
             dlg.setProperty("_machine_id", int(selected_machine["id"]))
             dlg.accept()
 
+        # Padding interno generoso no QSS — combina com o margin do
+        # btn_layout pra texto nunca tocar a borda mesmo em fontes grandes.
+        btn_pad_h = max(20, int(24 * self.scale))
+        btn_pad_v = max(14, int(16 * self.scale))
         btn_style = (
             f"QPushButton {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:center;"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
-            f"  padding:0px;"
+            f"  padding:{btn_pad_v}px {btn_pad_h}px;"
             f"}}"
             f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 80)}; }}"
             f"QPushButton:pressed {{ background:{theme.SELECTION_BG}; }}"
@@ -1890,35 +1906,42 @@ class ProductionView(QWidget):
             status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
             operator_summary = ", ".join(operator_names) if operator_names else "Sem operadores cadastrados"
             btn = QPushButton()
-            btn.setMinimumHeight(max(104, int(126 * self.scale)))
+            btn.setMinimumHeight(max(120, int(140 * self.scale)))
             btn.setStyleSheet(btn_style)
             btn.setEnabled(bool(operator_names))
             btn_layout = QVBoxLayout(btn)
-            btn_layout.setContentsMargins(14, 12, 14, 12)
-            btn_layout.setSpacing(max(3, int(4 * self.scale)))
+            # Margens internas do layout — somam-se ao padding do QSS pra
+            # garantir que mesmo em escala alta o texto tenha respiro.
+            btn_layout.setContentsMargins(
+                btn_pad_h, btn_pad_v, btn_pad_h, btn_pad_v
+            )
+            btn_layout.setSpacing(max(4, int(6 * self.scale)))
 
             title_lbl = QLabel(machine_name)
             title_lbl.setStyleSheet(
                 f"background:transparent; color:{theme.TEXT_DARK};"
-                f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+                f"font-size:{base_font_pt}pt; font-weight:700;"
             )
             title_lbl.setWordWrap(True)
+            title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
             status_lbl = QLabel(f"Status: {status_label}")
             status_lbl.setStyleSheet(
                 f"background:transparent; color:{theme.TEXT_DARK};"
-                f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+                f"font-size:{base_font_pt}pt; font-weight:700;"
             )
             status_lbl.setWordWrap(True)
+            status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             status_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
             operators_lbl = QLabel(f"Operadores: {operator_summary}")
             operators_lbl.setStyleSheet(
                 f"background:transparent; color:{theme.TEXT_DARK};"
-                f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+                f"font-size:{base_font_pt}pt; font-weight:700;"
             )
             operators_lbl.setWordWrap(True)
+            operators_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             operators_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
             btn_layout.addWidget(title_lbl)
@@ -2274,19 +2297,28 @@ class ProductionView(QWidget):
             f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
         )
 
+        # Largura mínima que escala com self.scale — texto longo (nomes de
+        # máquina + operadores + ajudantes) precisa de respiro.
+        base_font_pt = max(9, int(10 * self.scale))
+        title_font_pt = max(10, int(11 * self.scale))
+        dlg_min_w = max(620, int(720 * self.scale))
+        dlg.setMinimumWidth(dlg_min_w)
+
         layout = QVBoxLayout(dlg)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(max(8, int(10 * self.scale)))
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(max(10, int(12 * self.scale)))
 
         ped = str(req.get("ped_number") or "-")
         header = QLabel(f"Requisicao PED #{ped}")
-        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        header.setStyleSheet(
+            f"background:transparent; font-weight:800; font-size:{title_font_pt}pt;"
+        )
         layout.addWidget(header)
 
         helper = QLabel("Clique na maquina que sera usada nesta producao.")
         helper.setWordWrap(True)
         helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt;")
+        helper.setStyleSheet(f"background:transparent; font-size:{base_font_pt}pt;")
         layout.addWidget(helper)
 
         scroll = QScrollArea()
@@ -2295,22 +2327,27 @@ class ProductionView(QWidget):
         scroll.setStyleSheet(
             f"QScrollArea {{ border:1px solid {theme.BORDER_COLOR}; background:{theme.CARD_BG}; border-radius:12px; }}"
         )
-        scroll.setMinimumHeight(max(220, int(250 * self.scale)))
+        scroll.setMinimumHeight(max(280, int(330 * self.scale)))
         content = QWidget()
         scroll.setWidget(content)
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(12, 10, 12, 10)
-        content_layout.setSpacing(max(8, int(10 * self.scale)))
+        content_layout.setContentsMargins(14, 12, 14, 12)
+        content_layout.setSpacing(max(10, int(12 * self.scale)))
 
         def _select_machine(selected_machine: dict):
             dlg.setProperty("_machine_id", int(selected_machine["id"]))
             dlg.accept()
 
+        # Padding generoso + texto centralizado (text-align:center) pra
+        # nomes longos não tocarem a borda mesmo em escala/fonte alta.
+        btn_pad_h = max(20, int(24 * self.scale))
+        btn_pad_v = max(14, int(16 * self.scale))
         btn_style = (
             f"QPushButton {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:center;"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
-            f"  padding:3px 4px; font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+            f"  padding:{btn_pad_v}px {btn_pad_h}px;"
+            f"  font-size:{base_font_pt}pt; font-weight:700;"
             f"}}"
             f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 80)}; }}"
             f"QPushButton:pressed {{ background:{theme.SELECTION_BG}; }}"
@@ -2318,9 +2355,10 @@ class ProductionView(QWidget):
         )
         maintenance_btn_style = (
             f"QPushButton {{"
-            f"  background:{_blend(theme.CARD_BG, theme.WARNING, 18)}; color:{theme.TEXT_DARK}; text-align:left;"
+            f"  background:{_blend(theme.CARD_BG, theme.WARNING, 18)}; color:{theme.TEXT_DARK}; text-align:center;"
             f"  border:1px solid {_rgba(theme.WARNING, 150)}; border-radius:12px;"
-            f"  padding:3px 4px; font-size:{max(8, int(9 * self.scale))}pt; font-weight:700;"
+            f"  padding:{btn_pad_v}px {btn_pad_h}px;"
+            f"  font-size:{base_font_pt}pt; font-weight:700;"
             f"}}"
             f"QPushButton:disabled {{"
             f"  background:{_blend(theme.CARD_BG, theme.WARNING, 26)}; color:{theme.WARNING};"
@@ -2340,7 +2378,7 @@ class ProductionView(QWidget):
                 f"Operadores: {operator_summary}\n"
                 f"Ajudantes: {helper_summary}"
             )
-            btn.setMinimumHeight(max(78, int(92 * self.scale)))
+            btn.setMinimumHeight(max(120, int(140 * self.scale)))
             btn.setStyleSheet(maintenance_btn_style if is_maintenance else btn_style)
             btn.setEnabled(bool(operator_names) and not is_maintenance)
             btn.clicked.connect(
