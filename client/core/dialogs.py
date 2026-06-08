@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QFontDialog,
     QFrame,
     QGraphicsDropShadowEffect,
-    QLabel,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -81,8 +80,8 @@ def fit_dialog_button_widths(
     proporcionalmente e os textos longos sao truncados.
     """
     widths: list[int] = []
-    text_padding = max(48, int(58 * scale))  # padding QSS (18+18) + folga
-    extra_buffer = max(18, int(22 * scale))  # margem extra para hover/borda
+    text_padding = max(42, int(52 * scale))
+    extra_buffer = max(14, int(18 * scale))
 
     for button in buttons:
         if not isinstance(button, QPushButton):
@@ -98,110 +97,21 @@ def fit_dialog_button_widths(
         if visible_text:
             # horizontalAdvance pode subestimar em algumas fontes — usar
             # boundingRect que considera ascender/descender de glifos.
-            metrics = button.fontMetrics()
-            text_rect = metrics.boundingRect(visible_text)
             target_width = max(
                 target_width,
-                text_rect.width() + text_padding,
-                metrics.horizontalAdvance(visible_text) + text_padding,
+                button.fontMetrics().horizontalAdvance(visible_text) + text_padding,
             )
 
         target_width += extra_buffer
         # setFixedWidth garante que o layout do BOX respeite — caso
         # contrario, QDialogButtonBox impoe largura uniforme e textos
         # longos ficam cortados.
-        button.setFixedWidth(target_width)
+        button.setMinimumWidth(target_width)
         if expanding:
-            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         widths.append(target_width)
 
     return widths
-
-
-def _dialog_target_width(dialog: QDialog, scale: float = 1.0) -> int:
-    screen = dialog.screen() or QApplication.primaryScreen()
-    if screen is None:
-        return int(900 * max(0.9, scale))
-
-    available_width = screen.availableGeometry().width()
-    dynamic_cap = int(available_width * 0.72)
-    scaled_cap = int(980 * max(0.9, scale))
-    return max(420, min(dynamic_cap, scaled_cap))
-
-
-def _dialog_text_width(dialog: QDialog, scale: float = 1.0) -> int:
-    reserve = 170 if isinstance(dialog, QMessageBox) else 110
-    return max(260, _dialog_target_width(dialog, scale) - reserve)
-
-
-def _should_wrap_dialog_label(label: QLabel) -> bool:
-    text = (label.text() or "").strip()
-    if not text:
-        return False
-    if label.objectName() in {
-        "qt_msgbox_label",
-        "qt_msgbox_informativelabel",
-        "qt_msgboxex_detailedtext",
-    }:
-        return True
-    if "\n" in text:
-        return True
-    return len(text) >= 36 and " " in text
-
-
-def _prepare_dialog_labels(dialog: QDialog, scale: float = 1.0) -> None:
-    text_width = _dialog_text_width(dialog, scale)
-    for label in dialog.findChildren(QLabel):
-        if not _should_wrap_dialog_label(label):
-            continue
-        label.setWordWrap(True)
-        label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        label.setMaximumWidth(text_width)
-
-
-def _is_fixed_size_dialog(dialog: QDialog) -> bool:
-    return dialog.minimumWidth() == dialog.maximumWidth() and dialog.minimumHeight() == dialog.maximumHeight()
-
-
-def _fit_dialog_contents(dialog: QDialog, scale: float = 1.0) -> None:
-    _prepare_dialog_labels(dialog, scale)
-
-    if not bool(dialog.property("_fp_enable_content_fit")):
-        return
-
-    layout = dialog.layout()
-    if layout is not None:
-        layout.activate()
-
-    if not isinstance(dialog, QMessageBox):
-        return
-
-    target_width = _dialog_target_width(dialog, scale)
-    dialog.adjustSize()
-    desired_width = min(
-        target_width,
-        max(dialog.minimumWidth(), dialog.sizeHint().width(), dialog.width()),
-    )
-    desired_height = max(dialog.minimumHeight(), dialog.sizeHint().height())
-    dialog.resize(desired_width, desired_height)
-    if layout is not None:
-        layout.activate()
-
-
-def _schedule_dialog_fit(dialog: QDialog, scale: float = 1.0) -> None:
-    if not isinstance(dialog, QMessageBox) or not bool(dialog.property("_fp_enable_content_fit")):
-        return
-
-    if bool(dialog.property("_fp_fit_pending")):
-        return
-
-    dialog.setProperty("_fp_fit_pending", True)
-
-    def _apply_fit() -> None:
-        dialog.setProperty("_fp_fit_pending", False)
-        _fit_dialog_contents(dialog, scale)
-
-    QTimer.singleShot(0, _apply_fit)
 
 
 def _resolve_message_box_button(box: QMessageBox, letter: str):
@@ -488,7 +398,6 @@ def apply_dialog_theme(dialog: QDialog) -> QDialog:
 
     dialog.setStyleSheet(f"{base_style}\n{_dialog_surface_style()}".strip())
     _style_dialog_buttons(dialog)
-    _prepare_dialog_labels(dialog)
     return dialog
 
 
@@ -552,8 +461,6 @@ class _DialogThemeFilter(QObject):
             apply_dialog_theme(obj)
         elif event.type() == QEvent.Type.Show:
             apply_dialog_theme(obj)
-            _fit_dialog_contents(obj)
-            _schedule_dialog_fit(obj)
             # Anima a entrada só na primeira exibição (evita reanimar se o
             # diálogo for escondido/reaparecido em outro fluxo).
             if obj.property("_fp_skip_entrance_anim"):
@@ -647,7 +554,6 @@ def _message_box_button_style() -> str:
 
 def apply_message_box_theme(box: QMessageBox, scale: float = 1.0) -> QMessageBox:
     apply_dialog_theme(box)
-    box.setProperty("_fp_enable_content_fit", True)
     box.installEventFilter(_MESSAGE_BOX_SHORTCUT_FILTER)
     _style_dialog_buttons(box)
     button_widths = fit_dialog_button_widths(box.buttons(), scale=scale, expanding=True)
@@ -656,8 +562,6 @@ def apply_message_box_theme(box: QMessageBox, scale: float = 1.0) -> QMessageBox
         horizontal_padding = max(56, int(68 * scale))
         total_width = sum(button_widths) + button_gap * max(0, len(button_widths) - 1) + horizontal_padding
         box.setMinimumWidth(max(box.minimumWidth(), total_width))
-    _fit_dialog_contents(box, scale)
-    _schedule_dialog_fit(box, scale)
     return box
 
 
