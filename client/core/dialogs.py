@@ -166,25 +166,14 @@ def _is_fixed_size_dialog(dialog: QDialog) -> bool:
 def _fit_dialog_contents(dialog: QDialog, scale: float = 1.0) -> None:
     _prepare_dialog_labels(dialog, scale)
 
+    if not bool(dialog.property("_fp_enable_content_fit")):
+        return
+
     layout = dialog.layout()
     if layout is not None:
         layout.activate()
 
-    if isinstance(dialog, QMessageBox):
-        target_width = _dialog_target_width(dialog, scale)
-        dialog.adjustSize()
-        desired_width = min(
-            target_width,
-            max(dialog.minimumWidth(), dialog.sizeHint().width(), dialog.width()),
-        )
-        desired_height = max(dialog.minimumHeight(), dialog.sizeHint().height())
-        dialog.setMinimumWidth(max(dialog.minimumWidth(), min(desired_width, target_width)))
-        dialog.resize(desired_width, desired_height)
-        if layout is not None:
-            layout.activate()
-        return
-
-    if _is_fixed_size_dialog(dialog) or bool(dialog.property("_fp_skip_auto_resize")):
+    if not isinstance(dialog, QMessageBox):
         return
 
     target_width = _dialog_target_width(dialog, scale)
@@ -200,6 +189,9 @@ def _fit_dialog_contents(dialog: QDialog, scale: float = 1.0) -> None:
 
 
 def _schedule_dialog_fit(dialog: QDialog, scale: float = 1.0) -> None:
+    if not isinstance(dialog, QMessageBox) or not bool(dialog.property("_fp_enable_content_fit")):
+        return
+
     if bool(dialog.property("_fp_fit_pending")):
         return
 
@@ -496,7 +488,7 @@ def apply_dialog_theme(dialog: QDialog) -> QDialog:
 
     dialog.setStyleSheet(f"{base_style}\n{_dialog_surface_style()}".strip())
     _style_dialog_buttons(dialog)
-    _fit_dialog_contents(dialog)
+    _prepare_dialog_labels(dialog)
     return dialog
 
 
@@ -655,6 +647,7 @@ def _message_box_button_style() -> str:
 
 def apply_message_box_theme(box: QMessageBox, scale: float = 1.0) -> QMessageBox:
     apply_dialog_theme(box)
+    box.setProperty("_fp_enable_content_fit", True)
     box.installEventFilter(_MESSAGE_BOX_SHORTCUT_FILTER)
     _style_dialog_buttons(box)
     button_widths = fit_dialog_button_widths(box.buttons(), scale=scale, expanding=True)
