@@ -71,10 +71,17 @@ def fit_dialog_button_widths(
     scale: float = 1.0,
     expanding: bool = False,
 ) -> list[int]:
-    """Garantir largura suficiente para o texto completo dos botoes."""
+    """Garantir largura suficiente para o texto completo dos botoes.
+
+    Cada botao tem `setFixedWidth(target_width)` aplicado — isso evita que
+    o QDialogButtonBox/QMessageBox imponha colunas iguais e corte o texto
+    dos botoes maiores. setMinimumWidth + SizePolicy.Expanding nao basta:
+    quando o BOX nao tem espaco suficiente, o layout interno comprime
+    proporcionalmente e os textos longos sao truncados.
+    """
     widths: list[int] = []
-    text_padding = max(42, int(52 * scale))
-    extra_buffer = max(14, int(18 * scale))
+    text_padding = max(48, int(58 * scale))  # padding QSS (18+18) + folga
+    extra_buffer = max(18, int(22 * scale))  # margem extra para hover/borda
 
     for button in buttons:
         if not isinstance(button, QPushButton):
@@ -88,15 +95,23 @@ def fit_dialog_button_widths(
             button.sizeHint().width(),
         )
         if visible_text:
+            # horizontalAdvance pode subestimar em algumas fontes — usar
+            # boundingRect que considera ascender/descender de glifos.
+            metrics = button.fontMetrics()
+            text_rect = metrics.boundingRect(visible_text)
             target_width = max(
                 target_width,
-                button.fontMetrics().horizontalAdvance(visible_text) + text_padding,
+                text_rect.width() + text_padding,
+                metrics.horizontalAdvance(visible_text) + text_padding,
             )
 
         target_width += extra_buffer
-        button.setMinimumWidth(target_width)
+        # setFixedWidth garante que o layout do BOX respeite — caso
+        # contrario, QDialogButtonBox impoe largura uniforme e textos
+        # longos ficam cortados.
+        button.setFixedWidth(target_width)
         if expanding:
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         widths.append(target_width)
 
     return widths
