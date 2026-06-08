@@ -2342,25 +2342,29 @@ class ProductionView(QWidget):
         # nomes longos não tocarem a borda mesmo em escala/fonte alta.
         btn_pad_h = max(20, int(24 * self.scale))
         btn_pad_v = max(14, int(16 * self.scale))
-        btn_style = (
-            f"QPushButton {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
-            f"  padding:{btn_pad_v}px {btn_pad_h}px;"
+        ready_card_style = (
+            f"QFrame#machinePickerCard {{"
+            f"  background:{theme.CARD_BG};"
+            f"  border:1px solid {theme.BORDER_COLOR};"
+            f"  border-radius:12px;"
             f"}}"
-            f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 80)}; }}"
-            f"QPushButton:pressed {{ background:{theme.SELECTION_BG}; }}"
-            f"QPushButton:disabled {{ background:{_rgba(theme.BORDER_COLOR, 54)}; color:{theme.TEXT_LIGHT}; border-color:{theme.BORDER_COLOR}; }}"
+            f"QFrame#machinePickerCard:hover {{"
+            f"  background:{theme.TABLE_ALT_ROW};"
+            f"  border-color:{_rgba(theme.PRIMARY, 80)};"
+            f"}}"
         )
-        maintenance_btn_style = (
-            f"QPushButton {{"
-            f"  background:{_blend(theme.CARD_BG, theme.WARNING, 18)}; color:{theme.TEXT_DARK}; text-align:left;"
-            f"  border:1px solid {_rgba(theme.WARNING, 150)}; border-radius:12px;"
-            f"  padding:{btn_pad_v}px {btn_pad_h}px;"
+        disabled_card_style = (
+            f"QFrame#machinePickerCard {{"
+            f"  background:{_rgba(theme.BORDER_COLOR, 18)};"
+            f"  border:1px solid {theme.BORDER_COLOR};"
+            f"  border-radius:12px;"
             f"}}"
-            f"QPushButton:disabled {{"
-            f"  background:{_blend(theme.CARD_BG, theme.WARNING, 26)}; color:{theme.WARNING};"
-            f"  border-color:{_rgba(theme.WARNING, 176)};"
+        )
+        maintenance_card_style = (
+            f"QFrame#machinePickerCard {{"
+            f"  background:{_blend(theme.CARD_BG, theme.WARNING, 18)};"
+            f"  border:1px solid {_rgba(theme.WARNING, 150)};"
+            f"  border-radius:12px;"
             f"}}"
         )
         detail_alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
@@ -2371,18 +2375,26 @@ class ProductionView(QWidget):
             status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
             operator_summary = ", ".join(operator_names) if operator_names else "Nenhum operador cadastrado"
             helper_summary = ", ".join(helper_names) if helper_names else "Nenhum ajudante cadastrado"
+            is_selectable = bool(operator_names) and not is_maintenance
             text_color = (
                 theme.WARNING
                 if is_maintenance
                 else theme.TEXT_DARK if operator_names else theme.TEXT_LIGHT
             )
-            btn = QPushButton()
-            btn.setMinimumHeight(max(136, int(156 * self.scale)))
-            btn.setStyleSheet(maintenance_btn_style if is_maintenance else btn_style)
-            btn.setEnabled(bool(operator_names) and not is_maintenance)
-            btn_layout = QVBoxLayout(btn)
-            btn_layout.setContentsMargins(btn_pad_h, btn_pad_v, btn_pad_h, btn_pad_v)
-            btn_layout.setSpacing(max(4, int(6 * self.scale)))
+            card = _ClickableFrame()
+            card.setObjectName("machinePickerCard")
+            card.setMinimumHeight(max(132, int(150 * self.scale)))
+            card.setCursor(
+                Qt.CursorShape.PointingHandCursor if is_selectable else Qt.CursorShape.ArrowCursor
+            )
+            card.setStyleSheet(
+                maintenance_card_style
+                if is_maintenance
+                else ready_card_style if is_selectable else disabled_card_style
+            )
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(btn_pad_h, btn_pad_v, btn_pad_h, btn_pad_v)
+            card_layout.setSpacing(max(4, int(6 * self.scale)))
 
             title_lbl = QLabel(machine_name or "-")
             title_lbl.setWordWrap(True)
@@ -2392,7 +2404,7 @@ class ProductionView(QWidget):
                 f"font-size:{title_font_pt}pt; font-weight:800;"
             )
             title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-            btn_layout.addWidget(title_lbl)
+            card_layout.addWidget(title_lbl)
 
             for line_text in (
                 f"Status: {status_label}",
@@ -2404,21 +2416,22 @@ class ProductionView(QWidget):
                 detail_lbl.setAlignment(detail_alignment)
                 detail_lbl.setStyleSheet(
                     f"background:transparent; color:{text_color};"
-                    f"font-size:{base_font_pt}pt; font-weight:700;"
+                    f"font-size:{base_font_pt}pt; font-weight:600;"
                 )
                 detail_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-                btn_layout.addWidget(detail_lbl)
+                card_layout.addWidget(detail_lbl)
 
-            btn.clicked.connect(
-                lambda checked=False, current_machine=dict(machine): _select_machine(current_machine)
-            )
+            if is_selectable:
+                card.clicked.connect(
+                    lambda current_machine=dict(machine): _select_machine(current_machine)
+                )
             if is_maintenance:
-                btn.setToolTip("Esta maquina esta em manutencao e nao pode receber requisicoes.")
+                card.setToolTip("Esta maquina esta em manutencao e nao pode receber requisicoes.")
             elif operator_names:
-                btn.setToolTip(f"Selecionar {machine_name}")
+                card.setToolTip(f"Selecionar {machine_name}")
             else:
-                btn.setToolTip("Cadastre pelo menos um operador para liberar esta maquina.")
-            content_layout.addWidget(btn)
+                card.setToolTip("Cadastre pelo menos um operador para liberar esta maquina.")
+            content_layout.addWidget(card)
         content_layout.addStretch()
         layout.addWidget(scroll)
 
