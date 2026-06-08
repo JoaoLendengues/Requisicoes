@@ -1845,7 +1845,7 @@ class ProductionView(QWidget):
         title_font_pt = max(10, int(11 * self.scale))
         # Largura mínima generosa pra caber nomes longos de máquina + cota
         # de operadores. Em scale 1.0 = 720px. Escala junto.
-        dlg_min_w = max(620, int(720 * self.scale))
+        dlg_min_w = max(700, int(820 * self.scale))
         dlg.setMinimumWidth(dlg_min_w)
 
         layout = QVBoxLayout(dlg)
@@ -1888,7 +1888,7 @@ class ProductionView(QWidget):
         btn_pad_v = max(14, int(16 * self.scale))
         btn_style = (
             f"QPushButton {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:center;"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
             f"  padding:{btn_pad_v}px {btn_pad_h}px;"
             f"}}"
@@ -2344,10 +2344,9 @@ class ProductionView(QWidget):
         btn_pad_v = max(14, int(16 * self.scale))
         btn_style = (
             f"QPushButton {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:center;"
+            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
             f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
             f"  padding:{btn_pad_v}px {btn_pad_h}px;"
-            f"  font-size:{base_font_pt}pt; font-weight:700;"
             f"}}"
             f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 80)}; }}"
             f"QPushButton:pressed {{ background:{theme.SELECTION_BG}; }}"
@@ -2355,16 +2354,16 @@ class ProductionView(QWidget):
         )
         maintenance_btn_style = (
             f"QPushButton {{"
-            f"  background:{_blend(theme.CARD_BG, theme.WARNING, 18)}; color:{theme.TEXT_DARK}; text-align:center;"
+            f"  background:{_blend(theme.CARD_BG, theme.WARNING, 18)}; color:{theme.TEXT_DARK}; text-align:left;"
             f"  border:1px solid {_rgba(theme.WARNING, 150)}; border-radius:12px;"
             f"  padding:{btn_pad_v}px {btn_pad_h}px;"
-            f"  font-size:{base_font_pt}pt; font-weight:700;"
             f"}}"
             f"QPushButton:disabled {{"
             f"  background:{_blend(theme.CARD_BG, theme.WARNING, 26)}; color:{theme.WARNING};"
             f"  border-color:{_rgba(theme.WARNING, 176)};"
             f"}}"
         )
+        detail_alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         for machine in machines:
             machine_name = str(machine.get("name") or "").strip()
             operator_names, helper_names = _split_team_members(machine)
@@ -2372,15 +2371,44 @@ class ProductionView(QWidget):
             status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
             operator_summary = ", ".join(operator_names) if operator_names else "Nenhum operador cadastrado"
             helper_summary = ", ".join(helper_names) if helper_names else "Nenhum ajudante cadastrado"
-            btn = QPushButton(
-                f"{machine_name}\n"
-                f"Status: {status_label}\n"
-                f"Operadores: {operator_summary}\n"
-                f"Ajudantes: {helper_summary}"
+            text_color = (
+                theme.WARNING
+                if is_maintenance
+                else theme.TEXT_DARK if operator_names else theme.TEXT_LIGHT
             )
-            btn.setMinimumHeight(max(120, int(140 * self.scale)))
+            btn = QPushButton()
+            btn.setMinimumHeight(max(136, int(156 * self.scale)))
             btn.setStyleSheet(maintenance_btn_style if is_maintenance else btn_style)
             btn.setEnabled(bool(operator_names) and not is_maintenance)
+            btn_layout = QVBoxLayout(btn)
+            btn_layout.setContentsMargins(btn_pad_h, btn_pad_v, btn_pad_h, btn_pad_v)
+            btn_layout.setSpacing(max(4, int(6 * self.scale)))
+
+            title_lbl = QLabel(machine_name or "-")
+            title_lbl.setWordWrap(True)
+            title_lbl.setAlignment(detail_alignment)
+            title_lbl.setStyleSheet(
+                f"background:transparent; color:{text_color};"
+                f"font-size:{title_font_pt}pt; font-weight:800;"
+            )
+            title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            btn_layout.addWidget(title_lbl)
+
+            for line_text in (
+                f"Status: {status_label}",
+                f"Operadores: {operator_summary}",
+                f"Ajudantes: {helper_summary}",
+            ):
+                detail_lbl = QLabel(line_text)
+                detail_lbl.setWordWrap(True)
+                detail_lbl.setAlignment(detail_alignment)
+                detail_lbl.setStyleSheet(
+                    f"background:transparent; color:{text_color};"
+                    f"font-size:{base_font_pt}pt; font-weight:700;"
+                )
+                detail_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+                btn_layout.addWidget(detail_lbl)
+
             btn.clicked.connect(
                 lambda checked=False, current_machine=dict(machine): _select_machine(current_machine)
             )
