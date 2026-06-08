@@ -1228,11 +1228,49 @@ def _build_canvas_item(data: dict):
             return it
         if t == "path":
             path = QPainterPath()
-            pts = data.get("points", [])
-            if pts:
-                path.moveTo(QPointF(pts[0][0], pts[0][1]))
-                for p in pts[1:]:
-                    path.lineTo(QPointF(p[0], p[1]))
+            # Preferir "segments" (M/L/C explicitos) sobre "points" — segments
+            # preserva multiplos sub-paths (moveTo + lineTo), curvas e caracteres
+            # de presets 3D (cubos, cilindros etc). Quando so usamos "points"
+            # como polilinha, tudo conecta em UMA linha continua e o desenho
+            # fica torto no PDF. Mesma logica do _deserialize_path em
+            # canvas_widget.py — manter os dois em sincronia.
+            segments = data.get("segments", [])
+            has_segments = False
+            if isinstance(segments, list) and segments:
+                has_current = False
+                for seg in segments:
+                    if not isinstance(seg, dict):
+                        continue
+                    cmd = str(seg.get("cmd", "")).upper()
+                    if cmd == "M":
+                        path.moveTo(QPointF(float(seg.get("x", 0.0)), float(seg.get("y", 0.0))))
+                        has_current = True
+                        has_segments = True
+                    elif cmd == "L" and has_current:
+                        path.lineTo(QPointF(float(seg.get("x", 0.0)), float(seg.get("y", 0.0))))
+                        has_segments = True
+                    elif cmd == "C" and has_current:
+                        c1 = seg.get("c1", [0.0, 0.0])
+                        c2 = seg.get("c2", [0.0, 0.0])
+                        end = seg.get("end", [0.0, 0.0])
+                        if (
+                            isinstance(c1, (list, tuple)) and len(c1) == 2
+                            and isinstance(c2, (list, tuple)) and len(c2) == 2
+                            and isinstance(end, (list, tuple)) and len(end) == 2
+                        ):
+                            path.cubicTo(
+                                QPointF(float(c1[0]), float(c1[1])),
+                                QPointF(float(c2[0]), float(c2[1])),
+                                QPointF(float(end[0]), float(end[1])),
+                            )
+                            has_segments = True
+            if not has_segments:
+                # Fallback retrocompativel — payloads antigos sem segments.
+                pts = data.get("points", [])
+                if pts:
+                    path.moveTo(QPointF(pts[0][0], pts[0][1]))
+                    for p in pts[1:]:
+                        path.lineTo(QPointF(p[0], p[1]))
             it = QGraphicsPathItem(path)
             it.setPen(pen)
             it.setPos(pos)
