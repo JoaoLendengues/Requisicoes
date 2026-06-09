@@ -4505,7 +4505,7 @@ def update_requisition(
     return _get_or_404(db, req_id)
 
 
-@router.patch("/{req_id}/items/{item_id}/development", response_model=RequisitionResponse)
+@router.patch("/{req_id}/items/{item_id}/development")
 def update_requisition_item_development(
     req_id: int,
     item_id: int,
@@ -4546,7 +4546,13 @@ def update_requisition_item_development(
         changes=changes,
     )
     db.commit()
-    return _get_or_404(db, req_id)
+    return {
+        "status": "ok",
+        "requisition_id": req.id,
+        "item_id": item.id,
+        "quantity": item.quantity,
+        "desenv": item.desenv,
+    }
 
 
 @router.patch("/{req_id}/status", response_model=RequisitionResponse)
