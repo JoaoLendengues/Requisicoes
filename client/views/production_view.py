@@ -2188,8 +2188,8 @@ class ProductionView(QWidget):
         ped = str(req.get("ped_number") or "-")
         if not ask_confirmation(
             self,
-            "Furar fila",
-            f"Deseja mover a requisicao PED {ped} para a fila agora?",
+            "Autorizar fila",
+            f"Autorizar a requisicao PED {ped} a furar fila?",
         ):
             return
 
@@ -2203,7 +2203,7 @@ class ProductionView(QWidget):
                 reason=PROD_PRIORITY_QUEUE_REASON,
                 priority=True,
             ),
-            success_message="Requisicao enviada para a fila com prioridade.",
+            success_message="Requisicao autorizada a furar fila.",
         )
 
     def _pick_machine(
