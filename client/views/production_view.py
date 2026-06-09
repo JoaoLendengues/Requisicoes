@@ -2338,10 +2338,10 @@ class ProductionView(QWidget):
             dlg.setProperty("_machine_id", int(selected_machine["id"]))
             dlg.accept()
 
-        # Padding generoso + texto centralizado (text-align:center) pra
-        # nomes longos não tocarem a borda mesmo em escala/fonte alta.
-        btn_pad_h = max(20, int(24 * self.scale))
-        btn_pad_v = max(14, int(16 * self.scale))
+        # Margem baixa, mas legivel; a altura do card cresce pelo conteudo
+        # para evitar corte quando nome/operadores quebram linha.
+        btn_pad_h = max(7, int(8 * self.scale))
+        btn_pad_v = max(5, int(6 * self.scale))
         btn_style = (
             f"QPushButton {{"
             f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
@@ -2377,7 +2377,6 @@ class ProductionView(QWidget):
                 else theme.TEXT_DARK if operator_names else theme.TEXT_LIGHT
             )
             btn = QPushButton()
-            btn.setMinimumHeight(max(136, int(156 * self.scale)))
             btn.setStyleSheet(maintenance_btn_style if is_maintenance else btn_style)
             btn.setEnabled(bool(operator_names) and not is_maintenance)
             btn_layout = QVBoxLayout(btn)
@@ -2409,6 +2408,7 @@ class ProductionView(QWidget):
                 detail_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
                 btn_layout.addWidget(detail_lbl)
 
+            btn.setMinimumHeight(max(max(112, int(132 * self.scale)), btn.sizeHint().height()))
             btn.clicked.connect(
                 lambda checked=False, current_machine=dict(machine): _select_machine(current_machine)
             )
