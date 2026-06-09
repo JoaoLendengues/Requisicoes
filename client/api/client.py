@@ -370,6 +370,16 @@ def update_requisition(req_id: int, data: dict) -> dict:
         return _check(client.patch(f"/requisitions/{req_id}", json=data))
 
 
+def update_requisition_item_development(req_id: int, item_id: int, data: dict) -> dict:
+    with _cli() as client:
+        return _check(
+            client.patch(
+                f"/requisitions/{req_id}/items/{item_id}/development",
+                json=data,
+            )
+        )
+
+
 def update_status(req_id: int, status: str, note: str = "") -> dict:
     with _cli() as client:
         return _check(client.patch(

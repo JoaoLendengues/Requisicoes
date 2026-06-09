@@ -60,6 +60,7 @@ from ..schemas.production import (
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse, RequisitionListItem,
     StatusUpdate, CanvasUpdate, DeliveryDateUpdate, DeliveryCancellationUpdate,
+    RequisitionItemDevelopmentUpdate,
 )
 from ..dependencies import (
     get_current_user,
@@ -4501,6 +4502,50 @@ def update_requisition(
     req.updated_at = datetime.utcnow()
 
     _commit_or_ped_conflict(db, ped_number)
+    return _get_or_404(db, req_id)
+
+
+@router.patch("/{req_id}/items/{item_id}/development", response_model=RequisitionResponse)
+def update_requisition_item_development(
+    req_id: int,
+    item_id: int,
+    data: RequisitionItemDevelopmentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    req = _get_or_404(db, req_id)
+    if req.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FINALIZADO):
+        raise HTTPException(status_code=400, detail="Requisicao encerrada nao pode receber desenvolvimento")
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissao para atualizar esta requisicao")
+
+    item = next((row for row in req.items if int(row.id) == int(item_id)), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item da requisicao nao encontrado")
+
+    old_quantity = item.quantity
+    old_desenv = item.desenv
+    if data.quantity is not None:
+        item.quantity = data.quantity
+    item.desenv = data.desenv
+    req.updated_at = datetime.utcnow()
+
+    changes = {
+        "item_id": item.id,
+        "position": item.position,
+        "product_code": item.product_code,
+        "quantity": {"old": old_quantity, "new": item.quantity},
+        "desenv": {"old": old_desenv, "new": item.desenv},
+    }
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE_ITEM_DEVELOPMENT",
+        changed_by=current_user,
+        changes=changes,
+    )
+    db.commit()
     return _get_or_404(db, req_id)
 
 

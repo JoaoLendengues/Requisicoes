@@ -118,6 +118,16 @@ class StatusUpdate(BaseModel):
     note: Optional[str] = None
 
 
+class RequisitionItemDevelopmentUpdate(BaseModel):
+    quantity: Optional[float] = None
+    desenv: str
+
+    @field_validator("desenv", mode="before")
+    @classmethod
+    def normalize_desenv(cls, value: object) -> str:
+        return normalize_upper_required(value)
+
+
 class DeliveryDateUpdate(BaseModel):
     delivery_date: date
     reason: str

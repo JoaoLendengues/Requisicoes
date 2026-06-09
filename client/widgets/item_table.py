@@ -355,38 +355,6 @@ class ItemTable(QWidget):
         self.table.blockSignals(False)
         self._refresh_row_height(row)
 
-    def append_item(self, item: dict):
-        target_row = None
-        for row in range(self.table.rowCount()):
-            if all(
-                not self._cell_text(row, col)
-                for col in range(PRODUCT_CODE_COL, WEIGHT_COL + 1)
-            ):
-                target_row = row
-                break
-
-        if target_row is None:
-            target_row = self.table.rowCount()
-            self.table.insertRow(target_row)
-            self._set_position_item(target_row)
-
-        quantity = item.get("quantity")
-        weight = item.get("weight")
-        self.table.blockSignals(True)
-        self._ensure_cell(target_row, PRODUCT_CODE_COL).setText(normalize_upper_text(item.get("product_code") or ""))
-        self._ensure_cell(target_row, PRODUCT_NAME_COL).setText(normalize_upper_text(item.get("product_name") or ""))
-        self._ensure_cell(target_row, QUANTITY_COL).setText(str(quantity or ""))
-        self._ensure_cell(target_row, COMP_COL).setText(normalize_upper_text(item.get("comp") or ""))
-        self._ensure_cell(target_row, DESENV_COL).setText(normalize_upper_text(item.get("desenv") or ""))
-        self._ensure_cell(target_row, CHAPA_COL).setText(normalize_upper_text(item.get("chapa") or ""))
-        self._ensure_cell(target_row, TIPO_COL).setText(normalize_upper_text(item.get("tipo") or ""))
-        self._ensure_cell(target_row, WEIGHT_COL).setText(
-            format_weight_kg(weight, fallback="") if weight not in (None, "") else ""
-        )
-        self.table.blockSignals(False)
-        self._refresh_row_height(target_row)
-        self._recalculate_total()
-
     def get_items(self) -> list[dict]:
         items = []
         for row in range(self.table.rowCount()):

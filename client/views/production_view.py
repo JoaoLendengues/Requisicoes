@@ -669,7 +669,6 @@ class _ClickableFrame(QFrame):
 
 class ProductionView(QWidget):
     open_requisition = Signal(int)
-    development_requisition_requested = Signal(dict)
     guide_requested  = Signal()          # emitido pelo botão ? de ajuda
 
     def __init__(
@@ -1351,9 +1350,7 @@ class ProductionView(QWidget):
             current_status,
         )
         btn_open.clicked.connect(lambda: self._open_selected_machine(machine_id))
-        btn_development.clicked.connect(
-            lambda checked=False, current_machine=dict(machine): self._request_development_requisition(current_machine)
-        )
+        btn_development.clicked.connect(lambda: self._request_development_requisition(machine_id))
         btn_finish.clicked.connect(lambda: self._finish_selected_machine(machine_id))
         if btn_forward_machine is not None:
             btn_forward_machine.clicked.connect(
@@ -2274,7 +2271,7 @@ class ProductionView(QWidget):
             return None
         return str(combo.currentText() or "").strip() or None
 
-    def _ask_development_item(self, machine: dict) -> dict | None:
+    def _ask_development_item(self, machine: dict, requisition: dict) -> dict | None:
         dlg = QDialog(self)
         dlg.setWindowTitle("Desenv")
         dlg.setModal(True)
@@ -2293,6 +2290,32 @@ class ProductionView(QWidget):
         header = QLabel(f"Maquina: {machine_name}")
         header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
+
+        ped = str(requisition.get("ped_number") or "-")
+        ped_label = QLabel(f"Requisicao PED #{ped}")
+        ped_label.setStyleSheet(f"background:transparent; font-weight:700; font-size:{max(8, int(10 * self.scale))}pt;")
+        layout.addWidget(ped_label)
+
+        items = [
+            item for item in (requisition.get("items") or [])
+            if isinstance(item, dict) and item.get("id")
+        ]
+        if not items:
+            self._show_info("Esta requisicao nao possui itens cadastrados.")
+            return None
+
+        code_label = QLabel("Codigo da requisicao:")
+        layout.addWidget(code_label)
+
+        combo_item = QComboBox()
+        for item in items:
+            position = str(item.get("position") or "").strip()
+            code = str(item.get("product_code") or "").strip()
+            name = str(item.get("product_name") or "").strip()
+            label_parts = [part for part in (position, code, name) if part]
+            combo_item.addItem(" - ".join(label_parts) or f"Item {item.get('id')}", item)
+        combo_item.setStyleSheet(_machine_combo_style(self.scale))
+        layout.addWidget(combo_item)
 
         quantity_label = QLabel("Quantidade:")
         layout.addWidget(quantity_label)
@@ -2321,6 +2344,23 @@ class ProductionView(QWidget):
         development_spin.setStyleSheet(_machine_combo_style(self.scale))
         layout.addWidget(development_spin)
 
+        def _parse_float(value: object) -> float:
+            try:
+                return float(str(value or "").strip().replace(",", "."))
+            except ValueError:
+                return 0.0
+
+        def _apply_selected_item_values():
+            selected_item = combo_item.currentData() or {}
+            quantity = _parse_float(selected_item.get("quantity"))
+            development = _parse_float(selected_item.get("desenv"))
+            quantity_spin.setValue(quantity if quantity > 0 else 1.0)
+            if development > 0:
+                development_spin.setValue(development)
+
+        combo_item.currentIndexChanged.connect(lambda _=None: _apply_selected_item_values())
+        _apply_selected_item_values()
+
         buttons = QHBoxLayout()
         buttons.addStretch()
         btn_cancel = QPushButton("Cancelar")
@@ -2342,6 +2382,9 @@ class ProductionView(QWidget):
             development = round(float(development_spin.value() or 0.0), 2)
             if quantity <= 0 or development <= 0:
                 return
+            selected_item = combo_item.currentData() or {}
+            dlg.setProperty("_item_id", int(selected_item.get("id") or 0))
+            dlg.setProperty("_quantity_value", quantity)
             dlg.setProperty("_quantity", _format_number(quantity, 3))
             dlg.setProperty("_development_mm", _format_number(development, 2))
             dlg.accept()
@@ -2351,21 +2394,41 @@ class ProductionView(QWidget):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
         quantity_text = str(dlg.property("_quantity") or "").strip()
+        quantity_value = float(dlg.property("_quantity_value") or 0.0)
         development_text = str(dlg.property("_development_mm") or "").strip()
-        if not quantity_text or not development_text:
+        item_id = int(dlg.property("_item_id") or 0)
+        if item_id <= 0 or quantity_value <= 0 or not quantity_text or not development_text:
             return None
-        return {"quantity": quantity_text, "desenv": development_text}
+        return {"item_id": item_id, "quantity": quantity_value, "desenv": development_text}
 
-    def _request_development_requisition(self, machine: dict):
-        development_item = self._ask_development_item(machine)
+    def _request_development_requisition(self, machine_id: int):
+        req, machine = self._selected_machine_row(machine_id)
+        if not req or not machine:
+            self._show_info("Selecione uma requisicao no card da maquina.")
+            return
+
+        req_id = self._row_requisition_id(req)
+        try:
+            requisition = api.get_requisition(req_id)
+        except api.APIError as exc:
+            self._show_error(exc.detail)
+            return
+        except Exception as exc:
+            self._show_error(str(exc))
+            return
+
+        development_item = self._ask_development_item(machine, requisition)
         if not development_item:
             return
-        self.development_requisition_requested.emit(
+        item_id = int(development_item.pop("item_id"))
+        self._run_action(
+            api.update_requisition_item_development,
+            req_id,
+            item_id,
             {
-                "destination": self.destination,
-                "machine_name": str(machine.get("name") or "").strip(),
                 **development_item,
-            }
+            },
+            success_message="Desenvolvimento atualizado na requisicao.",
         )
 
     def _start_production(self, req: dict, *, machine: dict | None = None):
