@@ -2338,17 +2338,6 @@ class ProductionView(QWidget):
             dlg.setProperty("_machine_id", int(selected_machine["id"]))
             dlg.accept()
 
-<<<<<<< HEAD
-        # Margem baixa, mas legivel; a altura do card cresce pelo conteudo
-        # para evitar corte quando nome/operadores quebram linha.
-        btn_pad_h = max(7, int(8 * self.scale))
-        btn_pad_v = max(5, int(6 * self.scale))
-        btn_style = (
-            f"QPushButton {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
-            f"  padding:{btn_pad_v}px {btn_pad_h}px;"
-=======
         # Padding generoso + texto centralizado (text-align:center) pra
         # nomes longos não tocarem a borda mesmo em escala/fonte alta.
         btn_pad_h = max(20, int(24 * self.scale))
@@ -2362,7 +2351,6 @@ class ProductionView(QWidget):
             f"QFrame#machinePickerCard:hover {{"
             f"  background:{theme.TABLE_ALT_ROW};"
             f"  border-color:{_rgba(theme.PRIMARY, 80)};"
->>>>>>> 11d2b2c7fa5449993f083f8ed611e961aafc832e
             f"}}"
         )
         disabled_card_style = (
@@ -2393,14 +2381,6 @@ class ProductionView(QWidget):
                 if is_maintenance
                 else theme.TEXT_DARK if operator_names else theme.TEXT_LIGHT
             )
-<<<<<<< HEAD
-            btn = QPushButton()
-            btn.setStyleSheet(maintenance_btn_style if is_maintenance else btn_style)
-            btn.setEnabled(bool(operator_names) and not is_maintenance)
-            btn_layout = QVBoxLayout(btn)
-            btn_layout.setContentsMargins(btn_pad_h, btn_pad_v, btn_pad_h, btn_pad_v)
-            btn_layout.setSpacing(max(4, int(6 * self.scale)))
-=======
             card = _ClickableFrame()
             card.setObjectName("machinePickerCard")
             card.setMinimumHeight(max(132, int(150 * self.scale)))
@@ -2415,7 +2395,6 @@ class ProductionView(QWidget):
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(btn_pad_h, btn_pad_v, btn_pad_h, btn_pad_v)
             card_layout.setSpacing(max(4, int(6 * self.scale)))
->>>>>>> 11d2b2c7fa5449993f083f8ed611e961aafc832e
 
             title_lbl = QLabel(machine_name or "-")
             title_lbl.setWordWrap(True)
@@ -2442,17 +2421,10 @@ class ProductionView(QWidget):
                 detail_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
                 card_layout.addWidget(detail_lbl)
 
-<<<<<<< HEAD
-            btn.setMinimumHeight(max(max(112, int(132 * self.scale)), btn.sizeHint().height()))
-            btn.clicked.connect(
-                lambda checked=False, current_machine=dict(machine): _select_machine(current_machine)
-            )
-=======
             if is_selectable:
                 card.clicked.connect(
                     lambda current_machine=dict(machine): _select_machine(current_machine)
                 )
->>>>>>> 11d2b2c7fa5449993f083f8ed611e961aafc832e
             if is_maintenance:
                 card.setToolTip("Esta maquina esta em manutencao e nao pode receber requisicoes.")
             elif operator_names:

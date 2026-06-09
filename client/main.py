@@ -21,12 +21,20 @@ def _setup_logging() -> None:
 
     log_file = os.path.join(log_dir, "app.log")
 
+    handlers: list[logging.Handler] = []
+    try:
+        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+    except OSError:
+        # Se o arquivo de log estiver bloqueado/sem permissao, ainda exibimos
+        # erros no terminal para evitar uma falha silenciosa no startup.
+        pass
+    if getattr(sys, "stderr", None):
+        handlers.append(logging.StreamHandler(sys.stderr))
+
     logging.basicConfig(
         level=logging.WARNING,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        handlers=[
-            logging.FileHandler(log_file, encoding="utf-8"),
-        ],
+        handlers=handlers or [logging.NullHandler()],
     )
 
     # Captura exceções não tratadas e grava no log antes de fechar
