@@ -2274,7 +2274,7 @@ class ProductionView(QWidget):
             return None
         return str(combo.currentText() or "").strip() or None
 
-    def _ask_development_mm(self, machine: dict) -> str | None:
+    def _ask_development_item(self, machine: dict) -> dict | None:
         dlg = QDialog(self)
         dlg.setWindowTitle("Desenv")
         dlg.setModal(True)
@@ -2294,19 +2294,32 @@ class ProductionView(QWidget):
         header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
-        label = QLabel("Informe o desenvolvimento da peca em mm:")
-        label.setWordWrap(True)
-        layout.addWidget(label)
+        quantity_label = QLabel("Quantidade:")
+        layout.addWidget(quantity_label)
 
-        spin = QDoubleSpinBox()
-        spin.setDecimals(2)
-        spin.setMinimum(0.01)
-        spin.setMaximum(999999.99)
-        spin.setSingleStep(1.0)
-        spin.setSuffix(" mm")
-        spin.setFixedHeight(max(38, int(44 * self.scale)))
-        spin.setStyleSheet(_machine_combo_style(self.scale))
-        layout.addWidget(spin)
+        quantity_spin = QDoubleSpinBox()
+        quantity_spin.setDecimals(3)
+        quantity_spin.setMinimum(0.001)
+        quantity_spin.setMaximum(999999.999)
+        quantity_spin.setValue(1.0)
+        quantity_spin.setSingleStep(1.0)
+        quantity_spin.setFixedHeight(max(38, int(44 * self.scale)))
+        quantity_spin.setStyleSheet(_machine_combo_style(self.scale))
+        layout.addWidget(quantity_spin)
+
+        development_label = QLabel("Desenvolvimento da peca em mm:")
+        development_label.setWordWrap(True)
+        layout.addWidget(development_label)
+
+        development_spin = QDoubleSpinBox()
+        development_spin.setDecimals(2)
+        development_spin.setMinimum(0.01)
+        development_spin.setMaximum(999999.99)
+        development_spin.setSingleStep(1.0)
+        development_spin.setSuffix(" mm")
+        development_spin.setFixedHeight(max(38, int(44 * self.scale)))
+        development_spin.setStyleSheet(_machine_combo_style(self.scale))
+        layout.addWidget(development_spin)
 
         buttons = QHBoxLayout()
         buttons.addStretch()
@@ -2319,32 +2332,39 @@ class ProductionView(QWidget):
         buttons.addWidget(btn_ok)
         layout.addLayout(buttons)
 
+        def _format_number(value: float, decimals: int) -> str:
+            if float(value).is_integer():
+                return str(int(value))
+            return f"{value:.{decimals}f}".rstrip("0").rstrip(".").replace(".", ",")
+
         def _confirm():
-            value = round(float(spin.value() or 0.0), 2)
-            if value <= 0:
+            quantity = round(float(quantity_spin.value() or 0.0), 3)
+            development = round(float(development_spin.value() or 0.0), 2)
+            if quantity <= 0 or development <= 0:
                 return
-            if value.is_integer():
-                text = str(int(value))
-            else:
-                text = f"{value:.2f}".rstrip("0").rstrip(".").replace(".", ",")
-            dlg.setProperty("_development_mm", text)
+            dlg.setProperty("_quantity", _format_number(quantity, 3))
+            dlg.setProperty("_development_mm", _format_number(development, 2))
             dlg.accept()
 
         btn_ok.clicked.connect(_confirm)
 
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
-        return str(dlg.property("_development_mm") or "").strip() or None
+        quantity_text = str(dlg.property("_quantity") or "").strip()
+        development_text = str(dlg.property("_development_mm") or "").strip()
+        if not quantity_text or not development_text:
+            return None
+        return {"quantity": quantity_text, "desenv": development_text}
 
     def _request_development_requisition(self, machine: dict):
-        development_mm = self._ask_development_mm(machine)
-        if not development_mm:
+        development_item = self._ask_development_item(machine)
+        if not development_item:
             return
         self.development_requisition_requested.emit(
             {
                 "destination": self.destination,
                 "machine_name": str(machine.get("name") or "").strip(),
-                "desenv": development_mm,
+                **development_item,
             }
         )
 

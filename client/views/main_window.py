@@ -570,21 +570,22 @@ class MainWindow(QMainWindow):
         return reply
 
     def _start_requisition_from_development(self, payload: dict) -> None:
-        if not self._confirm_new_requisition():
-            return
-
         desenv = str((payload or {}).get("desenv") or "").strip()
         if not desenv:
             return
+        quantity = str((payload or {}).get("quantity") or "").strip()
 
-        self.form_view.reset()
-        self.form_view.item_table.set_items(
-            [
-                {
-                    "position": "A",
-                    "desenv": desenv,
-                }
-            ]
+        if self.form_view.req_id is not None:
+            self.form_view.reset()
+
+        if session.role != "industria":
+            self.form_view._set_form_locked(False)
+
+        self.form_view.item_table.append_item(
+            {
+                "quantity": quantity,
+                "desenv": desenv,
+            }
         )
 
         if session.role == "industria":
