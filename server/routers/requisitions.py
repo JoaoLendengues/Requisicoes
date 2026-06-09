@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import func, or_, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from datetime import date, datetime, time, timedelta, timezone
@@ -4523,35 +4523,28 @@ def update_requisition_item_development(
     if item is None:
         raise HTTPException(status_code=404, detail="Item da requisicao nao encontrado")
 
-    old_quantity = item.quantity
-    old_desenv = item.desenv
     if data.quantity is not None:
         item.quantity = data.quantity
     item.desenv = data.desenv
     req.updated_at = datetime.utcnow()
 
-    changes = {
-        "item_id": item.id,
-        "position": item.position,
-        "product_code": item.product_code,
-        "quantity": {"old": old_quantity, "new": item.quantity},
-        "desenv": {"old": old_desenv, "new": item.desenv},
-    }
-    log_action(
-        db,
-        entity="requisition",
-        entity_id=req.id,
-        action="UPDATE_ITEM_DEV",
-        changed_by=current_user,
-        changes=changes,
-    )
-    db.commit()
-    return {
+    response_payload = {
         "status": "ok",
         "requisition_id": req.id,
         "item_id": item.id,
         "quantity": item.quantity,
         "desenv": item.desenv,
+    }
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Falha ao salvar desenvolvimento do item: {exc}",
+        )
+    return {
+        **response_payload,
     }
 
 
