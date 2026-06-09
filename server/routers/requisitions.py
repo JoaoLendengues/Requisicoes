@@ -4528,7 +4528,13 @@ def update_status(
             prod.get("target") or req.production_destination or ""
         )
         bypass_fifo = bool(prod.get("transfer"))
-        priority_queue = bool(prod.get("priority")) and action == _PROD_QUEUED
+        priority_queue = (
+            action == _PROD_QUEUED
+            and (
+                bool(prod.get("priority"))
+                or str(prod.get("reason") or "").strip().casefold() == "furar fila"
+            )
+        )
         if old_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO and action in (
             _PROD_RECEIVED,
             _PROD_QUEUED,

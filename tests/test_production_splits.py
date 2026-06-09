@@ -99,6 +99,14 @@ def test_parse_production_note_reads_priority_flag():
     assert parsed["reason"] == "FURAR FILA"
 
 
+def test_parse_production_note_keeps_priority_reason():
+    parsed = _parse_production_note("PRODUCAO|FILA|A&R|reason=FURAR FILA")
+
+    assert parsed is not None
+    assert parsed["action"] == "FILA"
+    assert parsed["reason"] == "FURAR FILA"
+
+
 def _status_entry(
     req_id: int,
     *,
