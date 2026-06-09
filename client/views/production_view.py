@@ -61,6 +61,7 @@ PROD_STARTED = "INICIADA"
 PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
+PROD_PRIORITY_QUEUE_REASON = "FURAR FILA"
 AR_DOBRA_SOURCE_MACHINE_NUMBERS = {1, 2, 3, 16}
 PINHEIRO_MACHINE_FORWARD_RULES = {
     4: {
@@ -347,6 +348,7 @@ def _apply_machine_card_button_styles(theme_widgets: dict, scale: float, status_
     button_styles = {
         "status_button": secondary_style,
         "btn_open": secondary_style,
+        "btn_development": secondary_style,
         "btn_finish": _primary_action_btn_style(scale),
         "btn_forward_machine": _primary_action_btn_style(scale),
         "btn_prazo": secondary_style,
@@ -553,6 +555,7 @@ def _build_production_note(
     operators: list[str] | None = None,
     helpers: list[str] | None = None,
     transfer: bool = False,
+    priority: bool = False,
 ) -> str:
     parts = [PROD_NOTE_PREFIX, action, destination]
     if machine:
@@ -581,6 +584,8 @@ def _build_production_note(
         parts.append(f"helpers={';'.join(helper_names)}")
     if transfer:
         parts.append("transfer=1")
+    if priority:
+        parts.append("priority=1")
     return "|".join(parts)
 
 
@@ -664,6 +669,7 @@ class _ClickableFrame(QFrame):
 
 class ProductionView(QWidget):
     open_requisition = Signal(int)
+    development_requisition_requested = Signal(dict)
     guide_requested  = Signal()          # emitido pelo botão ? de ajuda
 
     def __init__(
@@ -972,19 +978,28 @@ class ProductionView(QWidget):
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
         btn_primary = QPushButton(primary_text)
+        btn_priority_queue = QPushButton("Fila") if stage == WAITING_RECEIPT_STAGE else None
         btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
-        for btn in (btn_open, btn_primary, btn_prazo, btn_cancel):
+        stage_buttons = [btn_open, btn_primary, btn_prazo, btn_cancel]
+        if btn_priority_queue is not None:
+            stage_buttons.insert(2, btn_priority_queue)
+        for btn in stage_buttons:
             btn.setFixedHeight(max(34, int(38 * s)))
 
         btn_open.setStyleSheet(_flat_secondary_btn_style(s))
         btn_primary.setStyleSheet(_primary_action_btn_style(s))
+        if btn_priority_queue is not None:
+            btn_priority_queue.setStyleSheet(_flat_secondary_btn_style(s))
+            btn_priority_queue.setToolTip("Mover a requisicao selecionada para a fila sem respeitar a ordem FIFO.")
         btn_prazo.setStyleSheet(_flat_secondary_btn_style(s))
         btn_cancel.setStyleSheet(_danger_action_btn_style(s))
 
         btn_open.clicked.connect(lambda: self._open_selected_stage(stage))
         if stage == WAITING_RECEIPT_STAGE:
             btn_primary.clicked.connect(self._receive_selected)
+            if btn_priority_queue is not None:
+                btn_priority_queue.clicked.connect(self._move_selected_to_queue_priority)
         else:
             btn_primary.clicked.connect(self._send_queue_selected_to_machine)
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_stage(stage))
@@ -992,6 +1007,8 @@ class ProductionView(QWidget):
 
         actions.addWidget(btn_open)
         actions.addWidget(btn_primary)
+        if btn_priority_queue is not None:
+            actions.addWidget(btn_priority_queue)
         actions.addWidget(btn_prazo)
         actions.addWidget(btn_cancel)
         layout.addLayout(actions)
@@ -1299,6 +1316,7 @@ class ProductionView(QWidget):
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
         machine_forward_action = _machine_forward_action(self.destination, machine_name)
+        btn_development = QPushButton("Desenv")
         btn_finish = QPushButton("Finalizar")
         btn_forward_machine = (
             QPushButton(str(machine_forward_action.get("button_label") or "Encaminhar"))
@@ -1307,12 +1325,13 @@ class ProductionView(QWidget):
         )
         btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
-        action_buttons = [btn_open, btn_finish, btn_prazo, btn_cancel]
+        action_buttons = [btn_open, btn_development, btn_finish, btn_prazo, btn_cancel]
         if btn_forward_machine is not None:
             action_buttons.insert(2, btn_forward_machine)
         for btn in action_buttons:
             btn.setFixedHeight(max(34, int(38 * s)))
         btn_open.setProperty("productionBtn", "secondary")
+        btn_development.setProperty("productionBtn", "secondary")
         btn_finish.setProperty("productionBtn", "primary")
         if btn_forward_machine is not None:
             btn_forward_machine.setProperty("productionBtn", "primary")
@@ -1322,6 +1341,7 @@ class ProductionView(QWidget):
             {
                 "status_button": status_button,
                 "btn_open": btn_open,
+                "btn_development": btn_development,
                 "btn_finish": btn_finish,
                 "btn_forward_machine": btn_forward_machine,
                 "btn_prazo": btn_prazo,
@@ -1331,6 +1351,9 @@ class ProductionView(QWidget):
             current_status,
         )
         btn_open.clicked.connect(lambda: self._open_selected_machine(machine_id))
+        btn_development.clicked.connect(
+            lambda checked=False, current_machine=dict(machine): self._request_development_requisition(current_machine)
+        )
         btn_finish.clicked.connect(lambda: self._finish_selected_machine(machine_id))
         if btn_forward_machine is not None:
             btn_forward_machine.clicked.connect(
@@ -1341,6 +1364,7 @@ class ProductionView(QWidget):
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(machine_id))
         btn_cancel.clicked.connect(lambda: self._return_selected_machine_to_queue(machine_id))
         actions.addWidget(btn_open)
+        actions.addWidget(btn_development)
         if btn_forward_machine is not None:
             forward_actions = QVBoxLayout()
             forward_actions.setSpacing(max(6, int(8 * s)))
@@ -1392,6 +1416,7 @@ class ProductionView(QWidget):
                 "status_combo": status_combo,
                 "status_button": status_button,
                 "btn_open": btn_open,
+                "btn_development": btn_development,
                 "btn_finish": btn_finish,
                 "btn_forward_machine": btn_forward_machine,
                 "btn_prazo": btn_prazo,
@@ -2154,6 +2179,33 @@ class ProductionView(QWidget):
             success_message="Requisição movida para aguardando na fila.",
         )
 
+    def _move_selected_to_queue_priority(self):
+        req = self._selected_stage_row(WAITING_RECEIPT_STAGE)
+        if not req:
+            self._show_info("Selecione uma requisicao em aguardando recebimento.")
+            return
+
+        ped = str(req.get("ped_number") or "-")
+        if not ask_confirmation(
+            self,
+            "Furar fila",
+            f"Deseja mover a requisicao PED {ped} para a fila agora?",
+        ):
+            return
+
+        self._run_action(
+            api.update_status,
+            self._row_requisition_id(req),
+            "aguardando_na_fila",
+            _build_production_note(
+                PROD_QUEUED,
+                self.destination,
+                reason=PROD_PRIORITY_QUEUE_REASON,
+                priority=True,
+            ),
+            success_message="Requisicao enviada para a fila com prioridade.",
+        )
+
     def _pick_machine(
         self,
         *,
@@ -2221,6 +2273,80 @@ class ProductionView(QWidget):
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
         return str(combo.currentText() or "").strip() or None
+
+    def _ask_development_mm(self, machine: dict) -> str | None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Desenv")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(max(8, int(10 * self.scale)))
+
+        machine_name = str(machine.get("name") or "").strip() or "-"
+        header = QLabel(f"Maquina: {machine_name}")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        layout.addWidget(header)
+
+        label = QLabel("Informe o desenvolvimento da peca em mm:")
+        label.setWordWrap(True)
+        layout.addWidget(label)
+
+        spin = QDoubleSpinBox()
+        spin.setDecimals(2)
+        spin.setMinimum(0.01)
+        spin.setMaximum(999999.99)
+        spin.setSingleStep(1.0)
+        spin.setSuffix(" mm")
+        spin.setFixedHeight(max(38, int(44 * self.scale)))
+        spin.setStyleSheet(_machine_combo_style(self.scale))
+        layout.addWidget(spin)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok = QPushButton("Confirmar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_ok)
+        layout.addLayout(buttons)
+
+        def _confirm():
+            value = round(float(spin.value() or 0.0), 2)
+            if value <= 0:
+                return
+            if value.is_integer():
+                text = str(int(value))
+            else:
+                text = f"{value:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+            dlg.setProperty("_development_mm", text)
+            dlg.accept()
+
+        btn_ok.clicked.connect(_confirm)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return str(dlg.property("_development_mm") or "").strip() or None
+
+    def _request_development_requisition(self, machine: dict):
+        development_mm = self._ask_development_mm(machine)
+        if not development_mm:
+            return
+        self.development_requisition_requested.emit(
+            {
+                "destination": self.destination,
+                "machine_name": str(machine.get("name") or "").strip(),
+                "desenv": development_mm,
+            }
+        )
 
     def _start_production(self, req: dict, *, machine: dict | None = None):
         if machine is None:

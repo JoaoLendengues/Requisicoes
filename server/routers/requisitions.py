@@ -665,6 +665,7 @@ def _compose_production_note(
     operators: list[str] | None = None,
     helpers: list[str] | None = None,
     transfer: bool = False,
+    priority: bool = False,
 ) -> str:
     parts = [_PROD_NOTE_PREFIX, action, _canonical_destination(target)]
     machine_name = _normalize_machine_name(machine) if machine else ""
@@ -678,6 +679,8 @@ def _compose_production_note(
         parts.append(f"reason={reason.strip()}")
     if transfer:
         parts.append("transfer=1")
+    if priority:
+        parts.append("priority=1")
     return "|".join(parts)
 
 
@@ -697,6 +700,7 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
         "operators": [],
         "helpers": [],
         "transfer": False,
+        "priority": False,
     }
 
     for raw_segment in parts[3:]:
@@ -722,6 +726,14 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
                 continue
             if normalized_key == "transfer":
                 data["transfer"] = normalized_value.strip().casefold() in {
+                    "1",
+                    "true",
+                    "sim",
+                    "yes",
+                }
+                continue
+            if normalized_key == "priority":
+                data["priority"] = normalized_value.strip().casefold() in {
                     "1",
                     "true",
                     "sim",
@@ -4516,11 +4528,12 @@ def update_status(
             prod.get("target") or req.production_destination or ""
         )
         bypass_fifo = bool(prod.get("transfer"))
+        priority_queue = bool(prod.get("priority")) and action == _PROD_QUEUED
         if old_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO and action in (
             _PROD_RECEIVED,
             _PROD_QUEUED,
             _PROD_STARTED,
-        ):
+        ) and not priority_queue:
             _ensure_waiting_receipt_fifo(
                 db,
                 current_user,

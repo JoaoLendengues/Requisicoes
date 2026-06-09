@@ -31,6 +31,7 @@ from server.routers.requisitions import (
     _build_production_summary,
     _compose_production_note,
     _ensure_production_fifo_item,
+    _parse_production_note,
     regroup_production_splits,
     update_production_split_status,
 )
@@ -80,6 +81,22 @@ def _prod_note(
     if helpers:
         parts.append(f"helpers={';'.join(helpers)}")
     return "|".join(parts)
+
+
+def test_parse_production_note_reads_priority_flag():
+    note = _compose_production_note(
+        "FILA",
+        _DESTINATION_AR,
+        reason="FURAR FILA",
+        priority=True,
+    )
+
+    parsed = _parse_production_note(note)
+
+    assert parsed is not None
+    assert parsed["action"] == "FILA"
+    assert parsed["priority"] is True
+    assert parsed["reason"] == "FURAR FILA"
 
 
 def _status_entry(

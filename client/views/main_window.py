@@ -530,12 +530,18 @@ class MainWindow(QMainWindow):
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "production")
             )
+            view.development_requisition_requested.connect(
+                self._start_requisition_from_development
+            )
             view.guide_requested.connect(
                 lambda: self._show_screen_guide("pinheiro_industria", force=True)
             )
         elif page == PAGE_AR:
             view.open_requisition.connect(
                 lambda req_id: self._open_requisition(req_id, "production")
+            )
+            view.development_requisition_requested.connect(
+                self._start_requisition_from_development
             )
             view.guide_requested.connect(
                 lambda: self._show_screen_guide("ar", force=True)
@@ -562,6 +568,35 @@ class MainWindow(QMainWindow):
             no_text="Não",
         )
         return reply
+
+    def _start_requisition_from_development(self, payload: dict) -> None:
+        if not self._confirm_new_requisition():
+            return
+
+        desenv = str((payload or {}).get("desenv") or "").strip()
+        if not desenv:
+            return
+
+        self.form_view.reset()
+        self.form_view.item_table.set_items(
+            [
+                {
+                    "position": "A",
+                    "desenv": desenv,
+                }
+            ]
+        )
+
+        if session.role == "industria":
+            self.form_view._set_form_locked(
+                True,
+                "Seu perfil pode calcular o desenvolvimento, mas nao possui permissao para salvar novas requisicoes.",
+            )
+        else:
+            self.form_view._set_form_locked(False)
+
+        self.sidebar._highlight("nova")
+        self._nav_transition(PAGE_FORM)
 
     def _highlight_current_page(self):
         mapping = {
