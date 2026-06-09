@@ -4541,7 +4541,7 @@ def update_requisition_item_development(
         db,
         entity="requisition",
         entity_id=req.id,
-        action="UPDATE_ITEM_DEVELOPMENT",
+        action="UPDATE_ITEM_DEV",
         changed_by=current_user,
         changes=changes,
     )
