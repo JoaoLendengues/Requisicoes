@@ -385,16 +385,21 @@ def _iter_shift_overlap_segments(start_at: datetime, end_at: datetime) -> list[t
     if start_local is None or end_local is None or end_local <= start_local:
         return []
 
+    # Mon–Thu: 08h–12h + 13h–18h (9 h/day); Fri: 08h–12h + 13h–17h (8 h/day); Sat/Sun: no shift
     segments: list[tuple[datetime, datetime]] = []
     day = start_local.date()
     last_day = end_local.date()
     while day <= last_day:
-        shift_start = datetime.combine(day, time(_SHIFT_START_HOUR, 0), _LOCAL_TIMEZONE)
-        shift_end = datetime.combine(day, time(_SHIFT_END_HOUR, 0), _LOCAL_TIMEZONE)
-        overlap_start = max(start_local, shift_start)
-        overlap_end = min(end_local, shift_end)
-        if overlap_end > overlap_start:
-            segments.append((overlap_start, overlap_end))
+        weekday = day.weekday()  # 0=Mon … 4=Fri, 5=Sat, 6=Sun
+        if weekday < 5:
+            afternoon_end_hour = 17 if weekday == 4 else 18
+            for seg_start_h, seg_end_h in [(8, 12), (13, afternoon_end_hour)]:
+                seg_start = datetime.combine(day, time(seg_start_h, 0), _LOCAL_TIMEZONE)
+                seg_end = datetime.combine(day, time(seg_end_h, 0), _LOCAL_TIMEZONE)
+                overlap_start = max(start_local, seg_start)
+                overlap_end = min(end_local, seg_end)
+                if overlap_end > overlap_start:
+                    segments.append((overlap_start, overlap_end))
         day += timedelta(days=1)
     return segments
 

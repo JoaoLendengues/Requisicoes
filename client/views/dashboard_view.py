@@ -1990,6 +1990,7 @@ class DashboardView(QWidget):
                 "POSIÇÃO",
                 "MÁQUINA",
                 "PRODUÇÕES",
+                "EM PRODUÇÃO",
                 "TEMPO MÉDIO",
                 "TEMPO DE TRABALHO",
                 "TEMPO PARADO",
@@ -2002,8 +2003,8 @@ class DashboardView(QWidget):
             rank_column=0,
         )
         header = self.top_machines_ar_table.horizontalHeader()
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
-        self.top_machines_ar_table.setColumnWidth(8, max(140, int(170 * self.scale)))
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_ar_table.setColumnWidth(9, max(140, int(170 * self.scale)))
         self.top_machines_ar_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
         self.top_machines_ar_table.setMinimumHeight(max(300, int(340 * self.scale)))
         return self.top_machines_ar_table
@@ -2014,6 +2015,7 @@ class DashboardView(QWidget):
                 "POSIÇÃO",
                 "MÁQUINA",
                 "PRODUÇÕES",
+                "EM PRODUÇÃO",
                 "TEMPO MÉDIO",
                 "TEMPO DE TRABALHO",
                 "TEMPO PARADO",
@@ -2026,8 +2028,8 @@ class DashboardView(QWidget):
             rank_column=0,
         )
         header = self.top_machines_industria_table.horizontalHeader()
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
-        self.top_machines_industria_table.setColumnWidth(8, max(140, int(170 * self.scale)))
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
+        self.top_machines_industria_table.setColumnWidth(9, max(140, int(170 * self.scale)))
         self.top_machines_industria_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
         self.top_machines_industria_table.setMinimumHeight(max(300, int(340 * self.scale)))
         return self.top_machines_industria_table
@@ -2325,6 +2327,7 @@ class DashboardView(QWidget):
                 str(index),
                 str(row.get("machine_name") or "-"),
                 str(row.get("total_operations") or 0),
+                str(row.get("in_production_count") or 0),
                 _format_duration(row.get("average_seconds")),
                 _format_duration(row.get("work_time_seconds")),
                 _format_duration(row.get("stopped_time_seconds")),
@@ -2336,6 +2339,7 @@ class DashboardView(QWidget):
                 index,
                 str(row.get("machine_name") or "-"),
                 int(row.get("total_operations") or 0),
+                int(row.get("in_production_count") or 0),
                 int(row.get("average_seconds") or 0),
                 int(row.get("work_time_seconds") or 0),
                 int(row.get("stopped_time_seconds") or 0),
@@ -2345,7 +2349,7 @@ class DashboardView(QWidget):
             ]
 
             for col, value in enumerate(values):
-                if col == 8:
+                if col == 9:
                     machine_status = str(row.get("machine_status") or "")
                     item = _SortableTableWidgetItem("", sort_values[col])
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
