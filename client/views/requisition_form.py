@@ -838,9 +838,22 @@ class CanvasDialog(QDialog):
         self.btn_ok.setStyleSheet(_req_primary_btn_style(scale))
         self.btn_ok.clicked.connect(self.accept)
 
+        self.btn_import_drawing = QPushButton("⬆ Importar Desenho")
+        self.btn_import_drawing.setFixedHeight(max(34, int(38 * scale)))
+        self.btn_import_drawing.setStyleSheet(_req_secondary_btn_style(scale))
+        self.btn_import_drawing.clicked.connect(self._import_drawing)
+
+        self.btn_export_drawing = QPushButton("⬇ Exportar Desenho")
+        self.btn_export_drawing.setFixedHeight(max(34, int(38 * scale)))
+        self.btn_export_drawing.setStyleSheet(_req_secondary_btn_style(scale))
+        self.btn_export_drawing.clicked.connect(self._export_drawing)
+
         self._footer_buttons_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self._footer_buttons_layout.setContentsMargins(0, 0, 0, 0)
         self._footer_buttons_layout.setSpacing(8)
+        self._footer_buttons_layout.addWidget(self.btn_import_drawing)
+        self._footer_buttons_layout.addWidget(self.btn_export_drawing)
+        self._footer_buttons_layout.addSpacing(16)
         self._footer_buttons_layout.addWidget(self.btn_cancel)
         self._footer_buttons_layout.addWidget(self.btn_ok)
         btn_row.addLayout(self._footer_buttons_layout)
@@ -854,6 +867,32 @@ class CanvasDialog(QDialog):
 
     def get_json(self) -> str:
         return self.canvas.to_json()
+
+    def _import_drawing(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Importar Desenho", "", "Desenho JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = f.read()
+            self.canvas.from_json(data)
+        except Exception as exc:
+            QMessageBox.critical(self, "Importar Desenho", f"Erro ao importar: {exc}")
+
+    def _export_drawing(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Exportar Desenho", "desenho.json", "Desenho JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            data = self.canvas.to_json()
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(data)
+        except Exception as exc:
+            QMessageBox.critical(self, "Exportar Desenho", f"Erro ao exportar: {exc}")
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         """Esc desmarca a ferramenta ativa; não fecha o editor."""
@@ -1714,11 +1753,17 @@ class RequisitionForm(QWidget):
 
     def _load_requisition_by_id(self, req_id: int) -> None:
         """Busca o registro COMPLETO (a listagem é enxuta) e popula o formulário."""
-        read_only = session.should_open_requisition_read_only("history")
+        def _on_loaded(full):
+            current_user_id = session.user_id
+            vendor_id = int(full.get("vendor_id") or 0)
+            is_own = (not current_user_id) or (vendor_id == int(current_user_id or 0))
+            base_ro = session.should_open_requisition_read_only("history")
+            self.load_requisition(full, read_only=base_ro or not is_own)
+
         thread, worker = _run_in_thread(
             api.get_requisition,
             req_id,
-            on_result=lambda full, ro=read_only: self.load_requisition(full, read_only=ro),
+            on_result=_on_loaded,
             on_error=lambda msg: QMessageBox.critical(self, "Requisição", msg),
         )
         self._threads.append((thread, worker))

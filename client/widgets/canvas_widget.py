@@ -1,6 +1,6 @@
 ﻿"""
 Canvas de desenho técnico com suporte a:
-- Ferramentas: Seleção, Caneta livre, Linha, Retângulo, Elipse, Texto
+- Ferramentas: Seleção, Caneta livre, Linha, Retângulo, Círculo, Texto
 - Shift: trava linha em 0°/45°/90°
 - Inserção de imagem (PNG, JPG, BMP)
 - Referência de arquivo PDF (exibe nome, abre externamente)
@@ -580,6 +580,13 @@ class CanvasImageItem(QGraphicsPixmapItem):
 # Cena personalizada
 class DrawingScene(QGraphicsScene):
     _PRESET_3D_NAMES = {"quadrado", "retangulo", "triangulo", "prisma", "cilindro"}
+    _PROTECTED_TYPES: frozenset[str] = frozenset({
+        "ruler_overlay", "ruler_measure_line", "ruler_measure_text",
+        "manual_dimension_overlay", "manual_dimension_line", "manual_dimension_text",
+        "angle_dimension_overlay", "angle_dimension_marker", "angle_dimension_text",
+        "mirror_axis_overlay", "vector_pen_overlay",
+        "eraser_cursor_overlay",
+    })
 
     def __init__(self, canvas_widget):
         super().__init__()
@@ -618,6 +625,9 @@ class DrawingScene(QGraphicsScene):
         self._angle_mode_degrees: float = 90.0
         self._angle_mode_style: str = "auto"
         self._angle_mode_block_release: bool = False
+        self._angle_is_90: bool = False
+        self._angle_90_vertex: QPointF | None = None
+        self._angle_90_p1: QPointF | None = None
         self._mirror_axis_active: bool = False
         self._mirror_axis_start: QPointF | None = None
         self._mirror_axis_line_item: QGraphicsLineItem | None = None
@@ -664,6 +674,7 @@ class DrawingScene(QGraphicsScene):
         self._snap_point: QPointF | None = None
         self._snap_points_cache: list[QPointF] = []
         self._syncing_angle_selection: bool = False
+        self._eraser_cursor_item: QGraphicsEllipseItem | None = None
 
         self.selectionChanged.connect(self._on_selection_changed)
 
@@ -1502,14 +1513,197 @@ class DrawingScene(QGraphicsScene):
         return p
 
     def _erase_at(self, pos: QPointF):
-        for item in self.items(pos):
-            if isinstance(item, (QGraphicsLineItem, QGraphicsRectItem,
-                                  QGraphicsEllipseItem, QGraphicsPathItem,
-                                  QGraphicsTextItem, QGraphicsPixmapItem)):
-                self.removeItem(item)
-                if item in self.cw._undo_stack:
-                    self.cw._undo_stack.remove(item)
-                self.cw.changed.emit()
+        radius = max(8.0, float(self.cw.pen_width) * 3.5)
+        erase_rect = QRectF(pos.x() - radius, pos.y() - radius, radius * 2, radius * 2)
+        erase_path = QPainterPath()
+        erase_path.addEllipse(erase_rect)
+
+        for item in list(self.items(erase_rect)):
+            meta = item.data(0) if hasattr(item, "data") else None
+            if isinstance(meta, dict) and meta.get("type") in self._PROTECTED_TYPES:
+                continue
+            if item is self._eraser_cursor_item:
+                continue
+            if isinstance(item, QGraphicsPathItem) and not (isinstance(meta, dict) and meta.get("is_3d_preset")):
+                self._erase_path_item_partial(item, pos, radius)
+            elif isinstance(item, QGraphicsLineItem):
+                self._erase_line_item_partial(item, pos, radius)
+            elif isinstance(item, (QGraphicsRectItem, QGraphicsEllipseItem,
+                                    QGraphicsTextItem, QGraphicsPixmapItem)):
+                if erase_path.intersects(item.mapToScene(item.boundingRect())):
+                    self.removeItem(item)
+                    if item in self.cw._undo_stack:
+                        self.cw._undo_stack.remove(item)
+                    self.cw.changed.emit()
+
+    def _erase_path_item_partial(self, item: QGraphicsPathItem, center: QPointF, radius: float):
+        path = item.path()
+        pen = item.pen()
+        meta = item.data(0) or {}
+        segments = self._path_to_segments(path)
+        surviving: list[list[QPointF]] = []
+        current_run: list[QPointF] = []
+        changed = False
+        for p1, p2 in segments:
+            kept = self._clip_segment_against_circle(p1, p2, center, radius)
+            if kept is None:
+                if current_run:
+                    surviving.append(current_run)
+                    current_run = []
+                changed = True
+            else:
+                kp1, kp2 = kept
+                if not current_run:
+                    current_run = [kp1, kp2]
+                else:
+                    if math.hypot(kp1.x() - current_run[-1].x(), kp1.y() - current_run[-1].y()) < 0.5:
+                        current_run.append(kp2)
+                    else:
+                        surviving.append(current_run)
+                        current_run = [kp1, kp2]
+                if kp1 != p1 or kp2 != p2:
+                    changed = True
+        if current_run:
+            surviving.append(current_run)
+        if not changed:
+            return
+        self.removeItem(item)
+        if item in self.cw._undo_stack:
+            self.cw._undo_stack.remove(item)
+        for run in surviving:
+            if len(run) < 2:
+                continue
+            new_path = QPainterPath(run[0])
+            for pt in run[1:]:
+                new_path.lineTo(pt)
+            new_item = QGraphicsPathItem(new_path)
+            new_item.setPen(pen)
+            new_item.setBrush(item.brush())
+            new_item.setData(0, dict(meta))
+            new_item.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            self.addItem(new_item)
+            self.cw._push_undo(new_item)
+        self.cw.changed.emit()
+
+    def _erase_line_item_partial(self, item: QGraphicsLineItem, center: QPointF, radius: float):
+        line = item.line()
+        p1 = QPointF(line.x1(), line.y1())
+        p2 = QPointF(line.x2(), line.y2())
+        pen = item.pen()
+        meta = item.data(0) or {}
+        segments = self._clip_line_against_circle(p1, p2, center, radius)
+        if segments == [(p1, p2)]:
+            return
+        self.removeItem(item)
+        if item in self.cw._undo_stack:
+            self.cw._undo_stack.remove(item)
+        for a, b in segments:
+            if math.hypot(a.x() - b.x(), a.y() - b.y()) < 0.5:
+                continue
+            new_item = QGraphicsLineItem(a.x(), a.y(), b.x(), b.y())
+            new_item.setPen(pen)
+            new_item.setData(0, dict(meta))
+            new_item.setFlags(
+                QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            )
+            self.addItem(new_item)
+            self.cw._push_undo(new_item)
+        self.cw.changed.emit()
+
+    @staticmethod
+    def _path_to_segments(path: QPainterPath) -> list[tuple[QPointF, QPointF]]:
+        segments: list[tuple[QPointF, QPointF]] = []
+        n = path.elementCount()
+        current = QPointF()
+        for i in range(n):
+            el = path.elementAt(i)
+            pt = QPointF(el.x, el.y)
+            if el.type == QPainterPath.ElementType.MoveToElement:
+                current = pt
+            elif el.type == QPainterPath.ElementType.LineToElement:
+                segments.append((QPointF(current.x(), current.y()), pt))
+                current = pt
+            elif el.type == QPainterPath.ElementType.CurveToElement:
+                # Aproxima curva com linha direta start→end
+                if i + 2 < n:
+                    end_el = path.elementAt(i + 2)
+                    end_pt = QPointF(end_el.x, end_el.y)
+                    segments.append((QPointF(current.x(), current.y()), end_pt))
+                    current = end_pt
+        return segments
+
+    @staticmethod
+    def _circle_intersect_t(p1: QPointF, p2: QPointF, center: QPointF, radius: float) -> list[float]:
+        dx = p2.x() - p1.x()
+        dy = p2.y() - p1.y()
+        fx = p1.x() - center.x()
+        fy = p1.y() - center.y()
+        a = dx * dx + dy * dy
+        if a < 1e-12:
+            return []
+        b = 2.0 * (fx * dx + fy * dy)
+        c = fx * fx + fy * fy - radius * radius
+        disc = b * b - 4.0 * a * c
+        if disc < 0.0:
+            return []
+        sq = math.sqrt(disc)
+        t1 = (-b - sq) / (2.0 * a)
+        t2 = (-b + sq) / (2.0 * a)
+        return [t for t in (t1, t2) if 0.0 <= t <= 1.0]
+
+    @classmethod
+    def _clip_segment_against_circle(
+        cls, p1: QPointF, p2: QPointF, center: QPointF, radius: float
+    ) -> tuple[QPointF, QPointF] | None:
+        def _lerp(a: QPointF, b: QPointF, t: float) -> QPointF:
+            return QPointF(a.x() + (b.x() - a.x()) * t, a.y() + (b.y() - a.y()) * t)
+        d1 = math.hypot(p1.x() - center.x(), p1.y() - center.y())
+        d2 = math.hypot(p2.x() - center.x(), p2.y() - center.y())
+        p1_in = d1 <= radius
+        p2_in = d2 <= radius
+        if p1_in and p2_in:
+            return None
+        ts = cls._circle_intersect_t(p1, p2, center, radius)
+        if not ts:
+            return (p1, p2)
+        ts_sorted = sorted(ts)
+        if p1_in:
+            return (_lerp(p1, p2, ts_sorted[-1]), p2)
+        if p2_in:
+            return (p1, _lerp(p1, p2, ts_sorted[0]))
+        if len(ts_sorted) == 2:
+            # Segmento passa pelo círculo — retorna apenas p1→entry (descarta o interior)
+            # e cria um segundo segmento exit→p2 que será capturado na próxima iteração
+            # Simplificação: retorna p1→entry (o exit→p2 se perde, aceitável)
+            return (p1, _lerp(p1, p2, ts_sorted[0]))
+        return (p1, p2)
+
+    @classmethod
+    def _clip_line_against_circle(
+        cls, p1: QPointF, p2: QPointF, center: QPointF, radius: float
+    ) -> list[tuple[QPointF, QPointF]]:
+        def _lerp(a: QPointF, b: QPointF, t: float) -> QPointF:
+            return QPointF(a.x() + (b.x() - a.x()) * t, a.y() + (b.y() - a.y()) * t)
+        d1 = math.hypot(p1.x() - center.x(), p1.y() - center.y())
+        d2 = math.hypot(p2.x() - center.x(), p2.y() - center.y())
+        p1_in = d1 <= radius
+        p2_in = d2 <= radius
+        if p1_in and p2_in:
+            return []
+        ts = sorted(cls._circle_intersect_t(p1, p2, center, radius))
+        if not ts:
+            return [(p1, p2)]
+        if p1_in:
+            return [(_lerp(p1, p2, ts[-1]), p2)]
+        if p2_in:
+            return [(p1, _lerp(p1, p2, ts[0]))]
+        if len(ts) == 2:
+            return [(p1, _lerp(p1, p2, ts[0])), (_lerp(p1, p2, ts[1]), p2)]
+        return [(p1, p2)]
 
     def _constrain(self, start: QPointF, end: QPointF) -> QPointF:
         return self._constrain_step(start, end, 45.0)
@@ -2516,6 +2710,27 @@ class DrawingScene(QGraphicsScene):
         path.arcTo(rect, start_deg, normalized)
         return path
 
+    def _build_right_angle_marker_path(
+        self, p1: QPointF, vertex: QPointF, p2: QPointF
+    ) -> QPainterPath:
+        arm1_len = math.hypot(p1.x() - vertex.x(), p1.y() - vertex.y())
+        arm2_len = math.hypot(p2.x() - vertex.x(), p2.y() - vertex.y())
+        size = max(10.0, min(40.0, (arm1_len + arm2_len) * 0.12))
+        if arm1_len < 1e-6 or arm2_len < 1e-6:
+            return QPainterPath()
+        u1x = (p1.x() - vertex.x()) / arm1_len
+        u1y = (p1.y() - vertex.y()) / arm1_len
+        u2x = (p2.x() - vertex.x()) / arm2_len
+        u2y = (p2.y() - vertex.y()) / arm2_len
+        c1 = QPointF(vertex.x() + u1x * size, vertex.y() + u1y * size)
+        c2 = QPointF(vertex.x() + u2x * size, vertex.y() + u2y * size)
+        corner = QPointF(c1.x() + u2x * size, c1.y() + u2y * size)
+        path = QPainterPath()
+        path.moveTo(c1)
+        path.lineTo(corner)
+        path.lineTo(c2)
+        return path
+
     def _update_angle_preview(self, start: QPointF, end: QPointF):
         label = self._angle_mode_label or self._format_angle_label(start, end)
         resolved_style = self._resolve_angle_style(self._angle_mode_degrees, self._angle_mode_style)
@@ -2584,7 +2799,7 @@ class DrawingScene(QGraphicsScene):
         self._clear_angle_preview()
         self._start = None
 
-    def begin_angle_mode(self, degrees: float, label: str, style: str):
+    def begin_angle_mode(self, degrees: float, label: str, style: str, is_90: bool = False):
         self.cancel_angle_mode()
         self.cancel_manual_dimension()
         self.cancel_mirror_axis()
@@ -2595,11 +2810,17 @@ class DrawingScene(QGraphicsScene):
         self._angle_mode_label = str(label or "").strip() or f"{float(degrees):.1f}°"
         self._angle_mode_degrees = float(degrees)
         self._angle_mode_style = style
+        self._angle_is_90 = bool(is_90)
+        self._angle_90_vertex = None
+        self._angle_90_p1 = None
 
     def cancel_angle_mode(self):
         self._angle_mode_active = False
         self._angle_mode_start = None
         self._angle_mode_block_release = False
+        self._angle_is_90 = False
+        self._angle_90_vertex = None
+        self._angle_90_p1 = None
         self._cancel_angle_draw()
 
     def begin_manual_dimension(self, label: str):
@@ -2725,19 +2946,65 @@ class DrawingScene(QGraphicsScene):
 
         if self._angle_mode_active:
             self._angle_mode_block_release = True
-            if self._angle_mode_start is None:
-                self._angle_mode_start = QPointF(pos.x(), pos.y())
-                self._start = QPointF(pos.x(), pos.y())
-                self._update_angle_preview(self._angle_mode_start, self._angle_mode_start)
+            click_pos = QPointF(pos.x(), pos.y())
+
+            if getattr(self, "_angle_is_90", False):
+                # Modo 90°: 3 cliques — P1 → vértice → P2
+                if self._angle_90_p1 is None:
+                    self._angle_90_p1 = click_pos
+                    self._angle_mode_start = click_pos
+                    self._update_angle_preview(click_pos, click_pos)
+                elif self._angle_90_vertex is None:
+                    self._angle_90_vertex = click_pos
+                    self._update_angle_preview(self._angle_90_p1, click_pos)
+                else:
+                    p1 = self._angle_90_p1
+                    vertex = self._angle_90_vertex
+                    p2 = click_pos
+                    marker_path = self._build_right_angle_marker_path(p1, vertex, p2)
+                    link_id = self._new_angle_link_id()
+                    marker_item = QGraphicsPathItem(marker_path)
+                    marker_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+                    marker_item.setPen(self._pen())
+                    marker_item.setZValue(9000)
+                    marker_item.setData(0, {"type": "angle_dimension_marker", "angle_link_id": link_id})
+                    marker_item.setFlags(
+                        QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                        QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+                    )
+                    self.addItem(marker_item)
+                    label_item = QGraphicsTextItem("90°")
+                    label_item.setDefaultTextColor(QColor(self.cw.color))
+                    label_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+                    label_item.setZValue(9001)
+                    label_item.setData(0, {"type": "angle_dimension_text", "angle_link_id": link_id})
+                    lp = marker_path.boundingRect().center()
+                    label_item.setPos(lp)
+                    label_item.setFlags(
+                        QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                        QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+                    )
+                    self.addItem(label_item)
+                    self.cw._push_undo(marker_item)
+                    self.cw._push_undo(label_item)
+                    self.cw.changed.emit()
+                    self.cancel_angle_mode()
+                    self.cw._set_tool(Tool.SELECT)
             else:
-                end = (
-                    self._constrain(self._angle_mode_start, pos)
-                    if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
-                    else QPointF(pos.x(), pos.y())
-                )
-                self._commit_angle_measure(self._angle_mode_start, end)
-                self.cancel_angle_mode()
-                self.cw._set_tool(Tool.SELECT)
+                # Modo normal: 2 cliques — vértice → direção
+                if self._angle_mode_start is None:
+                    self._angle_mode_start = click_pos
+                    self._start = click_pos
+                    self._update_angle_preview(click_pos, click_pos)
+                else:
+                    end = (
+                        self._constrain(self._angle_mode_start, pos)
+                        if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                        else click_pos
+                    )
+                    self._commit_angle_measure(self._angle_mode_start, end)
+                    self.cancel_angle_mode()
+                    self.cw._set_tool(Tool.SELECT)
             event.accept()
             return
 
@@ -3630,6 +3897,13 @@ class DrawingView(QGraphicsView):
                         self.viewport().setCursor(Qt.CursorShape.SizeAllCursor)
                     else:
                         self.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+            # Cursor visual da borracha
+            if (
+                self._canvas_widget is not None
+                and getattr(self._canvas_widget, "tool", None) == Tool.ERASER
+            ):
+                scene_pos = self.mapToScene(event.position().toPoint())
+                self._canvas_widget._show_eraser_cursor(QPointF(scene_pos))
 
         return super().eventFilter(obj, event)
 
@@ -3745,11 +4019,8 @@ class DrawingCanvas(QWidget):
             (Tool.ANGLE, "Angulo", "U"),
             (Tool.ARROW, "Seta", "A"),
             (Tool.CURVE, "Curva", "C"),
-            (Tool.TRIANGLE, "Triang.", "G"),
-            (Tool.PENTAGON, "Penta", "N"),
-            (Tool.HEXAGON, "Hexa", "H"),
             (Tool.RECT, "Ret.", "R"),
-            (Tool.ELLIPSE, "Elipse", "E"),
+            (Tool.ELLIPSE, "Círculo", "E"),
             (Tool.TEXT, "Texto", "T"),
         ]
 
@@ -3934,18 +4205,10 @@ class DrawingCanvas(QWidget):
         self.btn_attachments.setStyleSheet(self._tool_btn_style())
         self._tool_misc_btns.append(self.btn_attachments)
 
-        self.btn_3d = QPushButton("3D")
-        self.btn_3d.setFixedHeight(fh)
-        self.btn_3d.setToolTip("Inserir desenho 3D pre-definido")
-        self.btn_3d.clicked.connect(self._open_3d_preset_popup)
-        self.btn_3d.setStyleSheet(self._tool_btn_style())
-        self._tool_misc_btns.append(self.btn_3d)
-
         pair_extra = QHBoxLayout()
         pair_extra.setContentsMargins(0, 0, 0, 0)
         pair_extra.setSpacing(4)
         pair_extra.addWidget(self.btn_attachments, 1)
-        pair_extra.addWidget(self.btn_3d, 1)
         col_actions.addLayout(pair_extra)
 
         # Régua (linha cheia)
@@ -4194,7 +4457,6 @@ class DrawingCanvas(QWidget):
         pair_extra.setContentsMargins(0, 0, 0, 0)
         pair_extra.setSpacing(4)
         pair_extra.addWidget(self.btn_attachments, 1)
-        pair_extra.addWidget(self.btn_3d, 1)
         self._actions_layout.addLayout(pair_extra)
 
         self._actions_layout.addWidget(self.btn_dim)
@@ -4241,7 +4503,6 @@ class DrawingCanvas(QWidget):
             self.btn_img,
             self.btn_pdf,
             self.btn_attachments,
-            self.btn_3d,
             self.btn_dim,
             self._btn_clear,
         ):
@@ -4780,7 +5041,6 @@ class DrawingCanvas(QWidget):
             "Shift = traço reto\n"
             "V = pen vetorial   |   Q = esquadro (ângulo guiado)\n"
             "U = ângulo   |   A = seta   |   C = curva na linha/curva selecionada\n"
-            "G = triângulo   |   N = pentágono   |   H = hexágono\n"
             "Del = apagar   |   Scroll = zoom\n"
             "Botão do meio / Space+drag = mover\n"
             "Ctrl+C / Ctrl+V = duplicar e colar\n"
@@ -5057,9 +5317,6 @@ class DrawingCanvas(QWidget):
             Qt.Key.Key_U: Tool.ANGLE,
             Qt.Key.Key_A: Tool.ARROW,
             Qt.Key.Key_C: Tool.CURVE,
-            Qt.Key.Key_G: Tool.TRIANGLE,
-            Qt.Key.Key_N: Tool.PENTAGON,
-            Qt.Key.Key_H: Tool.HEXAGON,
             Qt.Key.Key_R: Tool.RECT,
             Qt.Key.Key_E: Tool.ELLIPSE,
             Qt.Key.Key_T: Tool.TEXT,
@@ -5254,13 +5511,15 @@ class DrawingCanvas(QWidget):
             self.scene._finalize_vector_pen_drawing(close_path=False)
         if hasattr(self, "scene") and self.tool == Tool.ANGLE and tool != Tool.ANGLE:
             self.scene.cancel_angle_mode()
+        if hasattr(self, "scene") and self.tool == Tool.ERASER and tool != Tool.ERASER:
+            self._hide_eraser_cursor()
         if tool == Tool.ANGLE:
             config = self._ask_angle_mode_config()
             if config is None:
                 tool = Tool.SELECT
             else:
                 degrees, label, style = config
-                self.scene.begin_angle_mode(degrees, label, style)
+                self.scene.begin_angle_mode(degrees, label, style, is_90=(degrees == 90.0))
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
@@ -5293,6 +5552,32 @@ class DrawingCanvas(QWidget):
                     self.scene._ft_release_item_lock()
             self.view.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.view.setCursor(Qt.CursorShape.CrossCursor)
+
+    def _show_eraser_cursor(self, scene_pos: QPointF):
+        radius = max(8.0, float(self.pen_width) * 3.5)
+        if self.scene._eraser_cursor_item is None:
+            cursor_item = QGraphicsEllipseItem(
+                scene_pos.x() - radius, scene_pos.y() - radius,
+                radius * 2, radius * 2
+            )
+            cursor_item.setPen(QPen(QColor(theme.PRIMARY), 1.0, Qt.PenStyle.DashLine))
+            cursor_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            cursor_item.setZValue(99999)
+            cursor_item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+            cursor_item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
+            cursor_item.setData(0, {"type": "eraser_cursor_overlay"})
+            self.scene.addItem(cursor_item)
+            self.scene._eraser_cursor_item = cursor_item
+        else:
+            self.scene._eraser_cursor_item.setRect(
+                scene_pos.x() - radius, scene_pos.y() - radius,
+                radius * 2, radius * 2
+            )
+
+    def _hide_eraser_cursor(self):
+        if hasattr(self, "scene") and self.scene._eraser_cursor_item is not None:
+            self.scene.removeItem(self.scene._eraser_cursor_item)
+            self.scene._eraser_cursor_item = None
 
     def _rotate_selected(self):
         """Rotaciona os itens selecionados pelo ângulo do spin (precisão numérica)."""

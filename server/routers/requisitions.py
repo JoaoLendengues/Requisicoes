@@ -1325,7 +1325,7 @@ def _can_view_requisition(req: Requisition, current_user: User) -> bool:
     if role in (Role.ADMIN.value, Role.GERENTE.value):
         return True
     if role == Role.VENDEDOR.value:
-        return req.vendor_id == current_user.id
+        return True
     # ENTREGAS ve qualquer requisicao marcada como entrega, independente
     # do destino de producao (A&R ou Pinheiro Industria).
     if role == Role.ENTREGAS.value:
@@ -1369,7 +1369,7 @@ def _visibility_filter_sql(query, current_user: User):
 
     Lógica equivalente a _can_view_requisition:
       - ADMIN/GERENTE: vê tudo (sem filtro)
-      - VENDEDOR: vê só do próprio (vendor_id)
+      - VENDEDOR: vê todas (pode abrir pedidos de outros vendedores em leitura)
       - ENTREGAS: vê só reqs marcadas como entrega
       - PRODUCAO/INDUSTRIA: vê só reqs com production_destination compatível
       - outros: nada visível
@@ -1383,7 +1383,7 @@ def _visibility_filter_sql(query, current_user: User):
     if role in (Role.ADMIN.value, Role.GERENTE.value):
         return query
     if role == Role.VENDEDOR.value:
-        return query.filter(Requisition.vendor_id == current_user.id)
+        return query
     if role == Role.ENTREGAS.value:
         return query.filter(Requisition.entrega == True)  # noqa: E712
     destination = _destination_for_role(role)
