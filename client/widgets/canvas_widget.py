@@ -2757,10 +2757,69 @@ class DrawingScene(QGraphicsScene):
             self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
         self._angle_text_preview_item.setPos(self._angle_label_pos(marker_path, start, end, label))
 
-    def _update_right_angle_preview(self, path):
-        if self._angle_text_preview_item is not None:
-            self.removeItem(self._angle_text_preview_item)
-            self._angle_text_preview_item = None
+    # ── Ferramenta Ângulo 3-pontos (estilo Vetor) ────────────────────────────
+
+    def _compute_angle_3pt(self, p1: QPointF, vertex: QPointF, p3: QPointF) -> float:
+        """Retorna o ângulo interior (0-180°) no vértice entre os braços vertex→p1 e vertex→p3."""
+        v1x = p1.x() - vertex.x(); v1y = p1.y() - vertex.y()
+        v2x = p3.x() - vertex.x(); v2y = p3.y() - vertex.y()
+        d1 = math.hypot(v1x, v1y); d2 = math.hypot(v2x, v2y)
+        if d1 < 1e-6 or d2 < 1e-6:
+            return 0.0
+        dot = (v1x * v2x + v1y * v2y) / (d1 * d2)
+        return math.degrees(math.acos(max(-1.0, min(1.0, dot))))
+
+    def _build_3pt_angle_arc_path(
+        self, p1: QPointF, vertex: QPointF, p3: QPointF, angle_deg: float
+    ) -> tuple:
+        """Retorna (QPainterPath do arco, QPointF da posição do label)."""
+        v1x = p1.x() - vertex.x(); v1y = p1.y() - vertex.y()
+        v2x = p3.x() - vertex.x(); v2y = p3.y() - vertex.y()
+        d1 = math.hypot(v1x, v1y); d2 = math.hypot(v2x, v2y)
+        if d1 < 1e-6 or d2 < 1e-6:
+            return QPainterPath(), vertex
+        pen = self._pen()
+        wb = max(0.0, pen.widthF() - 1.0)
+        radius = max(14.0 + wb * 1.6, min(78.0, (d1 + d2) * 0.15 + wb * 2.4))
+        # Ângulo de início: direção vertex→p1 em coordenadas matemáticas (Y para cima)
+        start_deg = math.degrees(math.atan2(-v1y, v1x))
+        # Produto vetorial em coords de tela (Y para baixo): > 0 → rotação horária
+        cross_screen = v1x * v2y - v1y * v2x
+        span = angle_deg if cross_screen <= 0 else -angle_deg
+        rect = QRectF(vertex.x() - radius, vertex.y() - radius, radius * 2, radius * 2)
+        path = QPainterPath()
+        path.arcMoveTo(rect, start_deg)
+        path.arcTo(rect, start_deg, span)
+        # Posição do label: no ponto médio do arco, ligeiramente afastado
+        mid_rad = math.radians(start_deg + span / 2)
+        dist_label = radius + 14
+        label_pos = QPointF(
+            vertex.x() + dist_label * math.cos(mid_rad),
+            vertex.y() - dist_label * math.sin(mid_rad),
+        )
+        return path, label_pos
+
+    def _angle_90_label_pos(self, p1: QPointF, vertex: QPointF, p3: QPointF) -> QPointF:
+        """Posição do label para marcador de ângulo reto."""
+        v1x = p1.x() - vertex.x(); v1y = p1.y() - vertex.y()
+        v2x = p3.x() - vertex.x(); v2y = p3.y() - vertex.y()
+        d1 = math.hypot(v1x, v1y); d2 = math.hypot(v2x, v2y)
+        if d1 < 1e-6 or d2 < 1e-6:
+            return vertex
+        size = max(10.0, min(40.0, (d1 + d2) * 0.12))
+        u1x = v1x / d1; u1y = v1y / d1
+        u2x = v2x / d2; u2y = v2y / d2
+        return QPointF(
+            vertex.x() + (u1x + u2x) * size * 2.2,
+            vertex.y() + (u1y + u2y) * size * 2.2,
+        )
+
+    def _update_angle_arm1_preview(self, p1: QPointF, cursor: QPointF):
+        """Fase 1: linha tracejada de P1 até o cursor, com ponto em P1."""
+        path = QPainterPath()
+        path.moveTo(p1)
+        path.lineTo(cursor)
+        path.addEllipse(p1, 3.5, 3.5)
         pen = self._pen()
         pen.setStyle(Qt.PenStyle.DashLine)
         if self._angle_marker_preview_item is None:
@@ -2773,6 +2832,101 @@ class DrawingScene(QGraphicsScene):
         else:
             self._angle_marker_preview_item.setPath(path)
             self._angle_marker_preview_item.setPen(pen)
+        if self._angle_text_preview_item is not None:
+            self.removeItem(self._angle_text_preview_item)
+            self._angle_text_preview_item = None
+
+    def _update_angle_3pt_preview(self, p1: QPointF, vertex: QPointF, cursor: QPointF):
+        """Fase 2: dois braços tracejados + arco ao vivo + label com ângulo."""
+        angle_deg = self._compute_angle_3pt(p1, vertex, cursor)
+        path = QPainterPath()
+        path.moveTo(p1); path.lineTo(vertex)
+        path.moveTo(vertex); path.lineTo(cursor)
+        label_text = ""; label_pos = vertex
+        if angle_deg > 0.5:
+            if abs(angle_deg - 90.0) < 3.0:
+                sq = self._build_right_angle_marker_path(p1, vertex, cursor)
+                if not sq.isEmpty():
+                    path.addPath(sq)
+                label_text = f"{angle_deg:.1f}°"
+                label_pos = self._angle_90_label_pos(p1, vertex, cursor)
+            else:
+                arc, arc_lp = self._build_3pt_angle_arc_path(p1, vertex, cursor, angle_deg)
+                path.addPath(arc)
+                label_text = f"{angle_deg:.1f}°"
+                label_pos = arc_lp
+        pen = self._pen()
+        pen.setStyle(Qt.PenStyle.DashLine)
+        if self._angle_marker_preview_item is None:
+            self._angle_marker_preview_item = QGraphicsPathItem(path)
+            self._angle_marker_preview_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            self._angle_marker_preview_item.setPen(pen)
+            self._angle_marker_preview_item.setZValue(10000)
+            self._angle_marker_preview_item.setData(0, {"type": "angle_dimension_overlay"})
+            self.addItem(self._angle_marker_preview_item)
+        else:
+            self._angle_marker_preview_item.setPath(path)
+            self._angle_marker_preview_item.setPen(pen)
+        if label_text:
+            if self._angle_text_preview_item is None:
+                self._angle_text_preview_item = QGraphicsTextItem(label_text)
+                self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
+                self._angle_text_preview_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+                self._angle_text_preview_item.setZValue(10001)
+                self._angle_text_preview_item.setData(0, {"type": "angle_dimension_overlay"})
+                self.addItem(self._angle_text_preview_item)
+            else:
+                self._angle_text_preview_item.setPlainText(label_text)
+                self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
+            self._angle_text_preview_item.setPos(label_pos)
+        else:
+            if self._angle_text_preview_item is not None:
+                self.removeItem(self._angle_text_preview_item)
+                self._angle_text_preview_item = None
+
+    def _commit_3point_angle(self, p1: QPointF, vertex: QPointF, p3: QPointF):
+        """Finaliza o marcador de ângulo a partir de 3 pontos clicados."""
+        angle_deg = self._compute_angle_3pt(p1, vertex, p3)
+        if angle_deg < 0.5:
+            return
+        link_id = self._new_angle_link_id()
+        path = QPainterPath()
+        path.moveTo(p1); path.lineTo(vertex)
+        path.moveTo(vertex); path.lineTo(p3)
+        if abs(angle_deg - 90.0) < 3.0:
+            sq = self._build_right_angle_marker_path(p1, vertex, p3)
+            if not sq.isEmpty():
+                path.addPath(sq)
+            label_text = f"{angle_deg:.1f}°"
+            label_pos = self._angle_90_label_pos(p1, vertex, p3)
+        else:
+            arc, label_pos = self._build_3pt_angle_arc_path(p1, vertex, p3, angle_deg)
+            path.addPath(arc)
+            label_text = f"{angle_deg:.1f}°"
+        marker_item = QGraphicsPathItem(path)
+        marker_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        marker_item.setPen(self._pen())
+        marker_item.setZValue(9000)
+        marker_item.setData(0, {"type": "angle_dimension_marker", "angle_link_id": link_id})
+        marker_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(marker_item)
+        label_item = QGraphicsTextItem(label_text)
+        label_item.setDefaultTextColor(QColor(self.cw.color))
+        label_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
+        label_item.setZValue(9001)
+        label_item.setData(0, {"type": "angle_dimension_text", "angle_link_id": link_id})
+        label_item.setPos(label_pos)
+        label_item.setFlags(
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+            QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        )
+        self.addItem(label_item)
+        self.cw._push_undo(marker_item)
+        self.cw._push_undo(label_item)
+        self.cw.changed.emit()
 
     def _commit_angle_measure(self, start: QPointF, end: QPointF):
         if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
@@ -2816,7 +2970,7 @@ class DrawingScene(QGraphicsScene):
         self._clear_angle_preview()
         self._start = None
 
-    def begin_angle_mode(self, degrees: float, label: str, style: str, is_90: bool = False):
+    def begin_angle_mode(self):
         self.cancel_angle_mode()
         self.cancel_manual_dimension()
         self.cancel_mirror_axis()
@@ -2824,12 +2978,7 @@ class DrawingScene(QGraphicsScene):
             self._exit_ft()
         self._angle_mode_active = True
         self._angle_mode_start = None
-        self._angle_mode_label = str(label or "").strip() or f"{float(degrees):.1f}°"
-        self._angle_mode_degrees = float(degrees)
-        self._angle_mode_style = style
-        self._angle_is_90 = bool(is_90)
         self._angle_90_vertex = None
-        self._angle_90_p1 = None
 
     def cancel_angle_mode(self):
         self._angle_mode_active = False
@@ -2964,64 +3113,18 @@ class DrawingScene(QGraphicsScene):
         if self._angle_mode_active:
             self._angle_mode_block_release = True
             click_pos = QPointF(pos.x(), pos.y())
-
-            if getattr(self, "_angle_is_90", False):
-                # Modo 90°: 3 cliques — P1 → vértice → P2
-                if self._angle_90_p1 is None:
-                    self._angle_90_p1 = click_pos
-                    self._angle_mode_start = click_pos
-                    self._update_angle_preview(click_pos, click_pos)
-                elif self._angle_90_vertex is None:
-                    self._angle_90_vertex = click_pos
-                    self._update_angle_preview(self._angle_90_p1, click_pos)
-                else:
-                    p1 = self._angle_90_p1
-                    vertex = self._angle_90_vertex
-                    p2 = click_pos
-                    marker_path = self._build_right_angle_marker_path(p1, vertex, p2)
-                    link_id = self._new_angle_link_id()
-                    marker_item = QGraphicsPathItem(marker_path)
-                    marker_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-                    marker_item.setPen(self._pen())
-                    marker_item.setZValue(9000)
-                    marker_item.setData(0, {"type": "angle_dimension_marker", "angle_link_id": link_id})
-                    marker_item.setFlags(
-                        QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
-                        QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
-                    )
-                    self.addItem(marker_item)
-                    label_item = QGraphicsTextItem("90°")
-                    label_item.setDefaultTextColor(QColor(self.cw.color))
-                    label_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
-                    label_item.setZValue(9001)
-                    label_item.setData(0, {"type": "angle_dimension_text", "angle_link_id": link_id})
-                    lp = marker_path.boundingRect().center()
-                    label_item.setPos(lp)
-                    label_item.setFlags(
-                        QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
-                        QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
-                    )
-                    self.addItem(label_item)
-                    self.cw._push_undo(marker_item)
-                    self.cw._push_undo(label_item)
-                    self.cw.changed.emit()
-                    self.cancel_angle_mode()
-                    self.cw._set_tool(Tool.SELECT)
+            if self._angle_mode_start is None:
+                # Clique 1: extremidade do 1º braço (P1)
+                self._angle_mode_start = click_pos
+            elif self._angle_90_vertex is None:
+                # Clique 2: vértice
+                self._angle_90_vertex = click_pos
             else:
-                # Modo normal: 2 cliques — vértice → direção
-                if self._angle_mode_start is None:
-                    self._angle_mode_start = click_pos
-                    self._start = click_pos
-                    self._update_angle_preview(click_pos, click_pos)
-                else:
-                    end = (
-                        self._constrain(self._angle_mode_start, pos)
-                        if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
-                        else click_pos
-                    )
-                    self._commit_angle_measure(self._angle_mode_start, end)
-                    self.cancel_angle_mode()
-                    self.cw._set_tool(Tool.SELECT)
+                # Clique 3: extremidade do 2º braço → finalizar
+                self._clear_angle_preview()
+                self._commit_3point_angle(self._angle_mode_start, self._angle_90_vertex, click_pos)
+                self.cancel_angle_mode()
+                self.cw._set_tool(Tool.SELECT)
             event.accept()
             return
 
@@ -3325,21 +3428,12 @@ class DrawingScene(QGraphicsScene):
 
         if self._angle_mode_active and self._angle_mode_start is not None:
             cur = QPointF(pos.x(), pos.y())
-            if getattr(self, "_angle_is_90", False) and self._angle_90_vertex is not None:
-                # Após 2º clique no modo 90°: mostrar preview do quadradinho em tempo real
-                v = self._angle_90_vertex
-                if math.hypot(cur.x() - v.x(), cur.y() - v.y()) > 1.0:
-                    preview_path = self._build_right_angle_marker_path(
-                        self._angle_90_p1, v, cur
-                    )
-                    self._update_right_angle_preview(preview_path)
+            if self._angle_90_vertex is None:
+                # Fase 1: linha tracejada P1 → cursor
+                self._update_angle_arm1_preview(self._angle_mode_start, cur)
             else:
-                end = (
-                    self._constrain(self._angle_mode_start, pos)
-                    if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
-                    else cur
-                )
-                self._update_angle_preview(self._angle_mode_start, end)
+                # Fase 2: dois braços + arco ao vivo com ângulo medido
+                self._update_angle_3pt_preview(self._angle_mode_start, self._angle_90_vertex, cur)
             event.accept()
             return
 
@@ -3706,6 +3800,11 @@ class DrawingScene(QGraphicsScene):
 
         if self._manual_dim_active and event.key() == Qt.Key.Key_Escape:
             self.cancel_manual_dimension()
+            event.accept()
+            return
+        if self._angle_mode_active and event.key() == Qt.Key.Key_Escape:
+            self.cancel_angle_mode()
+            self.cw._set_tool(Tool.SELECT)
             event.accept()
             return
         if event.key() == Qt.Key.Key_Escape and self._curve_session_active:
@@ -5541,12 +5640,7 @@ class DrawingCanvas(QWidget):
         if hasattr(self, "scene") and self.tool == Tool.ERASER and tool != Tool.ERASER:
             self._hide_eraser_cursor()
         if tool == Tool.ANGLE:
-            config = self._ask_angle_mode_config()
-            if config is None:
-                tool = Tool.SELECT
-            else:
-                degrees, label, style = config
-                self.scene.begin_angle_mode(degrees, label, style, is_90=(degrees == 90.0))
+            self.scene.begin_angle_mode()
         self.tool = tool
         for t, btn in self._tool_btns.items():
             btn.setChecked(t == tool)
