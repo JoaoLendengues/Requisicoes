@@ -77,6 +77,7 @@ _LIGHT: dict = {
         "aguardando_na_fila":     "#D97706",
         "em_producao":            "#1D4ED8",
         "faturado":               "#16A34A",
+        "aguardando_entrega":     "#0891B2",
         "finalizado":             "#10B981",
         "cancelada":              "#E11D48",
     },
@@ -168,6 +169,7 @@ _DARK: dict = {
         "aguardando_na_fila":     "#F59E0B",
         "em_producao":            "#3B82F6",
         "faturado":               "#4ADE80",
+        "aguardando_entrega":     "#22D3EE",
         "finalizado":             "#34D399",
         "cancelada":              "#FB7185",
     },
@@ -220,6 +222,7 @@ STATUS_LABELS: dict = {
     "aguardando_na_fila":     "Aguardando na Fila",
     "em_producao":            "Em Producao",
     "faturado":               "Faturado",
+    "aguardando_entrega":     "Aguardando Entrega",
     "finalizado":             "Finalizado",
     "cancelada":              "Cancelada",
 }

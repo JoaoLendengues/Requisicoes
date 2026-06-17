@@ -81,6 +81,23 @@ STATUS_LABELS = {
     "cancelada_producao": "Cancelada na Produção",
 }
 
+# Ordem de exibição ao ordenar pela coluna STATUS (1 = primeiro, 99 = sem ordem definida)
+STATUS_SORT_ORDER: dict[str, int] = {
+    "cancelada":              1,
+    "cancelada_producao":     1,
+    "aguardando_recebimento": 2,
+    "aguardando_na_fila":     2,
+    "em_producao":            3,
+    "aguardando_entrega":     4,
+    "faturado":               4,
+    "finalizado":             5,
+    "finalizada_producao":    5,
+    "entregue":               5,
+    "prazo_alterado":         6,
+    "em_andamento":           7,
+    "rascunho":               7,
+}
+
 
 def _rgba(color: str, alpha: int) -> str:
     parsed = QColor(color)
@@ -1174,7 +1191,7 @@ class HistoryView(QWidget):
                 values = self._row_values(req)
                 for col, value in enumerate(values):
                     if col == 7:
-                        item = SortableItem("", sort_key=status)
+                        item = SortableItem("", sort_key=STATUS_SORT_ORDER.get(status, 99))
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(row, col, item)
                         badge = QLabel(STATUS_LABELS.get(status, status or "-"))
@@ -1186,6 +1203,7 @@ class HistoryView(QWidget):
                             "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
                             "em_producao": theme.PRIMARY,
                             "faturado": theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+                            "aguardando_entrega": theme.STATUS_COLORS.get("aguardando_entrega", "#0891B2"),
                             "finalizado": theme.STATUS_COLORS.get("finalizado", theme.SUCCESS),
                             "finalizada_producao": theme.SUCCESS,
                             "cancelada_producao": theme.DANGER,
