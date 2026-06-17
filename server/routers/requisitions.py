@@ -1296,7 +1296,7 @@ def _history_production_status(req: Requisition) -> str:
     current_status = str(getattr(req.status, "value", req.status) or "")
     if req.status == RequisitionStatus.CANCELADA:
         return current_status
-    if req.status == RequisitionStatus.FINALIZADO:
+    if req.status in (RequisitionStatus.FINALIZADO, RequisitionStatus.AGUARDANDO_ENTREGA):
         return current_status
 
     latest_event = _latest_production_event(
