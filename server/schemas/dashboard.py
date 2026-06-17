@@ -95,7 +95,7 @@ class DashboardCountKgComparisonItem(BaseModel):
 
 class DashboardInsightsResponse(BaseModel):
     production_kg_by_destination: list[DashboardKgComparisonItem]
-    production_kg_by_machine: list[DashboardKgComparisonItem]
+    production_kg_by_machine: list[DashboardCountKgComparisonItem]
     requisitions_kg_by_vendor: list[DashboardCountKgComparisonItem]
     requisitions_kg_by_operator: list[DashboardCountKgComparisonItem]
     requisitions_kg_by_helper: list[DashboardCountKgComparisonItem]

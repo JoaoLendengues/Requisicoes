@@ -3098,7 +3098,7 @@ def _build_production_machine_comparison(
     *,
     destination: str = "",
     limit: int | None = None,
-) -> list[DashboardKgComparisonItem]:
+) -> list[DashboardCountKgComparisonItem]:
     periods = _comparison_period_windows(now)
     stats: dict[tuple[str, str], dict[str, object]] = {}
 
@@ -3116,11 +3116,11 @@ def _build_production_machine_comparison(
                 label = f"{cycle_destination} - {machine_name}"
             entry = stats.setdefault(
                 (cycle_destination, machine_name),
-                _new_kg_comparison_entry(label),
+                _new_count_kg_comparison_entry(label),
             )
-            _accumulate_kg_comparison(entry, cycle.get("finished_at"), weight, periods)
+            _accumulate_count_kg_comparison(entry, cycle.get("finished_at"), weight, periods)
 
-    return _build_kg_comparison_rows(stats, limit=limit)
+    return _build_count_kg_comparison_rows(stats, limit=limit)
 
 
 def _build_vendor_comparison(
