@@ -1989,15 +1989,26 @@ class ProductionView(QWidget):
         table.setFrameShape(QFrame.Shape.NoFrame)
         table.setShowGrid(False)
         table.setMinimumHeight(max(260, int(300 * s)))
-        table.setStyleSheet(theme.neon_table_qss(s))
+        cell_pad_h = max(6, int(8 * s))
+        cell_pad_v = max(5, int(7 * s))
+        table.setStyleSheet(
+            theme.neon_table_qss(s)
+            + f" QTableWidget::item {{ padding: {cell_pad_v}px {cell_pad_h}px; }}"
+            + f" QTableWidget QLineEdit {{"
+            f"   padding: {cell_pad_v}px {cell_pad_h}px;"
+            f"   border: 1px solid {theme.PRIMARY};"
+            f"   background: {theme.PANEL_SURFACE_BG};"
+            f"   color: {theme.PANEL_TEXT_PRIMARY};"
+            f" }}"
+        )
         theme.apply_neon_table_palette(table)
         hdr = table.horizontalHeader()
         for col in range(len(HEADERS)):
-            mode = QHeaderView.ResizeMode.Stretch if col in {1, 2} else QHeaderView.ResizeMode.ResizeToContents
+            mode = QHeaderView.ResizeMode.Stretch if col in {1, 2, DESENV_COL} else QHeaderView.ResizeMode.ResizeToContents
             hdr.setSectionResizeMode(col, mode)
         hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         hdr.setMinimumHeight(max(34, int(40 * s)))
-        table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
+        table.verticalHeader().setDefaultSectionSize(max(36, int(42 * s)))
 
         original_desenv: dict[int, str] = {}
         for row_idx, item in enumerate(items):
