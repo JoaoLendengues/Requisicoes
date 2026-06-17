@@ -507,6 +507,11 @@ def mark_one_notification_read(notif_id: int) -> dict:
         return _check(client.patch(f"/notifications/{notif_id}/read"))
 
 
+def delete_notification(notif_id: int) -> dict:
+    with _cli() as client:
+        return _check(client.delete(f"/notifications/{notif_id}"))
+
+
 def create_feedback(message: str, category: str = "sugestao", is_public: bool = True) -> dict:
     with _cli() as client:
         return _check(

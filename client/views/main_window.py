@@ -840,6 +840,7 @@ class MainWindow(QMainWindow):
         drawer.mark_all_requested.connect(self._mark_all_read)
         drawer.open_req_requested.connect(self._open_requisition)
         drawer.mark_one_requested.connect(self._mark_one_read)
+        drawer.delete_requested.connect(self._delete_notification)
         drawer.open_drawer()
 
     def _mark_all_read(self):
@@ -859,9 +860,18 @@ class MainWindow(QMainWindow):
         )
         self._track_thread(thread, worker)
 
+    def _delete_notification(self, notif_id: int):
+        thread, worker = _run_in_thread(
+            api.delete_notification,
+            notif_id,
+            on_result=lambda _: self._sync_badge(),
+            on_error=lambda _: None,
+        )
+        self._track_thread(thread, worker)
+
     def _reset_badge(self):
         self._unread_count = 0
-        self._shown_notif_ids.clear()
+        # Não limpa _shown_notif_ids: evita re-pop de notificações já exibidas
         self.sidebar.set_notification_count(0)
 
     # ── Escala ───────────────────────────────────────────────────────────────

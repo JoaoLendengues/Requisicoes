@@ -99,14 +99,11 @@ def list_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Retorna as 50 notificações não lidas mais recentes do usuário."""
+    """Retorna as 50 notificações mais recentes do usuário (lidas + não lidas)."""
     _ensure_operational_alerts(db)
     return (
         db.query(Notification)
-        .filter(
-            Notification.user_id == current_user.id,
-            Notification.read == False,
-        )
+        .filter(Notification.user_id == current_user.id)
         .order_by(Notification.created_at.desc())
         .limit(50)
         .all()
@@ -158,5 +155,22 @@ def mark_one_read(
     ).first()
     if n:
         n.read = True
+        db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{notif_id}")
+def delete_notification(
+    notif_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Exclui uma notificação do usuário."""
+    n = db.query(Notification).filter(
+        Notification.id == notif_id,
+        Notification.user_id == current_user.id,
+    ).first()
+    if n:
+        db.delete(n)
         db.commit()
     return {"ok": True}

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Drawer lateral de notificações.
 
 NotificationDrawer — painel que desliza da direita sobre o conteúdo principal.
@@ -33,6 +33,9 @@ _ICONS: dict[str, str] = {
     "cancelada":         "❌",
     "prod_cancelada":    "⚠️",
     "requisicao_parada": "⏰",
+    "faturado":          "💰",
+    "finalizado":        "✅",
+    "machine_status":    "🛠️",
 }
 
 _ACCENT: dict[str, str] = {
@@ -42,19 +45,10 @@ _ACCENT: dict[str, str] = {
     "cancelada":         "#DC2626",
     "prod_cancelada":    "#D97706",
     "requisicao_parada": "#D97706",
+    "faturado":          "#16A34A",
+    "finalizado":        "#10B981",
+    "machine_status":    "#2563EB",
 }
-
-_ICONS.update({
-    "faturado": "💰",
-    "finalizado": "✅",
-    "machine_status": "🛠️",
-})
-
-_ACCENT.update({
-    "faturado": "#16A34A",
-    "finalizado": "#10B981",
-    "machine_status": "#2563EB",
-})
 
 _DEFAULT_ACCENT = "#2563EB"
 
@@ -140,23 +134,22 @@ class _Overlay(QWidget):
 # ── Drawer ────────────────────────────────────────────────────────────────────
 
 class NotificationDrawer(QWidget):
-    """Painel lateral que desliza da direita listando notificações não lidas."""
+    """Painel lateral que desliza da direita listando todas as notificações."""
 
     mark_all_requested = Signal()
     open_req_requested = Signal(int)
     mark_one_requested = Signal(int)
+    delete_requested   = Signal(int)
     closed             = Signal()
 
     def __init__(self, notifications: list, parent: QWidget):
         super().__init__(parent)
         self._notifications = notifications
         self._closing       = False
-        # Fator de acessibilidade (tamanho dos pop-ups/painel)
         self._factor = res.notification_factor
         self._width  = max(1, round(DRAWER_WIDTH * self._factor))
         self._setup()
 
-    # Helpers de escala
     def _sc(self, value: float) -> int:
         return max(1, round(value * self._factor))
 
@@ -168,13 +161,11 @@ class NotificationDrawer(QWidget):
     def _setup(self):
         parent = self.parent()
 
-        # Overlay
         self._overlay = _Overlay(parent)
         self._overlay.clicked.connect(self.close_drawer)
         self._overlay.setGeometry(0, 0, parent.width(), parent.height())
         self._overlay.hide()
 
-        # Drawer container
         self.setFixedWidth(self._width)
         self.setObjectName("notifDrawer")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -187,7 +178,6 @@ class NotificationDrawer(QWidget):
             f"QFrame {{ border: none; }}"
         )
 
-        # Sombra lateral esquerda
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(32)
         shadow.setColor(QColor(0, 44, 109, 50 if not theme.is_dark else 200))
@@ -202,7 +192,6 @@ class NotificationDrawer(QWidget):
         self._build_list(root)
         self._build_footer(root)
 
-        # Animações deslizamento
         self._anim_open = QPropertyAnimation(self, b"pos", self)
         self._anim_open.setDuration(ANIM_MS)
         self._anim_open.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -217,7 +206,6 @@ class NotificationDrawer(QWidget):
         self.hide()
 
     def _build_header(self, root: QVBoxLayout):
-        # Barra de acento no topo
         accent_bar = QFrame()
         accent_bar.setObjectName("drawerAccent")
         accent_bar.setFixedHeight(3)
@@ -226,7 +214,6 @@ class NotificationDrawer(QWidget):
         )
         root.addWidget(accent_bar)
 
-        # Cabeçalho
         header = QWidget()
         header.setObjectName("drawerHeader")
         header.setFixedHeight(62)
@@ -241,7 +228,6 @@ class NotificationDrawer(QWidget):
         hlay.setContentsMargins(18, 0, 14, 0)
         hlay.setSpacing(10)
 
-        # Ícone + título + badge de contagem
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
         title_row.setContentsMargins(0, 0, 0, 0)
@@ -258,9 +244,10 @@ class NotificationDrawer(QWidget):
         )
         title_row.addWidget(title)
 
-        count = len(self._notifications)
-        if count:
-            badge = QLabel(str(count))
+        # Badge mostra apenas as não lidas
+        unread_count = sum(1 for n in self._notifications if not n.get("read", False))
+        if unread_count:
+            badge = QLabel(str(unread_count))
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             badge.setMinimumWidth(26)
             badge.setFixedHeight(22)
@@ -273,8 +260,8 @@ class NotificationDrawer(QWidget):
 
         hlay.addLayout(title_row, 1)
 
-        # Botão "Marcar todas" — estilo ghost
-        if self._notifications:
+        # "Marcar todas" apenas se houver não lidas
+        if unread_count:
             btn_all = QPushButton("Marcar todas")
             btn_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             btn_all.setStyleSheet(
@@ -289,7 +276,6 @@ class NotificationDrawer(QWidget):
             btn_all.clicked.connect(self._on_mark_all)
             hlay.addWidget(btn_all)
 
-        # Botão fechar
         btn_close = QPushButton("✕")
         btn_close.setFixedSize(30, 30)
         btn_close.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -347,7 +333,6 @@ class NotificationDrawer(QWidget):
         root.addWidget(scroll, 1)
 
     def _build_empty_state(self, vlay: QVBoxLayout):
-        """Estado vazio: ícone grande + textos centralizados."""
         wrapper = QWidget()
         wrapper_lay = QVBoxLayout(wrapper)
         wrapper_lay.setContentsMargins(20, 46, 20, 36)
@@ -356,9 +341,7 @@ class NotificationDrawer(QWidget):
 
         emoji_lbl = QLabel("🎉")
         emoji_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        emoji_lbl.setStyleSheet(
-            "font-size: 42px; background: transparent;"
-        )
+        emoji_lbl.setStyleSheet("font-size: 42px; background: transparent;")
         wrapper_lay.addWidget(emoji_lbl)
 
         title_lbl = QLabel("Tudo em dia!")
@@ -370,7 +353,7 @@ class NotificationDrawer(QWidget):
         )
         wrapper_lay.addWidget(title_lbl)
 
-        sub_lbl = QLabel("Não há notificações\nnão lidas no momento.")
+        sub_lbl = QLabel("Nenhuma notificação\nainda.")
         sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub_lbl.setWordWrap(True)
         sub_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -386,11 +369,16 @@ class NotificationDrawer(QWidget):
         vlay.addWidget(wrapper)
 
     def _build_footer(self, root: QVBoxLayout):
-        count = len(self._notifications)
-        if not count:
+        if not self._notifications:
             return
 
-        s = "notificação não lida" if count == 1 else "notificações não lidas"
+        unread = sum(1 for n in self._notifications if not n.get("read", False))
+        total  = len(self._notifications)
+
+        if unread:
+            label_text = f"{unread} não lida{'s' if unread != 1 else ''} · {total} no histórico"
+        else:
+            label_text = f"{total} notificação{'ões' if total != 1 else ''} no histórico"
 
         footer = QWidget()
         footer.setObjectName("drawerFooter")
@@ -405,7 +393,7 @@ class NotificationDrawer(QWidget):
         flay.setContentsMargins(18, 10, 18, 10)
         flay.setSpacing(8)
 
-        count_lbl = QLabel(f"{count} {s}")
+        count_lbl = QLabel(label_text)
         count_lbl.setStyleSheet(
             f"color: {theme.TEXT_LABEL}; font-size: 8pt;"
             f"background: transparent;"
@@ -418,46 +406,65 @@ class NotificationDrawer(QWidget):
     def _make_card(self, n: dict) -> QFrame:
         ntype  = n.get("type", "")
         accent = _ACCENT.get(ntype, _DEFAULT_ACCENT)
+        is_read = n.get("read", False)
 
         card = QFrame()
         card.setObjectName("drawerNotifCard")
         card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        led_bg_top = _blend_color(theme.DRAWER_CARD, accent, 58)
-        led_bg_bottom = _blend_color(theme.DRAWER_CARD, accent, 20)
-        led_hover_top = _blend_color(theme.DRAWER_CARD, accent, 74)
-        led_hover_bottom = _blend_color(theme.DRAWER_CARD, accent, 28)
-
-        card.setStyleSheet(
-            f"QFrame#drawerNotifCard {{"
-            f"  background: qlineargradient("
-            f"    x1:0, y1:0, x2:1, y2:1,"
-            f"    stop:0 {led_bg_top},"
-            f"    stop:0.52 {theme.DRAWER_CARD},"
-            f"    stop:1 {led_bg_bottom}"
-            f"  );"
-            f"  border: 1px solid {theme.DRAWER_BORDER} !important;"
-            f"  border-radius: 10px;"
-            f"}}"
-            f"QFrame#drawerNotifCard:hover {{"
-            f"  background: qlineargradient("
-            f"    x1:0, y1:0, x2:1, y2:1,"
-            f"    stop:0 {led_hover_top},"
-            f"    stop:0.52 {theme.DRAWER_CARD},"
-            f"    stop:1 {led_hover_bottom}"
-            f"  );"
-            f"  border-color: {accent} !important;"
-            f"}}"
-            f"QLabel {{ background: transparent; border: none !important; }}"
-            f"QPushButton {{ background: transparent; }}"
-        )
+        if is_read:
+            # Notificação lida: visual discreto/acinzentado
+            card_bg = theme.DRAWER_BG
+            card_bg_hover = _blend_color(theme.DRAWER_BG, theme.BORDER_COLOR, 60)
+            border_color = theme.DRAWER_BORDER
+            card.setStyleSheet(
+                f"QFrame#drawerNotifCard {{"
+                f"  background: {card_bg};"
+                f"  border: 1px solid {border_color} !important;"
+                f"  border-radius: 10px;"
+                f"  opacity: 0.7;"
+                f"}}"
+                f"QFrame#drawerNotifCard:hover {{"
+                f"  background: {card_bg_hover};"
+                f"}}"
+                f"QLabel {{ background: transparent; border: none !important; }}"
+                f"QPushButton {{ background: transparent; }}"
+            )
+        else:
+            led_bg_top = _blend_color(theme.DRAWER_CARD, accent, 58)
+            led_bg_bottom = _blend_color(theme.DRAWER_CARD, accent, 20)
+            led_hover_top = _blend_color(theme.DRAWER_CARD, accent, 74)
+            led_hover_bottom = _blend_color(theme.DRAWER_CARD, accent, 28)
+            card.setStyleSheet(
+                f"QFrame#drawerNotifCard {{"
+                f"  background: qlineargradient("
+                f"    x1:0, y1:0, x2:1, y2:1,"
+                f"    stop:0 {led_bg_top},"
+                f"    stop:0.52 {theme.DRAWER_CARD},"
+                f"    stop:1 {led_bg_bottom}"
+                f"  );"
+                f"  border: 1px solid {theme.DRAWER_BORDER} !important;"
+                f"  border-radius: 10px;"
+                f"}}"
+                f"QFrame#drawerNotifCard:hover {{"
+                f"  background: qlineargradient("
+                f"    x1:0, y1:0, x2:1, y2:1,"
+                f"    stop:0 {led_hover_top},"
+                f"    stop:0.52 {theme.DRAWER_CARD},"
+                f"    stop:1 {led_hover_bottom}"
+                f"  );"
+                f"  border-color: {accent} !important;"
+                f"}}"
+                f"QLabel {{ background: transparent; border: none !important; }}"
+                f"QPushButton {{ background: transparent; }}"
+            )
 
         lay = QVBoxLayout(card)
         lay.setContentsMargins(self._sc(14), self._sc(12), self._sc(12), self._sc(11))
         lay.setSpacing(self._sc(6))
 
-        # ── Linha superior: ícone + título + dot + timestamp ──
+        # ── Linha superior: ícone + título + dot/check + timestamp + excluir ──
         top = QHBoxLayout()
         top.setSpacing(self._sc(8))
         top.setContentsMargins(0, 0, 0, 0)
@@ -465,43 +472,77 @@ class NotificationDrawer(QWidget):
         icon_lbl = QLabel(_ICONS.get(ntype, "🔔"))
         icon_lbl.setStyleSheet(
             f"font-size: {self._sc(16)}px; background: transparent; border: none;"
+            + (f" opacity: 0.5;" if is_read else "")
         )
         icon_lbl.setFixedWidth(self._sc(24))
         top.addWidget(icon_lbl)
 
+        title_color = theme.DRAWER_MUTED if is_read else theme.DRAWER_TITLE
         title_lbl = QLabel(n.get("title", ""))
         title_lbl.setStyleSheet(
-            f"font-weight: 700; font-size: {self._pt(10)}pt; color: {theme.DRAWER_TITLE};"
+            f"font-weight: {'600' if is_read else '700'}; font-size: {self._pt(10)}pt;"
+            f"color: {title_color};"
             f"background: transparent; border: none;"
             f"font-family: 'Inter', 'Segoe UI';"
         )
         title_lbl.setWordWrap(True)
         top.addWidget(title_lbl, 1)
 
-        # Dot colorido de não lida
-        dot = QLabel("●")
-        dot.setStyleSheet(
-            f"color: {accent}; font-size: {self._sc(9)}px; background: transparent; border: none;"
-        )
-        top.addWidget(dot)
+        if is_read:
+            check = QLabel("✓")
+            check.setStyleSheet(
+                f"color: {theme.DRAWER_MUTED}; font-size: {self._sc(9)}px;"
+                f"background: transparent; border: none;"
+            )
+            top.addWidget(check)
+        else:
+            dot = QLabel("●")
+            dot.setStyleSheet(
+                f"color: {accent}; font-size: {self._sc(9)}px; background: transparent; border: none;"
+            )
+            top.addWidget(dot)
 
         ts = _relative_time(n.get("created_at"))
         if ts:
             ts_lbl = QLabel(ts)
             ts_lbl.setStyleSheet(
-                f"color: {theme.DRAWER_MUTED}; font-size: {self._pt(8)}pt; background: transparent; border: none;"
+                f"color: {theme.DRAWER_MUTED}; font-size: {self._pt(8)}pt;"
+                f"background: transparent; border: none;"
                 f"font-family: 'Inter', 'Segoe UI';"
             )
             top.addWidget(ts_lbl)
+
+        # Botão excluir (×)
+        nid = n.get("id")
+        if nid:
+            btn_del = QPushButton("×")
+            btn_del.setFixedSize(self._sc(20), self._sc(20))
+            btn_del.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            btn_del.setToolTip("Excluir notificação")
+            btn_del.setStyleSheet(
+                f"QPushButton {{"
+                f"  background: transparent; color: {theme.DRAWER_MUTED};"
+                f"  border: none; border-radius: {self._sc(10)}px;"
+                f"  font-size: {self._sc(15)}px; font-weight: 400;"
+                f"  padding: 0;"
+                f"  font-family: 'Inter', 'Segoe UI';"
+                f"}}"
+                f"QPushButton:hover {{"
+                f"  color: {theme.DANGER}; background: transparent;"
+                f"}}"
+            )
+            btn_del.clicked.connect(lambda checked=False, i=nid: self._on_delete(i))
+            top.addWidget(btn_del)
 
         lay.addLayout(top)
 
         # ── Mensagem ──
         msg = n.get("message", "")
         if msg:
+            msg_color = theme.DRAWER_MUTED if is_read else theme.DRAWER_BODY
             msg_lbl = QLabel(msg)
             msg_lbl.setStyleSheet(
-                f"color: {theme.DRAWER_BODY}; font-size: {self._pt(9)}pt;"
+                f"color: {msg_color}; font-size: {self._pt(9)}pt;"
                 f"background: transparent; border: none;"
                 f"font-family: 'Inter', 'Segoe UI';"
                 f"padding-left: {self._sc(32)}px;"
@@ -509,11 +550,10 @@ class NotificationDrawer(QWidget):
             msg_lbl.setWordWrap(True)
             lay.addWidget(msg_lbl)
 
-        # ── Botões de ação ──
-        nid    = n.get("id")
+        # ── Botões de ação (apenas para não lidas) ──
         req_id = n.get("requisition_id")
 
-        if nid or req_id:
+        if not is_read and (nid or req_id):
             btns = QHBoxLayout()
             btns.setSpacing(self._sc(6))
             btns.setContentsMargins(self._sc(32), self._sc(2), 0, 0)
@@ -602,6 +642,10 @@ class NotificationDrawer(QWidget):
 
     def _on_mark_one(self, nid: int):
         self.mark_one_requested.emit(nid)
+        self.close_drawer()
+
+    def _on_delete(self, nid: int):
+        self.delete_requested.emit(nid)
         self.close_drawer()
 
     def _on_open(self, req_id: int):
