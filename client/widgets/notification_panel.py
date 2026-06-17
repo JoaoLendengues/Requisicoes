@@ -54,7 +54,6 @@ _DEFAULT_ACCENT = "#2563EB"
 
 
 def _blend_color(base_hex: str, tint_hex: str, tint_alpha: int) -> str:
-    """Mistura tint_hex sobre base_hex com alpha (0-255) e retorna #RRGGBB."""
     base = QColor(base_hex)
     tint = QColor(tint_hex)
     a = max(0.0, min(1.0, float(tint_alpha) / 255.0))
@@ -90,8 +89,6 @@ def _relative_time(iso: str | None) -> str:
 # ── Overlay ───────────────────────────────────────────────────────────────────
 
 class _Overlay(QWidget):
-    """Fundo semitransparente com fade — fecha o drawer ao ser clicado."""
-
     clicked = Signal()
 
     def __init__(self, parent: QWidget):
@@ -144,10 +141,19 @@ class NotificationDrawer(QWidget):
 
     def __init__(self, notifications: list, parent: QWidget):
         super().__init__(parent)
-        self._notifications = notifications
+        self._notifications: list = list(notifications)
         self._closing       = False
         self._factor = res.notification_factor
         self._width  = max(1, round(DRAWER_WIDTH * self._factor))
+
+        # Refs para atualização inline ao excluir cards
+        self._card_map:    dict[int, QFrame]      = {}
+        self._list_layout: QVBoxLayout | None     = None
+        self._empty_widget: QWidget | None        = None
+        self._unread_badge: QLabel | None         = None
+        self._btn_mark_all: QPushButton | None    = None
+        self._footer_lbl:   QLabel | None         = None
+
         self._setup()
 
     def _sc(self, value: float) -> int:
@@ -244,37 +250,37 @@ class NotificationDrawer(QWidget):
         )
         title_row.addWidget(title)
 
-        # Badge mostra apenas as não lidas
-        unread_count = sum(1 for n in self._notifications if not n.get("read", False))
-        if unread_count:
-            badge = QLabel(str(unread_count))
-            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            badge.setMinimumWidth(26)
-            badge.setFixedHeight(22)
-            badge.setStyleSheet(
-                f"background: {theme.DANGER}; color: #fff; border-radius: 11px;"
-                f"padding: 2px 8px; font-size: 9pt; font-weight: 700;"
-                f"font-family: 'Inter', 'Segoe UI';"
-            )
-            title_row.addWidget(badge)
+        unread = self._unread_count()
+        badge = QLabel(str(unread))
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setMinimumWidth(26)
+        badge.setFixedHeight(22)
+        badge.setStyleSheet(
+            f"background: {theme.DANGER}; color: #fff; border-radius: 11px;"
+            f"padding: 2px 8px; font-size: 9pt; font-weight: 700;"
+            f"font-family: 'Inter', 'Segoe UI';"
+        )
+        badge.setVisible(unread > 0)
+        title_row.addWidget(badge)
+        self._unread_badge = badge
 
         hlay.addLayout(title_row, 1)
 
-        # "Marcar todas" apenas se houver não lidas
-        if unread_count:
-            btn_all = QPushButton("Marcar todas")
-            btn_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            btn_all.setStyleSheet(
-                f"QPushButton {{"
-                f"  background: transparent; color: {theme.PRIMARY};"
-                f"  border: 1px solid {theme.PRIMARY}; border-radius: 6px;"
-                f"  padding: 4px 11px; font-size: 8pt; font-weight: 700;"
-                f"  font-family: 'Inter', 'Segoe UI';"
-                f"}}"
-                f"QPushButton:hover {{ background: {theme.SELECTION_BG}; }}"
-            )
-            btn_all.clicked.connect(self._on_mark_all)
-            hlay.addWidget(btn_all)
+        btn_all = QPushButton("Marcar todas")
+        btn_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_all.setStyleSheet(
+            f"QPushButton {{"
+            f"  background: transparent; color: {theme.PRIMARY};"
+            f"  border: 1px solid {theme.PRIMARY}; border-radius: 6px;"
+            f"  padding: 4px 11px; font-size: 8pt; font-weight: 700;"
+            f"  font-family: 'Inter', 'Segoe UI';"
+            f"}}"
+            f"QPushButton:hover {{ background: {theme.SELECTION_BG}; }}"
+        )
+        btn_all.clicked.connect(self._on_mark_all)
+        btn_all.setVisible(unread > 0)
+        hlay.addWidget(btn_all)
+        self._btn_mark_all = btn_all
 
         btn_close = QPushButton("✕")
         btn_close.setFixedSize(30, 30)
@@ -321,18 +327,23 @@ class NotificationDrawer(QWidget):
         vlay = QVBoxLayout(container)
         vlay.setContentsMargins(14, 16, 14, 16)
         vlay.setSpacing(10)
+        self._list_layout = vlay
 
-        if not self._notifications:
-            self._build_empty_state(vlay)
-        else:
-            for n in self._notifications:
-                vlay.addWidget(self._make_card(n))
+        # Estado vazio — criado sempre, visível apenas quando não há notificações
+        empty = self._make_empty_widget()
+        empty.setVisible(not self._notifications)
+        vlay.addWidget(empty)
+        self._empty_widget = empty
+
+        for n in self._notifications:
+            card = self._make_card(n)
+            vlay.addWidget(card)
 
         vlay.addStretch()
         scroll.setWidget(container)
         root.addWidget(scroll, 1)
 
-    def _build_empty_state(self, vlay: QVBoxLayout):
+    def _make_empty_widget(self) -> QWidget:
         wrapper = QWidget()
         wrapper_lay = QVBoxLayout(wrapper)
         wrapper_lay.setContentsMargins(20, 46, 20, 36)
@@ -366,20 +377,9 @@ class NotificationDrawer(QWidget):
         )
         wrapper_lay.addWidget(sub_lbl)
 
-        vlay.addWidget(wrapper)
+        return wrapper
 
     def _build_footer(self, root: QVBoxLayout):
-        if not self._notifications:
-            return
-
-        unread = sum(1 for n in self._notifications if not n.get("read", False))
-        total  = len(self._notifications)
-
-        if unread:
-            label_text = f"{unread} não lida{'s' if unread != 1 else ''} · {total} no histórico"
-        else:
-            label_text = f"{total} notificação{'ões' if total != 1 else ''} no histórico"
-
         footer = QWidget()
         footer.setObjectName("drawerFooter")
         footer.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -393,20 +393,26 @@ class NotificationDrawer(QWidget):
         flay.setContentsMargins(18, 10, 18, 10)
         flay.setSpacing(8)
 
-        count_lbl = QLabel(label_text)
-        count_lbl.setStyleSheet(
+        footer_lbl = QLabel(self._footer_text())
+        footer_lbl.setStyleSheet(
             f"color: {theme.TEXT_LABEL}; font-size: 8pt;"
             f"background: transparent;"
             f"font-family: 'Inter', 'Segoe UI';"
         )
-        flay.addWidget(count_lbl, 1)
+        flay.addWidget(footer_lbl, 1)
+        self._footer_lbl = footer_lbl
 
+        footer.setVisible(bool(self._notifications))
         root.addWidget(footer)
+        self._footer_widget = footer
+
+    # ── Cards ─────────────────────────────────────────────────────────────────
 
     def _make_card(self, n: dict) -> QFrame:
-        ntype  = n.get("type", "")
-        accent = _ACCENT.get(ntype, _DEFAULT_ACCENT)
+        ntype   = n.get("type", "")
+        accent  = _ACCENT.get(ntype, _DEFAULT_ACCENT)
         is_read = n.get("read", False)
+        nid     = n.get("id")
 
         card = QFrame()
         card.setObjectName("drawerNotifCard")
@@ -414,46 +420,32 @@ class NotificationDrawer(QWidget):
         card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         if is_read:
-            # Notificação lida: visual discreto/acinzentado
-            card_bg = theme.DRAWER_BG
             card_bg_hover = _blend_color(theme.DRAWER_BG, theme.BORDER_COLOR, 60)
-            border_color = theme.DRAWER_BORDER
             card.setStyleSheet(
                 f"QFrame#drawerNotifCard {{"
-                f"  background: {card_bg};"
-                f"  border: 1px solid {border_color} !important;"
+                f"  background: {theme.DRAWER_BG};"
+                f"  border: 1px solid {theme.DRAWER_BORDER} !important;"
                 f"  border-radius: 10px;"
-                f"  opacity: 0.7;"
                 f"}}"
-                f"QFrame#drawerNotifCard:hover {{"
-                f"  background: {card_bg_hover};"
-                f"}}"
+                f"QFrame#drawerNotifCard:hover {{ background: {card_bg_hover}; }}"
                 f"QLabel {{ background: transparent; border: none !important; }}"
                 f"QPushButton {{ background: transparent; }}"
             )
         else:
-            led_bg_top = _blend_color(theme.DRAWER_CARD, accent, 58)
+            led_bg_top    = _blend_color(theme.DRAWER_CARD, accent, 58)
             led_bg_bottom = _blend_color(theme.DRAWER_CARD, accent, 20)
-            led_hover_top = _blend_color(theme.DRAWER_CARD, accent, 74)
-            led_hover_bottom = _blend_color(theme.DRAWER_CARD, accent, 28)
+            led_hov_top   = _blend_color(theme.DRAWER_CARD, accent, 74)
+            led_hov_bottom = _blend_color(theme.DRAWER_CARD, accent, 28)
             card.setStyleSheet(
                 f"QFrame#drawerNotifCard {{"
-                f"  background: qlineargradient("
-                f"    x1:0, y1:0, x2:1, y2:1,"
-                f"    stop:0 {led_bg_top},"
-                f"    stop:0.52 {theme.DRAWER_CARD},"
-                f"    stop:1 {led_bg_bottom}"
-                f"  );"
+                f"  background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+                f"    stop:0 {led_bg_top}, stop:0.52 {theme.DRAWER_CARD}, stop:1 {led_bg_bottom});"
                 f"  border: 1px solid {theme.DRAWER_BORDER} !important;"
                 f"  border-radius: 10px;"
                 f"}}"
                 f"QFrame#drawerNotifCard:hover {{"
-                f"  background: qlineargradient("
-                f"    x1:0, y1:0, x2:1, y2:1,"
-                f"    stop:0 {led_hover_top},"
-                f"    stop:0.52 {theme.DRAWER_CARD},"
-                f"    stop:1 {led_hover_bottom}"
-                f"  );"
+                f"  background: qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+                f"    stop:0 {led_hov_top}, stop:0.52 {theme.DRAWER_CARD}, stop:1 {led_hov_bottom});"
                 f"  border-color: {accent} !important;"
                 f"}}"
                 f"QLabel {{ background: transparent; border: none !important; }}"
@@ -464,7 +456,7 @@ class NotificationDrawer(QWidget):
         lay.setContentsMargins(self._sc(14), self._sc(12), self._sc(12), self._sc(11))
         lay.setSpacing(self._sc(6))
 
-        # ── Linha superior: ícone + título + dot/check + timestamp + excluir ──
+        # Linha superior
         top = QHBoxLayout()
         top.setSpacing(self._sc(8))
         top.setContentsMargins(0, 0, 0, 0)
@@ -472,7 +464,6 @@ class NotificationDrawer(QWidget):
         icon_lbl = QLabel(_ICONS.get(ntype, "🔔"))
         icon_lbl.setStyleSheet(
             f"font-size: {self._sc(16)}px; background: transparent; border: none;"
-            + (f" opacity: 0.5;" if is_read else "")
         )
         icon_lbl.setFixedWidth(self._sc(24))
         top.addWidget(icon_lbl)
@@ -481,26 +472,18 @@ class NotificationDrawer(QWidget):
         title_lbl = QLabel(n.get("title", ""))
         title_lbl.setStyleSheet(
             f"font-weight: {'600' if is_read else '700'}; font-size: {self._pt(10)}pt;"
-            f"color: {title_color};"
-            f"background: transparent; border: none;"
+            f"color: {title_color}; background: transparent; border: none;"
             f"font-family: 'Inter', 'Segoe UI';"
         )
         title_lbl.setWordWrap(True)
         top.addWidget(title_lbl, 1)
 
-        if is_read:
-            check = QLabel("✓")
-            check.setStyleSheet(
-                f"color: {theme.DRAWER_MUTED}; font-size: {self._sc(9)}px;"
-                f"background: transparent; border: none;"
-            )
-            top.addWidget(check)
-        else:
-            dot = QLabel("●")
-            dot.setStyleSheet(
-                f"color: {accent}; font-size: {self._sc(9)}px; background: transparent; border: none;"
-            )
-            top.addWidget(dot)
+        indicator = QLabel("✓" if is_read else "●")
+        indicator.setStyleSheet(
+            f"color: {theme.DRAWER_MUTED if is_read else accent};"
+            f"font-size: {self._sc(9)}px; background: transparent; border: none;"
+        )
+        top.addWidget(indicator)
 
         ts = _relative_time(n.get("created_at"))
         if ts:
@@ -512,8 +495,7 @@ class NotificationDrawer(QWidget):
             )
             top.addWidget(ts_lbl)
 
-        # Botão excluir (×)
-        nid = n.get("id")
+        # Botão excluir — fica aberto, sem fechar o drawer
         if nid:
             btn_del = QPushButton("×")
             btn_del.setFixedSize(self._sc(20), self._sc(20))
@@ -523,20 +505,17 @@ class NotificationDrawer(QWidget):
                 f"QPushButton {{"
                 f"  background: transparent; color: {theme.DRAWER_MUTED};"
                 f"  border: none; border-radius: {self._sc(10)}px;"
-                f"  font-size: {self._sc(15)}px; font-weight: 400;"
-                f"  padding: 0;"
+                f"  font-size: {self._sc(15)}px; font-weight: 400; padding: 0;"
                 f"  font-family: 'Inter', 'Segoe UI';"
                 f"}}"
-                f"QPushButton:hover {{"
-                f"  color: {theme.DANGER}; background: transparent;"
-                f"}}"
+                f"QPushButton:hover {{ color: {theme.DANGER}; }}"
             )
             btn_del.clicked.connect(lambda checked=False, i=nid: self._on_delete(i))
             top.addWidget(btn_del)
 
         lay.addLayout(top)
 
-        # ── Mensagem ──
+        # Mensagem
         msg = n.get("message", "")
         if msg:
             msg_color = theme.DRAWER_MUTED if is_read else theme.DRAWER_BODY
@@ -550,9 +529,8 @@ class NotificationDrawer(QWidget):
             msg_lbl.setWordWrap(True)
             lay.addWidget(msg_lbl)
 
-        # ── Botões de ação (apenas para não lidas) ──
+        # Botões de ação (só para não lidas)
         req_id = n.get("requisition_id")
-
         if not is_read and (nid or req_id):
             btns = QHBoxLayout()
             btns.setSpacing(self._sc(6))
@@ -568,13 +546,9 @@ class NotificationDrawer(QWidget):
                     f"QPushButton {{"
                     f"  background: transparent; color: {theme.TEXT_LABEL};"
                     f"  border: 1px solid {theme.DRAWER_BORDER}; border-radius: {self._sc(5)}px;"
-                    f"  {_btn_pad}"
-                    f"  font-family: 'Inter', 'Segoe UI';"
+                    f"  {_btn_pad} font-family: 'Inter', 'Segoe UI';"
                     f"}}"
-                    f"QPushButton:hover {{"
-                    f"  color: {theme.SUCCESS}; border-color: {theme.SUCCESS};"
-                    f"  background: transparent;"
-                    f"}}"
+                    f"QPushButton:hover {{ color: {theme.SUCCESS}; border-color: {theme.SUCCESS}; }}"
                 )
                 btn_read.clicked.connect(lambda checked=False, i=nid: self._on_mark_one(i))
                 btns.addWidget(btn_read)
@@ -586,8 +560,7 @@ class NotificationDrawer(QWidget):
                     f"QPushButton {{"
                     f"  background: {theme.PRIMARY}; color: #fff;"
                     f"  border: none; border-radius: {self._sc(5)}px;"
-                    f"  {_btn_pad} font-weight: 700;"
-                    f"  font-family: 'Inter', 'Segoe UI';"
+                    f"  {_btn_pad} font-weight: 700; font-family: 'Inter', 'Segoe UI';"
                     f"}}"
                     f"QPushButton:hover {{ background: {theme.PRIMARY_HOVER}; }}"
                 )
@@ -596,7 +569,38 @@ class NotificationDrawer(QWidget):
 
             lay.addLayout(btns)
 
+        if nid:
+            self._card_map[nid] = card
+
         return card
+
+    # ── Helpers de estado ─────────────────────────────────────────────────────
+
+    def _unread_count(self) -> int:
+        return sum(1 for n in self._notifications if not n.get("read", False))
+
+    def _footer_text(self) -> str:
+        unread = self._unread_count()
+        total  = len(self._notifications)
+        if total == 0:
+            return ""
+        if unread:
+            return f"{unread} não lida{'s' if unread != 1 else ''} · {total} no histórico"
+        return f"{total} notificação{'ões' if total != 1 else ''} no histórico"
+
+    def _refresh_header_footer(self):
+        unread = self._unread_count()
+        if self._unread_badge:
+            self._unread_badge.setText(str(unread))
+            self._unread_badge.setVisible(unread > 0)
+        if self._btn_mark_all:
+            self._btn_mark_all.setVisible(unread > 0)
+        if self._footer_lbl:
+            self._footer_lbl.setText(self._footer_text())
+        if hasattr(self, "_footer_widget"):
+            self._footer_widget.setVisible(bool(self._notifications))
+        if self._empty_widget:
+            self._empty_widget.setVisible(not self._notifications)
 
     # ── Animação ──────────────────────────────────────────────────────────────
 
@@ -620,9 +624,7 @@ class NotificationDrawer(QWidget):
         if self._closing:
             return
         self._closing = True
-
         self._overlay.fade_out()
-
         pw = self.parent().width()
         self._anim_close.setStartValue(self.pos())
         self._anim_close.setEndValue(QPoint(pw, 0))
@@ -645,8 +647,19 @@ class NotificationDrawer(QWidget):
         self.close_drawer()
 
     def _on_delete(self, nid: int):
+        # Emite o sinal para a API (não fecha o drawer)
         self.delete_requested.emit(nid)
-        self.close_drawer()
+
+        # Remove o card do layout imediatamente (resposta otimista)
+        card = self._card_map.pop(nid, None)
+        if card and self._list_layout:
+            self._list_layout.removeWidget(card)
+            card.deleteLater()
+
+        # Atualiza a lista local
+        self._notifications = [n for n in self._notifications if n.get("id") != nid]
+
+        self._refresh_header_footer()
 
     def _on_open(self, req_id: int):
         self.open_req_requested.emit(req_id)
