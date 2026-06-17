@@ -2790,17 +2790,17 @@ class DrawingScene(QGraphicsScene):
         path = QPainterPath()
         path.arcMoveTo(rect, start_deg)
         path.arcTo(rect, start_deg, span)
-        # Posição do label: no ponto médio do arco, ligeiramente afastado
+        # Centro desejado do label: no ponto médio do arco, bem afastado
         mid_rad = math.radians(start_deg + span / 2)
-        dist_label = radius + 14
-        label_pos = QPointF(
+        dist_label = radius + 28
+        label_center = QPointF(
             vertex.x() + dist_label * math.cos(mid_rad),
             vertex.y() - dist_label * math.sin(mid_rad),
         )
-        return path, label_pos
+        return path, label_center
 
     def _angle_90_label_pos(self, p1: QPointF, vertex: QPointF, p3: QPointF) -> QPointF:
-        """Posição do label para marcador de ângulo reto."""
+        """Centro desejado do label para marcador de ângulo reto."""
         v1x = p1.x() - vertex.x(); v1y = p1.y() - vertex.y()
         v2x = p3.x() - vertex.x(); v2y = p3.y() - vertex.y()
         d1 = math.hypot(v1x, v1y); d2 = math.hypot(v2x, v2y)
@@ -2809,9 +2809,14 @@ class DrawingScene(QGraphicsScene):
         size = max(10.0, min(40.0, (d1 + d2) * 0.12))
         u1x = v1x / d1; u1y = v1y / d1
         u2x = v2x / d2; u2y = v2y / d2
+        bx = u1x + u2x; by = u1y + u2y
+        blen = math.hypot(bx, by)
+        if blen < 1e-6:
+            return vertex
+        dist = size * 4.0
         return QPointF(
-            vertex.x() + (u1x + u2x) * size * 2.2,
-            vertex.y() + (u1y + u2y) * size * 2.2,
+            vertex.x() + (bx / blen) * dist,
+            vertex.y() + (by / blen) * dist,
         )
 
     def _update_angle_arm1_preview(self, p1: QPointF, cursor: QPointF):
@@ -2878,7 +2883,11 @@ class DrawingScene(QGraphicsScene):
             else:
                 self._angle_text_preview_item.setPlainText(label_text)
                 self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
-            self._angle_text_preview_item.setPos(label_pos)
+            br = self._angle_text_preview_item.boundingRect()
+            self._angle_text_preview_item.setPos(QPointF(
+                label_pos.x() - br.width() / 2,
+                label_pos.y() - br.height() / 2,
+            ))
         else:
             if self._angle_text_preview_item is not None:
                 self.removeItem(self._angle_text_preview_item)
@@ -2918,7 +2927,11 @@ class DrawingScene(QGraphicsScene):
         label_item.setFont(QFont(theme.FONT_PRIMARY, max(8, int(9 * self.cw.scale))))
         label_item.setZValue(9001)
         label_item.setData(0, {"type": "angle_dimension_text", "angle_link_id": link_id})
-        label_item.setPos(label_pos)
+        br = label_item.boundingRect()
+        label_item.setPos(QPointF(
+            label_pos.x() - br.width() / 2,
+            label_pos.y() - br.height() / 2,
+        ))
         label_item.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
             QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
