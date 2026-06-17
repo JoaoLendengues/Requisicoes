@@ -866,7 +866,7 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         weight_value = prod_event.get("weight") if prod_event else None
         if weight_value is not None and weight_value > 0:
             req.weight = round(float(weight_value), 3)
-        req.status = RequisitionStatus.FINALIZADO
+        req.status = RequisitionStatus.AGUARDANDO_ENTREGA if req.entrega else RequisitionStatus.FINALIZADO
         req.production_machine = None
         return
 
@@ -1103,7 +1103,7 @@ def _sync_requisition_after_splits(
     elif any(status_value == RequisitionStatus.AGUARDANDO_RECEBIMENTO for status_value in statuses):
         desired_status = RequisitionStatus.AGUARDANDO_RECEBIMENTO
     elif statuses and all(status_value == RequisitionStatus.FINALIZADO for status_value in statuses):
-        desired_status = RequisitionStatus.FINALIZADO
+        desired_status = RequisitionStatus.AGUARDANDO_ENTREGA if req.entrega else RequisitionStatus.FINALIZADO
     else:
         desired_status = req.status
 
@@ -1114,6 +1114,7 @@ def _sync_requisition_after_splits(
         RequisitionStatus.AGUARDANDO_RECEBIMENTO,
         RequisitionStatus.EM_PRODUCAO,
         RequisitionStatus.FINALIZADO,
+        RequisitionStatus.AGUARDANDO_ENTREGA,
     ):
         req.finalized_at = req.finalized_at or datetime.utcnow()
 
@@ -2238,7 +2239,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
         latest_finished = _latest_finished_cycle(req)
         if latest_finished:
             production_durations.append(latest_finished["production_time_seconds"])
-        if req.status == RequisitionStatus.FINALIZADO and latest_finished:
+        if req.status in (RequisitionStatus.FINALIZADO, RequisitionStatus.AGUARDANDO_ENTREGA) and latest_finished:
             invoiced_at = (
                 _latest_status_changed_at(req, RequisitionStatus.FINALIZADO)
                 or latest_finished["finished_at"]
@@ -2491,6 +2492,7 @@ def _delivery_row_is_visible(
         return True
     return status_value in (
         RequisitionStatus.EM_PRODUCAO.value,
+        RequisitionStatus.AGUARDANDO_ENTREGA.value,
         RequisitionStatus.FINALIZADO.value,
         RequisitionStatus.PRAZO_ALTERADO.value,
     )
@@ -4960,10 +4962,14 @@ def mark_delivery_delivered(
             status_code=400,
             detail="Esta requisicao possui parcelas desmembradas. Conclua a entrega por parcela.",
         )
-    if req.status not in (RequisitionStatus.FINALIZADO, RequisitionStatus.PRAZO_ALTERADO):
+    if req.status not in (
+        RequisitionStatus.AGUARDANDO_ENTREGA,
+        RequisitionStatus.FINALIZADO,
+        RequisitionStatus.PRAZO_ALTERADO,
+    ):
         raise HTTPException(
             status_code=400,
-            detail="Somente pedidos finalizados ou com prazo alterado podem ser marcados como entregues",
+            detail="Somente pedidos aguardando entrega ou com prazo alterado podem ser marcados como entregues",
         )
     if req.delivered_at is not None:
         raise HTTPException(
@@ -4975,12 +4981,13 @@ def mark_delivery_delivered(
     current_status = getattr(req.status, "value", req.status)
     old_delivery_date, new_delivery_date = _apply_early_delivery_date_if_needed(req, delivered_at)
     req.delivered_at = delivered_at
+    req.status = RequisitionStatus.FINALIZADO
 
     note = f"Entrega concluída em {delivered_at.strftime('%d/%m/%Y %H:%M')}"
     db.add(StatusHistory(
         requisition_id=req.id,
         old_status=current_status,
-        new_status=current_status,
+        new_status=RequisitionStatus.FINALIZADO.value,
         changed_by_id=current_user.id,
         note=note,
     ))
