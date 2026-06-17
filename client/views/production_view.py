@@ -1838,9 +1838,6 @@ class ProductionView(QWidget):
             self._show_info("Selecione uma requisição em aguardando recebimento.")
             return
 
-        if not self._ensure_fifo_stage_row(req, WAITING_RECEIPT_STAGE):
-            return
-
         machine = self._pick_machine_for_production(req)
         if not machine:
             return

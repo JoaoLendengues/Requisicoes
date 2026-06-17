@@ -4496,13 +4496,6 @@ def update_status(
             prod.get("target") or req.production_destination or ""
         )
         bypass_fifo = bool(prod.get("transfer"))
-        if old_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO and action == _PROD_RECEIVED:
-            _ensure_waiting_receipt_fifo(
-                db,
-                current_user,
-                normalized_destination,
-                req.id,
-            )
         if action == _PROD_RECEIVED:
             machine_name = _normalize_machine_name(prod.get("machine"))
             if machine_name:
