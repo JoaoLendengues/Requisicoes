@@ -2757,6 +2757,23 @@ class DrawingScene(QGraphicsScene):
             self._angle_text_preview_item.setDefaultTextColor(QColor(self.cw.color))
         self._angle_text_preview_item.setPos(self._angle_label_pos(marker_path, start, end, label))
 
+    def _update_right_angle_preview(self, path):
+        if self._angle_text_preview_item is not None:
+            self.removeItem(self._angle_text_preview_item)
+            self._angle_text_preview_item = None
+        pen = self._pen()
+        pen.setStyle(Qt.PenStyle.DashLine)
+        if self._angle_marker_preview_item is None:
+            self._angle_marker_preview_item = QGraphicsPathItem(path)
+            self._angle_marker_preview_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            self._angle_marker_preview_item.setPen(pen)
+            self._angle_marker_preview_item.setZValue(10000)
+            self._angle_marker_preview_item.setData(0, {"type": "angle_dimension_overlay"})
+            self.addItem(self._angle_marker_preview_item)
+        else:
+            self._angle_marker_preview_item.setPath(path)
+            self._angle_marker_preview_item.setPen(pen)
+
     def _commit_angle_measure(self, start: QPointF, end: QPointF):
         if math.hypot(end.x() - start.x(), end.y() - start.y()) < 1e-6:
             return
@@ -3307,12 +3324,22 @@ class DrawingScene(QGraphicsScene):
             return
 
         if self._angle_mode_active and self._angle_mode_start is not None:
-            end = (
-                self._constrain(self._angle_mode_start, pos)
-                if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
-                else QPointF(pos.x(), pos.y())
-            )
-            self._update_angle_preview(self._angle_mode_start, end)
+            cur = QPointF(pos.x(), pos.y())
+            if getattr(self, "_angle_is_90", False) and self._angle_90_vertex is not None:
+                # Após 2º clique no modo 90°: mostrar preview do quadradinho em tempo real
+                v = self._angle_90_vertex
+                if math.hypot(cur.x() - v.x(), cur.y() - v.y()) > 1.0:
+                    preview_path = self._build_right_angle_marker_path(
+                        self._angle_90_p1, v, cur
+                    )
+                    self._update_right_angle_preview(preview_path)
+            else:
+                end = (
+                    self._constrain(self._angle_mode_start, pos)
+                    if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                    else cur
+                )
+                self._update_angle_preview(self._angle_mode_start, end)
             event.accept()
             return
 
