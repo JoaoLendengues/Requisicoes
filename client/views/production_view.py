@@ -2579,6 +2579,7 @@ class ProductionView(QWidget):
                 "machine_name": target_machine_name,
                 "operators": selected_team["operators"],
                 "helpers": selected_team["helpers"],
+                "weight": 0,
             },
             success_message=f"Requisicao encaminhada para {target_machine_name}.",
         )
