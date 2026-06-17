@@ -667,6 +667,7 @@ def _compose_production_note(
     helpers: list[str] | None = None,
     transfer: bool = False,
     priority: bool = False,
+    weight: float | None = None,
 ) -> str:
     parts = [_PROD_NOTE_PREFIX, action, _canonical_destination(target)]
     machine_name = _normalize_machine_name(machine) if machine else ""
@@ -682,6 +683,8 @@ def _compose_production_note(
         parts.append("transfer=1")
     if priority:
         parts.append("priority=1")
+    if weight is not None and weight > 0:
+        parts.append(f"weight={round(weight, 3)}")
     return "|".join(parts)
 
 
@@ -702,6 +705,7 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
         "helpers": [],
         "transfer": False,
         "priority": False,
+        "weight": None,
     }
 
     for raw_segment in parts[3:]:
@@ -741,11 +745,18 @@ def _parse_production_note(note: Optional[str]) -> dict | None:
                     "yes",
                 }
                 continue
+            if normalized_key == "weight":
+                try:
+                    data["weight"] = float(normalized_value)
+                except (ValueError, TypeError):
+                    pass
+                continue
 
         if not data["machine"] and data["action"] in (
             _PROD_STARTED,
             _PROD_FINISHED,
             _PROD_RETURNED_QUEUE,
+            _PROD_RECEIVED,
         ):
             data["machine"] = segment
         elif not data["reason"]:
@@ -826,72 +837,19 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         return
 
     if action == _PROD_RECEIVED:
-        if req.status not in (
-            RequisitionStatus.AGUARDANDO_RECEBIMENTO,
-            RequisitionStatus.AGUARDANDO_NA_FILA,
-            RequisitionStatus.EM_PRODUCAO,
-        ):
+        if req.status != RequisitionStatus.AGUARDANDO_RECEBIMENTO:
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisições aguardando recebimento podem confirmar recebimento",
-            )
-        if req.finalized_at is not None:
-            raise HTTPException(
-                status_code=400,
-                detail="O recebimento desta requisição já foi confirmado",
-            )
-        req.status = RequisitionStatus.EM_PRODUCAO
-        req.finalized_at = req.finalized_at or datetime.utcnow()
-        req.production_machine = machine or req.production_machine
-        return
-
-    if action == _PROD_QUEUED:
-        if req.status not in (
-            RequisitionStatus.AGUARDANDO_RECEBIMENTO,
-            RequisitionStatus.AGUARDANDO_NA_FILA,
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Somente requisições aguardando recebimento podem entrar na fila",
-            )
-        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
-        req.finalized_at = req.finalized_at or datetime.utcnow()
-        req.production_machine = None
-        return
-
-    if action == _PROD_STARTED:
-        if req.status not in (
-            RequisitionStatus.AGUARDANDO_RECEBIMENTO,
-            RequisitionStatus.AGUARDANDO_NA_FILA,
-            RequisitionStatus.EM_PRODUCAO,
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Somente requisições aguardando recebimento ou em fila podem entrar em produção",
+                detail="Somente requisições aguardando recebimento podem ser recebidas",
             )
         if not machine:
             raise HTTPException(
                 status_code=400,
-                detail="Informe a máquina de destino para iniciar a produção",
-            )
-        if req.status == RequisitionStatus.EM_PRODUCAO and req.production_machine:
-            raise HTTPException(
-                status_code=400,
-                detail="Esta requisição já está vinculada a uma máquina",
+                detail="Informe a máquina de destino para confirmar o recebimento",
             )
         req.status = RequisitionStatus.EM_PRODUCAO
         req.finalized_at = req.finalized_at or datetime.utcnow()
         req.production_machine = machine
-        return
-
-    if action == _PROD_RETURNED_QUEUE:
-        if req.status != RequisitionStatus.EM_PRODUCAO:
-            raise HTTPException(
-                status_code=400,
-                detail="Somente requisições em produção podem voltar para a fila",
-            )
-        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
-        req.production_machine = None
         return
 
     if action == _PROD_FINISHED:
@@ -900,11 +858,9 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
                 status_code=400,
                 detail="Somente requisições em produção podem ser finalizadas",
             )
-        if req.finalized_at is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Confirme o recebimento antes de finalizar a produção",
-            )
+        weight_value = prod_event.get("weight") if prod_event else None
+        if weight_value is not None and weight_value > 0:
+            req.weight = round(float(weight_value), 3)
         req.status = RequisitionStatus.FINALIZADO
         req.production_machine = None
         return
@@ -1136,11 +1092,11 @@ def _sync_requisition_after_splits(
         req.production_destination = latest_destination
 
     if remaining_weight > 0:
-        desired_status = RequisitionStatus.AGUARDANDO_NA_FILA
+        desired_status = RequisitionStatus.AGUARDANDO_RECEBIMENTO
     elif any(status_value == RequisitionStatus.EM_PRODUCAO for status_value in statuses):
         desired_status = RequisitionStatus.EM_PRODUCAO
-    elif any(status_value in (RequisitionStatus.AGUARDANDO_RECEBIMENTO, RequisitionStatus.AGUARDANDO_NA_FILA) for status_value in statuses):
-        desired_status = RequisitionStatus.AGUARDANDO_NA_FILA
+    elif any(status_value == RequisitionStatus.AGUARDANDO_RECEBIMENTO for status_value in statuses):
+        desired_status = RequisitionStatus.AGUARDANDO_RECEBIMENTO
     elif statuses and all(status_value == RequisitionStatus.FINALIZADO for status_value in statuses):
         desired_status = RequisitionStatus.FINALIZADO
     else:
@@ -1150,7 +1106,7 @@ def _sync_requisition_after_splits(
     req.status = desired_status
     req.production_machine = None
     if desired_status in (
-        RequisitionStatus.AGUARDANDO_NA_FILA,
+        RequisitionStatus.AGUARDANDO_RECEBIMENTO,
         RequisitionStatus.EM_PRODUCAO,
         RequisitionStatus.FINALIZADO,
     ):
@@ -4029,16 +3985,9 @@ def create_production_split(
         raise HTTPException(status_code=400, detail="A requisicao nao permite novo desmembramento")
     if req.status not in (
         RequisitionStatus.AGUARDANDO_RECEBIMENTO,
-        RequisitionStatus.AGUARDANDO_NA_FILA,
         RequisitionStatus.EM_PRODUCAO,
     ):
         raise HTTPException(status_code=400, detail="A requisicao nao esta disponivel para envio a maquina")
-    if (
-        not _has_production_splits(req)
-        and req.status == RequisitionStatus.EM_PRODUCAO
-        and _current_production_machine(req)
-    ):
-        raise HTTPException(status_code=400, detail="A requisicao inteira ja esta vinculada a uma maquina")
 
     normalized_destination = _canonical_destination(data.destination)
     _ensure_destination_access(current_user, normalized_destination)
@@ -4050,16 +3999,10 @@ def create_production_split(
             detail="A requisicao ja esta vinculada a outra producao",
         )
 
-    weight_value = round(float(data.weight or 0.0), 3)
-    if weight_value <= 0:
-        raise HTTPException(status_code=400, detail="Informe um peso maior que zero")
-
+    # Peso do split é auto-calculado: usa o saldo restante da requisição.
+    # O peso definitivo é confirmado apenas na finalização (PROD_FINISHED).
     remaining_weight = _remaining_requisition_weight(req) if _has_production_splits(req) else round(float(req.weight or 0.0), 3)
-    if weight_value > remaining_weight:
-        raise HTTPException(
-            status_code=400,
-            detail=f"O peso informado excede o saldo pendente de {remaining_weight:.3f} kg",
-        )
+    weight_value = round(float(data.weight or 0.0), 3) if (data.weight or 0.0) > 0 else remaining_weight
 
     machine_name = _normalize_machine_name(data.machine_name)
     if not machine_name:
@@ -4070,25 +4013,6 @@ def create_production_split(
     helpers = _clean_operator_names(data.helpers)
     if not operators:
         raise HTTPException(status_code=400, detail="Selecione pelo menos um operador")
-
-    if req.status == RequisitionStatus.AGUARDANDO_RECEBIMENTO:
-        _ensure_waiting_receipt_fifo(
-            db,
-            current_user,
-            normalized_destination,
-            req.id,
-        )
-    elif req.status == RequisitionStatus.AGUARDANDO_NA_FILA or (
-        req.status == RequisitionStatus.EM_PRODUCAO
-        and _has_production_splits(req)
-        and _remaining_requisition_weight(req) > 0
-    ):
-        _ensure_waiting_queue_fifo_for_requisition(
-            db,
-            current_user,
-            normalized_destination,
-            req.id,
-        )
 
     split = RequisitionProductionSplit(
         requisition=req,
@@ -4112,7 +4036,7 @@ def create_production_split(
         StatusHistory(
             requisition_id=req.id,
             production_split_id=split.id,
-            old_status=RequisitionStatus.AGUARDANDO_NA_FILA.value,
+            old_status=RequisitionStatus.AGUARDANDO_RECEBIMENTO.value,
             new_status=RequisitionStatus.EM_PRODUCAO.value,
             changed_by_id=current_user.id,
             note=note,
@@ -4572,36 +4496,14 @@ def update_status(
             prod.get("target") or req.production_destination or ""
         )
         bypass_fifo = bool(prod.get("transfer"))
-        priority_queue = (
-            action == _PROD_QUEUED
-            and (
-                bool(prod.get("priority"))
-                or str(prod.get("reason") or "").strip().casefold() == "furar fila"
-            )
-        )
-        if old_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO and action in (
-            _PROD_RECEIVED,
-            _PROD_QUEUED,
-            _PROD_STARTED,
-        ) and not priority_queue:
+        if old_status == RequisitionStatus.AGUARDANDO_RECEBIMENTO and action == _PROD_RECEIVED:
             _ensure_waiting_receipt_fifo(
                 db,
                 current_user,
                 normalized_destination,
                 req.id,
             )
-        elif (
-            old_status == RequisitionStatus.AGUARDANDO_NA_FILA
-            and action == _PROD_STARTED
-            and not bypass_fifo
-        ):
-            _ensure_waiting_queue_fifo_for_requisition(
-                db,
-                current_user,
-                normalized_destination,
-                req.id,
-            )
-        if action == _PROD_STARTED:
+        if action == _PROD_RECEIVED:
             machine_name = _normalize_machine_name(prod.get("machine"))
             if machine_name:
                 _ensure_machine_accepts_production(db, normalized_destination, machine_name)

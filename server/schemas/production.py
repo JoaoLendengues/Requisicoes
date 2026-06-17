@@ -38,7 +38,7 @@ class ProductionItemResponse(BaseModel):
 
 
 class ProductionSplitCreateRequest(BaseModel):
-    weight: float
+    weight: Optional[float] = None
     destination: str
     machine_name: str
     operators: list[str] = Field(default_factory=list)

@@ -52,27 +52,15 @@ from ..core.session import session
 
 
 WAITING_RECEIPT_STAGE = "waiting_receipt"
-WAITING_QUEUE_STAGE = "waiting_queue"
 
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
-PROD_QUEUED = "FILA"
-PROD_STARTED = "INICIADA"
-PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"
+PROD_QUEUED = "FILA"           # kept: histórico existente
+PROD_STARTED = "INICIADA"      # kept: histórico existente
+PROD_RETURNED_QUEUE = "DEVOLVIDA_FILA"  # kept: histórico existente
+PROD_RECEIVED = "RECEBIDA"
 PROD_FINISHED = "FINALIZADA"
 PROD_CANCELED = "CANCELADA"
-PROD_PRIORITY_QUEUE_REASON = "FURAR FILA"
-AR_DOBRA_SOURCE_MACHINE_NUMBERS = {1, 2, 3, 16}
-PINHEIRO_MACHINE_FORWARD_RULES = {
-    4: {
-        "button_label": "Enviar para prensa de cumeeira",
-        "target_number": 3,
-    },
-    5: {
-        "button_label": "Enviar para dobradeira mecânica",
-        "target_number": 6,
-    },
-}
 WORKER_ROLE_OPERADOR = "operador"
 WORKER_ROLE_AJUDANTE = "ajudante"
 WORKER_ROLE_LABELS = {
@@ -166,47 +154,6 @@ def _configured_cancel_reason_options() -> list[tuple[str, str]]:
     return options or list(CANCEL_REASON_OPTIONS)
 
 
-
-def _is_dobra_source_machine_name(machine_name: str) -> bool:
-    normalized_name = str(machine_name or "").strip()
-    if not normalized_name:
-        return False
-    digits = re.findall(r"\d+", normalized_name)
-    return any(int(token) in AR_DOBRA_SOURCE_MACHINE_NUMBERS for token in digits)
-
-
-def _is_ar_dobra_source_machine(destination: str, machine_name: str) -> bool:
-    return _normalize_destination(destination) == "A&R" and _is_dobra_source_machine_name(machine_name)
-
-
-def _machine_number_prefix(machine_name: str) -> int | None:
-    match = re.match(r"\s*(\d+)\b", str(machine_name or "").strip())
-    if not match:
-        return None
-    return int(match.group(1))
-
-
-def _machine_forward_action(destination: str, machine_name: str) -> dict | None:
-    normalized_destination = _normalize_destination(destination)
-    if normalized_destination == "A&R" and _is_dobra_source_machine_name(machine_name):
-        return {
-            "button_label": "Enviar para dobra",
-            "target_mode": "picker",
-            "window_title": "Enviar para dobra",
-            "prompt_text": (
-                f"Escolha a máquina de dobra de destino "
-                f"(origem: {str(machine_name or '').strip()}):"
-            ),
-        }
-
-    if normalized_destination == "Pinheiro Indústria":
-        machine_number = _machine_number_prefix(machine_name)
-        if machine_number is None:
-            return None
-        rule = PINHEIRO_MACHINE_FORWARD_RULES.get(machine_number)
-        if rule:
-            return dict(rule, target_mode="fixed")
-    return None
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -556,6 +503,7 @@ def _build_production_note(
     helpers: list[str] | None = None,
     transfer: bool = False,
     priority: bool = False,
+    weight: float | None = None,
 ) -> str:
     parts = [PROD_NOTE_PREFIX, action, destination]
     if machine:
@@ -586,6 +534,8 @@ def _build_production_note(
         parts.append("transfer=1")
     if priority:
         parts.append("priority=1")
+    if weight is not None and weight > 0:
+        parts.append(f"weight={round(weight, 3)}")
     return "|".join(parts)
 
 
@@ -691,7 +641,6 @@ class ProductionView(QWidget):
         self._threads: list[tuple[QThread, QObject]] = []
         self._stage_rows: dict[str, list[dict]] = {
             WAITING_RECEIPT_STAGE: [],
-            WAITING_QUEUE_STAGE: [],
         }
         self._machine_cards: dict[int, dict] = {}
         self._machines_data: list[dict] = []
@@ -805,36 +754,19 @@ class ProductionView(QWidget):
         counts.setHorizontalSpacing(max(12, int(16 * s)))
         counts.setVerticalSpacing(max(12, int(16 * s)))
         self.summary_waiting_receipt = self._build_summary_card("Aguardando Recebimento", theme.WARNING, "Pedidos enviados e ainda não recebidos.")
-        self.summary_waiting_queue = self._build_summary_card(
-            "Aguardando na Fila",
-            theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
-            "Pedidos recebidos e aguardando máquina.",
-        )
         self.summary_in_production = self._build_summary_card("Em Produção", theme.PRIMARY, "Pedidos atualmente rodando em alguma máquina.")
         counts.addWidget(self.summary_waiting_receipt["card"], 0, 0)
-        counts.addWidget(self.summary_waiting_queue["card"], 0, 1)
-        counts.addWidget(self.summary_in_production["card"], 0, 2)
+        counts.addWidget(self.summary_in_production["card"], 0, 1)
         layout.addLayout(counts)
 
-        stages_row = QHBoxLayout()
-        stages_row.setSpacing(max(14, int(18 * s)))
         self.waiting_receipt_panel = self._build_stage_panel(
             WAITING_RECEIPT_STAGE,
             "Aguardando Recebimento",
-            "Confirmar recebimento e decidir o próximo passo.",
+            "Selecione a requisição e clique em Receber para escolher a máquina.",
             ["PED", "CLIENTE", "VENDEDOR", "OBRA", "PESO(kg)", "ENVIADA EM"],
             "Receber",
         )
-        self.waiting_queue_panel = self._build_stage_panel(
-            WAITING_QUEUE_STAGE,
-            "Aguardando na Fila",
-            "Pedidos aguardando liberação de máquina.",
-            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "PESO(kg)", "FILA DESDE"],
-            "Enviar para Máquina",
-        )
-        stages_row.addWidget(self.waiting_receipt_panel["card"], 1)
-        stages_row.addWidget(self.waiting_queue_panel["card"], 1)
-        layout.addLayout(stages_row)
+        layout.addWidget(self.waiting_receipt_panel["card"])
 
         machines_header = QHBoxLayout()
         machines_header.setSpacing(max(10, int(12 * s)))
@@ -977,37 +909,23 @@ class ProductionView(QWidget):
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
         btn_primary = QPushButton(primary_text)
-        btn_priority_queue = QPushButton("Fila") if stage == WAITING_RECEIPT_STAGE else None
         btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
-        stage_buttons = [btn_open, btn_primary, btn_prazo, btn_cancel]
-        if btn_priority_queue is not None:
-            stage_buttons.insert(2, btn_priority_queue)
-        for btn in stage_buttons:
+        for btn in (btn_open, btn_primary, btn_prazo, btn_cancel):
             btn.setFixedHeight(max(34, int(38 * s)))
 
         btn_open.setStyleSheet(_flat_secondary_btn_style(s))
         btn_primary.setStyleSheet(_primary_action_btn_style(s))
-        if btn_priority_queue is not None:
-            btn_priority_queue.setStyleSheet(_flat_secondary_btn_style(s))
-            btn_priority_queue.setToolTip("Mover a requisicao selecionada para a fila sem respeitar a ordem FIFO.")
         btn_prazo.setStyleSheet(_flat_secondary_btn_style(s))
         btn_cancel.setStyleSheet(_danger_action_btn_style(s))
 
         btn_open.clicked.connect(lambda: self._open_selected_stage(stage))
-        if stage == WAITING_RECEIPT_STAGE:
-            btn_primary.clicked.connect(self._receive_selected)
-            if btn_priority_queue is not None:
-                btn_priority_queue.clicked.connect(self._move_selected_to_queue_priority)
-        else:
-            btn_primary.clicked.connect(self._send_queue_selected_to_machine)
+        btn_primary.clicked.connect(self._receive_selected)
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_stage(stage))
         btn_cancel.clicked.connect(lambda: self._cancel_selected_stage(stage))
 
         actions.addWidget(btn_open)
         actions.addWidget(btn_primary)
-        if btn_priority_queue is not None:
-            actions.addWidget(btn_priority_queue)
         actions.addWidget(btn_prazo)
         actions.addWidget(btn_cancel)
         layout.addLayout(actions)
@@ -1082,18 +1000,13 @@ class ProductionView(QWidget):
 
         stats = payload.get("stats") or {}
         self.summary_waiting_receipt["value"].setText(str(stats.get("aguardando_recebimento") or 0))
-        self.summary_waiting_queue["value"].setText(str(stats.get("aguardando_na_fila") or 0))
         self.summary_in_production["value"].setText(str(stats.get("em_producao") or 0))
 
         self._stage_rows[WAITING_RECEIPT_STAGE] = [
             row for row in (payload.get("waiting_receipt") or []) if isinstance(row, dict)
         ]
-        self._stage_rows[WAITING_QUEUE_STAGE] = [
-            row for row in (payload.get("waiting_queue") or []) if isinstance(row, dict)
-        ]
 
         self._fill_stage_table(self.waiting_receipt_panel, self._stage_rows[WAITING_RECEIPT_STAGE], WAITING_RECEIPT_STAGE)
-        self._fill_stage_table(self.waiting_queue_panel, self._stage_rows[WAITING_QUEUE_STAGE], WAITING_QUEUE_STAGE)
 
         self._machines_data = [
             machine for machine in (payload.get("machines") or []) if isinstance(machine, dict)
@@ -1310,30 +1223,21 @@ class ProductionView(QWidget):
         status_row.addWidget(status_button)
         content_layout.addLayout(status_row)
 
-        # Linha de ações (Abrir, Finalizar, [Enviar pra dobra], Alterar Prazo, Cancelar)
+        # Linha de ações (Abrir, Desenv, Finalizar / Enviar para Máquina, Alterar Prazo, Cancelar)
         actions = QHBoxLayout()
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
-        machine_forward_action = _machine_forward_action(self.destination, machine_name)
         btn_development = QPushButton("Desenv")
         btn_finish = QPushButton("Finalizar")
-        btn_forward_machine = (
-            QPushButton(str(machine_forward_action.get("button_label") or "Encaminhar"))
-            if machine_forward_action is not None
-            else None
-        )
+        btn_forward_machine = QPushButton("Enviar para Máquina")
         btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
-        action_buttons = [btn_open, btn_development, btn_finish, btn_prazo, btn_cancel]
-        if btn_forward_machine is not None:
-            action_buttons.insert(2, btn_forward_machine)
-        for btn in action_buttons:
+        for btn in (btn_open, btn_development, btn_finish, btn_forward_machine, btn_prazo, btn_cancel):
             btn.setFixedHeight(max(34, int(38 * s)))
         btn_open.setProperty("productionBtn", "secondary")
         btn_development.setProperty("productionBtn", "secondary")
         btn_finish.setProperty("productionBtn", "primary")
-        if btn_forward_machine is not None:
-            btn_forward_machine.setProperty("productionBtn", "primary")
+        btn_forward_machine.setProperty("productionBtn", "primary")
         btn_prazo.setProperty("productionBtn", "secondary")
         btn_cancel.setProperty("productionBtn", "danger")
         _apply_machine_card_button_styles(
@@ -1352,24 +1256,16 @@ class ProductionView(QWidget):
         btn_open.clicked.connect(lambda: self._open_selected_machine(machine_id))
         btn_development.clicked.connect(lambda: self._request_development_requisition(machine_id))
         btn_finish.clicked.connect(lambda: self._finish_selected_machine(machine_id))
-        if btn_forward_machine is not None:
-            btn_forward_machine.clicked.connect(
-                lambda checked=False, mid=machine_id, action=dict(machine_forward_action or {}): (
-                    self._forward_selected_machine(mid, action)
-                )
-            )
+        btn_forward_machine.clicked.connect(lambda: self._forward_selected_machine(machine_id))
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(machine_id))
         btn_cancel.clicked.connect(lambda: self._return_selected_machine_to_queue(machine_id))
         actions.addWidget(btn_open)
         actions.addWidget(btn_development)
-        if btn_forward_machine is not None:
-            forward_actions = QVBoxLayout()
-            forward_actions.setSpacing(max(6, int(8 * s)))
-            forward_actions.addWidget(btn_finish)
-            forward_actions.addWidget(btn_forward_machine)
-            actions.addLayout(forward_actions)
-        else:
-            actions.addWidget(btn_finish)
+        forward_col = QVBoxLayout()
+        forward_col.setSpacing(max(6, int(8 * s)))
+        forward_col.addWidget(btn_finish)
+        forward_col.addWidget(btn_forward_machine)
+        actions.addLayout(forward_col)
         actions.addWidget(btn_prazo)
         actions.addWidget(btn_cancel)
         content_layout.addLayout(actions)
@@ -1629,8 +1525,9 @@ class ProductionView(QWidget):
                 table.setItem(row, col, item)
 
     def _selected_stage_row(self, stage: str) -> dict | None:
-        panel = self.waiting_receipt_panel if stage == WAITING_RECEIPT_STAGE else self.waiting_queue_panel
-        row = panel["table"].currentRow()
+        if stage != WAITING_RECEIPT_STAGE:
+            return None
+        row = self.waiting_receipt_panel["table"].currentRow()
         rows = self._stage_rows.get(stage, [])
         if 0 <= row < len(rows):
             return rows[row]
@@ -1667,13 +1564,12 @@ class ProductionView(QWidget):
     def _stage_for_row(self, req: dict) -> str | None:
         req_id = self._row_requisition_id(req)
         split_id = self._row_split_id(req)
-        for stage in (WAITING_RECEIPT_STAGE, WAITING_QUEUE_STAGE):
-            for row in self._stage_rows.get(stage, []):
-                if self._row_requisition_id(row) != req_id:
-                    continue
-                if self._row_split_id(row) != split_id:
-                    continue
-                return stage
+        for row in self._stage_rows.get(WAITING_RECEIPT_STAGE, []):
+            if self._row_requisition_id(row) != req_id:
+                continue
+            if self._row_split_id(row) != split_id:
+                continue
+            return WAITING_RECEIPT_STAGE
         return None
 
     def _fifo_stage_message(self, stage: str, first_row: dict) -> str:
@@ -1831,173 +1727,6 @@ class ProductionView(QWidget):
             return
         self.open_requisition.emit(self._row_requisition_id(req))
 
-    def _start_production_selection(self, req: dict):
-        stage = self._stage_for_row(req)
-        if stage and not self._ensure_fifo_stage_row(req, stage):
-            return
-        machine = self._pick_machine_for_production(req)
-        if not machine:
-            return
-        self._start_production(req, machine=machine)
-
-    def _pick_machine_for_production(self, req: dict) -> dict | None:
-        machines = [
-            dict(machine)
-            for machine in self._machines_data
-            if str(machine.get("name") or "").strip()
-        ]
-        if not machines:
-            self._show_error("Nao ha maquinas cadastradas para este destino.")
-            return None
-
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Selecionar Maquina")
-        dlg.setModal(True)
-        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        dlg.setStyleSheet(
-            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
-            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
-        )
-
-        # Tamanhos derivados da escala (interface) e da fonte base — o
-        # diálogo se adapta automaticamente quando o usuário muda escala
-        # ou tamanho de fonte nas Configurações.
-        base_font_pt = max(9, int(10 * self.scale))
-        title_font_pt = max(10, int(11 * self.scale))
-        # Largura mínima generosa pra caber nomes longos de máquina + cota
-        # de operadores. Em scale 1.0 = 720px. Escala junto.
-        dlg_min_w = max(700, int(820 * self.scale))
-        dlg.setMinimumWidth(dlg_min_w)
-
-        layout = QVBoxLayout(dlg)
-        layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(max(10, int(12 * self.scale)))
-
-        ped = str(req.get("ped_number") or "-")
-        header = QLabel(f"Requisicao PED #{ped}")
-        header.setStyleSheet(
-            f"background:transparent; font-weight:800; font-size:{title_font_pt}pt;"
-        )
-        layout.addWidget(header)
-
-        helper = QLabel("Clique na maquina que sera usada nesta producao.")
-        helper.setWordWrap(True)
-        helper.setProperty("muted", "1")
-        helper.setStyleSheet(f"background:transparent; font-size:{base_font_pt}pt;")
-        layout.addWidget(helper)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet(
-            f"QScrollArea {{ border:1px solid {theme.BORDER_COLOR}; background:{theme.CARD_BG}; border-radius:12px; }}"
-        )
-        scroll.setMinimumHeight(max(280, int(330 * self.scale)))
-        content = QWidget()
-        scroll.setWidget(content)
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(14, 12, 14, 12)
-        content_layout.setSpacing(max(10, int(12 * self.scale)))
-
-        def _select_machine(selected_machine: dict):
-            dlg.setProperty("_machine_id", int(selected_machine["id"]))
-            dlg.accept()
-
-        # Padding interno generoso no QSS — combina com o margin do
-        # btn_layout pra texto nunca tocar a borda mesmo em fontes grandes.
-        btn_pad_h = max(20, int(24 * self.scale))
-        btn_pad_v = max(14, int(16 * self.scale))
-        btn_style = (
-            f"QPushButton {{"
-            f"  background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; text-align:left;"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:12px;"
-            f"  padding:{btn_pad_v}px {btn_pad_h}px;"
-            f"}}"
-            f"QPushButton:hover {{ background:{theme.TABLE_ALT_ROW}; border-color:{_rgba(theme.PRIMARY, 80)}; }}"
-            f"QPushButton:pressed {{ background:{theme.SELECTION_BG}; }}"
-            f"QPushButton:disabled {{ background:{_rgba(theme.BORDER_COLOR, 54)}; color:{theme.TEXT_LIGHT}; border-color:{theme.BORDER_COLOR}; }}"
-        )
-        for machine in machines:
-            machine_name = str(machine.get("name") or "").strip()
-            operator_names = [
-                str(name or "").strip()
-                for name in (machine.get("operators") or [])
-                if str(name or "").strip()
-            ]
-            status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
-            operator_summary = ", ".join(operator_names) if operator_names else "Sem operadores cadastrados"
-            btn = QPushButton()
-            btn.setMinimumHeight(max(120, int(140 * self.scale)))
-            btn.setStyleSheet(btn_style)
-            btn.setEnabled(bool(operator_names))
-            btn_layout = QVBoxLayout(btn)
-            # Margens internas do layout — somam-se ao padding do QSS pra
-            # garantir que mesmo em escala alta o texto tenha respiro.
-            btn_layout.setContentsMargins(
-                btn_pad_h, btn_pad_v, btn_pad_h, btn_pad_v
-            )
-            btn_layout.setSpacing(max(4, int(6 * self.scale)))
-
-            title_lbl = QLabel(machine_name)
-            title_lbl.setStyleSheet(
-                f"background:transparent; color:{theme.TEXT_DARK};"
-                f"font-size:{base_font_pt}pt; font-weight:700;"
-            )
-            title_lbl.setWordWrap(True)
-            title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            title_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-
-            status_lbl = QLabel(f"Status: {status_label}")
-            status_lbl.setStyleSheet(
-                f"background:transparent; color:{theme.TEXT_DARK};"
-                f"font-size:{base_font_pt}pt; font-weight:700;"
-            )
-            status_lbl.setWordWrap(True)
-            status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            status_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-
-            operators_lbl = QLabel(f"Operadores: {operator_summary}")
-            operators_lbl.setStyleSheet(
-                f"background:transparent; color:{theme.TEXT_DARK};"
-                f"font-size:{base_font_pt}pt; font-weight:700;"
-            )
-            operators_lbl.setWordWrap(True)
-            operators_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            operators_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-
-            btn_layout.addWidget(title_lbl)
-            btn_layout.addWidget(status_lbl)
-            btn_layout.addWidget(operators_lbl)
-            btn.clicked.connect(
-                lambda checked=False, current_machine=dict(machine): _select_machine(current_machine)
-            )
-            if operator_names:
-                btn.setToolTip(f"Selecionar {machine_name}")
-            else:
-                btn.setToolTip("Cadastre operadores para liberar esta maquina.")
-            content_layout.addWidget(btn)
-        content_layout.addStretch()
-        layout.addWidget(scroll)
-
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-        btn_cancel = QPushButton("Cancelar")
-        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
-        btn_cancel.clicked.connect(dlg.reject)
-        buttons.addWidget(btn_cancel)
-        layout.addLayout(buttons)
-
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return None
-
-        machine_id = dlg.property("_machine_id")
-        for machine in machines:
-            if int(machine["id"]) == int(machine_id):
-                return machine
-        self._show_error("Nao foi possivel localizar a maquina selecionada.")
-        return None
-
     def _pick_machine_operators(self, machine: dict) -> list[str] | None:
         operator_names = [
             str(name or "").strip()
@@ -2103,29 +1832,6 @@ class ProductionView(QWidget):
             return None
         return [str(name).strip() for name in (dlg.property("_operators") or []) if str(name).strip()]
 
-    def _assign_selected_to_machine(self, machine_id: int):
-        req = (
-            self._selected_stage_row(WAITING_RECEIPT_STAGE)
-            or self._selected_stage_row(WAITING_QUEUE_STAGE)
-        )
-        if not req:
-            self._show_info(
-                "Selecione uma requisicao em 'Aguardando Recebimento' ou 'Aguardando na Fila' "
-                "e depois use esta maquina."
-            )
-            return
-
-        stage = self._stage_for_row(req)
-        if stage and not self._ensure_fifo_stage_row(req, stage):
-            return
-
-        card = self._machine_cards.get(machine_id)
-        if not card:
-            self._show_error("Não foi possível localizar o card da máquina selecionada.")
-            return
-
-        self._start_production(req, machine=dict(card.get("machine") or {}))
-
     def _receive_selected(self):
         req = self._selected_stage_row(WAITING_RECEIPT_STAGE)
         if not req:
@@ -2135,72 +1841,32 @@ class ProductionView(QWidget):
         if not self._ensure_fifo_stage_row(req, WAITING_RECEIPT_STAGE):
             return
 
-        box = QMessageBox(self)
-        box.setWindowTitle("Confirmar Recebimento")
-        box.setIcon(QMessageBox.Icon.Question)
-        box.setText("Como deseja encaminhar esta requisição após o recebimento?")
-        btn_queue = box.addButton("Aguardando na fila", QMessageBox.ButtonRole.AcceptRole)
-        btn_cancel = box.addButton("Cancelar requisição", QMessageBox.ButtonRole.DestructiveRole)
-        btn_close = box.addButton("Fechar", QMessageBox.ButtonRole.RejectRole)
-        apply_message_box_theme(box)
-        # Evita corte de texto dos botões longos nessa confirmação.
-        button_widths = fit_dialog_button_widths(
-            [btn_queue, btn_cancel, btn_close],
-            scale=self.scale,
-        )
-        button_gap = max(10, int(12 * self.scale))
-        horizontal_padding = max(72, int(92 * self.scale))
-        box.setMinimumWidth(
-            max(
-                580,
-                int(640 * self.scale),
-                sum(button_widths) + button_gap * 2 + horizontal_padding,
-            )
-        )
-        box.exec()
-        clicked = box.clickedButton()
-
-        if clicked == btn_queue:
-            self._move_to_queue(req)
-        elif clicked == btn_cancel:
-            self._cancel_to_progress(req)
-
-    def _move_to_queue(self, req: dict):
-        if not self._ensure_fifo_stage_row(req, WAITING_RECEIPT_STAGE):
+        machine = self._pick_machine_for_production(req)
+        if not machine:
             return
+
+        machine_name = str(machine.get("name") or "").strip()
+        if _is_machine_in_maintenance(machine):
+            self._show_info(f"A maquina {machine_name} esta em manutencao e nao pode receber requisicoes.")
+            return
+
+        selected_team = self._pick_machine_operators(machine)
+        if not selected_team:
+            return
+
+        note = _build_production_note(
+            PROD_RECEIVED,
+            self.destination,
+            machine=machine_name,
+            operators=selected_team["operators"],
+            helpers=selected_team["helpers"],
+        )
         self._run_action(
             api.update_status,
             self._row_requisition_id(req),
-            "aguardando_na_fila",
-            _build_production_note(PROD_QUEUED, self.destination),
-            success_message="Requisição movida para aguardando na fila.",
-        )
-
-    def _move_selected_to_queue_priority(self):
-        req = self._selected_stage_row(WAITING_RECEIPT_STAGE)
-        if not req:
-            self._show_info("Selecione uma requisicao em aguardando recebimento.")
-            return
-
-        ped = str(req.get("ped_number") or "-")
-        if not ask_confirmation(
-            self,
-            "Autorizar fila",
-            f"Autorizar a requisicao PED {ped} a furar fila?",
-        ):
-            return
-
-        self._run_action(
-            api.update_status,
-            self._row_requisition_id(req),
-            "aguardando_na_fila",
-            _build_production_note(
-                PROD_QUEUED,
-                self.destination,
-                reason=PROD_PRIORITY_QUEUE_REASON,
-                priority=True,
-            ),
-            success_message="Requisicao autorizada a furar fila.",
+            "em_producao",
+            note,
+            success_message=f"Requisicao recebida na maquina {machine_name}.",
         )
 
     def _pick_machine(
@@ -2271,9 +1937,22 @@ class ProductionView(QWidget):
             return None
         return str(combo.currentText() or "").strip() or None
 
-    def _ask_development_item(self, machine: dict, requisition: dict) -> dict | None:
+    def _ask_development_items(self, machine: dict, requisition: dict) -> list[dict] | None:
+        """Abre tabela com todos os itens da requisição e permite editar a coluna DESENV.
+
+        Retorna lista de dicts {item_id, quantity, desenv} para cada linha alterada,
+        ou None se o usuário cancelar.
+        """
+        items = [
+            item for item in (requisition.get("items") or [])
+            if isinstance(item, dict) and item.get("id")
+        ]
+        if not items:
+            self._show_info("Esta requisição não possui itens cadastrados.")
+            return None
+
         dlg = QDialog(self)
-        dlg.setWindowTitle("Desenv")
+        dlg.setWindowTitle("Desenvolvimento dos Itens")
         dlg.setModal(True)
         dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         dlg.setStyleSheet(
@@ -2281,125 +1960,114 @@ class ProductionView(QWidget):
             f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
             f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
         )
+        s = self.scale
+        dlg.setMinimumWidth(max(700, int(820 * s)))
 
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(max(8, int(10 * self.scale)))
+        layout.setSpacing(max(8, int(10 * s)))
 
         machine_name = str(machine.get("name") or "").strip() or "-"
-        header = QLabel(f"Maquina: {machine_name}")
-        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        ped = str(requisition.get("ped_number") or "-")
+        header = QLabel(f"Máquina: {machine_name}  ·  PED #{ped}")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * s))}pt;")
         layout.addWidget(header)
 
-        ped = str(requisition.get("ped_number") or "-")
-        ped_label = QLabel(f"Requisicao PED #{ped}")
-        ped_label.setStyleSheet(f"background:transparent; font-weight:700; font-size:{max(8, int(10 * self.scale))}pt;")
-        layout.addWidget(ped_label)
+        helper = QLabel("Edite a coluna DESENV (mm) para cada item. Clique duas vezes na célula para editar.")
+        helper.setWordWrap(True)
+        helper.setProperty("muted", "1")
+        helper.setStyleSheet(f"background:transparent; font-size:{max(8, int(9 * s))}pt;")
+        layout.addWidget(helper)
 
-        items = [
-            item for item in (requisition.get("items") or [])
-            if isinstance(item, dict) and item.get("id")
-        ]
-        if not items:
-            self._show_info("Esta requisicao nao possui itens cadastrados.")
-            return None
+        HEADERS = ["POS", "CÓDIGO", "PRODUTO", "QTD", "DESENV (mm)", "CHAPA", "TIPO"]
+        DESENV_COL = 4
+        table = QTableWidget(len(items), len(HEADERS))
+        table.setHorizontalHeaderLabels(HEADERS)
+        table.verticalHeader().setVisible(False)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setAlternatingRowColors(True)
+        table.setFrameShape(QFrame.Shape.NoFrame)
+        table.setShowGrid(False)
+        table.setMinimumHeight(max(260, int(300 * s)))
+        table.setStyleSheet(theme.neon_table_qss(s))
+        theme.apply_neon_table_palette(table)
+        hdr = table.horizontalHeader()
+        for col in range(len(HEADERS)):
+            mode = QHeaderView.ResizeMode.Stretch if col in {1, 2} else QHeaderView.ResizeMode.ResizeToContents
+            hdr.setSectionResizeMode(col, mode)
+        hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
+        hdr.setMinimumHeight(max(34, int(40 * s)))
+        table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
 
-        code_label = QLabel("Codigo da requisicao:")
-        layout.addWidget(code_label)
+        original_desenv: dict[int, str] = {}
+        for row_idx, item in enumerate(items):
+            item_id = int(item.get("id") or 0)
+            desenv_val = str(item.get("desenv") or "").strip()
+            original_desenv[item_id] = desenv_val
 
-        combo_item = QComboBox()
-        for item in items:
-            position = str(item.get("position") or "").strip()
-            code = str(item.get("product_code") or "").strip()
-            name = str(item.get("product_name") or "").strip()
-            label_parts = [part for part in (position, code, name) if part]
-            combo_item.addItem(" - ".join(label_parts) or f"Item {item.get('id')}", item)
-        combo_item.setStyleSheet(_machine_combo_style(self.scale))
-        layout.addWidget(combo_item)
+            def _make_cell(text: str, editable: bool = False) -> QTableWidgetItem:
+                cell = QTableWidgetItem(text)
+                cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if not editable:
+                    cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                return cell
 
-        quantity_label = QLabel("Quantidade:")
-        layout.addWidget(quantity_label)
+            table.setItem(row_idx, 0, _make_cell(str(item.get("position") or "")))
+            table.setItem(row_idx, 1, _make_cell(str(item.get("product_code") or "")))
+            table.setItem(row_idx, 2, _make_cell(str(item.get("product_name") or "")))
+            qty = item.get("quantity")
+            table.setItem(row_idx, 3, _make_cell(str(qty) if qty is not None else ""))
+            table.setItem(row_idx, DESENV_COL, _make_cell(desenv_val, editable=True))
+            table.setItem(row_idx, 5, _make_cell(str(item.get("chapa") or "")))
+            table.setItem(row_idx, 6, _make_cell(str(item.get("tipo") or "")))
 
-        quantity_spin = QDoubleSpinBox()
-        quantity_spin.setDecimals(3)
-        quantity_spin.setMinimum(0.001)
-        quantity_spin.setMaximum(999999.999)
-        quantity_spin.setValue(1.0)
-        quantity_spin.setSingleStep(1.0)
-        quantity_spin.setFixedHeight(max(38, int(44 * self.scale)))
-        quantity_spin.setStyleSheet(_machine_combo_style(self.scale))
-        layout.addWidget(quantity_spin)
+        layout.addWidget(table, 1)
 
-        development_label = QLabel("Desenvolvimento da peca em mm:")
-        development_label.setWordWrap(True)
-        layout.addWidget(development_label)
-
-        development_spin = QDoubleSpinBox()
-        development_spin.setDecimals(2)
-        development_spin.setMinimum(0.01)
-        development_spin.setMaximum(999999.99)
-        development_spin.setSingleStep(1.0)
-        development_spin.setSuffix(" mm")
-        development_spin.setFixedHeight(max(38, int(44 * self.scale)))
-        development_spin.setStyleSheet(_machine_combo_style(self.scale))
-        layout.addWidget(development_spin)
-
-        def _parse_float(value: object) -> float:
-            try:
-                return float(str(value or "").strip().replace(",", "."))
-            except ValueError:
-                return 0.0
-
-        def _apply_selected_item_values():
-            selected_item = combo_item.currentData() or {}
-            quantity = _parse_float(selected_item.get("quantity"))
-            development = _parse_float(selected_item.get("desenv"))
-            quantity_spin.setValue(quantity if quantity > 0 else 1.0)
-            if development > 0:
-                development_spin.setValue(development)
-
-        combo_item.currentIndexChanged.connect(lambda _=None: _apply_selected_item_values())
-        _apply_selected_item_values()
+        error_lbl = QLabel("")
+        error_lbl.setStyleSheet(f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * s))}pt;")
+        error_lbl.setVisible(False)
+        layout.addWidget(error_lbl)
 
         buttons = QHBoxLayout()
         buttons.addStretch()
         btn_cancel = QPushButton("Cancelar")
-        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(s))
         btn_cancel.clicked.connect(dlg.reject)
-        btn_ok = QPushButton("Confirmar")
-        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        btn_ok = QPushButton("Salvar Alterações")
+        btn_ok.setStyleSheet(theme.primary_btn_style(s))
         buttons.addWidget(btn_cancel)
         buttons.addWidget(btn_ok)
         layout.addLayout(buttons)
 
-        def _format_number(value: float, decimals: int) -> str:
-            if float(value).is_integer():
-                return str(int(value))
-            return f"{value:.{decimals}f}".rstrip("0").rstrip(".").replace(".", ",")
-
         def _confirm():
-            quantity = round(float(quantity_spin.value() or 0.0), 3)
-            development = round(float(development_spin.value() or 0.0), 2)
-            if quantity <= 0 or development <= 0:
+            table.clearSelection()
+            updates: list[dict] = []
+            for row_idx, item in enumerate(items):
+                item_id = int(item.get("id") or 0)
+                cell = table.item(row_idx, DESENV_COL)
+                new_desenv = str(cell.text() if cell else "").strip()
+                if new_desenv == original_desenv.get(item_id, ""):
+                    continue
+                if not new_desenv:
+                    continue
+                qty = item.get("quantity")
+                updates.append({
+                    "item_id": item_id,
+                    "quantity": float(qty) if qty is not None else 1.0,
+                    "desenv": new_desenv,
+                })
+            if not updates:
+                error_lbl.setText("Nenhuma alteração detectada na coluna DESENV.")
+                error_lbl.setVisible(True)
                 return
-            selected_item = combo_item.currentData() or {}
-            dlg.setProperty("_item_id", int(selected_item.get("id") or 0))
-            dlg.setProperty("_quantity_value", quantity)
-            dlg.setProperty("_quantity", _format_number(quantity, 3))
-            dlg.setProperty("_development_mm", _format_number(development, 2))
+            dlg.setProperty("_updates", updates)
             dlg.accept()
 
         btn_ok.clicked.connect(_confirm)
 
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return None
-        quantity_text = str(dlg.property("_quantity") or "").strip()
-        quantity_value = float(dlg.property("_quantity_value") or 0.0)
-        development_text = str(dlg.property("_development_mm") or "").strip()
-        item_id = int(dlg.property("_item_id") or 0)
-        if item_id <= 0 or quantity_value <= 0 or not quantity_text or not development_text:
-            return None
-        return {"item_id": item_id, "quantity": quantity_value, "desenv": development_text}
+        return dlg.property("_updates") or []
 
     def _request_development_requisition(self, machine_id: int):
         req, machine = self._selected_machine_row(machine_id)
@@ -2417,74 +2085,23 @@ class ProductionView(QWidget):
             self._show_error(str(exc))
             return
 
-        development_item = self._ask_development_item(machine, requisition)
-        if not development_item:
-            return
-        item_id = int(development_item.pop("item_id"))
-        self._run_action(
-            api.update_requisition_item_development,
-            req_id,
-            item_id,
-            {
-                **development_item,
-            },
-            success_message="Desenvolvimento atualizado na requisicao.",
-        )
-
-    def _start_production(self, req: dict, *, machine: dict | None = None):
-        if machine is None:
-            self._start_production_selection(req)
+        updates = self._ask_development_items(machine, requisition)
+        if not updates:
             return
 
-        machine_name = str(machine.get("name") or "").strip()
-        if not machine_name:
-            self._show_error("A máquina selecionada não possui um nome válido.")
+        try:
+            for upd in updates:
+                item_id = int(upd["item_id"])
+                api.update_requisition_item_development(req_id, item_id, {"quantity": upd["quantity"], "desenv": upd["desenv"]})
+        except api.APIError as exc:
+            self._show_error(exc.detail)
+            return
+        except Exception as exc:
+            self._show_error(str(exc))
             return
 
-        if _is_machine_in_maintenance(machine):
-            self._show_info(
-                f"A maquina {machine_name} esta em manutencao e nao pode receber requisicoes."
-            )
-            return
-
-        selected_team = self._pick_machine_operators(machine)
-        if not selected_team:
-            return
-
-        split_id = self._row_split_id(req)
-        note = _build_production_note(
-            PROD_STARTED,
-            self.destination,
-            machine=machine_name,
-            operators=selected_team["operators"],
-            helpers=selected_team["helpers"],
-        )
-        if split_id is not None:
-            self._run_action(
-                api.update_production_split_status,
-                split_id,
-                "em_producao",
-                note,
-                success_message=f"Parcela enviada para {machine_name}.",
-            )
-            return
-
-        selected_weight = self._ask_partial_weight(req)
-        if selected_weight is None:
-            return
-
-        self._run_action(
-            api.create_production_split,
-            self._row_requisition_id(req),
-            {
-                "weight": selected_weight,
-                "destination": self.destination,
-                "machine_name": machine_name,
-                "operators": selected_team["operators"],
-                "helpers": selected_team["helpers"],
-            },
-            success_message=f"Parcela de {_format_weight_kg(selected_weight)} enviada para {machine_name}.",
-        )
+        self.refresh()
+        self._show_info(f"Desenvolvimento atualizado em {len(updates)} item(ns).")
 
     def _pick_machine_for_production(self, req: dict) -> dict | None:
         machines = [
@@ -2794,13 +2411,6 @@ class ProductionView(QWidget):
             ],
         }
 
-    def _send_queue_selected_to_machine(self):
-        req = self._selected_stage_row(WAITING_QUEUE_STAGE)
-        if not req:
-            self._show_info("Selecione uma requisição na grade aguardando na fila.")
-            return
-        self._start_production_selection(req)
-
     def _cancel_selected_stage(self, stage: str):
         req = self._selected_stage_row(stage)
         if not req:
@@ -2839,13 +2449,9 @@ class ProductionView(QWidget):
         if not req or not machine:
             self._show_info("Selecione uma requisição em produção dentro do card da máquina.")
             return
-        if not ask_confirmation(
-            self,
-            "Finalizar Produção",
-            "Deseja finalizar a produção desta requisição?",
-            yes_text="Sim",
-            no_text="Não",
-        ):
+
+        weight = self._ask_finish_weight(req)
+        if weight is None:
             return
 
         machine_name = str(machine.get("name") or "")
@@ -2854,164 +2460,124 @@ class ProductionView(QWidget):
             self._finalize_and_invoice_requisition,
             split_id if split_id is not None else self._row_requisition_id(req),
             machine_name,
+            weight,
             split_id is not None,
-            success_message="Parcela finalizada." if split_id is not None else "Requisição finalizada e faturada.",
+            success_message="Parcela finalizada." if split_id is not None else "Requisição finalizada.",
         )
 
-    def _find_machine_by_number(self, target_number: int) -> dict | None:
-        for machine in self._machines_data:
-            if _machine_number_prefix(str(machine.get("name") or "").strip()) == int(target_number):
-                return dict(machine)
-        return None
+    def _ask_finish_weight(self, req: dict) -> float | None:
+        ped = str(req.get("ped_number") or "-")
+        current_weight = float(req.get("weight") or 0.0)
 
-    def _forward_selected_machine(self, machine_id: int, action: dict | None = None):
-        req, machine = self._selected_machine_row(machine_id)
-        if not req or not machine:
-            self._show_info("Selecione uma requisição em produção dentro do card da máquina.")
-            return
-
-        action = dict(action or {})
-        source_machine = str(machine.get("name") or "").strip()
-        target_mode = str(action.get("target_mode") or "picker").strip().lower()
-        target_machine_data: dict | None = None
-
-        if target_mode == "fixed":
-            target_number = int(action.get("target_number") or 0)
-            if target_number <= 0:
-                self._show_error("A configuração da máquina de destino está inválida.")
-                return
-            target_machine_data = self._find_machine_by_number(target_number)
-        else:
-            target_machine = self._pick_machine(
-                exclude_machine=source_machine,
-                window_title=str(action.get("window_title") or "Selecionar Máquina"),
-                prompt_text=str(
-                    action.get("prompt_text")
-                    or f"Escolha a máquina de destino (origem: {source_machine}):"
-                ),
-            )
-            if not target_machine:
-                return
-            target_machine_data = next(
-                (
-                    dict(machine_item)
-                    for machine_item in self._machines_data
-                    if str(machine_item.get("name") or "").strip() == target_machine
-                ),
-                None,
-            )
-
-        if not target_machine_data:
-            self._show_error("Nao foi possivel localizar a maquina de destino selecionada.")
-            return
-
-        target_machine = str(target_machine_data.get("name") or "").strip()
-        if _is_machine_in_maintenance(target_machine_data):
-            self._show_info(
-                f"A maquina {target_machine} esta em manutencao e nao pode receber requisicoes."
-            )
-            return
-
-        selected_team = self._pick_machine_operators(target_machine_data)
-        if not selected_team:
-            return
-
-        split_id = self._row_split_id(req)
-        self._run_action(
-            self._transfer_machine_requisition,
-            split_id if split_id is not None else self._row_requisition_id(req),
-            source_machine,
-            target_machine,
-            selected_team,
-            split_id is not None,
-            success_message=(
-                f"Parcela enviada para {target_machine}."
-                if split_id is not None
-                else f"Requisição enviada para {target_machine}."
-            ),
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Finalizar Produção")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
         )
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(max(8, int(10 * self.scale)))
 
-    def _send_selected_machine_to_dobra(self, machine_id: int):
+        header = QLabel(f"Requisição PED #{ped}")
+        header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
+        layout.addWidget(header)
+
+        lbl = QLabel("Informe o peso final produzido (kg):")
+        lbl.setWordWrap(True)
+        layout.addWidget(lbl)
+
+        spin = QDoubleSpinBox()
+        spin.setDecimals(3)
+        spin.setMinimum(0.0)
+        spin.setMaximum(99999.999)
+        spin.setValue(current_weight if current_weight > 0 else 0.0)
+        spin.setSingleStep(0.100)
+        spin.setFixedHeight(max(38, int(44 * self.scale)))
+        spin.setStyleSheet(_machine_combo_style(self.scale))
+        layout.addWidget(spin)
+
+        hint = QLabel("Deixe em 0 para manter o peso original da requisição.")
+        hint.setProperty("muted", "1")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"background:transparent; font-size:{max(7, int(8 * self.scale))}pt;")
+        layout.addWidget(hint)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(theme.secondary_btn_style(self.scale))
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok = QPushButton("Finalizar")
+        btn_ok.setStyleSheet(theme.primary_btn_style(self.scale))
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_ok)
+        layout.addLayout(buttons)
+
+        def _confirm():
+            dlg.setProperty("_weight", round(float(spin.value() or 0.0), 3))
+            dlg.accept()
+
+        btn_ok.clicked.connect(_confirm)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return float(dlg.property("_weight") or 0.0)
+
+    def _forward_selected_machine(self, machine_id: int):
         req, machine = self._selected_machine_row(machine_id)
         if not req or not machine:
             self._show_info("Selecione uma requisição em produção dentro do card da máquina.")
             return
 
         source_machine = str(machine.get("name") or "").strip()
-        target_machine = self._pick_machine(
+        target_machine_name = self._pick_machine(
             exclude_machine=source_machine,
-            window_title="Enviar para dobra",
-            prompt_text=f"Escolha a máquina de dobra de destino (origem: {source_machine}):",
+            window_title="Enviar para Máquina",
+            prompt_text=f"Escolha a máquina de destino (origem: {source_machine}):",
         )
-        if not target_machine:
+        if not target_machine_name:
             return
 
         target_machine_data = next(
             (
-                dict(machine_item)
-                for machine_item in self._machines_data
-                if str(machine_item.get("name") or "").strip() == target_machine
+                dict(m)
+                for m in self._machines_data
+                if str(m.get("name") or "").strip() == target_machine_name
             ),
             None,
         )
         if not target_machine_data:
-            self._show_error("Nao foi possivel localizar a maquina de dobra selecionada.")
+            self._show_error("Nao foi possivel localizar a maquina de destino selecionada.")
             return
         if _is_machine_in_maintenance(target_machine_data):
-            self._show_info(
-                f"A maquina {target_machine} esta em manutencao e nao pode receber requisicoes."
-            )
+            self._show_info(f"A maquina {target_machine_name} esta em manutencao e nao pode receber requisicoes.")
             return
 
         selected_team = self._pick_machine_operators(target_machine_data)
         if not selected_team:
             return
 
-        split_id = self._row_split_id(req)
         self._run_action(
-            self._transfer_machine_requisition,
-            split_id if split_id is not None else self._row_requisition_id(req),
-            source_machine,
-            target_machine,
-            selected_team,
-            split_id is not None,
-            success_message=f"Parcela enviada para dobra na máquina {target_machine}." if split_id is not None else f"Requisição enviada para dobra na máquina {target_machine}.",
+            api.create_production_split,
+            self._row_requisition_id(req),
+            {
+                "destination": self.destination,
+                "machine_name": target_machine_name,
+                "operators": selected_team["operators"],
+                "helpers": selected_team["helpers"],
+            },
+            success_message=f"Requisicao encaminhada para {target_machine_name}.",
         )
 
-    def _transfer_machine_requisition(
-        self,
-        req_id: int,
-        source_machine: str,
-        target_machine: str,
-        selected_team: dict[str, list[str]],
-        is_split: bool = False,
-    ):
-        queue_note = _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=source_machine)
-        start_note = _build_production_note(
-            PROD_STARTED,
-            self.destination,
-            machine=target_machine,
-            operators=selected_team.get("operators") or [],
-            helpers=selected_team.get("helpers") or [],
-            transfer=True,
-        )
-        if is_split:
-            api.update_production_split_status(req_id, "aguardando_na_fila", queue_note)
-            api.update_production_split_status(req_id, "em_producao", start_note)
-            return
-        api.update_status(req_id, "aguardando_na_fila", queue_note)
-        api.update_status(req_id, "em_producao", start_note)
-
-    def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str, is_split: bool = False):
-        # Por regra de negocio (Jun/2026): ao finalizar producao, status vai
-        # direto para FINALIZADO. O servidor processa a transicao a partir do
-        # _PROD_FINISHED na note. FATURADO foi reaproveitado para registrar o
-        # envio do vendedor para producao (timeline historica, nao status atual).
-        note = _build_production_note(PROD_FINISHED, self.destination, machine=machine_name)
+    def _finalize_and_invoice_requisition(self, req_id: int, machine_name: str, weight: float, is_split: bool = False):
+        note = _build_production_note(PROD_FINISHED, self.destination, machine=machine_name, weight=weight if weight > 0 else None)
         if is_split:
             api.update_production_split_status(req_id, "finalizado", note)
             return
-        api.update_status(req_id, "em_andamento", note)
+        api.update_status(req_id, "finalizado", note)
 
     def _return_selected_machine_to_queue(self, machine_id: int):
         req, machine = self._selected_machine_row(machine_id)
@@ -3033,8 +2599,8 @@ class ProductionView(QWidget):
             return
         if not ask_confirmation(
             self,
-            "Devolver para Fila",
-            "Deseja devolver esta requisição para aguardando na fila?",
+            "Devolver para Recebimento",
+            "Deseja devolver esta requisição para aguardando recebimento?",
             yes_text="Sim",
             no_text="Não",
         ):
@@ -3043,9 +2609,9 @@ class ProductionView(QWidget):
         self._run_action(
             api.update_status,
             self._row_requisition_id(req),
-            "aguardando_na_fila",
+            "aguardando_recebimento",
             _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=str(machine.get("name") or "")),
-            success_message="Requisição devolvida para aguardando na fila.",
+            success_message="Requisição devolvida para aguardando recebimento.",
         )
 
     def _update_machine_status(self, machine_id: int, combo: QComboBox):
@@ -3284,14 +2850,14 @@ class ProductionView(QWidget):
         self._run_action(
             api.update_production_split_status,
             split_id,
-            "aguardando_na_fila",
+            "aguardando_recebimento",
             _build_production_note(
                 PROD_CANCELED,
                 self.destination,
                 machine=source_machine,
                 reason=reason,
             ),
-            success_message="Parcela cancelada e liberada para novo envio à máquina.",
+            success_message="Parcela cancelada e devolvida para aguardando recebimento.",
         )
 
     def _run_action(self, fn, *args, success_message: str):
@@ -3353,8 +2919,7 @@ class ProductionView(QWidget):
         self._page_content.setStyleSheet(f"background:{bg};")
 
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
-        for panel in (self.waiting_receipt_panel, self.waiting_queue_panel):
-            self._apply_table_style(panel["table"])
+        self._apply_table_style(self.waiting_receipt_panel["table"])
 
         # Re-estiliza os machine_cards EXISTENTES (sem destruir + recriar).
         # A versão antiga chamava _populate_machine_cards() — recriava 12-18
