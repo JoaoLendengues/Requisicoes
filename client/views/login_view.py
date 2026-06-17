@@ -1,7 +1,7 @@
 import os
 
 from PySide6.QtCore import QEasingCurve, QObject, QPropertyAnimation, QThread, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIntValidator, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -174,6 +174,7 @@ class FirstAccessDialog(QDialog):
         self.input_code = QLineEdit(code)
         self.input_code.setStyleSheet(theme.input_style(s))
         self.input_code.setFixedHeight(max(34, int(40 * s)))
+        self.input_code.setValidator(QIntValidator(0, 999999, self.input_code))
 
         self.input_password = QLineEdit()
         self.input_password.setEchoMode(QLineEdit.EchoMode.Password)
@@ -311,6 +312,7 @@ class LoginView(QWidget):
         self.input_code.setPlaceholderText("Ex: 1")
         self.input_code.setFixedHeight(max(36, int(42 * self.scale)))
         self.input_code.setStyleSheet(_login_input_style(self.scale))
+        self.input_code.setValidator(QIntValidator(0, 999999, self.input_code))
         self.input_code.returnPressed.connect(self._focus_password_from_code)
         self.input_code.editingFinished.connect(self._check_first_access_for_code)
         card_layout.addWidget(self.input_code)
