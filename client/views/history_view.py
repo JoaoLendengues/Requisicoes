@@ -547,7 +547,14 @@ class HistoryView(QWidget):
         )
         self.combo_status = QComboBox()
         self.combo_status.addItem("Todos os status", "")
-        for key, label in theme.STATUS_LABELS.items():
+        for key, label in [
+            ("cancelada",              "Cancelada"),
+            ("aguardando_recebimento", "Aguardando Recebimento"),
+            ("aguardando_na_fila",     "Aguardando na Fila"),
+            ("em_producao",            "Em Produção"),
+            ("aguardando_entrega",     "Aguardando Entrega"),
+            ("finalizado",             "Finalizada"),
+        ]:
             self.combo_status.addItem(label, key)
         self.combo_status.setFixedHeight(max(38, int(44 * s)))
         self.combo_status.setProperty("historyField", "1")
