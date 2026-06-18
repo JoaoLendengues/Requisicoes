@@ -4553,8 +4553,25 @@ class DrawingCanvas(QWidget):
         self._apply_classic_field_widths(False)
         self._clear_layout(self._tools_layout)
         self._tools_layout.setSpacing(3)
-        for btn in self._tool_btns.values():
-            self._tools_layout.addWidget(btn)
+
+        # Desfazer | Refazer no topo, acima de Selec.
+        pair_undo_top = QHBoxLayout()
+        pair_undo_top.setContentsMargins(0, 0, 0, 0)
+        pair_undo_top.setSpacing(4)
+        pair_undo_top.addWidget(self.btn_undo, 1)
+        pair_undo_top.addWidget(self.btn_redo, 1)
+        self._tools_layout.addLayout(pair_undo_top)
+
+        # Ferramentas 2 por linha
+        btns = list(self._tool_btns.values())
+        for i in range(0, len(btns), 2):
+            pair = QHBoxLayout()
+            pair.setContentsMargins(0, 0, 0, 0)
+            pair.setSpacing(4)
+            pair.addWidget(btns[i], 1)
+            if i + 1 < len(btns):
+                pair.addWidget(btns[i + 1], 1)
+            self._tools_layout.addLayout(pair)
 
         self._clear_layout(self._props_layout)
         self._props_layout.setSpacing(4)
@@ -4567,13 +4584,6 @@ class DrawingCanvas(QWidget):
 
         self._clear_layout(self._actions_layout)
         self._actions_layout.setSpacing(4)
-
-        pair_undo = QHBoxLayout()
-        pair_undo.setContentsMargins(0, 0, 0, 0)
-        pair_undo.setSpacing(4)
-        pair_undo.addWidget(self.btn_undo, 1)
-        pair_undo.addWidget(self.btn_redo, 1)
-        self._actions_layout.addLayout(pair_undo)
 
         self._actions_layout.addLayout(self._hpair(self._lbl_rotate, self.spin_rotate))
         self._actions_layout.addWidget(self.btn_rotate)
