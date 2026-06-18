@@ -70,17 +70,16 @@ QT_PDF_FONT      = "Montserrat"
 _PDF_FONTS_READY = False
 _QT_FONT_READY   = False
 
-# Colunas da tabela (9 colunas — soma = 1.00)
+# Colunas da tabela (8 colunas — soma = 1.00)
 TABLE_COLS = [
     ("POS.",    0.04),
     ("C\u00d3DIGO",  0.08),
-    ("NOME",    0.36),
+    ("NOME",    0.42),
     ("QUANT.",  0.06),
     ("COMP.",   0.09),
     ("DESENV.", 0.09),
     ("CHAPA",   0.08),
-    ("TIPO.",   0.10),
-    ("PESO (KG)",    0.10),
+    ("TIPO.",   0.14),
 ]
 
 GAP = 6   # espaçamento padrão entre seções
@@ -644,14 +643,11 @@ def _draw_info_bar(
     """Barra de informações: Prazo | Retirada | Entrega | Telefone Vendedor | Peso"""
     _box(pdf, x, y, w, h, radius=8, fill=C_WHITE, stroke=C_BORDER)
 
-    weight_val = _resolve_weight(req, items)
-
     cells = [
-        ("\U0001f4c5", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")),  0.24, C_TEXT),
-        ("\U0001f69a", "RETIRADA",         _fmt_yes_no(req.get("retirada")),     0.18, C_BRAND),
-        ("\U0001f69a", "ENTREGA",          _fmt_yes_no(req.get("entrega")),      0.18, C_BRAND),
-        ("\U0001f4f1", vendor_phone,       "",                                   0.25, C_GREEN),
-        ("⚖",         "PESO (KG):",            _fmt_kg(weight_val),                  0.15, C_TEXT),
+        ("\U0001f4c5", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")),  0.28, C_TEXT),
+        ("\U0001f69a", "RETIRADA",         _fmt_yes_no(req.get("retirada")),     0.20, C_BRAND),
+        ("\U0001f69a", "ENTREGA",          _fmt_yes_no(req.get("entrega")),      0.20, C_BRAND),
+        ("\U0001f4f1", vendor_phone,       "",                                   0.32, C_GREEN),
     ]
 
     cx = x
@@ -691,13 +687,11 @@ def _draw_info_bar_with_icons(
     """Barra de informações usando arquivos de ícone externos."""
     _box(pdf, x, y, w, h, radius=8, fill=C_WHITE, stroke=C_BORDER)
 
-    weight_val = _resolve_weight(req, items)
     cells = [
-        ("PRAZO DE ENTREGA", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")), 0.24, C_TEXT),
-        ("RETIRADA", "RETIRADA", _fmt_yes_no(req.get("retirada")), 0.18, C_BRAND),
-        ("ENTREGA", "ENTREGA", _fmt_yes_no(req.get("entrega")), 0.18, C_BRAND),
-        ("TELEFONE DO VENDEDOR", "CONTATO DO VENDEDOR", vendor_phone, 0.25, C_GREEN),
-        ("PESO (KG)", "PESO (KG):", _fmt_kg(weight_val), 0.15, C_TEXT),
+        ("PRAZO DE ENTREGA", "PRAZO DE ENTREGA", _fmt_date(req.get("delivery_date")), 0.28, C_TEXT),
+        ("RETIRADA", "RETIRADA", _fmt_yes_no(req.get("retirada")), 0.20, C_BRAND),
+        ("ENTREGA", "ENTREGA", _fmt_yes_no(req.get("entrega")), 0.20, C_BRAND),
+        ("TELEFONE DO VENDEDOR", "CONTATO DO VENDEDOR", vendor_phone, 0.32, C_GREEN),
     ]
 
     cx = x
@@ -817,17 +811,7 @@ def _draw_client_section(
 
 
 def _is_complete_item(item: dict) -> bool:
-    required = (
-        "product_code",
-        "product_name",
-        "quantity",
-        "comp",
-        "desenv",
-        "chapa",
-        "tipo",
-        "weight",
-    )
-    for key in required:
+    for key in ("product_name", "quantity"):
         if str(item.get(key) or "").strip() == "":
             return False
     return True
@@ -856,7 +840,6 @@ def _prepare_rows(items: list[dict]) -> list[dict]:
             "desenv":       _fmt_qty(item.get("desenv")),
             "chapa":        _safe(item.get("chapa"), ""),
             "tipo":         _safe(item.get("tipo"), ""),
-            "weight":       _fmt_optional_kg(item.get("weight")),
         })
     return rows
 
@@ -926,7 +909,6 @@ def _draw_items_table(
             row["desenv"],
             row["chapa"],
             row["tipo"],
-            row["weight"],
         ]
         for ci, val in enumerate(values):
             cx = edges[ci]
