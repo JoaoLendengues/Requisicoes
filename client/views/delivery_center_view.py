@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta as _timedelta
+
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
@@ -161,6 +163,9 @@ class DeliveryCenterView(QWidget):
         self._row_by_id: dict[str, dict] = {}
         self._completed_row_by_id: dict[str, dict] = {}
         self._metric_labels: dict[str, QLabel] = {}
+        self._view_mode: str = "list"
+        self._schedule_week_offset: int = 0
+        self._schedule_selected_row: dict | None = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -315,6 +320,18 @@ class DeliveryCenterView(QWidget):
         title_col.addWidget(section_subtitle)
         title_row.addLayout(title_col, 1)
 
+        self._btn_view_list = QPushButton("Lista")
+        self._btn_view_list.setFixedHeight(max(32, int(36 * s)))
+        self._btn_view_sched = QPushButton("Cronograma")
+        self._btn_view_sched.setFixedHeight(max(32, int(36 * s)))
+        theme.themed(self._btn_view_list, lambda: self._toggle_btn_style("list"))
+        theme.themed(self._btn_view_sched, lambda: self._toggle_btn_style("schedule"))
+        self._btn_view_list.clicked.connect(lambda: self._set_delivery_view("list"))
+        self._btn_view_sched.clicked.connect(lambda: self._set_delivery_view("schedule"))
+        title_row.addWidget(self._btn_view_list)
+        title_row.addWidget(self._btn_view_sched)
+        title_row.addSpacing(max(8, int(10 * s)))
+
         self.btn_change_deadline = QPushButton("ALTERAR PRAZO")
         self.btn_change_deadline.setFixedHeight(max(34, int(38 * s)))
         theme.themed(self.btn_change_deadline, lambda: _flat_secondary_btn_style(s))
@@ -333,6 +350,11 @@ class DeliveryCenterView(QWidget):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.itemSelectionChanged.connect(self._on_pending_selection_changed)
         card_layout.addWidget(self.table, 1)
+
+        self._schedule_widget = self._build_schedule_widget()
+        self._schedule_widget.setVisible(False)
+        card_layout.addWidget(self._schedule_widget, 1)
+
         content_layout.addWidget(table_card, 1)
 
         completed_card = _make_card(
@@ -595,6 +617,7 @@ class DeliveryCenterView(QWidget):
             sort_order=Qt.SortOrder.DescendingOrder,
         )
         self._update_action_buttons()
+        self._render_schedule()
 
     def _fill_table(
         self,
@@ -1175,6 +1198,360 @@ class DeliveryCenterView(QWidget):
             success_message=self._delivery_success_message(len(rows)),
         )
 
+    def _build_schedule_widget(self) -> QWidget:
+        s = self.scale
+        container = QWidget()
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        theme.themed(container, lambda: f"background:{theme.CONTENT_BG}; border:none;")
+        outer = QVBoxLayout(container)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(max(8, int(10 * s)))
+
+        # Navigation row
+        nav_row = QHBoxLayout()
+        nav_row.setSpacing(max(6, int(8 * s)))
+        btn_prev = QPushButton("◀")
+        btn_prev.setFixedSize(max(28, int(32 * s)), max(28, int(32 * s)))
+        theme.themed(btn_prev, lambda: theme.secondary_btn_style(s))
+        btn_prev.clicked.connect(lambda: self._sched_navigate(-1))
+        self._sched_week_label = QLabel()
+        self._sched_week_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._sched_week_label.setMinimumWidth(max(180, int(200 * s)))
+        theme.themed(self._sched_week_label, lambda: (
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f"font-weight:600; color:{theme.TEXT_DARK};"
+        ))
+        btn_next = QPushButton("▶")
+        btn_next.setFixedSize(max(28, int(32 * s)), max(28, int(32 * s)))
+        theme.themed(btn_next, lambda: theme.secondary_btn_style(s))
+        btn_next.clicked.connect(lambda: self._sched_navigate(1))
+        nav_row.addStretch()
+        nav_row.addWidget(btn_prev)
+        nav_row.addWidget(self._sched_week_label)
+        nav_row.addWidget(btn_next)
+        nav_row.addStretch()
+        outer.addLayout(nav_row)
+
+        # 7-column calendar (Mon–Sun)
+        DAY_NAMES = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"]
+        cal_row = QHBoxLayout()
+        cal_row.setSpacing(max(5, int(6 * s)))
+        self._sched_day_heads: list[QLabel] = []
+        self._sched_day_bodies: list[QVBoxLayout] = []
+
+        for day_name in DAY_NAMES:
+            col = QWidget()
+            col.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            col_layout = QVBoxLayout(col)
+            col_layout.setContentsMargins(0, 0, 0, 0)
+            col_layout.setSpacing(max(3, int(4 * s)))
+
+            lbl_name = QLabel(day_name)
+            lbl_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            theme.themed(lbl_name, lambda: (
+                f"background:transparent; font-size:{max(7, int(8 * s))}pt;"
+                f"color:{theme.TEXT_MEDIUM}; font-weight:600;"
+            ))
+            lbl_num = QLabel("-")
+            lbl_num.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            theme.themed(lbl_num, lambda: (
+                f"background:transparent; font-size:{max(9, int(11 * s))}pt;"
+                f"font-weight:700; color:{theme.TEXT_DARK};"
+            ))
+            self._sched_day_heads.append(lbl_num)
+            col_layout.addWidget(lbl_name)
+            col_layout.addWidget(lbl_num)
+
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            theme.themed(scroll, lambda: (
+                f"QScrollArea {{ border:none; background:{theme.PANEL_SURFACE_BG};"
+                f"border-radius:{max(6, int(8 * s))}px; }}"
+            ))
+            body_widget = QWidget()
+            body_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            theme.themed(body_widget, lambda: f"background:{theme.PANEL_SURFACE_BG};")
+            body_layout = QVBoxLayout(body_widget)
+            body_layout.setContentsMargins(
+                max(4, int(5 * s)), max(4, int(5 * s)),
+                max(4, int(5 * s)), max(4, int(5 * s)),
+            )
+            body_layout.setSpacing(max(3, int(4 * s)))
+            body_layout.addStretch()
+            self._sched_day_bodies.append(body_layout)
+            scroll.setWidget(body_widget)
+            scroll.setMinimumHeight(max(110, int(130 * s)))
+            col_layout.addWidget(scroll, 1)
+            cal_row.addWidget(col, 1)
+
+        outer.addLayout(cal_row)
+
+        # Legend
+        legend_row = QHBoxLayout()
+        legend_row.setSpacing(max(12, int(16 * s)))
+        legend_row.addStretch()
+        for leg_label, leg_color in [
+            ("No prazo", theme.PRIMARY),
+            ("Atrasada", theme.DANGER),
+            ("Prazo alterado", theme.WARNING),
+            ("Entregue", theme.TEXT_MEDIUM),
+        ]:
+            leg = QHBoxLayout()
+            leg.setSpacing(max(4, int(5 * s)))
+            dot = QFrame()
+            dot.setFixedSize(max(8, int(10 * s)), max(8, int(10 * s)))
+            dot.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            c = leg_color
+            theme.themed(dot, lambda col=c: (
+                f"QFrame {{ background:{_rgba(col, 120)}; border-radius:{max(2, int(3 * s))}px; border:none; }}"
+            ))
+            lbl_leg = QLabel(leg_label)
+            theme.themed(lbl_leg, lambda: (
+                f"background:transparent; font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM};"
+            ))
+            leg.addWidget(dot)
+            leg.addWidget(lbl_leg)
+            legend_row.addLayout(leg)
+        legend_row.addStretch()
+        outer.addLayout(legend_row)
+
+        # Detail panel (hidden until chip clicked)
+        self._sched_detail_frame = QFrame()
+        self._sched_detail_frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        theme.themed(self._sched_detail_frame, lambda: (
+            f"QFrame {{ background:{theme.PANEL_SURFACE_BG};"
+            f"border:1px solid {theme.PANEL_BORDER_SOFT};"
+            f"border-radius:{max(8, int(10 * s))}px; }}"
+        ))
+        self._sched_detail_frame.setVisible(False)
+        detail_layout = QVBoxLayout(self._sched_detail_frame)
+        detail_layout.setContentsMargins(
+            max(12, int(14 * s)), max(10, int(12 * s)),
+            max(12, int(14 * s)), max(10, int(12 * s)),
+        )
+        detail_layout.setSpacing(max(6, int(8 * s)))
+
+        self._sched_detail_title = QLabel()
+        theme.themed(self._sched_detail_title, lambda: (
+            f"background:transparent; font-size:{max(9, int(11 * s))}pt;"
+            f"font-weight:700; color:{theme.TEXT_DARK};"
+        ))
+        detail_layout.addWidget(self._sched_detail_title)
+
+        fields_row = QHBoxLayout()
+        fields_row.setSpacing(max(16, int(20 * s)))
+        self._sched_detail_fields: dict[str, QLabel] = {}
+        for field_key in ["Cliente", "Vendedor", "Peso", "Data prevista", "Status"]:
+            fld_col = QVBoxLayout()
+            fld_col.setSpacing(max(2, int(3 * s)))
+            lbl_key = QLabel(field_key)
+            theme.themed(lbl_key, lambda: (
+                f"background:transparent; font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM};"
+            ))
+            val = QLabel("-")
+            theme.themed(val, lambda: (
+                f"background:transparent; font-size:{max(8, int(9 * s))}pt;"
+                f"font-weight:600; color:{theme.TEXT_DARK};"
+            ))
+            fld_col.addWidget(lbl_key)
+            fld_col.addWidget(val)
+            fields_row.addLayout(fld_col)
+            self._sched_detail_fields[field_key] = val
+        fields_row.addStretch()
+        detail_layout.addLayout(fields_row)
+
+        detail_btn_row = QHBoxLayout()
+        detail_btn_row.setSpacing(max(8, int(10 * s)))
+        detail_btn_row.addStretch()
+        self._sched_btn_deadline = QPushButton("ALTERAR PRAZO")
+        self._sched_btn_deadline.setFixedHeight(max(30, int(34 * s)))
+        theme.themed(self._sched_btn_deadline, lambda: _flat_secondary_btn_style(s))
+        self._sched_btn_deadline.clicked.connect(self._sched_change_deadline)
+        self._sched_btn_delivered = QPushButton("ENTREGUE")
+        self._sched_btn_delivered.setFixedHeight(max(30, int(34 * s)))
+        theme.themed(self._sched_btn_delivered, lambda: _primary_action_btn_style(s))
+        self._sched_btn_delivered.clicked.connect(self._sched_mark_delivered)
+        detail_btn_row.addWidget(self._sched_btn_deadline)
+        detail_btn_row.addWidget(self._sched_btn_delivered)
+        detail_layout.addLayout(detail_btn_row)
+
+        outer.addWidget(self._sched_detail_frame)
+        return container
+
+    def _sched_chip_qss(self, row: dict) -> str:
+        s = self.scale
+        if row.get("delivered_at"):
+            bg = _rgba(theme.TEXT_MEDIUM, 22)
+            fg = theme.TEXT_MEDIUM
+        else:
+            delivery_dt = _parse_datetime(row.get("delivery_date"))
+            today = local_now().date()
+            status = str(row.get("status") or "")
+            if delivery_dt and delivery_dt.date() < today:
+                bg, fg = _rgba(theme.DANGER, 35), theme.DANGER
+            elif status == "prazo_alterado":
+                bg, fg = _rgba(theme.WARNING, 35), theme.WARNING
+            else:
+                bg, fg = _rgba(theme.PRIMARY, 35), theme.PRIMARY
+        r = max(5, int(6 * s))
+        pv, ph = max(3, int(4 * s)), max(5, int(6 * s))
+        fs = max(7, int(9 * s))
+        return (
+            f"QPushButton {{ background:{bg}; color:{fg}; border-radius:{r}px;"
+            f"padding:{pv}px {ph}px; text-align:left; border:none; font-size:{fs}pt; }}"
+            f"QPushButton:hover {{ background:{bg}; }}"
+        )
+
+    def _render_schedule(self) -> None:
+        if not hasattr(self, "_sched_day_heads"):
+            return
+        today = local_now().date()
+        monday = today - _timedelta(days=today.weekday())
+        week_start = monday + _timedelta(weeks=self._schedule_week_offset)
+        week_dates = [week_start + _timedelta(days=i) for i in range(7)]
+
+        MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+        s_d, e_d = week_dates[0], week_dates[6]
+        if s_d.month == e_d.month:
+            nav_lbl = f"{s_d.day}–{e_d.day} {MONTHS[s_d.month - 1]} {s_d.year}"
+        else:
+            nav_lbl = f"{s_d.day} {MONTHS[s_d.month - 1]} – {e_d.day} {MONTHS[e_d.month - 1]} {e_d.year}"
+        self._sched_week_label.setText(nav_lbl)
+
+        for i, d in enumerate(week_dates):
+            head = self._sched_day_heads[i]
+            head.setText(str(d.day))
+            if d == today:
+                theme.themed(head, lambda: (
+                    f"background:{_rgba(theme.PRIMARY, 45)};"
+                    f"border-radius:{max(12, int(14 * self.scale))}px;"
+                    f"font-size:{max(9, int(11 * self.scale))}pt; font-weight:800; color:{theme.PRIMARY};"
+                    f"min-width:{max(24, int(28 * self.scale))}px; padding:2px;"
+                ))
+            else:
+                theme.themed(head, lambda: (
+                    f"background:transparent; font-size:{max(9, int(11 * self.scale))}pt;"
+                    f"font-weight:700; color:{theme.TEXT_DARK};"
+                ))
+            body = self._sched_day_bodies[i]
+            while body.count() > 1:
+                item = body.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+
+        date_to_col = {d: i for i, d in enumerate(week_dates)}
+        for row in list(self._pending_rows) + list(self._completed_rows):
+            delivery_dt = _parse_datetime(row.get("delivery_date"))
+            if delivery_dt is None:
+                continue
+            col_idx = date_to_col.get(delivery_dt.date())
+            if col_idx is None:
+                continue
+            ped = str(row.get("ped_number") or "-")
+            client = str(row.get("client_name") or "-")
+            chip = QPushButton(f"{ped}\n{client}")
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
+            r = row
+            theme.themed(chip, lambda row_ref=r: self._sched_chip_qss(row_ref))
+            chip.clicked.connect(lambda checked=False, row_ref=r: self._on_schedule_chip_clicked(row_ref))
+            self._sched_day_bodies[col_idx].insertWidget(
+                self._sched_day_bodies[col_idx].count() - 1, chip
+            )
+
+    def _on_schedule_chip_clicked(self, row: dict) -> None:
+        self._schedule_selected_row = row
+        ped = str(row.get("ped_number") or "-")
+        client = str(row.get("client_name") or "-")
+        self._sched_detail_title.setText(f"{ped}  —  {client}")
+        self._sched_detail_fields["Cliente"].setText(client)
+        self._sched_detail_fields["Vendedor"].setText(str(row.get("vendor_name") or "-"))
+        self._sched_detail_fields["Peso"].setText(_format_weight(row.get("weight")))
+        self._sched_detail_fields["Data prevista"].setText(_format_date(row.get("delivery_date")))
+        status = str(row.get("status") or "")
+        self._sched_detail_fields["Status"].setText(
+            theme.STATUS_LABELS.get(status, status or "-")
+        )
+        self._sched_btn_delivered.setEnabled(self._can_mark_row_delivered(row))
+        self._sched_btn_deadline.setEnabled(not bool(row.get("delivered_at")))
+        self._sched_detail_frame.setVisible(True)
+
+    def _sched_navigate(self, direction: int) -> None:
+        self._schedule_week_offset += direction
+        self._schedule_selected_row = None
+        if hasattr(self, "_sched_detail_frame"):
+            self._sched_detail_frame.setVisible(False)
+        self._render_schedule()
+
+    def _toggle_active_style(self) -> str:
+        s = self.scale
+        return (
+            f"QPushButton {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.PRIMARY};"
+            f"border:1px solid {_rgba(theme.PRIMARY, 90)}; border-radius:{max(5, int(6 * s))}px;"
+            f"padding:0 {max(10, int(12 * s))}px; font-size:{max(8, int(9 * s))}pt; font-weight:600; }}"
+        )
+
+    def _toggle_btn_style(self, mode: str) -> str:
+        if getattr(self, "_view_mode", "list") == mode:
+            return self._toggle_active_style()
+        return theme.secondary_btn_style(self.scale)
+
+    def _set_delivery_view(self, mode: str) -> None:
+        self._view_mode = mode
+        is_list = mode == "list"
+        self.table.setVisible(is_list)
+        self._schedule_widget.setVisible(not is_list)
+        self._btn_view_list.setStyleSheet(self._toggle_btn_style("list"))
+        self._btn_view_sched.setStyleSheet(self._toggle_btn_style("schedule"))
+        if not is_list:
+            self._render_schedule()
+
+    def _sched_change_deadline(self) -> None:
+        row = self._schedule_selected_row
+        if not row:
+            return
+        if row.get("delivered_at"):
+            QMessageBox.information(self, "Entregas", "Esta entrega ja foi concluida.")
+            return
+        result = self._ask_delivery_date(row)
+        if result is None:
+            return
+        new_date, reason = result
+        self._run_action(
+            api.update_delivery_schedule,
+            self._row_requisition_id(row),
+            new_date,
+            reason,
+            success_message="Prazo de entrega alterado com sucesso.",
+        )
+
+    def _sched_mark_delivered(self) -> None:
+        row = self._schedule_selected_row
+        if not row:
+            return
+        if not self._can_mark_row_delivered(row):
+            QMessageBox.information(
+                self,
+                "Entregas",
+                "Somente pedidos finalizados ou com prazo alterado podem ser marcados como entregues.",
+            )
+            return
+        if not ask_confirmation(
+            self,
+            "Entregue",
+            self._delivery_confirmation_message([row]),
+            yes_text="Sim",
+            no_text="Nao",
+            default_to_yes=False,
+        ):
+            return
+        self._run_action(
+            self._mark_rows_delivered,
+            [row],
+            success_message=self._delivery_success_message(1),
+        )
+
     def apply_theme(self) -> None:
         """Reaplica o tema na view.
 
@@ -1225,6 +1602,11 @@ class DeliveryCenterView(QWidget):
         # Tabelas — helper centralizado (theme.neon_table_qss + apply_neon_table_palette)
         self._apply_table_style(self.table)
         self._apply_table_style(self.completed_table)
+
+        # Toggle buttons — re-aplica estilos ativos/inativos apos troca de tema
+        if hasattr(self, "_btn_view_list"):
+            self._btn_view_list.setStyleSheet(self._toggle_btn_style("list"))
+            self._btn_view_sched.setStyleSheet(self._toggle_btn_style("schedule"))
 
         # Repaint pontual — substitui o loop polish que custava 30-40ms.
         # O QApplication.setStyleSheet(global) ja foi atualizado no
