@@ -1082,6 +1082,7 @@ class ProductionView(QWidget):
         machine_id = int(machine["id"])
         machine_name = str(machine.get("name") or "").strip()
         rows = [row for row in (machine.get("rows") or []) if isinstance(row, dict)]
+        queue_rows = [r for r in (machine.get("queue_rows") or []) if isinstance(r, dict)]
 
         # ====== CARD CONTAINER ======
         card = _make_card(
@@ -1270,6 +1271,40 @@ class ProductionView(QWidget):
         actions.addWidget(btn_cancel)
         content_layout.addLayout(actions)
 
+        # ====== SEÇÃO: Aguardando na Fila (LAZY queue table) ======
+        sep_fila_row = QHBoxLayout()
+        sep_fila_row.setSpacing(max(8, int(10 * s)))
+        sep_fila_label = QLabel("⏳ Aguardando na Fila")
+        sep_fila_fs = max(8, int(10 * s))
+        sep_fila_label.setStyleSheet(
+            f"background:transparent; color:{theme.WARNING};"
+            f"font-size:{sep_fila_fs}pt; font-weight:700;"
+        )
+        btn_start_queue = QPushButton("Iniciar Produção")
+        btn_start_queue.setFixedHeight(max(30, int(34 * s)))
+        btn_start_queue.setProperty("productionBtn", "primary")
+        btn_start_queue.clicked.connect(lambda checked=False, mid=machine_id: self._start_queue_item(mid))
+        sep_fila_row.addWidget(sep_fila_label)
+        sep_fila_row.addStretch()
+        sep_fila_row.addWidget(btn_start_queue)
+        content_layout.addLayout(sep_fila_row)
+
+        queue_table_container = QFrame()
+        queue_table_container.setStyleSheet("background:transparent; border:none;")
+        queue_table_container_layout = QVBoxLayout(queue_table_container)
+        queue_table_container_layout.setContentsMargins(0, 0, 0, 0)
+        queue_table_container_layout.setSpacing(0)
+        content_layout.addWidget(queue_table_container)
+
+        # ====== SEÇÃO: Em Produção ======
+        sep_prod_label = QLabel("▶ Em Produção")
+        sep_prod_fs = max(8, int(10 * s))
+        sep_prod_label.setStyleSheet(
+            f"background:transparent; color:{accent_color};"
+            f"font-size:{sep_prod_fs}pt; font-weight:700;"
+        )
+        content_layout.addWidget(sep_prod_label)
+
         # Placeholder onde a TABELA será inserida LAZY na 1ª expansão.
         # Mantemos um container vazio aqui pra que o layout não pule quando
         # a tabela aparecer pela primeira vez.
@@ -1291,6 +1326,11 @@ class ProductionView(QWidget):
             "header": header,
             "content": content,
             "chevron": chevron,
+            "queue_table_container": queue_table_container,
+            "queue_table_container_layout": queue_table_container_layout,
+            "queue_table": None,    # LAZY: criada na 1ª expansão
+            "queue_table_built": False,
+            "queue_rows": queue_rows,
             "table_container": table_container,
             "table_container_layout": table_container_layout,
             "table": None,          # LAZY: criada na 1ª expansão
@@ -1312,14 +1352,40 @@ class ProductionView(QWidget):
                 "btn_development": btn_development,
                 "btn_finish": btn_finish,
                 "btn_forward_machine": btn_forward_machine,
+                "btn_start_queue": btn_start_queue,
                 "btn_prazo": btn_prazo,
                 "btn_cancel": btn_cancel,
+                "sep_fila_label": sep_fila_label,
+                "sep_prod_label": sep_prod_label,
                 "stat_blocks": stat_blocks,
                 "stat_titles": _stat_titles,
                 "stat_values": _stat_values,
                 "summary_label": summary_label,
             },
         }
+
+    def _ensure_machine_queue_table_built(self, card_data: dict) -> None:
+        """Cria e popula a mini-tabela de fila do card na primeira expansão (lazy load)."""
+        if card_data.get("queue_table_built"):
+            return
+        machine = card_data.get("machine") or {}
+        machine_id = int(machine.get("id") or 0)
+        current_status = str(machine.get("status") or "funcionando")
+        s = self.scale
+
+        table = self._build_table(
+            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "NA FILA DESDE"],
+            stretch_columns={1, 2, 3},
+        )
+        table.setMinimumHeight(max(100, int(120 * s)))
+        self._apply_table_style(table, current_status)
+        self._fill_queue_table(table, card_data.get("queue_rows") or [])
+        table.doubleClicked.connect(
+            lambda index, mid=machine_id: self._open_queue_row(mid, index.row())
+        )
+        card_data["queue_table_container_layout"].addWidget(table)
+        card_data["queue_table"] = table
+        card_data["queue_table_built"] = True
 
     def _ensure_machine_table_built(self, card_data: dict) -> None:
         """Cria e popula a tabela do card na primeira expansão (lazy load).
@@ -1366,7 +1432,8 @@ class ProductionView(QWidget):
         is_expanded = bool(card_data.get("expanded"))
 
         if not is_expanded:
-            # EXPANDIR — garante tabela criada e anima maximumHeight.
+            # EXPANDIR — garante tabelas criadas e anima maximumHeight.
+            self._ensure_machine_queue_table_built(card_data)
             self._ensure_machine_table_built(card_data)
             # Força o layout a recalcular sizeHint depois de inserir a tabela.
             content.adjustSize()
@@ -1454,6 +1521,8 @@ class ProductionView(QWidget):
         for value_label in tw.get("stat_values") or []:
             if value_label is not None:
                 value_label.setStyleSheet(_machine_stat_value_style(s, machine_status))
+        if card_data.get("queue_table") is not None:
+            self._apply_table_style(card_data["queue_table"], machine_status)
         if card_data.get("table") is not None:
             self._apply_table_style(card_data["table"], machine_status)
         # summary_label do header (acordeão) — cor segue o accent
@@ -1524,6 +1593,23 @@ class ProductionView(QWidget):
                     item.setToolTip(tooltip)
                 table.setItem(row, col, item)
 
+    def _fill_queue_table(self, table: QTableWidget, rows: list[dict]):
+        table.setRowCount(0)
+        for req in rows:
+            row = table.rowCount()
+            table.insertRow(row)
+            values = [
+                str(req.get("ped_number") or ""),
+                str(req.get("client_name") or "-"),
+                str(req.get("vendor_name") or "-"),
+                str(req.get("obra") or "-"),
+                _format_elapsed(req.get("waiting_since")),
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(row, col, item)
+
     def _selected_stage_row(self, stage: str) -> dict | None:
         if stage != WAITING_RECEIPT_STAGE:
             return None
@@ -1548,6 +1634,19 @@ class ProductionView(QWidget):
         if 0 <= row < len(rows):
             return rows[row], card["machine"]
         return None, card["machine"]
+
+    def _selected_machine_queue_row(self, machine_id: int) -> dict | None:
+        card = self._machine_cards.get(machine_id)
+        if not card:
+            return None
+        table = card.get("queue_table")
+        if table is None:
+            return None
+        row = table.currentRow()
+        rows = card["queue_rows"]
+        if 0 <= row < len(rows):
+            return rows[row]
+        return None
 
     def _row_requisition_id(self, req: dict) -> int:
         return int(req.get("source_requisition_id") or req["id"])
@@ -1713,6 +1812,14 @@ class ProductionView(QWidget):
         if 0 <= row < len(rows):
             self.open_requisition.emit(self._row_requisition_id(rows[row]))
 
+    def _open_queue_row(self, machine_id: int, row: int):
+        card = self._machine_cards.get(machine_id)
+        if not card:
+            return
+        rows = card["queue_rows"]
+        if 0 <= row < len(rows):
+            self.open_requisition.emit(self._row_requisition_id(rows[row]))
+
     def _open_selected_stage(self, stage: str):
         req = self._selected_stage_row(stage)
         if not req:
@@ -1847,6 +1954,29 @@ class ProductionView(QWidget):
             self._show_info(f"A maquina {machine_name} esta em manutencao e nao pode receber requisicoes.")
             return
 
+        note = _build_production_note(
+            PROD_QUEUED,
+            self.destination,
+            machine=machine_name,
+        )
+        self._run_action(
+            api.update_status,
+            self._row_requisition_id(req),
+            "aguardando_na_fila",
+            note,
+            success_message=f"Requisicao adicionada na fila da maquina {machine_name}.",
+        )
+
+    def _start_queue_item(self, machine_id: int):
+        req = self._selected_machine_queue_row(machine_id)
+        if not req:
+            self._show_info("Selecione uma requisição na fila da máquina.")
+            return
+
+        card = self._machine_cards.get(machine_id)
+        machine = (card or {}).get("machine") or {}
+        machine_name = str(machine.get("name") or "").strip()
+
         selected_team = self._pick_machine_operators(machine)
         if not selected_team:
             return
@@ -1863,7 +1993,7 @@ class ProductionView(QWidget):
             self._row_requisition_id(req),
             "em_producao",
             note,
-            success_message=f"Requisicao recebida na maquina {machine_name}.",
+            success_message=f"Requisicao iniciada na maquina {machine_name}.",
         )
 
     def _pick_machine(
@@ -2608,8 +2738,8 @@ class ProductionView(QWidget):
             return
         if not ask_confirmation(
             self,
-            "Devolver para Recebimento",
-            "Deseja devolver esta requisição para aguardando recebimento?",
+            "Devolver para Fila",
+            "Deseja devolver esta requisição para a fila da máquina?",
             yes_text="Sim",
             no_text="Não",
         ):
@@ -2618,9 +2748,9 @@ class ProductionView(QWidget):
         self._run_action(
             api.update_status,
             self._row_requisition_id(req),
-            "aguardando_recebimento",
+            "aguardando_na_fila",
             _build_production_note(PROD_RETURNED_QUEUE, self.destination, machine=str(machine.get("name") or "")),
-            success_message="Requisição devolvida para aguardando recebimento.",
+            success_message="Requisição devolvida para a fila da máquina.",
         )
 
     def _update_machine_status(self, machine_id: int, combo: QComboBox):

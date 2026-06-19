@@ -68,6 +68,7 @@ class ProductionMachineCardResponse(BaseModel):
     finalized_count: int
     average_seconds: Optional[int] = None
     rows: list[ProductionItemResponse] = Field(default_factory=list)
+    queue_rows: list[ProductionItemResponse] = Field(default_factory=list)
 
 
 class ProductionSummaryStatsResponse(BaseModel):

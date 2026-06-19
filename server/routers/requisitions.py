@@ -841,20 +841,48 @@ def _apply_production_transition(req: Requisition, status_update: StatusUpdate):
         req.production_machine = None
         return
 
-    if action == _PROD_RECEIVED:
+    if action == _PROD_QUEUED:
         if req.status != RequisitionStatus.AGUARDANDO_RECEBIMENTO:
             raise HTTPException(
                 status_code=400,
-                detail="Somente requisições aguardando recebimento podem ser recebidas",
+                detail="Somente requisições aguardando recebimento podem entrar na fila",
             )
         if not machine:
+            raise HTTPException(
+                status_code=400,
+                detail="Informe a máquina de destino para inserir na fila",
+            )
+        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
+        req.production_machine = machine
+        return
+
+    if action == _PROD_RETURNED_QUEUE:
+        if req.status != RequisitionStatus.EM_PRODUCAO:
+            raise HTTPException(
+                status_code=400,
+                detail="Somente requisições em produção podem ser devolvidas à fila",
+            )
+        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
+        return
+
+    if action == _PROD_RECEIVED:
+        if req.status not in (
+            RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+            RequisitionStatus.AGUARDANDO_NA_FILA,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Somente requisições aguardando recebimento ou na fila podem iniciar produção",
+            )
+        final_machine = machine or _normalize_machine_name(req.production_machine or "")
+        if not final_machine:
             raise HTTPException(
                 status_code=400,
                 detail="Informe a máquina de destino para confirmar o recebimento",
             )
         req.status = RequisitionStatus.EM_PRODUCAO
         req.finalized_at = req.finalized_at or datetime.utcnow()
-        req.production_machine = machine
+        req.production_machine = final_machine
         return
 
     if action == _PROD_FINISHED:
@@ -962,6 +990,28 @@ def _split_current_machine(split: RequisitionProductionSplit) -> str:
         machine = _normalize_machine_name(event.get("machine"))
         if machine:
             return machine
+    return ""
+
+
+def _queued_machine_for_req(req: Requisition) -> str:
+    if req.production_machine:
+        return _normalize_machine_name(req.production_machine)
+    for event in reversed(_production_events(req)):
+        if event.get("action") in (_PROD_QUEUED, _PROD_RETURNED_QUEUE, _PROD_RECEIVED):
+            m = _normalize_machine_name(event.get("machine"))
+            if m:
+                return m
+    return ""
+
+
+def _queued_machine_for_split(split: RequisitionProductionSplit) -> str:
+    if split.production_machine:
+        return _normalize_machine_name(split.production_machine)
+    for event in reversed(_split_production_events(split)):
+        if event.get("action") in (_PROD_QUEUED, _PROD_RETURNED_QUEUE, _PROD_RECEIVED):
+            m = _normalize_machine_name(event.get("machine"))
+            if m:
+                return m
     return ""
 
 
@@ -1679,6 +1729,10 @@ def _build_production_summary(
         _normalize_machine_name(machine.name): []
         for machine in machines
     }
+    machine_queue_rows: dict[str, list[ProductionItemResponse]] = {
+        _normalize_machine_name(machine.name): []
+        for machine in machines
+    }
     machine_cycles: dict[str, list[dict]] = {
         _normalize_machine_name(machine.name): []
         for machine in machines
@@ -1735,13 +1789,16 @@ def _build_production_summary(
                         _PROD_SEND,
                         _PROD_STARTED,
                     )
-                    waiting_queue.append(
-                        _production_split_item(
-                            req,
-                            split,
-                            waiting_since=(queue_event or {}).get("changed_at") or split.updated_at,
-                        )
+                    split_queue_item = _production_split_item(
+                        req,
+                        split,
+                        waiting_since=(queue_event or {}).get("changed_at") or split.updated_at,
                     )
+                    split_queued_machine = _queued_machine_for_split(split)
+                    if split_queued_machine and split_queued_machine in machine_queue_rows:
+                        machine_queue_rows[split_queued_machine].append(split_queue_item)
+                    else:
+                        waiting_queue.append(split_queue_item)
 
                 split_machine = _split_current_machine(split)
                 if split.status == RequisitionStatus.EM_PRODUCAO and split_machine in machine_rows:
@@ -1787,12 +1844,18 @@ def _build_production_summary(
                 _PROD_RETURNED_QUEUE,
                 _PROD_SEND,
             )
-            waiting_queue.append(
-                _production_item(
-                    req,
-                    waiting_since=queue_event["changed_at"] if queue_event else None,
-                )
+            queue_item = _production_item(
+                req,
+                waiting_since=queue_event["changed_at"] if queue_event else None,
             )
+            if req.status == RequisitionStatus.AGUARDANDO_NA_FILA:
+                target_machine = _queued_machine_for_req(req)
+                if target_machine and target_machine in machine_queue_rows:
+                    machine_queue_rows[target_machine].append(queue_item)
+                else:
+                    waiting_queue.append(queue_item)
+            else:
+                waiting_queue.append(queue_item)
 
         if req.status == RequisitionStatus.EM_PRODUCAO and current_machine in machine_rows:
             started_event = _latest_production_event(req, _PROD_STARTED, _PROD_RECEIVED)
@@ -1815,12 +1878,15 @@ def _build_production_summary(
 
     waiting_receipt.sort(key=lambda item: _production_sort_anchor(item, "waiting_since"))
     waiting_queue.sort(key=lambda item: _production_sort_anchor(item, "waiting_since"))
+    for q in machine_queue_rows.values():
+        q.sort(key=lambda item: _production_sort_anchor(item, "waiting_since"))
 
     machine_cards: list[ProductionMachineCardResponse] = []
     for machine in machines:
         machine_name = _normalize_machine_name(machine.name)
         rows = machine_rows.get(machine_name, [])
         rows.sort(key=lambda item: _production_sort_anchor(item, "production_started_at"))
+        queue_rows_for_machine = machine_queue_rows.get(machine_name, [])
         finished_cycles = machine_cycles.get(machine_name, [])
         average_seconds = None
         if finished_cycles:
@@ -1854,6 +1920,7 @@ def _build_production_summary(
                 finalized_count=len(finished_cycles),
                 average_seconds=average_seconds,
                 rows=rows,
+                queue_rows=queue_rows_for_machine,
             )
         )
 
@@ -1862,7 +1929,7 @@ def _build_production_summary(
         destination=normalized_destination,
         stats=ProductionSummaryStatsResponse(
             aguardando_recebimento=len(waiting_receipt),
-            aguardando_na_fila=len(waiting_queue),
+            aguardando_na_fila=len(waiting_queue) + sum(len(card.queue_rows) for card in machine_cards),
             em_producao=sum(len(card.rows) for card in machine_cards),
         ),
         waiting_receipt=waiting_receipt,
@@ -4503,8 +4570,10 @@ def update_status(
             prod.get("target") or req.production_destination or ""
         )
         bypass_fifo = bool(prod.get("transfer"))
-        if action == _PROD_RECEIVED:
-            machine_name = _normalize_machine_name(prod.get("machine"))
+        if action in (_PROD_RECEIVED, _PROD_QUEUED):
+            machine_name = _normalize_machine_name(prod.get("machine") or "")
+            if not machine_name and action == _PROD_RECEIVED:
+                machine_name = _normalize_machine_name(req.production_machine or "")
             if machine_name:
                 _ensure_machine_accepts_production(db, normalized_destination, machine_name)
         _apply_production_transition(req, data)
