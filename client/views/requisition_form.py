@@ -2370,6 +2370,7 @@ class RequisitionForm(QWidget):
         s = self.scale
         wrapper = QWidget()
         wrapper.setStyleSheet("background:transparent; border:none;")
+        wrapper.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         row = QHBoxLayout(wrapper)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(max(10, int(12 * s)))
@@ -2382,6 +2383,7 @@ class RequisitionForm(QWidget):
 
         self.item_table = ItemTable(s)
         self.item_table.product_lookup_requested.connect(self._lookup_product_by_code)
+        self.item_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         items_layout.addWidget(self.item_table)
         row.addWidget(items_card, 2)
 
@@ -2407,7 +2409,8 @@ class RequisitionForm(QWidget):
         self.lbl_preview_hint = lbl_preview_hint
 
         self.canvas_preview = CanvasPreview(s)
-        preview_layout.addWidget(self.canvas_preview, 1)
+        self.canvas_preview.setMaximumHeight(max(300, int(340 * s)))
+        preview_layout.addWidget(self.canvas_preview)
 
         self.lbl_canvas_info = QLabel("Nenhum desenho salvo ainda.")
         self.lbl_canvas_info.setWordWrap(True)
