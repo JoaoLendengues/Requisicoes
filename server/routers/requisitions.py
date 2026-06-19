@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import func, or_, text
+from sqlalchemy import and_, func, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
@@ -3985,17 +3985,30 @@ def get_production_summary(
     normalized_destination = _canonical_destination(destination)
     _ensure_destination_access(current_user, normalized_destination)
 
-    # Filtros SQL: visibilidade por role + destination (direto ou via splits).
-    # Reqs com production_destination diferente OU sem splits para esse destino
-    # nao precisam ser carregadas ”” eram filtradas em Python depois.
+    # Apenas splits ativos (em_producao ou aguardando_na_fila) para este destino.
+    # Incluir splits finalizados/cancelados traria reqs já encerradas desnecessariamente,
+    # inflando o payload e o tempo de resposta conforme o histórico cresce.
+    _active_split_statuses = [
+        RequisitionStatus.EM_PRODUCAO,
+        RequisitionStatus.AGUARDANDO_NA_FILA,
+    ]
     split_req_ids = db.query(RequisitionProductionSplit.requisition_id).filter(
-        RequisitionProductionSplit.destination == normalized_destination
+        RequisitionProductionSplit.destination == normalized_destination,
+        RequisitionProductionSplit.status.in_(_active_split_statuses),
     )
+    _active_req_statuses = [
+        RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+        RequisitionStatus.AGUARDANDO_NA_FILA,
+        RequisitionStatus.EM_PRODUCAO,
+    ]
     q = db.query(Requisition).options(*_LIST_LOAD_OPTS)
     q = _visibility_filter_sql(q, current_user)
     q = q.filter(
         or_(
-            Requisition.production_destination == normalized_destination,
+            and_(
+                Requisition.production_destination == normalized_destination,
+                Requisition.status.in_(_active_req_statuses),
+            ),
             Requisition.id.in_(split_req_ids),
         )
     )
