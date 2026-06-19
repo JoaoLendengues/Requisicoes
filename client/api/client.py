@@ -462,39 +462,6 @@ def mark_delivery_delivered(req_id: int) -> dict:
         return _check(client.patch(f"/requisitions/{req_id}/mark-delivered"))
 
 
-# ── Entregas Avulsas ──────────────────────────────────────────────────────────
-
-def create_avulse_delivery(
-    client_id: int,
-    vendor_id: int,
-    delivery_date: str,
-    description: str | None = None,
-    weight: float | None = None,
-) -> dict:
-    payload: dict = {"client_id": client_id, "vendor_id": vendor_id, "delivery_date": delivery_date}
-    if description:
-        payload["description"] = description
-    if weight is not None:
-        payload["weight"] = weight
-    with _cli() as client:
-        return _check(client.post("/avulse-deliveries/", json=payload))
-
-
-def list_avulse_deliveries() -> list:
-    with _cli() as client:
-        return _check(client.get("/avulse-deliveries/"))
-
-
-def mark_avulse_delivered(avulse_id: int) -> dict:
-    with _cli() as client:
-        return _check(client.patch(f"/avulse-deliveries/{avulse_id}/mark-delivered"))
-
-
-def cancel_avulse_delivery(avulse_id: int, reason: str) -> dict:
-    with _cli() as client:
-        return _check(client.patch(f"/avulse-deliveries/{avulse_id}/cancel", json={"reason": reason}))
-
-
 def mark_split_delivery_delivered(split_id: int) -> dict:
     with _cli() as client:
         return _check(client.patch(f"/requisitions/production-splits/{split_id}/mark-delivered"))

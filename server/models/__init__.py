@@ -14,4 +14,3 @@ from .production_machine import ProductionMachine, MachineOperationalStatus
 from .operator import Operator, OperatorRole
 from .feedback import Feedback, FeedbackReaction, FeedbackRead, FeedbackCategory, FeedbackStatus
 from .audit import AuditLog, LoginAttempt
-from .avulse_delivery import AvulseDelivery
