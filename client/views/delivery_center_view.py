@@ -1632,13 +1632,15 @@ class DeliveryCenterView(QWidget):
         def _on_vendors_loaded(users):
             vendor_combo.clear()
             vendor_combo.addItem("Selecione o vendedor...", None)
-            for u in users:
-                if not isinstance(u, dict):
-                    continue
-                role = str(u.get("role") or "").lower()
-                if role in ("vendedor", "gerente"):
-                    label = str(u.get("name") or u.get("code") or f"id:{u.get('id')}")
-                    vendor_combo.addItem(label, u.get("id"))
+            filtered = [
+                u for u in users
+                if isinstance(u, dict)
+                and str(u.get("role") or "").lower() in ("vendedor", "gerente")
+            ]
+            filtered.sort(key=lambda u: str(u.get("name") or u.get("code") or "").lower())
+            for u in filtered:
+                label = str(u.get("name") or u.get("code") or f"id:{u.get('id')}")
+                vendor_combo.addItem(label, u.get("id"))
             vendor_combo.setEnabled(True)
 
         t_v, w_v = _run_in_thread(
