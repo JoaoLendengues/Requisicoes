@@ -1567,6 +1567,8 @@ class DeliveryCenterView(QWidget):
         ped_input.setPlaceholderText("Ex: 1234")
         ped_input.setFixedHeight(max(34, int(38 * s)))
         ped_input.setStyleSheet(theme.input_style(s))
+        from PySide6.QtGui import QIntValidator
+        ped_input.setValidator(QIntValidator(1, 999999999, ped_input))
         layout.addWidget(ped_input)
         layout.addSpacing(field_gap)
 
