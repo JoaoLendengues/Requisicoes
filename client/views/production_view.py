@@ -1173,9 +1173,13 @@ class ProductionView(QWidget):
             card_data = self._build_machine_card(machine)
             self._machine_cards[machine_id] = card_data
 
-        card_widget = self._machine_cards[machine_id]["card"]
+        card_data = self._machine_cards[machine_id]
+        card_widget = card_data["card"]
         self._mc_layout.addWidget(card_widget)
         card_widget.show()
+        # Garante que as tabelas internas sejam construídas (eram lazy no acordeão)
+        self._ensure_machine_queue_table_built(card_data)
+        self._ensure_machine_table_built(card_data)
 
     def _build_machine_card(self, machine: dict) -> dict:
         """Constrói o painel de conteúdo de uma máquina (seletor horizontal —
