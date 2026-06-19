@@ -1340,9 +1340,9 @@ class ProductionView(QWidget):
         status_row.addWidget(status_button)
         content_layout.addLayout(status_row)
 
-        # Linha de ações (Abrir, Desenv, Finalizar / Enviar para Máquina, Alterar Prazo, Cancelar)
-        actions = QHBoxLayout()
-        actions.setSpacing(max(8, int(10 * s)))
+        # Ações — opção A: linha 1 = ações de produção, linha 2 = gestão + cancelar
+        sp = max(8, int(10 * s))
+        h = max(34, int(38 * s))
         btn_open = QPushButton("Abrir")
         btn_development = QPushButton("Iniciar Produção")
         btn_finish = QPushButton("Finalizar")
@@ -1350,7 +1350,7 @@ class ProductionView(QWidget):
         btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
         for btn in (btn_open, btn_development, btn_finish, btn_forward_machine, btn_prazo, btn_cancel):
-            btn.setFixedHeight(max(34, int(38 * s)))
+            btn.setFixedHeight(h)
         btn_open.setProperty("productionBtn", "secondary")
         btn_development.setProperty("productionBtn", "secondary")
         btn_finish.setProperty("productionBtn", "primary")
@@ -1376,16 +1376,27 @@ class ProductionView(QWidget):
         btn_forward_machine.clicked.connect(lambda: self._forward_selected_machine(machine_id))
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(machine_id))
         btn_cancel.clicked.connect(lambda: self._return_selected_machine_to_queue(machine_id))
-        actions.addWidget(btn_open)
-        actions.addWidget(btn_development)
-        forward_col = QVBoxLayout()
-        forward_col.setSpacing(max(6, int(8 * s)))
-        forward_col.addWidget(btn_finish)
-        forward_col.addWidget(btn_forward_machine)
-        actions.addLayout(forward_col)
-        actions.addWidget(btn_prazo)
-        actions.addWidget(btn_cancel)
-        content_layout.addLayout(actions)
+
+        actions_layout = QVBoxLayout()
+        actions_layout.setSpacing(max(5, int(6 * s)))
+
+        row_primary = QHBoxLayout()
+        row_primary.setSpacing(sp)
+        row_primary.addWidget(btn_development)
+        row_primary.addWidget(btn_finish)
+        row_primary.addWidget(btn_forward_machine)
+        row_primary.addStretch(1)
+
+        row_secondary = QHBoxLayout()
+        row_secondary.setSpacing(sp)
+        row_secondary.addWidget(btn_open)
+        row_secondary.addWidget(btn_prazo)
+        row_secondary.addStretch(1)
+        row_secondary.addWidget(btn_cancel)
+
+        actions_layout.addLayout(row_primary)
+        actions_layout.addLayout(row_secondary)
+        content_layout.addLayout(actions_layout)
 
         # ====== SEÇÃO: Aguardando na Fila (LAZY queue table) ======
         sep_fila_label = QLabel("⏳ Aguardando na Fila")
