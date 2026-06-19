@@ -828,20 +828,28 @@ class MainWindow(QMainWindow):
         self.sidebar.set_feedback_unread_count(count)
 
     def _show_notification_panel(self):
-        thread, worker = _run_in_thread(
-            api.list_notifications,
-            on_result=self._open_notification_drawer,
-            on_error=lambda msg: QMessageBox.warning(self, "Erro", msg),
-        )
-        self._track_thread(thread, worker)
-
-    def _open_notification_drawer(self, notifications: list):
-        drawer = NotificationDrawer(notifications, self._central)
+        # Abre o drawer imediatamente (vazio) para feedback instantâneo,
+        # depois popula quando a rede responder.
+        drawer = NotificationDrawer([], self._central)
         drawer.mark_all_requested.connect(self._mark_all_read)
         drawer.open_req_requested.connect(self._open_requisition)
         drawer.mark_one_requested.connect(self._mark_one_read)
         drawer.delete_requested.connect(self._delete_notification)
         drawer.open_drawer()
+        self._active_drawer = drawer
+
+        thread, worker = _run_in_thread(
+            api.list_notifications,
+            on_result=self._populate_notification_drawer,
+            on_error=lambda msg: None,
+        )
+        self._track_thread(thread, worker)
+
+    def _populate_notification_drawer(self, notifications: list):
+        drawer = getattr(self, "_active_drawer", None)
+        if drawer is None:
+            return
+        drawer.populate(notifications)
 
     def _mark_all_read(self):
         thread, worker = _run_in_thread(

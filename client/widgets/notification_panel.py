@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, QTimer, Qt, Signal
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import (
     QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
@@ -335,13 +335,32 @@ class NotificationDrawer(QWidget):
         vlay.addWidget(empty)
         self._empty_widget = empty
 
-        for n in self._notifications:
+        # Constrói os primeiros _EAGER_CARDS imediatamente (visíveis na abertura).
+        # Os restantes são adicionados via QTimer após a animação, sem travar a UI.
+        _EAGER_CARDS = 15
+        eager = self._notifications[:_EAGER_CARDS]
+        deferred = self._notifications[_EAGER_CARDS:]
+        for n in eager:
             card = self._make_card(n)
             vlay.addWidget(card)
 
         vlay.addStretch()
         scroll.setWidget(container)
         root.addWidget(scroll, 1)
+
+        if deferred:
+            QTimer.singleShot(ANIM_MS + 50, lambda: self._build_deferred_cards(deferred))
+
+    def _build_deferred_cards(self, notifications: list) -> None:
+        if self._list_layout is None or self._closing:
+            return
+        # Remove o stretch final, adiciona cards, recoloca o stretch
+        stretch_item = self._list_layout.takeAt(self._list_layout.count() - 1)
+        for n in notifications:
+            card = self._make_card(n)
+            self._list_layout.addWidget(card)
+        if stretch_item is not None:
+            self._list_layout.addItem(stretch_item)
 
     def _make_empty_widget(self) -> QWidget:
         wrapper = QWidget()
@@ -587,6 +606,33 @@ class NotificationDrawer(QWidget):
         if unread:
             return f"{unread} não lida{'s' if unread != 1 else ''} · {total} no histórico"
         return f"{total} notificação{'ões' if total != 1 else ''} no histórico"
+
+    def populate(self, notifications: list) -> None:
+        """Popula o drawer com notificações chegadas após a abertura (lazy load)."""
+        if self._closing or self._list_layout is None:
+            return
+        self._notifications = list(notifications)
+
+        # Remove todos os widgets do layout (exceto o empty e o stretch)
+        while self._list_layout.count() > 1:
+            item = self._list_layout.takeAt(1)
+            if (w := item.widget()):
+                w.deleteLater()
+
+        if self._empty_widget:
+            self._empty_widget.setVisible(not self._notifications)
+
+        _EAGER_CARDS = 15
+        eager = self._notifications[:_EAGER_CARDS]
+        deferred = self._notifications[_EAGER_CARDS:]
+        for n in eager:
+            card = self._make_card(n)
+            self._list_layout.addWidget(card)
+
+        if deferred:
+            QTimer.singleShot(ANIM_MS + 50, lambda: self._build_deferred_cards(deferred))
+
+        self._refresh_header_footer()
 
     def _refresh_header_footer(self):
         unread = self._unread_count()
