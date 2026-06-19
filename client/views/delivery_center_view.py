@@ -1622,7 +1622,6 @@ class DeliveryCenterView(QWidget):
         date_sec_layout = QVBoxLayout(date_section)
         date_sec_layout.setContentsMargins(0, 0, 0, 0)
         date_sec_layout.setSpacing(max(4, int(5 * s)))
-        date_sec_layout.setVisible(False)
         date_lbl = QLabel("Data de entrega:")
         date_lbl.setStyleSheet(
             f"background:transparent; font-size:{max(8, int(9 * s))}pt;"
