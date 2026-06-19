@@ -944,14 +944,14 @@ class ProductionView(QWidget):
         layout.addLayout(title_row)
         layout.addWidget(subtitle)
 
-        actions = QHBoxLayout()
-        actions.setSpacing(max(8, int(10 * s)))
+        sp = max(8, int(10 * s))
+        h_btn = max(34, int(38 * s))
         btn_open = QPushButton("Abrir")
         btn_primary = QPushButton(primary_text)
         btn_prazo = QPushButton("Alterar Prazo")
         btn_cancel = QPushButton("Cancelar")
         for btn in (btn_open, btn_primary, btn_prazo, btn_cancel):
-            btn.setFixedHeight(max(34, int(38 * s)))
+            btn.setFixedHeight(h_btn)
 
         btn_open.setStyleSheet(_flat_secondary_btn_style(s))
         btn_primary.setStyleSheet(_primary_action_btn_style(s))
@@ -963,11 +963,24 @@ class ProductionView(QWidget):
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_stage(stage))
         btn_cancel.clicked.connect(lambda: self._cancel_selected_stage(stage))
 
-        actions.addWidget(btn_open)
-        actions.addWidget(btn_primary)
-        actions.addWidget(btn_prazo)
-        actions.addWidget(btn_cancel)
-        layout.addLayout(actions)
+        actions_layout = QVBoxLayout()
+        actions_layout.setSpacing(max(5, int(6 * s)))
+
+        row_primary = QHBoxLayout()
+        row_primary.setSpacing(sp)
+        row_primary.addWidget(btn_primary)
+        row_primary.addStretch(1)
+
+        row_secondary = QHBoxLayout()
+        row_secondary.setSpacing(sp)
+        row_secondary.addWidget(btn_open)
+        row_secondary.addWidget(btn_prazo)
+        row_secondary.addStretch(1)
+        row_secondary.addWidget(btn_cancel)
+
+        actions_layout.addLayout(row_primary)
+        actions_layout.addLayout(row_secondary)
+        layout.addLayout(actions_layout)
 
         table = self._build_table(headers, stretch_columns={1, 2, 3})
         table.doubleClicked.connect(lambda index, current_stage=stage: self._open_stage_row(current_stage, index.row()))
@@ -1126,8 +1139,15 @@ class ProductionView(QWidget):
             machine_name = str(machine.get("name") or "").strip()
             if pending and machine_name.upper() == pending:
                 select_id = mid
+            prod_count = int(machine.get("quantity_in_production") or 0)
             queue_count = len([r for r in (machine.get("queue_rows") or []) if isinstance(r, dict)])
-            label = machine_name + (f"   ({queue_count} na fila)" if queue_count > 0 else "")
+            parts = []
+            if prod_count:
+                parts.append(f"{prod_count} em produção")
+            if queue_count:
+                parts.append(f"{queue_count} na fila")
+            suffix = f"   —   {'  |  '.join(parts)}" if parts else ""
+            label = machine_name + suffix
             if self._machine_combo is not None:
                 self._machine_combo.addItem(label, mid)
 
@@ -1255,16 +1275,32 @@ class ProductionView(QWidget):
         title.setStyleSheet(_machine_title_style(s))
         header_layout.addWidget(title)
         header_layout.addStretch(1)
-        summary_label = QLabel(
-            f"{status_text}{queue_part}  ·  {qty_in_prod} em produção  ·  {finalized} finalizadas"
-        )
+
         summary_fs = max(8, int(10 * s))
+        pill_radius = max(8, int(10 * s))
+        pill_px = max(6, int(8 * s))
+        pill_py = max(2, int(3 * s))
+
+        # Pill de status ("Funcionando" / "Manutenção")
+        summary_label = QLabel(status_text)
         summary_label.setStyleSheet(
-            f"background:transparent; color:{accent_color};"
-            f"font-size:{summary_fs}pt; font-weight:600;"
+            f"background:{_rgba(accent_color, 22)}; color:{accent_color};"
+            f"border:1px solid {_rgba(accent_color, 90)};"
+            f"border-radius:{pill_radius}px; padding:{pill_py}px {pill_px + 2}px;"
+            f"font-size:{summary_fs}pt; font-weight:700;"
         )
-        summary_label.setProperty("muted", "1")
         header_layout.addWidget(summary_label)
+
+        # Pill de fila (só aparece se houver reqs esperando)
+        if qty_queue > 0:
+            queue_pill = QLabel(f"{qty_queue} na fila")
+            queue_pill.setStyleSheet(
+                f"background:{_rgba(theme.WARNING, 22)}; color:{theme.WARNING};"
+                f"border:1px solid {_rgba(theme.WARNING, 90)};"
+                f"border-radius:{pill_radius}px; padding:{pill_py}px {pill_px}px;"
+                f"font-size:{summary_fs}pt; font-weight:700;"
+            )
+            header_layout.addWidget(queue_pill)
         card_layout.addWidget(header_frame)
 
         # ====== CONTENT (sempre visível — não é mais acordeão) ======
