@@ -3991,7 +3991,7 @@ def get_production_summary(
     split_req_ids = db.query(RequisitionProductionSplit.requisition_id).filter(
         RequisitionProductionSplit.destination == normalized_destination
     )
-    q = db.query(Requisition).options(*_LOAD_OPTS)
+    q = db.query(Requisition).options(*_LIST_LOAD_OPTS)
     q = _visibility_filter_sql(q, current_user)
     q = q.filter(
         or_(
