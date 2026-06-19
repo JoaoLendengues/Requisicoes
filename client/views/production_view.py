@@ -1141,13 +1141,7 @@ class ProductionView(QWidget):
                 select_id = mid
             prod_count = int(machine.get("quantity_in_production") or 0)
             queue_count = len([r for r in (machine.get("queue_rows") or []) if isinstance(r, dict)])
-            parts = []
-            if prod_count:
-                parts.append(f"{prod_count} em produção")
-            if queue_count:
-                parts.append(f"{queue_count} na fila")
-            suffix = f"   —   {'  |  '.join(parts)}" if parts else ""
-            label = machine_name + suffix
+            label = f"{machine_name}   —   {prod_count} em produção  |  {queue_count} na fila"
             if self._machine_combo is not None:
                 self._machine_combo.addItem(label, mid)
 
