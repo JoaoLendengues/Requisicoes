@@ -4606,9 +4606,9 @@ class DrawingCanvas(QWidget):
         pair_extra.setContentsMargins(0, 0, 0, 0)
         pair_extra.setSpacing(4)
         pair_extra.addWidget(self.btn_attachments, 1)
+        pair_extra.addWidget(self.btn_dim, 1)
         self._actions_layout.addLayout(pair_extra)
 
-        self._actions_layout.addWidget(self.btn_dim)
         self._actions_layout.addWidget(self._btn_clear)
 
     def _rebuild_toolbar_sections_for_classic(self) -> None:
