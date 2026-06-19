@@ -141,13 +141,6 @@ class DeliveryDateUpdate(BaseModel):
 class DeliveryDateSchedule(BaseModel):
     delivery_date: date
 
-    @field_validator("reason")
-    @classmethod
-    def validate_reason(cls, value: str) -> str:
-        if len(value.strip()) < 5:
-            raise ValueError("Informe um motivo com pelo menos 5 caracteres")
-        return value
-
 
 class DeliveryCancellationUpdate(BaseModel):
     reason: str

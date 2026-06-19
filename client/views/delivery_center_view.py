@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -39,7 +40,7 @@ from ..core.datetime_utils import (
 )
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..widgets.sortable_item import SortableItem
-from .requisition_form import _run_in_thread
+from .requisition_form import _run_in_thread, ClientSearchBox
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -1522,11 +1523,12 @@ class DeliveryCenterView(QWidget):
             self._render_schedule()
 
     def _open_create_delivery_dialog(self) -> None:
+        from PySide6.QtCore import QDate
         s = self.scale
         dlg = QDialog(self)
         dlg.setWindowTitle("Agendar Nova Entrega")
         dlg.setModal(True)
-        dlg.setMinimumWidth(max(400, int(440 * s)))
+        dlg.setMinimumWidth(max(400, int(460 * s)))
         dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         dlg.setStyleSheet(
             f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
@@ -1535,9 +1537,9 @@ class DeliveryCenterView(QWidget):
         )
 
         layout = QVBoxLayout(dlg)
-        layout.setContentsMargins(max(16, int(20 * s)), max(16, int(20 * s)),
-                                  max(16, int(20 * s)), max(16, int(20 * s)))
-        layout.setSpacing(max(10, int(12 * s)))
+        pad = max(16, int(20 * s))
+        layout.setContentsMargins(pad, pad, pad, pad)
+        layout.setSpacing(max(4, int(5 * s)))
 
         hdr = QLabel("Agendar Nova Entrega")
         hdr.setStyleSheet(
@@ -1545,88 +1547,53 @@ class DeliveryCenterView(QWidget):
         )
         layout.addWidget(hdr)
 
-        sub = QLabel("Digite o numero do pedido para buscar os dados da requisicao.")
-        sub.setWordWrap(True)
-        sub.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_MEDIUM};"
-        )
-        layout.addWidget(sub)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"background:{theme.TEXT_MEDIUM}; max-height:1px; margin:4px 0;")
+        layout.addWidget(sep)
+        layout.addSpacing(max(4, int(6 * s)))
 
-        # PED input row
-        ped_row = QHBoxLayout()
-        ped_row.setSpacing(max(6, int(8 * s)))
-        ped_input = QComboBox()
-        ped_input.setEditable(True)
+        lbl_style = (
+            f"background:transparent; font-size:{max(8, int(9 * s))}pt;"
+            f" font-weight:600; color:{theme.TEXT_MEDIUM};"
+        )
+        field_gap = max(10, int(12 * s))
+
+        # ── Pedido ────────────────────────────────────────────────────────────
+        lbl_ped = QLabel("Número do Pedido")
+        lbl_ped.setStyleSheet(lbl_style)
+        layout.addWidget(lbl_ped)
+        ped_input = QLineEdit()
+        ped_input.setPlaceholderText("Ex: 1234")
         ped_input.setFixedHeight(max(34, int(38 * s)))
         ped_input.setStyleSheet(theme.input_style(s))
-        ped_input.setPlaceholderText("Ex: 1234")
-        btn_search = QPushButton("BUSCAR")
-        btn_search.setFixedHeight(max(34, int(38 * s)))
-        btn_search.setStyleSheet(theme.secondary_btn_style(s))
-        ped_row.addWidget(ped_input, 1)
-        ped_row.addWidget(btn_search)
-        layout.addLayout(ped_row)
+        layout.addWidget(ped_input)
+        layout.addSpacing(field_gap)
 
-        status_lbl = QLabel("")
-        status_lbl.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_MEDIUM};"
-        )
-        status_lbl.setVisible(False)
-        layout.addWidget(status_lbl)
+        # ── Cliente (ClientSearchBox) ─────────────────────────────────────────
+        lbl_client = QLabel("Cliente")
+        lbl_client.setStyleSheet(lbl_style)
+        layout.addWidget(lbl_client)
+        client_box = ClientSearchBox(s, dlg)
+        layout.addWidget(client_box)
+        layout.addSpacing(field_gap)
 
-        # Result panel (hidden until search)
-        result_frame = QFrame()
-        result_frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        result_frame.setStyleSheet(
-            f"QFrame {{ background:{_rgba(theme.PRIMARY, 12)};"
-            f"border:1px solid {_rgba(theme.PRIMARY, 50)}; border-radius:{max(8, int(10 * s))}px; }}"
-        )
-        result_layout = QVBoxLayout(result_frame)
-        result_layout.setContentsMargins(max(10, int(12 * s)), max(8, int(10 * s)),
-                                         max(10, int(12 * s)), max(8, int(10 * s)))
-        result_layout.setSpacing(max(4, int(6 * s)))
-        result_frame.setVisible(False)
+        # ── Vendedor ──────────────────────────────────────────────────────────
+        lbl_vendor = QLabel("Vendedor")
+        lbl_vendor.setStyleSheet(lbl_style)
+        layout.addWidget(lbl_vendor)
+        vendor_combo = QComboBox()
+        vendor_combo.setFixedHeight(max(34, int(38 * s)))
+        vendor_combo.setStyleSheet(theme.input_style(s))
+        vendor_combo.addItem("Carregando vendedores...", None)
+        vendor_combo.setEnabled(False)
+        layout.addWidget(vendor_combo)
+        layout.addSpacing(field_gap)
 
-        result_ped_lbl = QLabel()
-        result_ped_lbl.setStyleSheet(
-            f"background:transparent; font-weight:700; font-size:{max(9, int(11 * s))}pt;"
-        )
-        result_layout.addWidget(result_ped_lbl)
-
-        result_fields_row = QHBoxLayout()
-        result_fields_row.setSpacing(max(16, int(20 * s)))
-        result_field_labels: dict[str, QLabel] = {}
-        for fkey in ["Cliente", "Vendedor", "Status"]:
-            fc = QVBoxLayout()
-            fc.setSpacing(1)
-            fl = QLabel(fkey)
-            fl.setStyleSheet(
-                f"background:transparent; font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM};"
-            )
-            fv = QLabel("-")
-            fv.setStyleSheet(
-                f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
-            )
-            fc.addWidget(fl)
-            fc.addWidget(fv)
-            result_fields_row.addLayout(fc)
-            result_field_labels[fkey] = fv
-        result_fields_row.addStretch()
-        result_layout.addLayout(result_fields_row)
-        layout.addWidget(result_frame)
-
-        # Date picker (hidden until result shown)
-        date_section = QFrame()
-        date_section.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        date_section.setStyleSheet("QFrame { background:transparent; border:none; }")
-        date_sec_layout = QVBoxLayout(date_section)
-        date_sec_layout.setContentsMargins(0, 0, 0, 0)
-        date_sec_layout.setSpacing(max(4, int(5 * s)))
-        date_lbl = QLabel("Data de entrega:")
-        date_lbl.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt;"
-        )
-        from PySide6.QtCore import QDate
+        # ── Data de entrega ───────────────────────────────────────────────────
+        lbl_date = QLabel("Data de Entrega")
+        lbl_date.setStyleSheet(lbl_style)
+        layout.addWidget(lbl_date)
         date_edit = QDateEdit()
         date_edit.setDisplayFormat("dd/MM/yyyy")
         date_edit.setCalendarPopup(True)
@@ -1634,22 +1601,20 @@ class DeliveryCenterView(QWidget):
         date_edit.setStyleSheet(theme.input_style(s))
         date_edit.setDate(QDate.currentDate())
         date_edit.setMinimumDate(QDate.currentDate())
-        date_sec_layout.addWidget(date_lbl)
-        date_sec_layout.addWidget(date_edit)
-        layout.addWidget(date_section)
-        date_section.setVisible(False)
+        layout.addWidget(date_edit)
 
+        # ── Erro e espaço ─────────────────────────────────────────────────────
         error_lbl = QLabel("")
         error_lbl.setWordWrap(True)
         error_lbl.setStyleSheet(
             f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * s))}pt;"
         )
         error_lbl.setVisible(False)
+        layout.addSpacing(max(4, int(6 * s)))
         layout.addWidget(error_lbl)
-
         layout.addStretch()
 
-        # Buttons
+        # ── Botões ────────────────────────────────────────────────────────────
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_cancel = QPushButton("Cancelar")
@@ -1657,109 +1622,120 @@ class DeliveryCenterView(QWidget):
         btn_cancel.clicked.connect(dlg.reject)
         btn_ok = QPushButton("AGENDAR")
         btn_ok.setStyleSheet(theme.primary_btn_style(s))
-        btn_ok.setEnabled(False)
         btn_row.addWidget(btn_cancel)
         btn_row.addWidget(btn_ok)
         layout.addLayout(btn_row)
 
-        # State
-        _found_row: list[dict] = [{}]
+        # ── Carregar vendedores ───────────────────────────────────────────────
+        def _on_vendors_loaded(users):
+            vendor_combo.clear()
+            vendor_combo.addItem("Selecione o vendedor...", None)
+            for u in users:
+                if not isinstance(u, dict):
+                    continue
+                role = str(u.get("role") or "").lower()
+                if role in ("vendedor", "admin", "gerente"):
+                    label = str(u.get("name") or u.get("code") or f"id:{u.get('id')}")
+                    vendor_combo.addItem(label, u.get("id"))
+            vendor_combo.setEnabled(True)
 
-        def _do_search():
-            ped_text = str(ped_input.currentText() or "").strip()
-            if not ped_text:
-                return
-            btn_search.setEnabled(False)
-            status_lbl.setText("Buscando...")
-            status_lbl.setVisible(True)
-            result_frame.setVisible(False)
-            date_section.setVisible(False)
-            btn_ok.setEnabled(False)
-            error_lbl.setVisible(False)
+        t_v, w_v = _run_in_thread(
+            api.list_users,
+            on_result=_on_vendors_loaded,
+            on_error=lambda _: vendor_combo.setEnabled(True),
+        )
+        t_v.finished.connect(lambda t=t_v, w=w_v: self._cleanup_thread(t, w))
+        self._threads.append((t_v, w_v))
 
-            def _on_result(rows):
-                btn_search.setEnabled(True)
-                if not isinstance(rows, list) or not rows:
-                    status_lbl.setText("Nenhum pedido encontrado com esse numero.")
-                    return
-                # Prefer exact match on ped_number prefix
-                matched = next(
-                    (r for r in rows if str(r.get("ped_number") or "").split("/")[0] == ped_text),
-                    rows[0],
-                )
-                _found_row[0] = matched
-                ped_num = str(matched.get("ped_number") or "-")
-                result_ped_lbl.setText(f"Pedido #{ped_num}")
-                result_field_labels["Cliente"].setText(str(matched.get("client_name") or "-"))
-                result_field_labels["Vendedor"].setText(str(matched.get("vendor_name") or "-"))
-                status_val = str(matched.get("status") or "")
-                result_field_labels["Status"].setText(
-                    theme.STATUS_LABELS.get(status_val, status_val or "-")
-                )
-                existing_date = matched.get("delivery_date")
-                if existing_date:
-                    from PySide6.QtCore import QDate as _QD
-                    qd = _QD.fromString(str(existing_date)[:10], "yyyy-MM-dd")
-                    if qd.isValid():
-                        date_edit.setDate(qd)
-                status_lbl.setVisible(False)
-                result_frame.setVisible(True)
-                date_section.setVisible(True)
-                btn_ok.setEnabled(True)
-
-            def _on_error(msg):
-                btn_search.setEnabled(True)
-                status_lbl.setText(f"Erro ao buscar: {msg}")
-
-            thread, worker = _run_in_thread(
-                api.lookup_requisitions_by_ped,
-                ped_text,
-                on_result=_on_result,
-                on_error=_on_error,
-            )
-            thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
-            self._threads.append((thread, worker))
-
+        # ── Agendar ───────────────────────────────────────────────────────────
         def _do_schedule():
-            row = _found_row[0]
-            if not row:
-                return
-            req_id = int(row.get("id") or row.get("source_requisition_id") or 0)
-            if not req_id:
-                error_lbl.setText("Nao foi possivel identificar o ID da requisicao.")
+            ped = ped_input.text().strip()
+            if not ped:
+                error_lbl.setText("Informe o numero do pedido.")
                 error_lbl.setVisible(True)
                 return
+            if not client_box.get_selected():
+                error_lbl.setText("Selecione um cliente na lista de sugestoes.")
+                error_lbl.setVisible(True)
+                return
+            vendor_id = vendor_combo.currentData()
+            if not vendor_id:
+                error_lbl.setText("Selecione um vendedor.")
+                error_lbl.setVisible(True)
+                return
+
             new_date = date_edit.date().toString("yyyy-MM-dd")
             btn_ok.setEnabled(False)
             btn_cancel.setEnabled(False)
             error_lbl.setVisible(False)
 
-            def _on_ok(_result):
-                QMessageBox.information(
-                    self, "Entregas",
-                    "Entrega agendada com sucesso. Vendedor notificado.",
+            def _on_rows(rows):
+                if not isinstance(rows, list) or not rows:
+                    btn_ok.setEnabled(True)
+                    btn_cancel.setEnabled(True)
+                    error_lbl.setText("Pedido nao encontrado.")
+                    error_lbl.setVisible(True)
+                    return
+                matched = next(
+                    (r for r in rows if str(r.get("ped_number") or "").split("/")[0] == ped),
+                    None,
                 )
-                dlg.accept()
-                self.refresh()
+                if not matched:
+                    btn_ok.setEnabled(True)
+                    btn_cancel.setEnabled(True)
+                    error_lbl.setText(f"Nenhum pedido com o numero {ped} encontrado.")
+                    error_lbl.setVisible(True)
+                    return
+                req_id = int(
+                    matched.get("id")
+                    or matched.get("source_requisition_id")
+                    or 0
+                )
+                if not req_id:
+                    btn_ok.setEnabled(True)
+                    btn_cancel.setEnabled(True)
+                    error_lbl.setText("Nao foi possivel identificar o ID da requisicao.")
+                    error_lbl.setVisible(True)
+                    return
 
-            def _on_err(msg):
+                def _on_ok(_):
+                    QMessageBox.information(
+                        self, "Entregas",
+                        "Entrega agendada com sucesso. Vendedor notificado.",
+                    )
+                    dlg.accept()
+                    self.refresh()
+
+                def _on_err(msg):
+                    btn_ok.setEnabled(True)
+                    btn_cancel.setEnabled(True)
+                    error_lbl.setText(msg)
+                    error_lbl.setVisible(True)
+
+                t2, w2 = _run_in_thread(
+                    api.schedule_delivery, req_id, new_date,
+                    on_result=_on_ok,
+                    on_error=_on_err,
+                )
+                t2.finished.connect(lambda t=t2, w=w2: self._cleanup_thread(t, w))
+                self._threads.append((t2, w2))
+
+            def _on_search_err(msg):
                 btn_ok.setEnabled(True)
                 btn_cancel.setEnabled(True)
-                error_lbl.setText(msg)
+                error_lbl.setText(f"Erro ao buscar pedido: {msg}")
                 error_lbl.setVisible(True)
 
-            thread, worker = _run_in_thread(
-                api.schedule_delivery,
-                req_id,
-                new_date,
-                on_result=_on_ok,
-                on_error=_on_err,
+            t1, w1 = _run_in_thread(
+                api.lookup_requisitions_by_ped, ped,
+                on_result=_on_rows,
+                on_error=_on_search_err,
             )
-            self._track_thread(thread, worker)
+            t1.finished.connect(lambda t=t1, w=w1: self._cleanup_thread(t, w))
+            self._threads.append((t1, w1))
 
-        btn_search.clicked.connect(_do_search)
-        ped_input.lineEdit().returnPressed.connect(_do_search)
         btn_ok.clicked.connect(_do_schedule)
+        ped_input.returnPressed.connect(_do_schedule)
 
         dlg.exec()
 
