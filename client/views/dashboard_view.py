@@ -1053,72 +1053,8 @@ class DashboardView(QWidget):
                 col,
             )
 
-        self.comparison_insights_card = self._build_section_card(
-            "RADAR COMPARATIVO DE PRODUCAO",
-            "Visao neon com comparativos mensal, semanal e diario de peso processado e volume de requisicoes por equipe.",
-            self._build_comparison_insights_body(),
-            theme.PRIMARY_HOVER,
-        )
-        layout.addWidget(self.comparison_insights_card)
-
-        secondary_row = QHBoxLayout()
-        secondary_row.setSpacing(max(12, int(16 * s)))
-        self.vendors_card = self._build_machine_section_card(
-            "VENDEDORES COM MAIS REQUISIÇÕES",
-            "Ranking por IAR, prazo, produtividade, cancelamentos e peso requerido no mesmo período e filtro de produção do KPI principal.",
-            self._build_top_vendors_table(),
-            theme.PRIMARY,
-            None,
-            "",
-        )
-        self.people_card = self._build_machine_section_card(
-            "OPERADORES E AJUDANTES COM MAIS PRODUÇÕES",
-            "Ranking por produções finalizadas e peso processado no período.",
-            self._build_top_people_body(),
-            theme.PRIMARY_HOVER,
-            "people_period_combo",
-            "30d",
-            "people_destination_combo",
-            self._production_filter_options,
-            "",
-        )
-        self.alerts_card = self._build_section_card(
-            "Pedidos sem Confirmação",
-            "Pedidos aguardando retorno da produção por mais de 1 hora.",
-            self._build_alerts_table(),
-            theme.WARNING,
-        )
-        secondary_row.addWidget(self.vendors_card, 1)
-        secondary_row.addWidget(self.alerts_card, 1)
-        layout.addLayout(secondary_row)
-        layout.addWidget(self.people_card)
-
-        self.machines_ar_card = self._build_machine_section_card(
-            "MÁQUINAS QUE MAIS OPERAM - A&R",
-            "Ranking das máquinas da A&R por produções concluídas e ocupação no expediente.",
-            self._build_top_machines_ar_table(),
-            theme.PRIMARY_HOVER,
-            "ar_period_combo",
-            "30d",
-        )
-        self.machines_industria_card = self._build_machine_section_card(
-            "MÁQUINAS QUE MAIS OPERAM - PINHEIRO INDÚSTRIA",
-            "Ranking das máquinas da Pinheiro Indústria por produções concluídas e ocupação no expediente.",
-            self._build_top_machines_industria_table(),
-            theme.PRIMARY,
-            "industria_period_combo",
-            "30d",
-        )
-        layout.addWidget(self.machines_ar_card)
-        layout.addWidget(self.machines_industria_card)
-
-        self.recent_card = self._build_section_card(
-            "Últimas Requisições",
-            "Visão rápida das requisições mais recentes do sistema.",
-            self._build_recent_table(),
-            theme.BORDER_COLOR,
-        )
-        layout.addWidget(self.recent_card)
+        self.radar_multi_panel_card = self._build_radar_multi_panel_card()
+        layout.addWidget(self.radar_multi_panel_card)
         layout.addStretch()
 
     def _build_iar_card(self) -> QFrame:
@@ -1429,6 +1365,348 @@ class DashboardView(QWidget):
         )
         return label
 
+    # ── Radar multi-panel ─────────────────────────────────────────────────────
+
+    _RADAR_PANEL_DEFS: list[tuple[str, str, str | None]] = [
+        ("destinos",        "Destinos de produção",                         None),
+        ("maq_prod",        "Produção por máquina",                         None),
+        ("vendedores_comp", "Vendedores",                                    None),
+        ("operadores",      "Operadores",                                    None),
+        ("ajudantes",       "Ajudantes",                                     None),
+        ("top_vendors",     "Vendedores com mais requisições",               None),
+        ("sem_conf",        "Pedidos sem confirmação",                       None),
+        ("top_pessoas",     "Operadores e ajudantes com mais produções",     "people"),
+        ("maq_ar",          "Máquinas que mais operam — A&R",               "ar"),
+        ("maq_ind",         "Máquinas que mais operam — Indústria",         "industria"),
+        ("recentes",        "Últimas requisições",                           None),
+    ]
+    _RADAR_DEFAULT_OPEN: frozenset[str] = frozenset({"destinos", "top_vendors", "recentes"})
+
+    def _build_radar_multi_panel_card(self) -> QFrame:
+        s = self.scale
+
+        card = _make_shadow_card(
+            s, theme.CARD_BG,
+            border_color=theme.PRIMARY_HOVER,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
+        root = QVBoxLayout(card)
+        root.setContentsMargins(
+            max(16, int(20 * s)), max(14, int(18 * s)),
+            max(16, int(20 * s)), max(14, int(18 * s)),
+        )
+        root.setSpacing(max(10, int(12 * s)))
+
+        accent = QFrame()
+        accent.setFixedHeight(max(4, int(5 * s)))
+        accent.setStyleSheet(
+            f"background:qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            f"stop:0 {_rgba(theme.PRIMARY_HOVER,235)},stop:0.5 {_rgba(theme.PRIMARY_HOVER,155)},stop:1 {_rgba(theme.PRIMARY_HOVER,235)});"
+            f"border:none;border-radius:{max(2,int(3*s))}px;"
+        )
+
+        title_label = QLabel("RADAR COMPARATIVO DE PRODUÇÃO")
+        theme.themed(title_label, lambda: (
+            f"font-size:{max(10,int(12*s))}pt;font-weight:800;background:transparent;"
+            f"color:{theme.PANEL_TEXT_PRIMARY};"
+        ))
+
+        subtitle_label = QLabel(
+            "Adicione as visões que desejar e analise múltiplas métricas ao mesmo tempo."
+        )
+        subtitle_label.setWordWrap(True)
+        theme.themed(subtitle_label, lambda: (
+            f"font-size:{max(7,int(8*s))}pt;background:transparent;color:{theme.PANEL_TEXT_MUTED};"
+        ))
+
+        # ── Toolbar ───────────────────────────────────────────────────────────
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(max(8, int(10 * s)))
+        toolbar.setContentsMargins(0, 0, 0, 0)
+
+        self._radar_add_combo = QComboBox()
+        self._radar_add_combo.setFixedHeight(max(34, int(38 * s)))
+        self._radar_add_combo.setMinimumWidth(max(280, int(340 * s)))
+        theme.themed(self._radar_add_combo, lambda: _field_style(s))
+
+        btn_add = QPushButton("+ Adicionar")
+        btn_add.setFixedHeight(max(34, int(38 * s)))
+        theme.themed(btn_add, lambda: _flat_secondary_btn_style(s))
+        btn_add.clicked.connect(self._on_radar_add_panel)
+
+        toolbar.addWidget(self._radar_add_combo)
+        toolbar.addWidget(btn_add)
+        toolbar.addStretch()
+
+        period_label = QLabel("PERÍODO:")
+        theme.themed(period_label, lambda: (
+            f"font-size:{max(8,int(9*s))}pt;font-weight:800;background:transparent;"
+            f"color:{theme.PANEL_TEXT_PRIMARY};"
+        ))
+        toolbar.addWidget(period_label)
+
+        for period_key in ("monthly", "weekly", "daily"):
+            btn = QPushButton(_NEON_PERIOD_LABELS[period_key])
+            btn.setCheckable(True)
+            btn.setChecked(period_key == self._comparison_period)
+            btn.setFixedHeight(max(32, int(36 * s)))
+            theme.themed(btn, lambda: _neon_period_chip_style(s))
+            btn.clicked.connect(
+                lambda checked=False, key=period_key: self._set_comparison_period(key)
+            )
+            self._comparison_period_buttons[period_key] = btn
+            toolbar.addWidget(btn)
+
+        dest_label = QLabel("PRODUÇÃO:")
+        theme.themed(dest_label, lambda: (
+            f"font-size:{max(8,int(9*s))}pt;font-weight:800;background:transparent;"
+            f"color:{theme.PANEL_TEXT_PRIMARY};"
+        ))
+        self.comparison_destination_combo = QComboBox()
+        self.comparison_destination_combo.setFixedHeight(max(34, int(38 * s)))
+        self.comparison_destination_combo.setMinimumWidth(max(160, int(200 * s)))
+        theme.themed(self.comparison_destination_combo, lambda: _field_style(s))
+        for lbl, val in self._production_filter_options:
+            self.comparison_destination_combo.addItem(lbl, val)
+        self.comparison_destination_combo.currentIndexChanged.connect(
+            self._on_comparison_filter_changed
+        )
+        toolbar.addWidget(dest_label)
+        toolbar.addWidget(self.comparison_destination_combo)
+
+        # ── Panel list (scrollable) ───────────────────────────────────────────
+        panel_scroll = SmoothScrollArea()
+        panel_scroll.setWidgetResizable(True)
+        panel_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        apply_smooth_scroll(panel_scroll)
+        theme.themed(panel_scroll, lambda: f"QScrollArea{{border:none;background:{theme.CARD_BG};}}")
+        theme.themed(panel_scroll.viewport(), lambda: f"background:{theme.CARD_BG};border:none;")
+
+        panel_container = QWidget()
+        panel_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        self._radar_panel_layout = QVBoxLayout(panel_container)
+        self._radar_panel_layout.setContentsMargins(0, max(4, int(6 * s)), 0, 0)
+        self._radar_panel_layout.setSpacing(max(12, int(16 * s)))
+
+        self._radar_panel_widgets: dict[str, QFrame] = {}
+        self._build_all_radar_panels()
+        self._radar_panel_layout.addStretch()
+
+        panel_scroll.setWidget(panel_container)
+
+        root.addWidget(accent)
+        root.addWidget(title_label)
+        root.addWidget(subtitle_label)
+        root.addLayout(toolbar)
+        root.addWidget(panel_scroll, 1)
+
+        self._refresh_radar_add_combo()
+        self._apply_comparison_period()
+        return card
+
+    def _build_all_radar_panels(self) -> None:
+        s = self.scale
+
+        # Criar NeonComparisonWidgets (preservados exatamente como antes)
+        self.production_destination_chart = NeonComparisonWidget(
+            "DESTINOS DE PRODUÇÃO",
+            "Peso finalizado por producao em cada recorte de tempo.",
+            s, mode="kg", max_rows=None,
+        )
+        self.production_machine_chart = NeonComparisonWidget(
+            "PRODUÇÃO POR MÁQUINA",
+            "Maquinas com maior numero de requisicoes e peso processado no periodo.",
+            s, mode="count_kg", max_rows=8,
+        )
+        self.vendor_comparison_chart = NeonComparisonWidget(
+            "VENDEDORES",
+            "Requisicoes emitidas e peso correspondente no periodo.",
+            s, mode="count_kg", max_rows=8,
+        )
+        self.operator_comparison_chart = NeonComparisonWidget(
+            "OPERADORES",
+            "Producoes finalizadas e peso processado por operador.",
+            s, mode="count_kg", max_rows=8,
+        )
+        self.helper_comparison_chart = NeonComparisonWidget(
+            "AJUDANTES",
+            "Producoes finalizadas e peso processado por ajudante.",
+            s, mode="count_kg", max_rows=8,
+        )
+        self._apply_comparison_period()
+
+        # Mapeia key → body widget
+        bodies: dict[str, QWidget] = {
+            "destinos":        self.production_destination_chart,
+            "maq_prod":        self.production_machine_chart,
+            "vendedores_comp": self.vendor_comparison_chart,
+            "operadores":      self.operator_comparison_chart,
+            "ajudantes":       self.helper_comparison_chart,
+            "top_vendors":     self._build_top_vendors_table(),
+            "sem_conf":        self._build_alerts_table(),
+            "top_pessoas":     self._build_top_people_body(),
+            "maq_ar":          self._build_top_machines_ar_table(),
+            "maq_ind":         self._build_top_machines_industria_table(),
+            "recentes":        self._build_recent_table(),
+        }
+
+        for key, label, combo_type in self._RADAR_PANEL_DEFS:
+            panel = self._make_radar_panel_frame(key, label, bodies[key], combo_type)
+            panel.setVisible(key in self._RADAR_DEFAULT_OPEN)
+            self._radar_panel_layout.addWidget(panel)
+            self._radar_panel_widgets[key] = panel
+
+    def _make_radar_panel_frame(
+        self,
+        key: str,
+        title: str,
+        body: QWidget,
+        combo_type: str | None,
+    ) -> QFrame:
+        s = self.scale
+
+        panel = QFrame()
+        panel.setObjectName("radarPanel")
+        panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        theme.themed(panel, lambda: (
+            f"QFrame#radarPanel{{background:{theme.PANEL_SURFACE_BG};"
+            f"border:1px solid {_rgba(theme.PRIMARY_HOVER,60)};"
+            f"border-radius:{max(12,int(14*s))}px;}}"
+        ))
+        root = QVBoxLayout(panel)
+        root.setContentsMargins(
+            max(12, int(14 * s)), max(10, int(12 * s)),
+            max(12, int(14 * s)), max(10, int(12 * s)),
+        )
+        root.setSpacing(max(8, int(10 * s)))
+
+        # ── Cabeçalho do painel ──────────────────────────────────────────────
+        header = QHBoxLayout()
+        header.setSpacing(max(8, int(10 * s)))
+        header.setContentsMargins(0, 0, 0, 0)
+
+        title_lbl = QLabel(title.upper())
+        theme.themed(title_lbl, lambda: (
+            f"font-size:{max(8,int(9*s))}pt;font-weight:800;background:transparent;"
+            f"color:{theme.PANEL_TEXT_PRIMARY};"
+        ))
+        header.addWidget(title_lbl, 1)
+
+        # Combos de período por painel (apenas para "top_pessoas", "maq_ar", "maq_ind")
+        if combo_type == "ar":
+            self.ar_period_combo = QComboBox()
+            self.ar_period_combo.setFixedHeight(max(28, int(32 * s)))
+            self.ar_period_combo.setMinimumWidth(max(130, int(160 * s)))
+            theme.themed(self.ar_period_combo, lambda: _field_style(s))
+            for lbl, val in self._machine_period_options:
+                self.ar_period_combo.addItem(lbl, val)
+            idx = self.ar_period_combo.findData("30d")
+            if idx >= 0:
+                self.ar_period_combo.setCurrentIndex(idx)
+            self.ar_period_combo.currentIndexChanged.connect(
+                lambda _=None: self._on_machine_period_changed()
+            )
+            header.addWidget(self.ar_period_combo)
+
+        elif combo_type == "industria":
+            self.industria_period_combo = QComboBox()
+            self.industria_period_combo.setFixedHeight(max(28, int(32 * s)))
+            self.industria_period_combo.setMinimumWidth(max(130, int(160 * s)))
+            theme.themed(self.industria_period_combo, lambda: _field_style(s))
+            for lbl, val in self._machine_period_options:
+                self.industria_period_combo.addItem(lbl, val)
+            idx = self.industria_period_combo.findData("30d")
+            if idx >= 0:
+                self.industria_period_combo.setCurrentIndex(idx)
+            self.industria_period_combo.currentIndexChanged.connect(
+                lambda _=None: self._on_machine_period_changed()
+            )
+            header.addWidget(self.industria_period_combo)
+
+        elif combo_type == "people":
+            self.people_period_combo = QComboBox()
+            self.people_period_combo.setFixedHeight(max(28, int(32 * s)))
+            self.people_period_combo.setMinimumWidth(max(130, int(160 * s)))
+            theme.themed(self.people_period_combo, lambda: _field_style(s))
+            for lbl, val in self._machine_period_options:
+                self.people_period_combo.addItem(lbl, val)
+            idx = self.people_period_combo.findData("30d")
+            if idx >= 0:
+                self.people_period_combo.setCurrentIndex(idx)
+            self.people_period_combo.currentIndexChanged.connect(
+                lambda _=None: self._on_machine_period_changed()
+            )
+            header.addWidget(self.people_period_combo)
+
+            self.people_destination_combo = QComboBox()
+            self.people_destination_combo.setFixedHeight(max(28, int(32 * s)))
+            self.people_destination_combo.setMinimumWidth(max(130, int(160 * s)))
+            theme.themed(self.people_destination_combo, lambda: _field_style(s))
+            for lbl, val in self._production_filter_options:
+                self.people_destination_combo.addItem(lbl, val)
+            self.people_destination_combo.currentIndexChanged.connect(
+                lambda _=None: self._on_machine_period_changed()
+            )
+            header.addWidget(self.people_destination_combo)
+
+        # Botão fechar
+        btn_close = QPushButton("✕")
+        btn_close.setFixedSize(max(24, int(28 * s)), max(24, int(28 * s)))
+        theme.themed(btn_close, lambda: (
+            f"QPushButton{{background:transparent;color:{theme.PANEL_TEXT_MUTED};"
+            f"border:1px solid {_rgba(theme.PANEL_TEXT_MUTED,60)};"
+            f"border-radius:{max(12,int(14*s))}px;font-size:{max(9,int(10*s))}pt;padding:0;}}"
+            f"QPushButton:hover{{background:{_rgba(theme.DANGER,30)};color:{theme.DANGER};"
+            f"border-color:{_rgba(theme.DANGER,100)};}}"
+        ))
+        btn_close.clicked.connect(lambda: self._close_radar_panel(key))
+        header.addWidget(btn_close)
+
+        root.addLayout(header)
+
+        # Linha separadora fina
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        theme.themed(sep, lambda: (
+            f"QFrame{{background:{_rgba(theme.PRIMARY_HOVER,50)};border:none;max-height:1px;}}"
+        ))
+        root.addWidget(sep)
+
+        root.addWidget(body, 1)
+        return panel
+
+    def _refresh_radar_add_combo(self) -> None:
+        combo = getattr(self, "_radar_add_combo", None)
+        if combo is None:
+            return
+        combo.clear()
+        combo.addItem("Escolher visão para adicionar...", "")
+        for key, label, _ in self._RADAR_PANEL_DEFS:
+            panel = self._radar_panel_widgets.get(key)
+            if panel is not None and not panel.isVisible():
+                combo.addItem(label, key)
+
+    def _on_radar_add_panel(self) -> None:
+        combo = getattr(self, "_radar_add_combo", None)
+        if combo is None:
+            return
+        key = str(combo.currentData() or "")
+        if not key:
+            return
+        panel = self._radar_panel_widgets.get(key)
+        if panel is not None:
+            panel.setVisible(True)
+        self._refresh_radar_add_combo()
+
+    def _close_radar_panel(self, key: str) -> None:
+        panel = self._radar_panel_widgets.get(key)
+        if panel is not None:
+            panel.setVisible(False)
+        self._refresh_radar_add_combo()
+
+    # ── /Radar multi-panel ────────────────────────────────────────────────────
+
     def _build_section_card(self, title: str, subtitle: str, body: QWidget, accent_color: str) -> QFrame:
         s = self.scale
         card = _make_shadow_card(
@@ -1670,105 +1948,6 @@ class DashboardView(QWidget):
                     _iar_color(data.get(key)),
                 )
         self._apply_iar_visuals(iar_percent)
-
-    def _build_comparison_insights_body(self) -> QWidget:
-        container = QWidget()
-        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
-        root = QVBoxLayout(container)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(max(12, int(16 * self.scale)))
-
-        selector_row = QHBoxLayout()
-        selector_row.setContentsMargins(0, 0, 0, 0)
-        selector_row.setSpacing(max(8, int(10 * self.scale)))
-
-        selector_label = QLabel("PERIODO DO COMPARATIVO:")
-        theme.themed(selector_label, lambda: (
-            f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
-            f"color:{theme.PANEL_TEXT_PRIMARY};"
-        ))
-        selector_row.addWidget(selector_label)
-
-        for period_key in ("monthly", "weekly", "daily"):
-            btn = QPushButton(_NEON_PERIOD_LABELS[period_key])
-            btn.setCheckable(True)
-            btn.setChecked(period_key == self._comparison_period)
-            btn.setFixedHeight(max(32, int(36 * self.scale)))
-            theme.themed(btn, lambda: _neon_period_chip_style(self.scale))
-            btn.clicked.connect(lambda checked=False, key=period_key: self._set_comparison_period(key))
-            self._comparison_period_buttons[period_key] = btn
-            selector_row.addWidget(btn)
-
-        selector_row.addStretch()
-
-        comparison_destination_label = QLabel("PRODUÇÃO:")
-        theme.themed(comparison_destination_label, lambda: (
-            f"font-size:{max(8, int(9 * self.scale))}pt; font-weight:800; background:transparent;"
-            f"color:{theme.PANEL_TEXT_PRIMARY};"
-        ))
-        self.comparison_destination_combo = QComboBox()
-        self.comparison_destination_combo.setFixedHeight(max(34, int(38 * self.scale)))
-        self.comparison_destination_combo.setMinimumWidth(max(170, int(210 * self.scale)))
-        theme.themed(self.comparison_destination_combo, lambda: _field_style(self.scale))
-        for label, value in self._production_filter_options:
-            self.comparison_destination_combo.addItem(label, value)
-        self.comparison_destination_combo.currentIndexChanged.connect(self._on_comparison_filter_changed)
-        selector_row.addWidget(comparison_destination_label)
-        selector_row.addWidget(self.comparison_destination_combo)
-
-        root.addLayout(selector_row)
-
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(max(12, int(16 * self.scale)))
-        grid.setVerticalSpacing(max(12, int(16 * self.scale)))
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-
-        self.production_destination_chart = NeonComparisonWidget(
-            "DESTINOS DE PRODUÇÃO",
-            "Peso finalizado por produção em cada recorte de tempo.",
-            self.scale,
-            mode="kg",
-            max_rows=None,
-        )
-        self.production_machine_chart = NeonComparisonWidget(
-            "PRODUÇÃO POR MÁQUINA",
-            "Máquinas com maior número de requisições e peso processado no período.",
-            self.scale,
-            mode="count_kg",
-            max_rows=8,
-        )
-        self.vendor_comparison_chart = NeonComparisonWidget(
-            "VENDEDORES",
-            "Requisições emitidas e peso correspondente no período.",
-            self.scale,
-            mode="count_kg",
-            max_rows=8,
-        )
-        self.operator_comparison_chart = NeonComparisonWidget(
-            "OPERADORES",
-            "Produções finalizadas e peso processado por operador.",
-            self.scale,
-            mode="count_kg",
-            max_rows=8,
-        )
-        self.helper_comparison_chart = NeonComparisonWidget(
-            "AJUDANTES",
-            "Produções finalizadas e peso processado por ajudante.",
-            self.scale,
-            mode="count_kg",
-            max_rows=8,
-        )
-
-        grid.addWidget(self.production_destination_chart, 0, 0, 1, 2)
-        grid.addWidget(self.production_machine_chart, 1, 0)
-        grid.addWidget(self.vendor_comparison_chart, 1, 1)
-        grid.addWidget(self.operator_comparison_chart, 2, 0)
-        grid.addWidget(self.helper_comparison_chart, 2, 1)
-        root.addLayout(grid)
-        self._apply_comparison_period()
-        return container
 
     def _set_comparison_period(self, period_key: str) -> None:
         if period_key not in _NEON_PERIOD_LABELS:
