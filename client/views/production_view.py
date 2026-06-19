@@ -295,7 +295,7 @@ def _apply_machine_card_button_styles(theme_widgets: dict, scale: float, status_
     button_styles = {
         "status_button": secondary_style,
         "btn_open": secondary_style,
-        "btn_development": secondary_style,
+        "btn_development": _primary_action_btn_style(scale),
         "btn_finish": _primary_action_btn_style(scale),
         "btn_forward_machine": _primary_action_btn_style(scale),
         "btn_prazo": secondary_style,
@@ -644,6 +644,7 @@ class ProductionView(QWidget):
         }
         self._machine_cards: dict[int, dict] = {}
         self._machines_data: list[dict] = []
+        self._pending_expand_machine_name: str | None = None
         self._setup_ui()
         if self.destination in session.visible_production_destinations:
             self.refresh()
@@ -1063,10 +1064,15 @@ class ProductionView(QWidget):
         # Layout vertical: cada máquina ocupa uma linha inteira (col=0).
         # Cards são acordeões — fechados ficam compactos (~60-80px de altura),
         # liberando muito espaço vertical mesmo com 15+ máquinas.
+        pending = (self._pending_expand_machine_name or "").upper()
+        self._pending_expand_machine_name = None
         for index, machine in enumerate(self._machines_data):
             machine_card = self._build_machine_card(machine)
             self.machines_grid.addWidget(machine_card["card"], index, 0)
-            self._machine_cards[int(machine["id"])] = machine_card
+            mid = int(machine["id"])
+            self._machine_cards[mid] = machine_card
+            if pending and str(machine.get("name") or "").upper() == pending:
+                self._toggle_machine_card(mid)
 
     def _build_machine_card(self, machine: dict) -> dict:
         """Constrói um card-acordeão de máquina (header sempre visível +
@@ -1137,9 +1143,11 @@ class ProductionView(QWidget):
             current_status.title(),
         )
         qty_in_prod = int(machine.get("quantity_in_production") or 0)
+        qty_queue = len(queue_rows)
         finalized = int(machine.get("finalized_count") or 0)
+        queue_part = f"  ·  {qty_queue} na fila" if qty_queue else ""
         summary_label = QLabel(
-            f"{status_text}  ·  {qty_in_prod} em produção  ·  {finalized} finalizadas"
+            f"{status_text}{queue_part}  ·  {qty_in_prod} em produção  ·  {finalized} finalizadas"
         )
         summary_fs = max(8, int(10 * s))
         # Cor do status_text segue o accent (vermelho/amarelo se manutenção)
@@ -1228,7 +1236,7 @@ class ProductionView(QWidget):
         actions = QHBoxLayout()
         actions.setSpacing(max(8, int(10 * s)))
         btn_open = QPushButton("Abrir")
-        btn_development = QPushButton("Desenv")
+        btn_development = QPushButton("Iniciar Produção")
         btn_finish = QPushButton("Finalizar")
         btn_forward_machine = QPushButton("Enviar para Máquina")
         btn_prazo = QPushButton("Alterar Prazo")
@@ -1255,7 +1263,7 @@ class ProductionView(QWidget):
             current_status,
         )
         btn_open.clicked.connect(lambda: self._open_selected_machine(machine_id))
-        btn_development.clicked.connect(lambda: self._request_development_requisition(machine_id))
+        btn_development.clicked.connect(lambda: self._start_production_from_queue(machine_id))
         btn_finish.clicked.connect(lambda: self._finish_selected_machine(machine_id))
         btn_forward_machine.clicked.connect(lambda: self._forward_selected_machine(machine_id))
         btn_prazo.clicked.connect(lambda: self._change_delivery_selected_machine(machine_id))
@@ -1272,22 +1280,13 @@ class ProductionView(QWidget):
         content_layout.addLayout(actions)
 
         # ====== SEÇÃO: Aguardando na Fila (LAZY queue table) ======
-        sep_fila_row = QHBoxLayout()
-        sep_fila_row.setSpacing(max(8, int(10 * s)))
         sep_fila_label = QLabel("⏳ Aguardando na Fila")
         sep_fila_fs = max(8, int(10 * s))
         sep_fila_label.setStyleSheet(
             f"background:transparent; color:{theme.WARNING};"
             f"font-size:{sep_fila_fs}pt; font-weight:700;"
         )
-        btn_start_queue = QPushButton("Iniciar Produção")
-        btn_start_queue.setFixedHeight(max(30, int(34 * s)))
-        btn_start_queue.setProperty("productionBtn", "primary")
-        btn_start_queue.clicked.connect(lambda checked=False, mid=machine_id: self._start_queue_item(mid))
-        sep_fila_row.addWidget(sep_fila_label)
-        sep_fila_row.addStretch()
-        sep_fila_row.addWidget(btn_start_queue)
-        content_layout.addLayout(sep_fila_row)
+        content_layout.addWidget(sep_fila_label)
 
         queue_table_container = QFrame()
         queue_table_container.setStyleSheet("background:transparent; border:none;")
@@ -1352,7 +1351,6 @@ class ProductionView(QWidget):
                 "btn_development": btn_development,
                 "btn_finish": btn_finish,
                 "btn_forward_machine": btn_forward_machine,
-                "btn_start_queue": btn_start_queue,
                 "btn_prazo": btn_prazo,
                 "btn_cancel": btn_cancel,
                 "sep_fila_label": sep_fila_label,
@@ -1959,41 +1957,13 @@ class ProductionView(QWidget):
             self.destination,
             machine=machine_name,
         )
+        self._pending_expand_machine_name = machine_name
         self._run_action(
             api.update_status,
             self._row_requisition_id(req),
             "aguardando_na_fila",
             note,
             success_message=f"Requisicao adicionada na fila da maquina {machine_name}.",
-        )
-
-    def _start_queue_item(self, machine_id: int):
-        req = self._selected_machine_queue_row(machine_id)
-        if not req:
-            self._show_info("Selecione uma requisição na fila da máquina.")
-            return
-
-        card = self._machine_cards.get(machine_id)
-        machine = (card or {}).get("machine") or {}
-        machine_name = str(machine.get("name") or "").strip()
-
-        selected_team = self._pick_machine_operators(machine)
-        if not selected_team:
-            return
-
-        note = _build_production_note(
-            PROD_RECEIVED,
-            self.destination,
-            machine=machine_name,
-            operators=selected_team["operators"],
-            helpers=selected_team["helpers"],
-        )
-        self._run_action(
-            api.update_status,
-            self._row_requisition_id(req),
-            "em_producao",
-            note,
-            success_message=f"Requisicao iniciada na maquina {machine_name}.",
         )
 
     def _pick_machine(
@@ -2207,11 +2177,15 @@ class ProductionView(QWidget):
             return None
         return dlg.property("_updates") or []
 
-    def _request_development_requisition(self, machine_id: int):
-        req, machine = self._selected_machine_row(machine_id)
-        if not req or not machine:
-            self._show_info("Selecione uma requisicao no card da maquina.")
+    def _start_production_from_queue(self, machine_id: int):
+        req = self._selected_machine_queue_row(machine_id)
+        if not req:
+            self._show_info("Selecione uma requisição na fila da máquina para iniciar produção.")
             return
+
+        card = self._machine_cards.get(machine_id)
+        machine = (card or {}).get("machine") or {}
+        machine_name = str(machine.get("name") or "").strip()
 
         req_id = self._row_requisition_id(req)
         try:
@@ -2224,22 +2198,42 @@ class ProductionView(QWidget):
             return
 
         updates = self._ask_development_items(machine, requisition)
-        if not updates:
+        if updates is None:
             return
 
-        try:
-            for upd in updates:
-                item_id = int(upd["item_id"])
-                api.update_requisition_item_development(req_id, item_id, {"quantity": upd["quantity"], "desenv": upd["desenv"]})
-        except api.APIError as exc:
-            self._show_error(exc.detail)
-            return
-        except Exception as exc:
-            self._show_error(str(exc))
+        if updates:
+            try:
+                for upd in updates:
+                    item_id = int(upd["item_id"])
+                    api.update_requisition_item_development(
+                        req_id, item_id, {"quantity": upd["quantity"], "desenv": upd["desenv"]}
+                    )
+            except api.APIError as exc:
+                self._show_error(exc.detail)
+                return
+            except Exception as exc:
+                self._show_error(str(exc))
+                return
+
+        selected_team = self._pick_machine_operators(machine)
+        if not selected_team:
             return
 
-        self.refresh()
-        self._show_info(f"Desenvolvimento atualizado em {len(updates)} item(ns).")
+        note = _build_production_note(
+            PROD_RECEIVED,
+            self.destination,
+            machine=machine_name,
+            operators=selected_team["operators"],
+            helpers=selected_team["helpers"],
+        )
+        self._pending_expand_machine_name = machine_name
+        self._run_action(
+            api.update_status,
+            req_id,
+            "em_producao",
+            note,
+            success_message=f"Requisicao iniciada na maquina {machine_name}.",
+        )
 
     def _pick_machine_for_production(self, req: dict) -> dict | None:
         machines = [
@@ -2339,11 +2333,11 @@ class ProductionView(QWidget):
             status_label = "Funcionando" if str(machine.get("status") or "funcionando") == "funcionando" else "Manutencao"
             operator_summary = ", ".join(operator_names) if operator_names else "Nenhum operador cadastrado"
             helper_summary = ", ".join(helper_names) if helper_names else "Nenhum ajudante cadastrado"
-            is_selectable = bool(operator_names) and not is_maintenance
+            is_selectable = not is_maintenance
             text_color = (
                 theme.WARNING
                 if is_maintenance
-                else theme.TEXT_DARK if operator_names else theme.TEXT_LIGHT
+                else theme.TEXT_DARK
             )
             card = _ClickableFrame()
             card.setObjectName("machinePickerCard")
@@ -2391,10 +2385,8 @@ class ProductionView(QWidget):
                 )
             if is_maintenance:
                 card.setToolTip("Esta maquina esta em manutencao e nao pode receber requisicoes.")
-            elif operator_names:
-                card.setToolTip(f"Selecionar {machine_name}")
             else:
-                card.setToolTip("Cadastre pelo menos um operador para liberar esta maquina.")
+                card.setToolTip(f"Selecionar {machine_name}")
             content_layout.addWidget(card)
         content_layout.addStretch()
         layout.addWidget(scroll)
