@@ -137,6 +137,10 @@ class DeliveryDateUpdate(BaseModel):
     def normalize_reason(cls, value: object) -> str:
         return normalize_upper_required(value)
 
+
+class DeliveryDateSchedule(BaseModel):
+    delivery_date: date
+
     @field_validator("reason")
     @classmethod
     def validate_reason(cls, value: str) -> str:

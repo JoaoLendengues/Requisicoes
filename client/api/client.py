@@ -439,6 +439,24 @@ def update_delivery_schedule(req_id: int, delivery_date: str, reason: str) -> di
         ))
 
 
+def schedule_delivery(req_id: int, delivery_date: str) -> dict:
+    """Agenda a data de entrega pela primeira vez (sem motivo). Notifica o vendedor."""
+    with _cli() as client:
+        return _check(client.patch(
+            f"/requisitions/{req_id}/schedule-delivery",
+            json={"delivery_date": delivery_date},
+        ))
+
+
+def lookup_requisitions_by_ped(search: str) -> list:
+    """Busca requisicoes por numero de pedido para agendamento de entrega."""
+    with _cli() as client:
+        return _check(client.get(
+            "/requisitions/history/rows",
+            params={"search": search.strip(), "limit": 8},
+        ))
+
+
 def mark_delivery_delivered(req_id: int) -> dict:
     with _cli() as client:
         return _check(client.patch(f"/requisitions/{req_id}/mark-delivered"))

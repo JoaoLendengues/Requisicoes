@@ -176,6 +176,15 @@ def notify_vendor(
             "Requisição Cancelada ❌",
             f"PED #{req.ped_number} foi cancelada.",
         ),
+        "entrega_agendada": (
+            "Entrega Agendada 🚚",
+            f"PED #{req.ped_number} teve sua entrega agendada"
+            + (
+                f" para {req.delivery_date.strftime('%d/%m/%Y')}."
+                if req.delivery_date
+                else "."
+            ),
+        ),
     }
 
     if event not in events:

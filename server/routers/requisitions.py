@@ -59,7 +59,7 @@ from ..schemas.production import (
 )
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse, RequisitionListItem,
-    StatusUpdate, CanvasUpdate, DeliveryDateUpdate, DeliveryCancellationUpdate,
+    StatusUpdate, CanvasUpdate, DeliveryDateUpdate, DeliveryDateSchedule, DeliveryCancellationUpdate,
     RequisitionItemDevelopmentUpdate,
 )
 from ..dependencies import (
@@ -4930,6 +4930,47 @@ def update_delivery_schedule(
     )
 
     notifications = build_vendor_event(db, req, "prazo_alterado", data.reason)
+    db.commit()
+    push_all(notifications)
+    return _get_or_404(db, req_id)
+
+
+@router.patch("/{req_id}/schedule-delivery", response_model=RequisitionResponse)
+def schedule_delivery(
+    req_id: int,
+    data: DeliveryDateSchedule,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_delivery_handler),
+):
+    """Agenda a data de entrega pela primeira vez (sem exigir motivo).
+    Notifica o vendedor com evento 'entrega_agendada'."""
+    req = _get_or_404(db, req_id)
+    if not req.entrega:
+        raise HTTPException(
+            status_code=400,
+            detail="Esta requisição não está marcada para entrega",
+        )
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissão para agendar esta entrega")
+    if req.status == RequisitionStatus.CANCELADA:
+        raise HTTPException(
+            status_code=400,
+            detail="Não é possível agendar entrega de requisição cancelada",
+        )
+    if req.delivered_at is not None:
+        raise HTTPException(status_code=400, detail="Esta entrega já foi concluída")
+
+    new_str = data.delivery_date.strftime("%d/%m/%Y")
+    req.delivery_date = data.delivery_date
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={"delivery_date": {"new": new_str}},
+    )
+    notifications = build_vendor_event(db, req, "entrega_agendada")
     db.commit()
     push_all(notifications)
     return _get_or_404(db, req_id)
