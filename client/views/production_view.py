@@ -1260,11 +1260,10 @@ class ProductionView(QWidget):
         qty_in_prod = int(machine.get("quantity_in_production") or 0)
         qty_queue = len(queue_rows)
         finalized = int(machine.get("finalized_count") or 0)
-        queue_part = f"  ·  {qty_queue} na fila" if qty_queue else ""
         header_frame = QFrame()
         header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(h_margin, v_margin, h_margin, v_margin)
-        header_layout.setSpacing(max(10, int(12 * s)))
+        header_layout.setSpacing(max(8, int(10 * s)))
         title = QLabel(machine_name or "Máquina")
         title.setStyleSheet(_machine_title_style(s))
         header_layout.addWidget(title)
@@ -1275,26 +1274,25 @@ class ProductionView(QWidget):
         pill_px = max(6, int(8 * s))
         pill_py = max(2, int(3 * s))
 
-        # Pill de status ("Funcionando" / "Manutenção")
-        summary_label = QLabel(status_text)
-        summary_label.setStyleSheet(
-            f"background:{_rgba(accent_color, 22)}; color:{accent_color};"
-            f"border:1px solid {_rgba(accent_color, 90)};"
-            f"border-radius:{pill_radius}px; padding:{pill_py}px {pill_px + 2}px;"
-            f"font-size:{summary_fs}pt; font-weight:700;"
-        )
-        header_layout.addWidget(summary_label)
-
-        # Pill de fila (só aparece se houver reqs esperando)
-        if qty_queue > 0:
-            queue_pill = QLabel(f"{qty_queue} na fila")
-            queue_pill.setStyleSheet(
-                f"background:{_rgba(theme.WARNING, 22)}; color:{theme.WARNING};"
-                f"border:1px solid {_rgba(theme.WARNING, 90)};"
+        def _make_pill(text: str, color: str) -> QLabel:
+            lbl = QLabel(text)
+            lbl.setStyleSheet(
+                f"background:{_rgba(color, 22)}; color:{color};"
+                f"border:1px solid {_rgba(color, 90)};"
                 f"border-radius:{pill_radius}px; padding:{pill_py}px {pill_px}px;"
                 f"font-size:{summary_fs}pt; font-weight:700;"
             )
-            header_layout.addWidget(queue_pill)
+            return lbl
+
+        # Pill de status ("Funcionando" / "Manutenção")
+        summary_label = _make_pill(status_text, accent_color)
+        header_layout.addWidget(summary_label)
+
+        # Contadores — sempre visíveis
+        header_layout.addWidget(_make_pill(f"{qty_queue} na fila", theme.WARNING))
+        header_layout.addWidget(_make_pill(f"{qty_in_prod} em produção", theme.PRIMARY))
+        header_layout.addWidget(_make_pill(f"{finalized} finalizadas", theme.TEXT_MEDIUM))
+
         card_layout.addWidget(header_frame)
 
         # ====== CONTENT (sempre visível — não é mais acordeão) ======
