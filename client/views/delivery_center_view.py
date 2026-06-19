@@ -167,6 +167,8 @@ class DeliveryCenterView(QWidget):
         self._view_mode: str = "list"
         self._schedule_week_offset: int = 0
         self._schedule_selected_row: dict | None = None
+        self._avulse_rows: list[dict] = []
+        self._avulse_selected_id: int | None = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -333,18 +335,6 @@ class DeliveryCenterView(QWidget):
         title_row.addWidget(self._btn_view_sched)
         title_row.addSpacing(max(8, int(10 * s)))
 
-        btn_create = QPushButton("CRIAR")
-        btn_create.setFixedHeight(max(32, int(36 * s)))
-        theme.themed(btn_create, lambda: (
-            f"QPushButton {{ background:{_rgba(theme.SUCCESS, 35)}; color:{theme.SUCCESS};"
-            f"border:1px solid {_rgba(theme.SUCCESS, 80)}; border-radius:{max(5, int(6 * s))}px;"
-            f"padding:0 {max(10, int(12 * s))}px; font-size:{max(8, int(9 * s))}pt; font-weight:600; }}"
-            f"QPushButton:hover {{ background:{_rgba(theme.SUCCESS, 55)}; }}"
-        ))
-        btn_create.clicked.connect(self._open_create_delivery_dialog)
-        title_row.addWidget(btn_create)
-        title_row.addSpacing(max(8, int(10 * s)))
-
         self.btn_change_deadline = QPushButton("ALTERAR PRAZO")
         self.btn_change_deadline.setFixedHeight(max(34, int(38 * s)))
         theme.themed(self.btn_change_deadline, lambda: _flat_secondary_btn_style(s))
@@ -421,6 +411,84 @@ class DeliveryCenterView(QWidget):
         self.completed_table.itemSelectionChanged.connect(self._on_completed_selection_changed)
         completed_layout.addWidget(self.completed_table, 1)
         content_layout.addWidget(completed_card, 1)
+
+        # ── Card: Entregas Avulsas ─────────────────────────────────────────────
+        avulse_card = _make_card(
+            s,
+            theme.CARD_BG,
+            border_color=None,
+            radius=max(18, int(20 * s)),
+            hover_background=theme.CARD_BG,
+        )
+        avulse_layout = QVBoxLayout(avulse_card)
+        avulse_layout.setContentsMargins(max(16, int(20 * s)), max(14, int(18 * s)),
+                                         max(16, int(20 * s)), max(14, int(18 * s)))
+        avulse_layout.setSpacing(max(10, int(12 * s)))
+
+        avulse_accent = QFrame()
+        avulse_accent.setFixedHeight(max(4, int(5 * s)))
+        avulse_accent.setStyleSheet(
+            f"background:qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"stop:0 {_rgba(theme.WARNING, 235)}, stop:0.5 {_rgba(theme.WARNING, 155)}, stop:1 {_rgba(theme.WARNING, 235)});"
+            f"border:none; border-radius:{max(2, int(3 * s))}px;"
+        )
+        avulse_layout.addWidget(avulse_accent)
+
+        avulse_title_row = QHBoxLayout()
+        avulse_title_col = QVBoxLayout()
+        avulse_title_col.setSpacing(max(2, int(3 * s)))
+        avulse_section_title = QLabel("Entregas Avulsas")
+        theme.themed(avulse_section_title, lambda: (
+            f"font-size:{max(10, int(12 * s))}pt; font-weight:800;"
+            f"background:transparent; color:{theme.TEXT_DARK};"
+        ))
+        avulse_section_subtitle = QLabel(
+            "Entregas nao vinculadas a requisicoes. Criadas e gerenciadas pela logistica."
+        )
+        avulse_section_subtitle.setWordWrap(True)
+        avulse_section_subtitle.setProperty("muted", "1")
+        theme.themed(avulse_section_subtitle, lambda: (
+            f"font-size:{max(7, int(8 * s))}pt;"
+            f"background:transparent; color:{theme.TEXT_MEDIUM};"
+        ))
+        avulse_title_col.addWidget(avulse_section_title)
+        avulse_title_col.addWidget(avulse_section_subtitle)
+        avulse_title_row.addLayout(avulse_title_col, 1)
+
+        btn_avulse_create = QPushButton("CRIAR")
+        btn_avulse_create.setFixedHeight(max(34, int(38 * s)))
+        theme.themed(btn_avulse_create, lambda: (
+            f"QPushButton {{ background:{_rgba(theme.SUCCESS, 35)}; color:{theme.SUCCESS};"
+            f"border:1px solid {_rgba(theme.SUCCESS, 80)}; border-radius:{max(5, int(6 * s))}px;"
+            f"padding:0 {max(10, int(12 * s))}px; font-size:{max(8, int(9 * s))}pt; font-weight:600; }}"
+            f"QPushButton:hover {{ background:{_rgba(theme.SUCCESS, 55)}; }}"
+        ))
+        btn_avulse_create.clicked.connect(self._open_create_delivery_dialog)
+        avulse_title_row.addWidget(btn_avulse_create)
+        avulse_title_row.addSpacing(max(4, int(6 * s)))
+
+        self.btn_avulse_delivered = QPushButton("ENTREGUE")
+        self.btn_avulse_delivered.setFixedHeight(max(34, int(38 * s)))
+        theme.themed(self.btn_avulse_delivered, lambda: _primary_action_btn_style(s))
+        self.btn_avulse_delivered.clicked.connect(self._mark_avulse_delivered)
+        self.btn_avulse_delivered.setEnabled(False)
+        avulse_title_row.addWidget(self.btn_avulse_delivered)
+        avulse_title_row.addSpacing(max(4, int(6 * s)))
+
+        self.btn_avulse_cancel = QPushButton("CANCELAR")
+        self.btn_avulse_cancel.setFixedHeight(max(34, int(38 * s)))
+        theme.themed(self.btn_avulse_cancel, lambda: _flat_secondary_btn_style(s))
+        self.btn_avulse_cancel.clicked.connect(self._cancel_avulse_delivery)
+        self.btn_avulse_cancel.setEnabled(False)
+        avulse_title_row.addWidget(self.btn_avulse_cancel)
+
+        avulse_layout.addLayout(avulse_title_row)
+
+        self.avulse_table = self._create_avulse_table()
+        self.avulse_table.itemSelectionChanged.connect(self._on_avulse_selection_changed)
+        avulse_layout.addWidget(self.avulse_table, 1)
+        content_layout.addWidget(avulse_card, 1)
+
         content_layout.addStretch()
         self._update_action_buttons()
 
@@ -548,6 +616,14 @@ class DeliveryCenterView(QWidget):
         thread.start()
         self._threads.append((thread, worker))
 
+        t2, w2 = _run_in_thread(
+            api.list_avulse_deliveries,
+            on_result=self._populate_avulse,
+            on_error=lambda _: None,
+        )
+        t2.finished.connect(lambda t=t2, w=w2: self._cleanup_thread(t, w))
+        self._threads.append((t2, w2))
+
     def _cleanup_thread(self, thread: QThread, worker: QObject):
         self._threads = [pair for pair in self._threads if pair != (thread, worker)]
 
@@ -558,6 +634,10 @@ class DeliveryCenterView(QWidget):
             self.btn_mark_delivered.setEnabled(False)
             if hasattr(self, "btn_cancel_delivered"):
                 self.btn_cancel_delivered.setEnabled(False)
+            if hasattr(self, "btn_avulse_delivered"):
+                self.btn_avulse_delivered.setEnabled(False)
+            if hasattr(self, "btn_avulse_cancel"):
+                self.btn_avulse_cancel.setEnabled(False)
         else:
             self._update_action_buttons()
         if loading:
@@ -1524,9 +1604,10 @@ class DeliveryCenterView(QWidget):
 
     def _open_create_delivery_dialog(self) -> None:
         from PySide6.QtCore import QDate
+        from PySide6.QtGui import QDoubleValidator
         s = self.scale
         dlg = QDialog(self)
-        dlg.setWindowTitle("Agendar Nova Entrega")
+        dlg.setWindowTitle("Nova Entrega Avulsa")
         dlg.setModal(True)
         dlg.setMinimumWidth(max(400, int(460 * s)))
         dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -1541,7 +1622,7 @@ class DeliveryCenterView(QWidget):
         layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(max(4, int(5 * s)))
 
-        hdr = QLabel("Agendar Nova Entrega")
+        hdr = QLabel("Nova Entrega Avulsa")
         hdr.setStyleSheet(
             f"background:transparent; font-weight:800; font-size:{max(10, int(12 * s))}pt;"
         )
@@ -1559,20 +1640,7 @@ class DeliveryCenterView(QWidget):
         )
         field_gap = max(10, int(12 * s))
 
-        # ── Pedido ────────────────────────────────────────────────────────────
-        lbl_ped = QLabel("Número do Pedido")
-        lbl_ped.setStyleSheet(lbl_style)
-        layout.addWidget(lbl_ped)
-        ped_input = QLineEdit()
-        ped_input.setPlaceholderText("Ex: 1234")
-        ped_input.setFixedHeight(max(34, int(38 * s)))
-        ped_input.setStyleSheet(theme.input_style(s))
-        from PySide6.QtGui import QIntValidator
-        ped_input.setValidator(QIntValidator(1, 999999999, ped_input))
-        layout.addWidget(ped_input)
-        layout.addSpacing(field_gap)
-
-        # ── Cliente (ClientSearchBox) ─────────────────────────────────────────
+        # ── Cliente ───────────────────────────────────────────────────────────
         lbl_client = QLabel("Cliente")
         lbl_client.setStyleSheet(lbl_style)
         layout.addWidget(lbl_client)
@@ -1581,7 +1649,7 @@ class DeliveryCenterView(QWidget):
         layout.addSpacing(field_gap)
 
         # ── Vendedor ──────────────────────────────────────────────────────────
-        lbl_vendor = QLabel("Vendedor")
+        lbl_vendor = QLabel("Vendedor Responsável")
         lbl_vendor.setStyleSheet(lbl_style)
         layout.addWidget(lbl_vendor)
         vendor_combo = QComboBox()
@@ -1604,6 +1672,29 @@ class DeliveryCenterView(QWidget):
         date_edit.setDate(QDate.currentDate())
         date_edit.setMinimumDate(QDate.currentDate())
         layout.addWidget(date_edit)
+        layout.addSpacing(field_gap)
+
+        # ── Peso ──────────────────────────────────────────────────────────────
+        lbl_weight = QLabel("Peso (kg) — opcional")
+        lbl_weight.setStyleSheet(lbl_style)
+        layout.addWidget(lbl_weight)
+        weight_input = QLineEdit()
+        weight_input.setPlaceholderText("Ex: 12.5")
+        weight_input.setFixedHeight(max(34, int(38 * s)))
+        weight_input.setStyleSheet(theme.input_style(s))
+        weight_input.setValidator(QDoubleValidator(0.0, 999999.0, 2, weight_input))
+        layout.addWidget(weight_input)
+        layout.addSpacing(field_gap)
+
+        # ── Descrição ─────────────────────────────────────────────────────────
+        lbl_desc = QLabel("Descrição — opcional")
+        lbl_desc.setStyleSheet(lbl_style)
+        layout.addWidget(lbl_desc)
+        desc_input = QLineEdit()
+        desc_input.setPlaceholderText("O que será entregue, referência, obs...")
+        desc_input.setFixedHeight(max(34, int(38 * s)))
+        desc_input.setStyleSheet(theme.input_style(s))
+        layout.addWidget(desc_input)
 
         # ── Erro e espaço ─────────────────────────────────────────────────────
         error_lbl = QLabel("")
@@ -1617,16 +1708,16 @@ class DeliveryCenterView(QWidget):
         layout.addStretch()
 
         # ── Botões ────────────────────────────────────────────────────────────
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
+        btn_row_layout = QHBoxLayout()
+        btn_row_layout.addStretch()
         btn_cancel = QPushButton("Cancelar")
         btn_cancel.setStyleSheet(theme.secondary_btn_style(s))
         btn_cancel.clicked.connect(dlg.reject)
-        btn_ok = QPushButton("AGENDAR")
+        btn_ok = QPushButton("CADASTRAR")
         btn_ok.setStyleSheet(theme.primary_btn_style(s))
-        btn_row.addWidget(btn_cancel)
-        btn_row.addWidget(btn_ok)
-        layout.addLayout(btn_row)
+        btn_row_layout.addWidget(btn_cancel)
+        btn_row_layout.addWidget(btn_ok)
+        layout.addLayout(btn_row_layout)
 
         # ── Carregar vendedores ───────────────────────────────────────────────
         def _on_vendors_loaded(users):
@@ -1651,14 +1742,10 @@ class DeliveryCenterView(QWidget):
         t_v.finished.connect(lambda t=t_v, w=w_v: self._cleanup_thread(t, w))
         self._threads.append((t_v, w_v))
 
-        # ── Agendar ───────────────────────────────────────────────────────────
-        def _do_schedule():
-            ped = ped_input.text().strip()
-            if not ped:
-                error_lbl.setText("Informe o numero do pedido.")
-                error_lbl.setVisible(True)
-                return
-            if not client_box.get_selected():
+        # ── Cadastrar ─────────────────────────────────────────────────────────
+        def _do_create():
+            client_data = client_box.get_selected()
+            if not client_data:
                 error_lbl.setText("Selecione um cliente na lista de sugestoes.")
                 error_lbl.setVisible(True)
                 return
@@ -1668,79 +1755,45 @@ class DeliveryCenterView(QWidget):
                 error_lbl.setVisible(True)
                 return
 
-            new_date = date_edit.date().toString("yyyy-MM-dd")
+            delivery_date = date_edit.date().toString("yyyy-MM-dd")
+            weight_text = weight_input.text().strip().replace(",", ".")
+            weight = float(weight_text) if weight_text else None
+            description = desc_input.text().strip() or None
+
             btn_ok.setEnabled(False)
             btn_cancel.setEnabled(False)
             error_lbl.setVisible(False)
 
-            def _on_rows(rows):
-                if not isinstance(rows, list) or not rows:
-                    btn_ok.setEnabled(True)
-                    btn_cancel.setEnabled(True)
-                    error_lbl.setText("Pedido nao encontrado.")
-                    error_lbl.setVisible(True)
-                    return
-                matched = next(
-                    (r for r in rows if str(r.get("ped_number") or "").split("/")[0] == ped),
-                    None,
+            def _on_ok(_):
+                dlg.accept()
+                t, w = _run_in_thread(
+                    api.list_avulse_deliveries,
+                    on_result=self._populate_avulse,
+                    on_error=lambda _: None,
                 )
-                if not matched:
-                    btn_ok.setEnabled(True)
-                    btn_cancel.setEnabled(True)
-                    error_lbl.setText(f"Nenhum pedido com o numero {ped} encontrado.")
-                    error_lbl.setVisible(True)
-                    return
-                req_id = int(
-                    matched.get("id")
-                    or matched.get("source_requisition_id")
-                    or 0
-                )
-                if not req_id:
-                    btn_ok.setEnabled(True)
-                    btn_cancel.setEnabled(True)
-                    error_lbl.setText("Nao foi possivel identificar o ID da requisicao.")
-                    error_lbl.setVisible(True)
-                    return
+                t.finished.connect(lambda tt=t, ww=w: self._cleanup_thread(tt, ww))
+                self._threads.append((t, w))
 
-                def _on_ok(_):
-                    QMessageBox.information(
-                        self, "Entregas",
-                        "Entrega agendada com sucesso. Vendedor notificado.",
-                    )
-                    dlg.accept()
-                    self.refresh()
-
-                def _on_err(msg):
-                    btn_ok.setEnabled(True)
-                    btn_cancel.setEnabled(True)
-                    error_lbl.setText(msg)
-                    error_lbl.setVisible(True)
-
-                t2, w2 = _run_in_thread(
-                    api.schedule_delivery, req_id, new_date,
-                    on_result=_on_ok,
-                    on_error=_on_err,
-                )
-                t2.finished.connect(lambda t=t2, w=w2: self._cleanup_thread(t, w))
-                self._threads.append((t2, w2))
-
-            def _on_search_err(msg):
+            def _on_err(msg):
                 btn_ok.setEnabled(True)
                 btn_cancel.setEnabled(True)
-                error_lbl.setText(f"Erro ao buscar pedido: {msg}")
+                error_lbl.setText(msg)
                 error_lbl.setVisible(True)
 
             t1, w1 = _run_in_thread(
-                api.lookup_requisitions_by_ped, ped,
-                on_result=_on_rows,
-                on_error=_on_search_err,
+                api.create_avulse_delivery,
+                client_data["id"],
+                vendor_id,
+                delivery_date,
+                description,
+                weight,
+                on_result=_on_ok,
+                on_error=_on_err,
             )
             t1.finished.connect(lambda t=t1, w=w1: self._cleanup_thread(t, w))
             self._threads.append((t1, w1))
 
-        btn_ok.clicked.connect(_do_schedule)
-        ped_input.returnPressed.connect(_do_schedule)
-
+        btn_ok.clicked.connect(_do_create)
         dlg.exec()
 
     def _sched_change_deadline(self) -> None:
@@ -1787,6 +1840,235 @@ class DeliveryCenterView(QWidget):
             [row],
             success_message=self._delivery_success_message(1),
         )
+
+    # ── Entregas Avulsas ───────────────────────────────────────────────────────
+
+    def _create_avulse_table(self) -> QTableWidget:
+        s = self.scale
+        headers = ["CLIENTE", "VENDEDOR", "DATA", "PESO", "DESCRIÇÃO", "STATUS"]
+        table = QTableWidget(0, len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.setAlternatingRowColors(True)
+        table.setFrameShape(QFrame.Shape.NoFrame)
+        table.setShowGrid(False)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.setMinimumHeight(max(160, int(180 * s)))
+
+        hdr = table.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hdr.setStretchLastSection(False)
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # CLIENTE
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)  # DESCRIÇÃO
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+
+        theme.apply_neon_table_palette(table)
+        return table
+
+    def _populate_avulse(self, rows: object) -> None:
+        if not isinstance(rows, list):
+            return
+        self._avulse_rows = [r for r in rows if isinstance(r, dict)]
+        self._fill_avulse_table()
+
+    def _fill_avulse_table(self) -> None:
+        s = self.scale
+        table = self.avulse_table
+        table.clearSpans()
+        table.setRowCount(0)
+
+        rows = self._avulse_rows
+        if not rows:
+            self._set_empty_message(table, "Nenhuma entrega avulsa cadastrada.")
+            return
+
+        table.setSortingEnabled(False)
+        for row_data in rows:
+            row = table.rowCount()
+            table.insertRow(row)
+            avulse_id = int(row_data.get("id") or 0)
+
+            delivery_date = _format_date(row_data.get("delivery_date"))
+            weight = _format_weight(row_data.get("weight"))
+            description = str(row_data.get("description") or "-")
+
+            if row_data.get("cancelled_at"):
+                status_label = "Cancelada"
+                status_color = theme.DANGER
+            elif row_data.get("delivered_at"):
+                status_label = "Entregue"
+                status_color = theme.SUCCESS
+            else:
+                status_label = "Pendente"
+                status_color = theme.PRIMARY
+
+            values = [
+                str(row_data.get("client_name") or "-"),
+                str(row_data.get("vendor_name") or "-"),
+                delivery_date,
+                weight,
+                description,
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if col == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, avulse_id)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(row, col, item)
+
+            # Status badge
+            badge = QLabel(status_label)
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.setStyleSheet(
+                f"background:{_rgba(status_color, 30)}; color:{status_color}; border-radius:999px;"
+                f"font-weight:700; padding:4px 10px; font-size:{max(7, int(8 * s))}pt;"
+            )
+            table.setCellWidget(row, 5, badge)
+
+        table.setSortingEnabled(True)
+        table.sortByColumn(2, Qt.SortOrder.AscendingOrder)  # data
+        self._update_avulse_buttons()
+
+    def _on_avulse_selection_changed(self) -> None:
+        selected = self.avulse_table.selectedItems()
+        if not selected:
+            self._avulse_selected_id = None
+        else:
+            first = self.avulse_table.item(self.avulse_table.currentRow(), 0)
+            self._avulse_selected_id = first.data(Qt.ItemDataRole.UserRole) if first else None
+        self._update_avulse_buttons()
+
+    def _update_avulse_buttons(self) -> None:
+        if not hasattr(self, "btn_avulse_delivered"):
+            return
+        row_data = next(
+            (r for r in self._avulse_rows if int(r.get("id") or 0) == self._avulse_selected_id),
+            None,
+        )
+        pending = bool(
+            row_data
+            and not row_data.get("delivered_at")
+            and not row_data.get("cancelled_at")
+        )
+        cancellable = bool(row_data and not row_data.get("cancelled_at"))
+        self.btn_avulse_delivered.setEnabled(pending)
+        self.btn_avulse_cancel.setEnabled(cancellable)
+
+    def _mark_avulse_delivered(self) -> None:
+        if not self._avulse_selected_id:
+            return
+        avulse_id = self._avulse_selected_id
+
+        def _on_ok(_):
+            self._populate_avulse(
+                [
+                    {**r, "delivered_at": "now"} if int(r.get("id") or 0) == avulse_id else r
+                    for r in self._avulse_rows
+                ]
+            )
+            t, w = _run_in_thread(
+                api.list_avulse_deliveries,
+                on_result=self._populate_avulse,
+                on_error=lambda _: None,
+            )
+            t.finished.connect(lambda tt=t, ww=w: self._cleanup_thread(tt, ww))
+            self._threads.append((t, w))
+
+        def _on_err(msg):
+            QMessageBox.warning(self, "Erro", msg)
+
+        thread, worker = _run_in_thread(
+            api.mark_avulse_delivered, avulse_id,
+            on_result=_on_ok,
+            on_error=_on_err,
+        )
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        self._threads.append((thread, worker))
+
+    def _cancel_avulse_delivery(self) -> None:
+        if not self._avulse_selected_id:
+            return
+        avulse_id = self._avulse_selected_id
+        s = self.scale
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Cancelar Entrega Avulsa")
+        dlg.setModal(True)
+        dlg.setMinimumWidth(max(340, int(380 * s)))
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+        )
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(max(16, int(20 * s)), max(16, int(20 * s)),
+                               max(16, int(20 * s)), max(16, int(20 * s)))
+        lay.setSpacing(max(8, int(10 * s)))
+        lbl = QLabel("Motivo do cancelamento:")
+        lbl.setStyleSheet(f"font-size:{max(8, int(9 * s))}pt; font-weight:600;")
+        lay.addWidget(lbl)
+        reason_input = QLineEdit()
+        reason_input.setPlaceholderText("Informe o motivo...")
+        reason_input.setFixedHeight(max(34, int(38 * s)))
+        reason_input.setStyleSheet(theme.input_style(s))
+        lay.addWidget(reason_input)
+        err_lbl = QLabel("")
+        err_lbl.setStyleSheet(f"color:{theme.DANGER}; font-size:{max(8, int(9 * s))}pt;")
+        err_lbl.setVisible(False)
+        lay.addWidget(err_lbl)
+        lay.addStretch()
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_no = QPushButton("Voltar")
+        btn_no.setStyleSheet(theme.secondary_btn_style(s))
+        btn_no.clicked.connect(dlg.reject)
+        btn_yes = QPushButton("CANCELAR ENTREGA")
+        btn_yes.setStyleSheet(theme.primary_btn_style(s))
+        btn_row.addWidget(btn_no)
+        btn_row.addWidget(btn_yes)
+        lay.addLayout(btn_row)
+
+        def _confirm():
+            reason = reason_input.text().strip()
+            if len(reason) < 3:
+                err_lbl.setText("Informe um motivo com pelo menos 3 caracteres.")
+                err_lbl.setVisible(True)
+                return
+            btn_yes.setEnabled(False)
+            btn_no.setEnabled(False)
+
+            def _on_ok(_):
+                dlg.accept()
+                t, w = _run_in_thread(
+                    api.list_avulse_deliveries,
+                    on_result=self._populate_avulse,
+                    on_error=lambda _: None,
+                )
+                t.finished.connect(lambda tt=t, ww=w: self._cleanup_thread(tt, ww))
+                self._threads.append((t, w))
+
+            def _on_err(msg):
+                btn_yes.setEnabled(True)
+                btn_no.setEnabled(True)
+                err_lbl.setText(msg)
+                err_lbl.setVisible(True)
+
+            th, wo = _run_in_thread(
+                api.cancel_avulse_delivery, avulse_id, reason,
+                on_result=_on_ok,
+                on_error=_on_err,
+            )
+            th.finished.connect(lambda t=th, w=wo: self._cleanup_thread(t, w))
+            self._threads.append((th, wo))
+
+        btn_yes.clicked.connect(_confirm)
+        reason_input.returnPressed.connect(_confirm)
+        dlg.exec()
 
     def apply_theme(self) -> None:
         """Reaplica o tema na view.

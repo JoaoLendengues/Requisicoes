@@ -8,9 +8,10 @@ from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 
 from .database import Base, engine
-from .models import audit, client, feedback, notification, operator, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
+from .models import audit, avulse_delivery, client, feedback, notification, operator, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
 from .routers import (
     auth,
+    avulse_deliveries,
     backup,
     clients,
     feedbacks,
@@ -294,6 +295,7 @@ app.include_router(notifications.router)
 app.include_router(system_settings.router)
 app.include_router(feedbacks.router)
 app.include_router(backup.router)
+app.include_router(avulse_deliveries.router)
 
 
 @app.get("/health", tags=["Sistema"])
