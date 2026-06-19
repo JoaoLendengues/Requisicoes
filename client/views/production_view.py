@@ -1129,7 +1129,7 @@ class ProductionView(QWidget):
             queue_count = len([r for r in (machine.get("queue_rows") or []) if isinstance(r, dict)])
             label = machine_name + (f"   ({queue_count} na fila)" if queue_count > 0 else "")
             if self._machine_combo is not None:
-                self._machine_combo.addItem(label, userData=mid)
+                self._machine_combo.addItem(label, mid)
 
         if self._machine_combo is not None:
             self._machine_combo.blockSignals(False)
