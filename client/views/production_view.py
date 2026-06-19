@@ -646,7 +646,8 @@ class ProductionView(QWidget):
         self._machines_data: list[dict] = []
         self._pending_expand_machine_name: str | None = None
         self._selected_machine_id: int | None = None
-        self._chip_buttons: dict[int, QPushButton] = {}
+        self._machine_combo: QComboBox | None = None
+        self._machine_status_pill: QLabel | None = None
         self._setup_ui()
         if self.destination in session.visible_production_destinations:
             self.refresh()
@@ -795,23 +796,39 @@ class ProductionView(QWidget):
             machines_header.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         layout.addLayout(machines_header)
 
-        # Chip strip (seletor horizontal de máquinas)
-        chip_container = QWidget()
-        chip_container.setStyleSheet("background:transparent;")
-        self._chip_layout = QHBoxLayout(chip_container)
-        self._chip_layout.setContentsMargins(0, 0, 0, 0)
-        self._chip_layout.setSpacing(max(6, int(8 * s)))
-        self._chip_layout.addStretch(1)
+        # Seletor de máquina — dropdown (QComboBox) + pill de status
+        selector_row = QHBoxLayout()
+        selector_row.setSpacing(max(8, int(10 * s)))
+        selector_row.setContentsMargins(0, 0, 0, 0)
 
-        self._chip_scroll = SmoothScrollArea()
-        self._chip_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._chip_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._chip_scroll.setWidgetResizable(True)
-        self._chip_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._chip_scroll.setFixedHeight(max(48, int(54 * s)))
-        self._chip_scroll.setWidget(chip_container)
-        self._chip_scroll.setStyleSheet(f"QScrollArea {{ background:transparent; border:none; }}")
-        layout.addWidget(self._chip_scroll)
+        lbl = QLabel("Máquina:")
+        lbl.setStyleSheet(f"background:transparent; font-size:{max(9, int(10*s))}pt; font-weight:700;")
+
+        self._machine_combo = QComboBox()
+        self._machine_combo.setMinimumWidth(max(180, int(240 * s)))
+        self._machine_combo.setFixedHeight(max(30, int(34 * s)))
+        self._machine_combo.setStyleSheet(
+            f"QComboBox {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:{max(6, int(8*s))}px;"
+            f"  padding:0 {max(8, int(10*s))}px; font-size:{max(8, int(10*s))}pt; font-weight:600; }}"
+            f"QComboBox::drop-down {{ border:none; width:22px; }}"
+            f"QComboBox QAbstractItemView {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; selection-background-color:{_rgba(theme.PRIMARY, 40)};"
+            f"  selection-color:{theme.TEXT_DARK}; }}"
+        )
+        self._machine_combo.currentIndexChanged.connect(self._on_combo_machine_changed)
+
+        self._machine_status_pill = QLabel("")
+        self._machine_status_pill.setVisible(False)
+        self._machine_status_pill.setStyleSheet(
+            f"background:transparent; font-size:{max(8, int(9*s))}pt; font-weight:700;"
+        )
+
+        selector_row.addWidget(lbl)
+        selector_row.addWidget(self._machine_combo)
+        selector_row.addWidget(self._machine_status_pill)
+        selector_row.addStretch(1)
+        layout.addLayout(selector_row)
 
         # Área de conteúdo da máquina selecionada
         self._machine_content_frame = QFrame()
@@ -1071,12 +1088,12 @@ class ProductionView(QWidget):
                 self._clear_layout(child_layout)  # type: ignore[arg-type]
 
     def _populate_machine_cards(self):
-        # Limpa chips existentes (mantém o stretch final)
-        while self._chip_layout.count() > 1:
-            item = self._chip_layout.takeAt(0)
-            if (w := item.widget()):
-                w.deleteLater()
-        self._chip_buttons = {}
+        if self._machine_combo is not None:
+            self._machine_combo.blockSignals(True)
+            self._machine_combo.clear()
+
+        if self._machine_status_pill is not None:
+            self._machine_status_pill.setVisible(False)
 
         # Desanexa cards cacheados do content frame
         while self._mc_layout.count():
@@ -1093,6 +1110,8 @@ class ProductionView(QWidget):
             empty.setStyleSheet(f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(10 * s))}pt; font-weight:600;")
             empty.setProperty("muted", "1")
             self._mc_layout.addWidget(empty)
+            if self._machine_combo is not None:
+                self._machine_combo.blockSignals(False)
             return
 
         pending = (self._pending_expand_machine_name or "").upper()
@@ -1107,44 +1126,22 @@ class ProductionView(QWidget):
             machine_name = str(machine.get("name") or "").strip()
             if pending and machine_name.upper() == pending:
                 select_id = mid
-            current_status = str(machine.get("status") or "funcionando")
             queue_count = len([r for r in (machine.get("queue_rows") or []) if isinstance(r, dict)])
-            chip = self._build_machine_chip(mid, machine_name, current_status, queue_count)
-            self._chip_layout.insertWidget(self._chip_layout.count() - 1, chip)
-            self._chip_buttons[mid] = chip
+            label = machine_name + (f"   ({queue_count} na fila)" if queue_count > 0 else "")
+            if self._machine_combo is not None:
+                self._machine_combo.addItem(label, userData=mid)
+
+        if self._machine_combo is not None:
+            self._machine_combo.blockSignals(False)
 
         self._select_machine(select_id or first_id)
 
-    def _chip_qss(self, is_manut: bool) -> str:
-        s = self.scale
-        accent = theme.WARNING if is_manut else theme.PRIMARY
-        hover_bg = _blend(theme.CARD_BG, accent, 28)
-        fs = max(8, int(9 * s))
-        px = max(10, int(14 * s))
-        radius = max(16, int(18 * s))
-        h = max(32, int(36 * s))
-        return (
-            f"QPushButton {{"
-            f"  background:{theme.CARD_BG}; color:{theme.WARNING if is_manut else theme.TEXT_DARK};"
-            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:{radius}px;"
-            f"  padding:0 {px}px; font-size:{fs}pt; font-weight:700; min-height:{h}px;"
-            f"}}"
-            f"QPushButton:hover {{ background:{hover_bg}; }}"
-            f"QPushButton:checked {{"
-            f"  background:{accent}; color:{'#1a1a1a' if is_manut else 'white'};"
-            f"  border-color:{accent};"
-            f"}}"
-        )
-
-    def _build_machine_chip(self, machine_id: int, name: str, status: str, queue_count: int) -> QPushButton:
-        label = name + (f"   {queue_count} na fila" if queue_count > 0 else "")
-        btn = QPushButton(label)
-        btn.setCheckable(True)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        is_manut = _is_machine_in_maintenance(status)
-        btn.setStyleSheet(self._chip_qss(is_manut))
-        btn.clicked.connect(lambda: self._select_machine(machine_id))
-        return btn
+    def _on_combo_machine_changed(self, index: int) -> None:
+        if self._machine_combo is None:
+            return
+        mid = self._machine_combo.itemData(index)
+        if mid is not None:
+            self._select_machine(int(mid))
 
     def _select_machine(self, machine_id: int | None) -> None:
         if machine_id is None:
@@ -1161,13 +1158,37 @@ class ProductionView(QWidget):
 
         self._selected_machine_id = machine_id
 
-        # Atualiza chips
-        for mid, chip in self._chip_buttons.items():
-            chip.setChecked(mid == machine_id)
+        # Sincroniza combo sem disparar sinal de novo
+        if self._machine_combo is not None:
+            for i in range(self._machine_combo.count()):
+                if self._machine_combo.itemData(i) == machine_id:
+                    self._machine_combo.blockSignals(True)
+                    self._machine_combo.setCurrentIndex(i)
+                    self._machine_combo.blockSignals(False)
+                    break
+
+        # Atualiza pill de status
+        machine = next((m for m in self._machines_data if int(m["id"]) == machine_id), None)
+        if machine is not None and self._machine_status_pill is not None:
+            current_status = str(machine.get("status") or "funcionando")
+            is_manut = _is_machine_in_maintenance(current_status)
+            status_text = next(
+                (text for value, text in MACHINE_STATUS_OPTIONS if value == current_status),
+                current_status.replace("_", " ").title(),
+            )
+            self._machine_status_pill.setText(status_text)
+            accent = theme.WARNING if is_manut else theme.SUCCESS
+            self._machine_status_pill.setStyleSheet(
+                f"background:{_rgba(accent, 28)}; color:{accent};"
+                f" border:1px solid {_rgba(accent, 100)};"
+                f" border-radius:{max(10, int(12*self.scale))}px;"
+                f" padding:2px {max(7, int(9*self.scale))}px;"
+                f" font-size:{max(7, int(9*self.scale))}pt; font-weight:700;"
+            )
+            self._machine_status_pill.setVisible(True)
 
         # Constrói card se ainda não foi cacheado
         if machine_id not in self._machine_cards:
-            machine = next((m for m in self._machines_data if int(m["id"]) == machine_id), None)
             if machine is None:
                 return
             card_data = self._build_machine_card(machine)
@@ -3073,14 +3094,19 @@ class ProductionView(QWidget):
         self.refresh_btn.setStyleSheet(_flat_secondary_btn_style(s))
         self._apply_table_style(self.waiting_receipt_panel["table"])
 
-        # Re-estiliza cards cacheados e chips do seletor horizontal.
+        # Re-estiliza cards cacheados e dropdown de máquinas.
         for card_data in self._machine_cards.values():
             self._apply_theme_to_machine_card(card_data)
-        for mid, chip in self._chip_buttons.items():
-            machine = next((m for m in self._machines_data if int(m["id"]) == mid), None)
-            if machine:
-                is_manut = _is_machine_in_maintenance(str(machine.get("status") or "funcionando"))
-                chip.setStyleSheet(self._chip_qss(is_manut))
+        if self._machine_combo is not None:
+            self._machine_combo.setStyleSheet(
+                f"QComboBox {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+                f"  border:1px solid {theme.BORDER_COLOR}; border-radius:{max(6, int(8*s))}px;"
+                f"  padding:0 {max(8, int(10*s))}px; font-size:{max(8, int(10*s))}pt; font-weight:600; }}"
+                f"QComboBox::drop-down {{ border:none; width:22px; }}"
+                f"QComboBox QAbstractItemView {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK};"
+                f"  border:1px solid {theme.BORDER_COLOR}; selection-background-color:{_rgba(theme.PRIMARY, 40)};"
+                f"  selection-color:{theme.TEXT_DARK}; }}"
+            )
 
         self.update()
 
