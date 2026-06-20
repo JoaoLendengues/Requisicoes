@@ -8,8 +8,10 @@ from server.models.client import Client
 from server.models.delivery import Delivery
 from server.models.user import Role, User
 from server.routers.deliveries import (
+    _is_active_vendor,
     cancel_delivery_delivered,
     create_delivery,
+    list_delivery_vendors,
     mark_delivery_delivered,
     update_delivery_schedule,
 )
@@ -73,6 +75,33 @@ def test_create_standalone_delivery_normalizes_operational_fields():
     assert db.query(Delivery).count() == 1
 
 
+def test_only_active_users_with_vendor_role_are_delivery_vendors():
+    db = _database()
+    creator, active_vendor, _client = _records(db)
+    inactive_vendor = User(
+        code="V2",
+        name="VENDEDOR INATIVO",
+        hashed_password="secret",
+        role=Role.VENDEDOR,
+        is_active=False,
+    )
+    manager = User(
+        code="G1",
+        name="GERENTE",
+        hashed_password="secret",
+        role=Role.GERENTE,
+        is_active=True,
+    )
+
+    db.add_all([inactive_vendor, manager])
+    db.commit()
+
+    assert _is_active_vendor(active_vendor) is True
+    assert _is_active_vendor(inactive_vendor) is False
+    assert _is_active_vendor(manager) is False
+    assert [user.id for user in list_delivery_vendors(db, creator)] == [active_vendor.id]
+
+
 def test_standalone_delivery_supports_schedule_completion_and_reopening():
     db = _database()
     creator, vendor, client = _records(db)
@@ -109,4 +138,3 @@ def test_standalone_delivery_supports_schedule_completion_and_reopening():
         creator,
     )
     assert reopened.delivered_at is None
-

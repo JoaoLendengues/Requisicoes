@@ -37,7 +37,13 @@ def list_clients(
             Client.cnpj.ilike(s),
         ]
         if plain:
-            clean_code = func.replace(Client.code, ".", "")
+            clean_code = func.replace(
+                func.replace(
+                    func.replace(
+                        func.replace(Client.code, ".", ""),
+                        "-", ""),
+                    "/", ""),
+                " ", "")
             # CNPJ sem separadores — calculado em runtime via replace aninhado
             cnpj_raw = func.replace(
                 func.replace(
@@ -74,7 +80,15 @@ def list_clients(
                 (cnpj_raw.like(f"{plain}%"), 3),
             ])
             plain_upper = plain.upper()
-            clean_code_upper = func.upper(func.replace(Client.code, ".", ""))
+            clean_code_upper = func.upper(
+                func.replace(
+                    func.replace(
+                        func.replace(
+                            func.replace(Client.code, ".", ""),
+                            "-", ""),
+                        "/", ""),
+                    " ", "")
+            )
             rank_rules.extend([
                 (clean_code_upper == plain_upper, 2),
                 (clean_code_upper.like(f"{plain_upper}%"), 3),

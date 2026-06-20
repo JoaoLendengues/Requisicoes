@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import sys
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -130,7 +131,7 @@ class _DummyDB:
 
 
 def test_build_delivery_center_counts_and_orders_rows():
-    now = datetime.utcnow().replace(microsecond=0)
+    now = datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None, microsecond=0)
     today = now.date()
 
     req_today = _req(
@@ -213,7 +214,7 @@ def test_build_delivery_center_counts_and_orders_rows():
 
 
 def test_merge_standalone_delivery_adds_operational_fields_and_stats():
-    today = date.today()
+    today = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
     vendor = _vendor(80, "VENDEDOR ENTREGA")
     client = _client(80, "CLIENTE ENTREGA")
     delivery = Delivery(
@@ -247,7 +248,7 @@ def test_merge_standalone_delivery_adds_operational_fields_and_stats():
 
 
 def test_build_delivery_center_expands_split_rows_and_counts_each_parcel():
-    now = datetime.utcnow().replace(microsecond=0)
+    now = datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None, microsecond=0)
     today = now.date()
 
     req = _req(

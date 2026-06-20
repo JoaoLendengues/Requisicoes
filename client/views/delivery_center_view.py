@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta as _timedelta
+import re
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
@@ -104,6 +105,14 @@ def _primary_action_btn_style(scale: float) -> str:
 
 def _format_weight(value: object) -> str:
     return format_weight_kg(value)
+
+
+def _client_code_key(value: object) -> str:
+    """Compara codigos ignorando mascara e zeros a esquerda quando numericos."""
+    normalized = re.sub(r"[^A-Z0-9]", "", str(value or "").strip().upper())
+    if normalized.isdigit():
+        return normalized.lstrip("0") or "0"
+    return normalized
 
 
 def _status_badge_color(status: str) -> str:
@@ -1723,7 +1732,7 @@ class DeliveryCenterView(QWidget):
 
         def _client_changed(_text: str) -> None:
             current = found_client[0]
-            if current and str(current.get("code") or "").strip().upper() != client_input.text().strip().upper():
+            if current and _client_code_key(current.get("code")) != _client_code_key(client_input.text()):
                 found_client[0] = None
                 client_result.setText("Codigo alterado. Clique em Buscar novamente.")
             _validate()
@@ -1745,7 +1754,7 @@ class DeliveryCenterView(QWidget):
                     (
                         item for item in candidates
                         if isinstance(item, dict)
-                        and str(item.get("code") or "").strip().upper() == code.upper()
+                        and _client_code_key(item.get("code")) == _client_code_key(code)
                     ),
                     None,
                 )
@@ -1753,6 +1762,9 @@ class DeliveryCenterView(QWidget):
                 if match is None:
                     client_result.setText("Cliente nao encontrado com esse codigo.")
                 else:
+                    client_input.blockSignals(True)
+                    client_input.setText(str(match.get("code") or code))
+                    client_input.blockSignals(False)
                     client_result.setText(
                         f"Cliente: {match.get('code', '-')} - {match.get('name', '-')}"
                     )
@@ -1793,8 +1805,9 @@ class DeliveryCenterView(QWidget):
 
         def _vendors_error(message: str) -> None:
             vendor_combo.clear()
-            vendor_combo.addItem("Nao foi possivel carregar vendedores", 0)
-            error_label.setText(message)
+            detail = str(message or "Erro desconhecido").strip()
+            vendor_combo.addItem(f"Erro ao carregar: {detail}", 0)
+            error_label.setText(f"Nao foi possivel carregar vendedores: {detail}")
             error_label.setVisible(True)
             _validate()
 

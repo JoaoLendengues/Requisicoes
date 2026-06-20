@@ -291,8 +291,21 @@ def get_delivery_center() -> dict:
 
 
 def list_delivery_vendors() -> list:
-    with _cli() as client:
-        return _check(client.get("/deliveries/vendors"))
+    try:
+        with _cli() as client:
+            return _check(client.get("/deliveries/vendors"))
+    except APIError as exc:
+        # Compatibilidade durante atualizacao: servidores anteriores ainda nao
+        # possuem /deliveries/vendors. Para admin/gerente, /users ja fornece
+        # os mesmos dados ate o servidor ser reiniciado/atualizado.
+        if exc.status_code not in (404, 405):
+            raise
+        rows = list_users()
+    return [
+        row for row in rows if isinstance(row, dict)
+        and str(row.get("role") or "").strip().lower() == "vendedor"
+        and bool(row.get("is_active", True))
+    ]
 
 
 def create_delivery(data: dict) -> dict:

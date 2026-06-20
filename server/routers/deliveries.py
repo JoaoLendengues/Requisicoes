@@ -21,6 +21,13 @@ from ..services.audit_service import log_action
 router = APIRouter(prefix="/deliveries", tags=["Entregas"])
 
 
+def _is_active_vendor(user: User | None) -> bool:
+    if user is None or not bool(user.is_active):
+        return False
+    role_value = str(getattr(user.role, "value", user.role) or "").strip().lower()
+    return role_value == Role.VENDEDOR.value
+
+
 def _response(delivery: Delivery) -> DeliveryResponse:
     return DeliveryResponse(
         id=delivery.id,
@@ -65,12 +72,10 @@ def list_delivery_vendors(
     db: Session = Depends(get_db),
     _current_user: User = Depends(require_delivery_handler),
 ):
-    return (
-        db.query(User)
-        .filter(User.role == Role.VENDEDOR, User.is_active == True)  # noqa: E712
-        .order_by(User.name, User.code)
-        .all()
-    )
+    users = db.query(User).filter(User.is_active == True).all()  # noqa: E712
+    vendors = [user for user in users if _is_active_vendor(user)]
+    vendors.sort(key=lambda user: (str(user.name or "").casefold(), str(user.code or "").casefold()))
+    return vendors
 
 
 @router.post("/", response_model=DeliveryResponse, status_code=status.HTTP_201_CREATED)
@@ -91,12 +96,11 @@ def create_delivery(
         db.query(User)
         .filter(
             User.id == data.vendor_id,
-            User.role == Role.VENDEDOR,
             User.is_active == True,  # noqa: E712
         )
         .first()
     )
-    if vendor is None:
+    if not _is_active_vendor(vendor):
         raise HTTPException(status_code=400, detail="Vendedor nao encontrado ou inativo")
 
     delivery = Delivery(
