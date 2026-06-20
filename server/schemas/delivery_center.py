@@ -14,14 +14,19 @@ class DeliveryCenterStatsResponse(BaseModel):
 class DeliveryCenterItemResponse(BaseModel):
     id: int
     source_requisition_id: Optional[int] = None
+    standalone_delivery_id: Optional[int] = None
     production_split_id: Optional[int] = None
     split_sequence: Optional[int] = None
     is_partial_split: bool = False
     ped_number: str
     client_name: Optional[str] = None
+    client_code: Optional[str] = None
     vendor_name: Optional[str] = None
     weight: Optional[float] = None
     destination: Optional[str] = None
+    city: Optional[str] = None
+    truck_name: Optional[str] = None
+    loaded_by: Optional[str] = None
     delivery_date: Optional[date] = None
     status: str
     delivered_at: Optional[datetime] = None

@@ -10,6 +10,7 @@ import unicodedata
 from ..config import settings
 from ..database import get_db
 from ..models.client import Client
+from ..models.delivery import Delivery
 from ..models.operator import OperatorRole
 from ..models.production_machine import ProductionMachine, MachineOperationalStatus
 from ..models.requisition import (
@@ -2710,6 +2711,67 @@ def _build_delivery_center(reqs: list[Requisition]) -> DeliveryCenterResponse:
     )
 
 
+def _merge_standalone_deliveries(
+    summary: DeliveryCenterResponse,
+    deliveries: list[Delivery],
+) -> DeliveryCenterResponse:
+    """Inclui entregas avulsas nos mesmos indicadores e agenda das requisicoes."""
+    today = (_to_local_datetime(datetime.utcnow()) or datetime.now(_LOCAL_TIMEZONE)).date()
+
+    for delivery in deliveries:
+        delivered_at = delivery.delivered_at if isinstance(delivery.delivered_at, datetime) else None
+        deadline_changed_at = (
+            delivery.deadline_changed_at
+            if isinstance(delivery.deadline_changed_at, datetime)
+            else None
+        )
+        if delivered_at is not None:
+            item_status = "entregue"
+        elif deadline_changed_at is not None:
+            item_status = RequisitionStatus.PRAZO_ALTERADO.value
+        else:
+            item_status = RequisitionStatus.AGUARDANDO_ENTREGA.value
+
+        summary.rows.append(
+            DeliveryCenterItemResponse(
+                id=delivery.id,
+                standalone_delivery_id=delivery.id,
+                ped_number=f"ENT-{delivery.id:06d}",
+                client_name=delivery.client.name if delivery.client else None,
+                client_code=delivery.client.code if delivery.client else None,
+                vendor_name=delivery.vendor.name if delivery.vendor else None,
+                city=delivery.city,
+                truck_name=delivery.truck_name,
+                loaded_by=delivery.loaded_by,
+                delivery_date=delivery.delivery_date,
+                status=item_status,
+                delivered_at=delivered_at,
+                deadline_changed_at=deadline_changed_at,
+                deadline_change_reason=delivery.deadline_change_reason,
+            )
+        )
+
+        if delivered_at is not None:
+            summary.stats.completed_deliveries += 1
+        elif delivery.delivery_date == today:
+            summary.stats.deliveries_today += 1
+        elif delivery.delivery_date < today:
+            summary.stats.delayed_deliveries += 1
+
+        if delivered_at is None and deadline_changed_at is not None:
+            summary.stats.changed_delivery_deadlines += 1
+
+    summary.rows.sort(
+        key=lambda item: (
+            item.delivery_date is None,
+            item.delivery_date or date.max,
+            str(item.ped_number or ""),
+        )
+    )
+    summary.rows = summary.rows[:200]
+    return summary
+
+
 def _build_machine_usage_rows(
     reqs: list[Requisition],
     machines: list[ProductionMachine],
@@ -3971,7 +4033,20 @@ def get_delivery_center(
             )
         )
         reqs = q.order_by(Requisition.created_at.desc()).all()
-        return _build_delivery_center(reqs)
+        delivery_cutoff = datetime.utcnow() - timedelta(days=180)
+        deliveries = (
+            db.query(Delivery)
+            .options(selectinload(Delivery.client), selectinload(Delivery.vendor))
+            .filter(
+                or_(
+                    Delivery.delivered_at.is_(None),
+                    Delivery.delivered_at >= delivery_cutoff,
+                )
+            )
+            .order_by(Delivery.created_at.desc())
+            .all()
+        )
+        return _merge_standalone_deliveries(_build_delivery_center(reqs), deliveries)
 
     return cache.get_or_set(cache_key, ttl_seconds=15, compute=_compute)
 

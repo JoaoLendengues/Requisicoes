@@ -103,6 +103,7 @@ def _install_session_listener() -> None:
         "requisition_production_splits",
         "status_history",
         "canvas_data",
+        "deliveries",
     }
 
     @event.listens_for(Session, "before_commit")

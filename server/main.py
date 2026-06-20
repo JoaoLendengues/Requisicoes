@@ -8,11 +8,23 @@ from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 
 from .database import Base, engine
-from .models import audit, client, feedback, notification, operator, product, production_machine, requisition, user  # garante registro dos modelos no SQLAlchemy
+from .models import (  # garante registro dos modelos no SQLAlchemy
+    audit,
+    client,
+    delivery,
+    feedback,
+    notification,
+    operator,
+    product,
+    production_machine,
+    requisition,
+    user,
+)
 from .routers import (
     auth,
     backup,
     clients,
+    deliveries,
     feedbacks,
     notifications,
     operators,
@@ -287,6 +299,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(operators.router)
 app.include_router(clients.router)
+app.include_router(deliveries.router)
 app.include_router(products.router)
 app.include_router(production_machines.router)
 app.include_router(requisitions.router)

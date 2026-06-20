@@ -290,6 +290,41 @@ def get_delivery_center() -> dict:
         return _check(client.get("/requisitions/deliveries/summary"))
 
 
+def list_delivery_vendors() -> list:
+    with _cli() as client:
+        return _check(client.get("/deliveries/vendors"))
+
+
+def create_delivery(data: dict) -> dict:
+    with _cli() as client:
+        return _check(client.post("/deliveries/", json=data))
+
+
+def update_standalone_delivery_schedule(
+    delivery_id: int,
+    delivery_date: str,
+    reason: str,
+) -> dict:
+    with _cli() as client:
+        return _check(client.patch(
+            f"/deliveries/{delivery_id}/schedule",
+            json={"delivery_date": delivery_date, "reason": reason},
+        ))
+
+
+def mark_standalone_delivery_delivered(delivery_id: int) -> dict:
+    with _cli() as client:
+        return _check(client.patch(f"/deliveries/{delivery_id}/mark-delivered"))
+
+
+def cancel_standalone_delivery_delivered(delivery_id: int, reason: str) -> dict:
+    with _cli() as client:
+        return _check(client.patch(
+            f"/deliveries/{delivery_id}/cancel-delivered",
+            json={"reason": reason},
+        ))
+
+
 def get_operational_settings() -> dict:
     with _cli() as client:
         return _check(client.get("/system-settings/operational"))

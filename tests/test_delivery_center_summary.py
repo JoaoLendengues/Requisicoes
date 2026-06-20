@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from server.models.client import Client
+from server.models.delivery import Delivery
 from server.models.requisition import (
     Requisition,
     RequisitionProductionSplit,
@@ -18,7 +19,7 @@ from server.models.requisition import (
 )
 from server.models.user import Role, User
 from server.routers import requisitions as requisitions_router
-from server.routers.requisitions import _build_delivery_center
+from server.routers.requisitions import _build_delivery_center, _merge_standalone_deliveries
 
 
 def _vendor(user_id: int, name: str) -> User:
@@ -209,6 +210,40 @@ def test_build_delivery_center_counts_and_orders_rows():
     assert summary.rows[1].delivered_at is not None
     assert summary.rows[2].delivery_date == today
     assert summary.rows[3].deadline_changed_at is not None
+
+
+def test_merge_standalone_delivery_adds_operational_fields_and_stats():
+    today = date.today()
+    vendor = _vendor(80, "VENDEDOR ENTREGA")
+    client = _client(80, "CLIENTE ENTREGA")
+    delivery = Delivery(
+        id=12,
+        client_id=client.id,
+        client=client,
+        vendor_id=vendor.id,
+        vendor=vendor,
+        created_by_id=1,
+        city="CAMPINAS",
+        truck_name="CAMINHAO 07",
+        loaded_by="JOAO",
+        delivery_date=today,
+        created_at=datetime.utcnow(),
+    )
+
+    summary = _merge_standalone_deliveries(_build_delivery_center([]), [delivery])
+
+    assert summary.stats.deliveries_today == 1
+    assert len(summary.rows) == 1
+    row = summary.rows[0]
+    assert row.ped_number == "ENT-000012"
+    assert row.standalone_delivery_id == 12
+    assert row.client_code == client.code
+    assert row.client_name == client.name
+    assert row.vendor_name == vendor.name
+    assert row.city == "CAMPINAS"
+    assert row.truck_name == "CAMINHAO 07"
+    assert row.loaded_by == "JOAO"
+    assert row.status == RequisitionStatus.AGUARDANDO_ENTREGA.value
 
 
 def test_build_delivery_center_expands_split_rows_and_counts_each_parcel():

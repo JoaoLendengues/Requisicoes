@@ -1,5 +1,6 @@
 from .user import User, Role
 from .client import Client
+from .delivery import Delivery
 from .product import Product
 from .requisition import (
     Requisition,

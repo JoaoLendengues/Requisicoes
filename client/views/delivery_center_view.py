@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -28,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
+from ..core.session import session
 from ..core.dialogs import ask_confirmation
 from ..core.formatters import format_weight_kg
 from ..core.datetime_utils import (
@@ -113,6 +115,7 @@ def _status_badge_color(status: str) -> str:
         "aguardando_na_fila": theme.STATUS_COLORS.get("aguardando_na_fila", theme.WARNING),
         "em_producao": theme.PRIMARY,
         "faturado": theme.STATUS_COLORS.get("faturado", theme.SUCCESS),
+        "aguardando_entrega": theme.STATUS_COLORS.get("aguardando_entrega", theme.PRIMARY),
         "finalizado": theme.STATUS_COLORS.get("finalizado", theme.SUCCESS),
         "cancelada": theme.DANGER,
     }
@@ -266,10 +269,10 @@ class DeliveryCenterView(QWidget):
         content_layout.addLayout(metrics)
 
         card_defs = [
-            ("deliveries_today", theme.PRIMARY, "ENTREGAS PARA HOJE", "Pedidos com entrega prevista para o dia atual."),
-            ("delayed_deliveries", theme.DANGER, "ENTREGAS ATRASADAS", "Pedidos de entrega pendente com prazo vencido."),
+            ("deliveries_today", theme.PRIMARY, "ENTREGAS PARA HOJE", "Entregas previstas para o dia atual."),
+            ("delayed_deliveries", theme.DANGER, "ENTREGAS ATRASADAS", "Entregas pendentes com prazo vencido."),
             ("changed_delivery_deadlines", theme.STATUS_COLORS.get("prazo_alterado", theme.WARNING), "PRAZO DE ENTREGA ALTERADO", "Entregas pendentes com prazo ajustado."),
-            ("completed_deliveries", theme.SUCCESS, "ENTREGAS REALIZADAS", "Pedidos de entrega concluidos."),
+            ("completed_deliveries", theme.SUCCESS, "ENTREGAS REALIZADAS", "Entregas concluidas."),
         ]
         for index, (key, color, title_text, helper_text) in enumerate(card_defs):
             metrics.addWidget(
@@ -341,6 +344,9 @@ class DeliveryCenterView(QWidget):
             f"QPushButton:hover {{ background:{_rgba(theme.SUCCESS, 55)}; }}"
         ))
         btn_create.clicked.connect(self._open_create_delivery_dialog)
+        btn_create.setVisible(
+            session.role in ("admin", "gerente", "vendedor", "entrega", "entregas")
+        )
         title_row.addWidget(btn_create)
         title_row.addSpacing(max(8, int(10 * s)))
 
@@ -483,14 +489,17 @@ class DeliveryCenterView(QWidget):
 
     def _create_table(self, open_handler=None) -> QTableWidget:
         headers = [
-            "PEDIDO",
+            "PEDIDO / ENTREGA",
             "CLIENTE",
             "VENDEDOR",
             "PESO",
             "PRODUCAO",
+            "CIDADE",
+            "CAMINHAO",
+            "CARREGADO POR",
             "DATA PREVISTA",
             "MOTIVO ALTERACAO PRAZO",
-            "STATUS DO PEDIDO",
+            "STATUS",
             "DATA DA ENTREGA",
         ]
         table = QTableWidget(0, len(headers))
@@ -506,7 +515,7 @@ class DeliveryCenterView(QWidget):
             table.doubleClicked.connect(lambda index, handler=open_handler: handler(index.row()))
 
         header = table.horizontalHeader()
-        stretch_columns = {1, 2, 6}
+        stretch_columns = {1, 2, 5, 7, 9}
         for col in range(len(headers)):
             mode = (
                 QHeaderView.ResizeMode.Stretch
@@ -516,8 +525,8 @@ class DeliveryCenterView(QWidget):
             header.setSectionResizeMode(col, mode)
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setMinimumHeight(max(34, int(40 * self.scale)))
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Interactive)
-        table.setColumnWidth(7, max(190, int(210 * self.scale)))
+        header.setSectionResizeMode(10, QHeaderView.ResizeMode.Interactive)
+        table.setColumnWidth(10, max(190, int(210 * self.scale)))
         table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
         table.setSortingEnabled(True)
         self._apply_table_style(table)
@@ -549,6 +558,10 @@ class DeliveryCenterView(QWidget):
 
     def _cleanup_thread(self, thread: QThread, worker: QObject):
         self._threads = [pair for pair in self._threads if pair != (thread, worker)]
+
+    def _track_thread(self, thread: QThread, worker: QObject) -> None:
+        thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
+        self._threads.append((thread, worker))
 
     def _set_loading(self, loading: bool):
         self.refresh_btn.setEnabled(not loading)
@@ -617,7 +630,7 @@ class DeliveryCenterView(QWidget):
             self._pending_rows,
             self._row_by_id,
             "Nenhuma entrega pendente na agenda.",
-            sort_column=5,
+            sort_column=8,
             sort_order=Qt.SortOrder.AscendingOrder,
         )
         self._fill_table(
@@ -625,7 +638,7 @@ class DeliveryCenterView(QWidget):
             self._completed_rows,
             self._completed_row_by_id,
             "Nenhuma entrega realizada ainda.",
-            sort_column=8,
+            sort_column=11,
             sort_order=Qt.SortOrder.DescendingOrder,
         )
         self._update_action_buttons()
@@ -677,6 +690,9 @@ class DeliveryCenterView(QWidget):
                 str(row_data.get("vendor_name") or "-"),
                 _format_weight(row_data.get("weight")),
                 str(row_data.get("destination") or "-"),
+                str(row_data.get("city") or "-"),
+                str(row_data.get("truck_name") or "-"),
+                str(row_data.get("loaded_by") or "-"),
                 _format_date(row_data.get("delivery_date")),
                 str(row_data.get("deadline_change_reason") or "-"),
                 theme.STATUS_LABELS.get(status, status or "-"),
@@ -688,6 +704,9 @@ class DeliveryCenterView(QWidget):
                 None,
                 weight_sort,
                 None,
+                None,
+                None,
+                None,
                 str(row_data.get("delivery_date") or ""),
                 str(row_data.get("deadline_change_reason") or ""),
                 None,
@@ -695,7 +714,7 @@ class DeliveryCenterView(QWidget):
             ]
 
             for col, value in enumerate(values):
-                if col == 7:
+                if col == 10:
                     hidden_item = SortableItem("", sort_key=status)
                     hidden_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(row, col, hidden_item)
@@ -731,6 +750,9 @@ class DeliveryCenterView(QWidget):
     def _row_key(self, row: dict | None) -> str:
         if not isinstance(row, dict):
             return ""
+        delivery_id = int(row.get("standalone_delivery_id") or 0)
+        if delivery_id:
+            return f"delivery:{delivery_id}"
         split_id = int(row.get("production_split_id") or 0)
         if split_id:
             return f"split:{split_id}"
@@ -742,6 +764,8 @@ class DeliveryCenterView(QWidget):
     def _source_requisition_id(self, row: dict | None) -> int:
         if not isinstance(row, dict):
             return 0
+        if row.get("standalone_delivery_id"):
+            return 0
         return int(row.get("source_requisition_id") or row.get("id") or 0)
 
     def _production_split_id(self, row: dict | None) -> int:
@@ -751,6 +775,8 @@ class DeliveryCenterView(QWidget):
 
     def _row_subject_label(self, row: dict | None) -> str:
         ped = str((row or {}).get("ped_number") or "-")
+        if self._standalone_delivery_id(row):
+            return f"a entrega {ped}"
         if self._production_split_id(row):
             return f"a parcela {ped}"
         return f"o pedido {ped}"
@@ -804,6 +830,9 @@ class DeliveryCenterView(QWidget):
     def _row_key(self, row: dict) -> str:
         if not isinstance(row, dict):
             return ""
+        delivery_id = int(row.get("standalone_delivery_id") or 0)
+        if delivery_id:
+            return f"delivery:{delivery_id}"
         split_id = int(row.get("production_split_id") or 0)
         if split_id:
             return f"split:{split_id}"
@@ -813,19 +842,31 @@ class DeliveryCenterView(QWidget):
     def _row_requisition_id(self, row: dict | None) -> int:
         if not isinstance(row, dict):
             return 0
+        if row.get("standalone_delivery_id"):
+            return 0
         return int(row.get("source_requisition_id") or row.get("id") or 0)
+
+    def _standalone_delivery_id(self, row: dict | None) -> int:
+        if not isinstance(row, dict):
+            return 0
+        return int(row.get("standalone_delivery_id") or 0)
 
     def _can_mark_row_delivered(self, row: dict | None) -> bool:
         if not isinstance(row, dict):
             return False
         if row.get("delivered_at"):
             return False
+        if self._standalone_delivery_id(row):
+            return True
         return str(row.get("status") or "").strip().lower() in {"finalizado", "prazo_alterado"}
 
     def _can_mark_rows_delivered(self, rows: list[dict]) -> bool:
         return bool(rows) and all(self._can_mark_row_delivered(row) for row in rows)
 
     def _mark_delivery_target(self, row: dict) -> tuple[callable, int]:
+        delivery_id = self._standalone_delivery_id(row)
+        if delivery_id:
+            return api.mark_standalone_delivery_delivered, delivery_id
         split_id = self._production_split_id(row)
         if split_id:
             return api.mark_split_delivery_delivered, split_id
@@ -957,10 +998,20 @@ class DeliveryCenterView(QWidget):
         if not reason:
             return
 
+        delivery_id = self._standalone_delivery_id(row)
         split_id = self._production_split_id(row)
+        if delivery_id:
+            cancel_fn = api.cancel_standalone_delivery_delivered
+            target_id = delivery_id
+        elif split_id:
+            cancel_fn = api.cancel_split_delivery_delivered
+            target_id = split_id
+        else:
+            cancel_fn = api.cancel_delivery_delivered
+            target_id = self._row_requisition_id(row)
         self._run_action(
-            api.cancel_split_delivery_delivered if row.get("production_split_id") else api.cancel_delivery_delivered,
-            int(row.get("production_split_id") or row["id"]),
+            cancel_fn,
+            target_id,
             reason,
             success_message="Entrega cancelada e retornada para a agenda.",
         )
@@ -1001,7 +1052,9 @@ class DeliveryCenterView(QWidget):
         layout.setSpacing(max(8, int(10 * self.scale)))
 
         ped = str(req.get("ped_number") or "")
-        header = QLabel(f"Pedido PED #{ped}")
+        header = QLabel(
+            f"Entrega {ped}" if self._standalone_delivery_id(req) else f"Pedido PED #{ped}"
+        )
         header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
@@ -1108,7 +1161,9 @@ class DeliveryCenterView(QWidget):
         layout.setSpacing(max(8, int(10 * self.scale)))
 
         ped = str(req.get("ped_number") or "")
-        header = QLabel(f"Pedido PED #{ped}")
+        header = QLabel(
+            f"Entrega {ped}" if self._standalone_delivery_id(req) else f"Pedido PED #{ped}"
+        )
         header.setStyleSheet(f"background:transparent; font-weight:800; font-size:{max(9, int(11 * self.scale))}pt;")
         layout.addWidget(header)
 
@@ -1174,9 +1229,10 @@ class DeliveryCenterView(QWidget):
             return
 
         new_date, reason = result
+        delivery_id = self._standalone_delivery_id(row)
         self._run_action(
-            api.update_delivery_schedule,
-            self._row_requisition_id(row),
+            api.update_standalone_delivery_schedule if delivery_id else api.update_delivery_schedule,
+            delivery_id or self._row_requisition_id(row),
             new_date,
             reason,
             success_message="Prazo de entrega alterado com sucesso.",
@@ -1357,7 +1413,10 @@ class DeliveryCenterView(QWidget):
         fields_row = QHBoxLayout()
         fields_row.setSpacing(max(16, int(20 * s)))
         self._sched_detail_fields: dict[str, QLabel] = {}
-        for field_key in ["Cliente", "Vendedor", "Peso", "Data prevista", "Status"]:
+        for field_key in [
+            "Cliente", "Vendedor", "Peso", "Cidade", "Caminhao", "Carregado por",
+            "Data prevista", "Status",
+        ]:
             fld_col = QVBoxLayout()
             fld_col.setSpacing(max(2, int(3 * s)))
             lbl_key = QLabel(field_key)
@@ -1482,6 +1541,9 @@ class DeliveryCenterView(QWidget):
         self._sched_detail_fields["Cliente"].setText(client)
         self._sched_detail_fields["Vendedor"].setText(str(row.get("vendor_name") or "-"))
         self._sched_detail_fields["Peso"].setText(_format_weight(row.get("weight")))
+        self._sched_detail_fields["Cidade"].setText(str(row.get("city") or "-"))
+        self._sched_detail_fields["Caminhao"].setText(str(row.get("truck_name") or "-"))
+        self._sched_detail_fields["Carregado por"].setText(str(row.get("loaded_by") or "-"))
         self._sched_detail_fields["Data prevista"].setText(_format_date(row.get("delivery_date")))
         status = str(row.get("status") or "")
         self._sched_detail_fields["Status"].setText(
@@ -1524,9 +1586,9 @@ class DeliveryCenterView(QWidget):
     def _open_create_delivery_dialog(self) -> None:
         s = self.scale
         dlg = QDialog(self)
-        dlg.setWindowTitle("Agendar Nova Entrega")
+        dlg.setWindowTitle("Criar Entrega")
         dlg.setModal(True)
-        dlg.setMinimumWidth(max(400, int(440 * s)))
+        dlg.setMinimumWidth(max(460, int(540 * s)))
         dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         dlg.setStyleSheet(
             f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
@@ -1535,232 +1597,257 @@ class DeliveryCenterView(QWidget):
         )
 
         layout = QVBoxLayout(dlg)
-        layout.setContentsMargins(max(16, int(20 * s)), max(16, int(20 * s)),
-                                  max(16, int(20 * s)), max(16, int(20 * s)))
-        layout.setSpacing(max(10, int(12 * s)))
+        margin = max(16, int(20 * s))
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(max(8, int(10 * s)))
 
-        hdr = QLabel("Agendar Nova Entrega")
-        hdr.setStyleSheet(
-            f"background:transparent; font-weight:800; font-size:{max(10, int(12 * s))}pt;"
+        title = QLabel("Criar Nova Entrega")
+        title.setStyleSheet(
+            f"background:transparent; font-weight:800; font-size:{max(11, int(13 * s))}pt;"
         )
-        layout.addWidget(hdr)
+        layout.addWidget(title)
 
-        sub = QLabel("Digite o numero do pedido para buscar os dados da requisicao.")
-        sub.setWordWrap(True)
-        sub.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_MEDIUM};"
+        subtitle = QLabel(
+            "Informe o codigo do cliente e os dados do carregamento. "
+            "A entrega sera adicionada diretamente a agenda."
         )
-        layout.addWidget(sub)
-
-        # PED input row
-        ped_row = QHBoxLayout()
-        ped_row.setSpacing(max(6, int(8 * s)))
-        ped_input = QComboBox()
-        ped_input.setEditable(True)
-        ped_input.setFixedHeight(max(34, int(38 * s)))
-        ped_input.setStyleSheet(theme.input_style(s))
-        ped_input.setPlaceholderText("Ex: 1234")
-        btn_search = QPushButton("BUSCAR")
-        btn_search.setFixedHeight(max(34, int(38 * s)))
-        btn_search.setStyleSheet(theme.secondary_btn_style(s))
-        ped_row.addWidget(ped_input, 1)
-        ped_row.addWidget(btn_search)
-        layout.addLayout(ped_row)
-
-        status_lbl = QLabel("")
-        status_lbl.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt; color:{theme.TEXT_MEDIUM};"
+        subtitle.setWordWrap(True)
+        subtitle.setStyleSheet(
+            f"background:transparent; color:{theme.TEXT_MEDIUM}; font-size:{max(8, int(9 * s))}pt;"
         )
-        status_lbl.setVisible(False)
-        layout.addWidget(status_lbl)
+        layout.addWidget(subtitle)
 
-        # Result panel (hidden until search)
-        result_frame = QFrame()
-        result_frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        result_frame.setStyleSheet(
-            f"QFrame {{ background:{_rgba(theme.PRIMARY, 12)};"
-            f"border:1px solid {_rgba(theme.PRIMARY, 50)}; border-radius:{max(8, int(10 * s))}px; }}"
-        )
-        result_layout = QVBoxLayout(result_frame)
-        result_layout.setContentsMargins(max(10, int(12 * s)), max(8, int(10 * s)),
-                                         max(10, int(12 * s)), max(8, int(10 * s)))
-        result_layout.setSpacing(max(4, int(6 * s)))
-        result_frame.setVisible(False)
-
-        result_ped_lbl = QLabel()
-        result_ped_lbl.setStyleSheet(
-            f"background:transparent; font-weight:700; font-size:{max(9, int(11 * s))}pt;"
-        )
-        result_layout.addWidget(result_ped_lbl)
-
-        result_fields_row = QHBoxLayout()
-        result_fields_row.setSpacing(max(16, int(20 * s)))
-        result_field_labels: dict[str, QLabel] = {}
-        for fkey in ["Cliente", "Vendedor", "Status"]:
-            fc = QVBoxLayout()
-            fc.setSpacing(1)
-            fl = QLabel(fkey)
-            fl.setStyleSheet(
-                f"background:transparent; font-size:{max(7, int(8 * s))}pt; color:{theme.TEXT_MEDIUM};"
-            )
-            fv = QLabel("-")
-            fv.setStyleSheet(
+        def _label(text: str) -> QLabel:
+            widget = QLabel(text)
+            widget.setStyleSheet(
                 f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
             )
-            fc.addWidget(fl)
-            fc.addWidget(fv)
-            result_fields_row.addLayout(fc)
-            result_field_labels[fkey] = fv
-        result_fields_row.addStretch()
-        result_layout.addLayout(result_fields_row)
-        layout.addWidget(result_frame)
+            return widget
 
-        # Date picker (hidden until result shown)
-        date_section = QFrame()
-        date_section.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        date_section.setStyleSheet("QFrame { background:transparent; border:none; }")
-        date_sec_layout = QVBoxLayout(date_section)
-        date_sec_layout.setContentsMargins(0, 0, 0, 0)
-        date_sec_layout.setSpacing(max(4, int(5 * s)))
-        date_lbl = QLabel("Data de entrega:")
-        date_lbl.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt;"
+        field_height = max(34, int(38 * s))
+        client_row = QHBoxLayout()
+        client_row.setSpacing(max(6, int(8 * s)))
+        client_input = QLineEdit()
+        client_input.setPlaceholderText("Codigo do cliente")
+        client_input.setFixedHeight(field_height)
+        client_input.setStyleSheet(theme.input_style(s))
+        btn_search = QPushButton("BUSCAR")
+        btn_search.setFixedHeight(field_height)
+        btn_search.setStyleSheet(theme.secondary_btn_style(s))
+        client_row.addWidget(client_input, 1)
+        client_row.addWidget(btn_search)
+        layout.addWidget(_label("Cliente:"))
+        layout.addLayout(client_row)
+
+        client_result = QLabel("Digite o codigo e clique em Buscar.")
+        client_result.setWordWrap(True)
+        client_result.setStyleSheet(
+            f"background:{_rgba(theme.PRIMARY, 15)}; color:{theme.TEXT_MEDIUM};"
+            f"border:1px solid {_rgba(theme.PRIMARY, 45)}; border-radius:{max(5, int(6 * s))}px;"
+            f"padding:{max(6, int(8 * s))}px; font-size:{max(8, int(9 * s))}pt;"
         )
+        layout.addWidget(client_result)
+
+        city_input = QLineEdit()
+        city_input.setPlaceholderText("Ex: SAO PAULO")
+        city_input.setFixedHeight(field_height)
+        city_input.setStyleSheet(theme.input_style(s))
+        layout.addWidget(_label("Cidade da entrega:"))
+        layout.addWidget(city_input)
+
+        vendor_combo = QComboBox()
+        vendor_combo.setFixedHeight(field_height)
+        vendor_combo.setStyleSheet(theme.input_style(s))
+        vendor_combo.addItem("Carregando vendedores...", 0)
+        vendor_combo.setEnabled(False)
+        layout.addWidget(_label("Vendedor:"))
+        layout.addWidget(vendor_combo)
+
+        truck_input = QLineEdit()
+        truck_input.setPlaceholderText("Nome ou identificacao do caminhao")
+        truck_input.setFixedHeight(field_height)
+        truck_input.setStyleSheet(theme.input_style(s))
+        layout.addWidget(_label("Caminhao:"))
+        layout.addWidget(truck_input)
+
+        loaded_by_input = QLineEdit()
+        loaded_by_input.setPlaceholderText("Pessoa responsavel pelo carregamento")
+        loaded_by_input.setFixedHeight(field_height)
+        loaded_by_input.setStyleSheet(theme.input_style(s))
+        layout.addWidget(_label("Carregado por:"))
+        layout.addWidget(loaded_by_input)
+
         from PySide6.QtCore import QDate
+
         date_edit = QDateEdit()
         date_edit.setDisplayFormat("dd/MM/yyyy")
         date_edit.setCalendarPopup(True)
-        date_edit.setFixedHeight(max(34, int(38 * s)))
-        date_edit.setStyleSheet(theme.input_style(s))
         date_edit.setDate(QDate.currentDate())
         date_edit.setMinimumDate(QDate.currentDate())
-        date_sec_layout.addWidget(date_lbl)
-        date_sec_layout.addWidget(date_edit)
-        layout.addWidget(date_section)
-        date_section.setVisible(False)
+        date_edit.setFixedHeight(field_height)
+        date_edit.setStyleSheet(theme.input_style(s))
+        layout.addWidget(_label("Data prevista da entrega:"))
+        layout.addWidget(date_edit)
 
-        error_lbl = QLabel("")
-        error_lbl.setWordWrap(True)
-        error_lbl.setStyleSheet(
+        error_label = QLabel("")
+        error_label.setWordWrap(True)
+        error_label.setVisible(False)
+        error_label.setStyleSheet(
             f"background:transparent; color:{theme.DANGER}; font-size:{max(8, int(9 * s))}pt;"
         )
-        error_lbl.setVisible(False)
-        layout.addWidget(error_lbl)
+        layout.addWidget(error_label)
 
-        layout.addStretch()
-
-        # Buttons
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
+        buttons = QHBoxLayout()
+        buttons.addStretch()
         btn_cancel = QPushButton("Cancelar")
         btn_cancel.setStyleSheet(theme.secondary_btn_style(s))
         btn_cancel.clicked.connect(dlg.reject)
-        btn_ok = QPushButton("AGENDAR")
-        btn_ok.setStyleSheet(theme.primary_btn_style(s))
-        btn_ok.setEnabled(False)
-        btn_row.addWidget(btn_cancel)
-        btn_row.addWidget(btn_ok)
-        layout.addLayout(btn_row)
+        btn_create = QPushButton("CRIAR ENTREGA")
+        btn_create.setStyleSheet(theme.primary_btn_style(s))
+        btn_create.setEnabled(False)
+        buttons.addWidget(btn_cancel)
+        buttons.addWidget(btn_create)
+        layout.addLayout(buttons)
 
-        # State
-        _found_row: list[dict] = [{}]
+        found_client: list[dict | None] = [None]
 
-        def _do_search():
-            ped_text = str(ped_input.currentText() or "").strip()
-            if not ped_text:
+        def _validate() -> None:
+            valid = bool(
+                found_client[0]
+                and int(vendor_combo.currentData() or 0)
+                and city_input.text().strip()
+                and truck_input.text().strip()
+                and loaded_by_input.text().strip()
+            )
+            btn_create.setEnabled(valid)
+
+        def _client_changed(_text: str) -> None:
+            current = found_client[0]
+            if current and str(current.get("code") or "").strip().upper() != client_input.text().strip().upper():
+                found_client[0] = None
+                client_result.setText("Codigo alterado. Clique em Buscar novamente.")
+            _validate()
+
+        def _search_client() -> None:
+            code = client_input.text().strip()
+            if not code:
+                error_label.setText("Informe o codigo do cliente.")
+                error_label.setVisible(True)
                 return
             btn_search.setEnabled(False)
-            status_lbl.setText("Buscando...")
-            status_lbl.setVisible(True)
-            result_frame.setVisible(False)
-            date_section.setVisible(False)
-            btn_ok.setEnabled(False)
-            error_lbl.setVisible(False)
+            client_result.setText("Buscando cliente...")
+            error_label.setVisible(False)
 
-            def _on_result(rows):
+            def _found(rows: object) -> None:
                 btn_search.setEnabled(True)
-                if not isinstance(rows, list) or not rows:
-                    status_lbl.setText("Nenhum pedido encontrado com esse numero.")
-                    return
-                # Prefer exact match on ped_number prefix
-                matched = next(
-                    (r for r in rows if str(r.get("ped_number") or "").split("/")[0] == ped_text),
-                    rows[0],
+                candidates = rows if isinstance(rows, list) else []
+                match = next(
+                    (
+                        item for item in candidates
+                        if isinstance(item, dict)
+                        and str(item.get("code") or "").strip().upper() == code.upper()
+                    ),
+                    None,
                 )
-                _found_row[0] = matched
-                ped_num = str(matched.get("ped_number") or "-")
-                result_ped_lbl.setText(f"Pedido #{ped_num}")
-                result_field_labels["Cliente"].setText(str(matched.get("client_name") or "-"))
-                result_field_labels["Vendedor"].setText(str(matched.get("vendor_name") or "-"))
-                status_val = str(matched.get("status") or "")
-                result_field_labels["Status"].setText(
-                    theme.STATUS_LABELS.get(status_val, status_val or "-")
-                )
-                existing_date = matched.get("delivery_date")
-                if existing_date:
-                    from PySide6.QtCore import QDate as _QD
-                    qd = _QD.fromString(str(existing_date)[:10], "yyyy-MM-dd")
-                    if qd.isValid():
-                        date_edit.setDate(qd)
-                status_lbl.setVisible(False)
-                result_frame.setVisible(True)
-                date_section.setVisible(True)
-                btn_ok.setEnabled(True)
+                found_client[0] = match
+                if match is None:
+                    client_result.setText("Cliente nao encontrado com esse codigo.")
+                else:
+                    client_result.setText(
+                        f"Cliente: {match.get('code', '-')} - {match.get('name', '-')}"
+                    )
+                _validate()
 
-            def _on_error(msg):
+            def _search_error(message: str) -> None:
                 btn_search.setEnabled(True)
-                status_lbl.setText(f"Erro ao buscar: {msg}")
+                found_client[0] = None
+                client_result.setText("Nao foi possivel buscar o cliente.")
+                error_label.setText(message)
+                error_label.setVisible(True)
+                _validate()
 
             thread, worker = _run_in_thread(
-                api.lookup_requisitions_by_ped,
-                ped_text,
-                on_result=_on_result,
-                on_error=_on_error,
-            )
-            thread.finished.connect(lambda t=thread, w=worker: self._cleanup_thread(t, w))
-            self._threads.append((thread, worker))
-
-        def _do_schedule():
-            row = _found_row[0]
-            if not row:
-                return
-            req_id = int(row.get("id") or row.get("source_requisition_id") or 0)
-            if not req_id:
-                error_lbl.setText("Nao foi possivel identificar o ID da requisicao.")
-                error_lbl.setVisible(True)
-                return
-            new_date = date_edit.date().toString("yyyy-MM-dd")
-            btn_ok.setEnabled(False)
-            btn_cancel.setEnabled(False)
-            error_lbl.setVisible(False)
-
-            def _on_ok(_result):
-                QMessageBox.information(
-                    self, "Entregas",
-                    "Entrega agendada com sucesso. Vendedor notificado.",
-                )
-                dlg.accept()
-                self.refresh()
-
-            def _on_err(msg):
-                btn_ok.setEnabled(True)
-                btn_cancel.setEnabled(True)
-                error_lbl.setText(msg)
-                error_lbl.setVisible(True)
-
-            thread, worker = _run_in_thread(
-                api.schedule_delivery,
-                req_id,
-                new_date,
-                on_result=_on_ok,
-                on_error=_on_err,
+                api.list_clients,
+                code,
+                30,
+                on_result=_found,
+                on_error=_search_error,
             )
             self._track_thread(thread, worker)
 
-        btn_search.clicked.connect(_do_search)
-        ped_input.lineEdit().returnPressed.connect(_do_search)
-        btn_ok.clicked.connect(_do_schedule)
+        def _vendors_loaded(rows: object) -> None:
+            vendor_combo.clear()
+            vendor_combo.addItem("Selecione um vendedor", 0)
+            for item in rows if isinstance(rows, list) else []:
+                if not isinstance(item, dict):
+                    continue
+                vendor_combo.addItem(
+                    f"{item.get('code', '-')} - {item.get('name', '-')}",
+                    int(item.get("id") or 0),
+                )
+            vendor_combo.setEnabled(vendor_combo.count() > 1)
+            if vendor_combo.count() <= 1:
+                error_label.setText("Nenhum vendedor ativo foi encontrado.")
+                error_label.setVisible(True)
+            _validate()
 
+        def _vendors_error(message: str) -> None:
+            vendor_combo.clear()
+            vendor_combo.addItem("Nao foi possivel carregar vendedores", 0)
+            error_label.setText(message)
+            error_label.setVisible(True)
+            _validate()
+
+        def _create() -> None:
+            client = found_client[0]
+            if not client:
+                return
+            payload = {
+                "client_id": int(client.get("id") or 0),
+                "vendor_id": int(vendor_combo.currentData() or 0),
+                "city": city_input.text().strip(),
+                "truck_name": truck_input.text().strip(),
+                "loaded_by": loaded_by_input.text().strip(),
+                "delivery_date": date_edit.date().toString("yyyy-MM-dd"),
+            }
+            btn_create.setEnabled(False)
+            btn_cancel.setEnabled(False)
+            error_label.setVisible(False)
+
+            def _created(_result: object) -> None:
+                QMessageBox.information(self, "Entregas", "Entrega criada com sucesso.")
+                dlg.accept()
+                self.refresh()
+
+            def _create_error(message: str) -> None:
+                btn_cancel.setEnabled(True)
+                error_label.setText(message)
+                error_label.setVisible(True)
+                _validate()
+
+            thread, worker = _run_in_thread(
+                api.create_delivery,
+                payload,
+                on_result=_created,
+                on_error=_create_error,
+            )
+            self._track_thread(thread, worker)
+
+        client_input.textChanged.connect(_client_changed)
+        client_input.returnPressed.connect(_search_client)
+        btn_search.clicked.connect(_search_client)
+        city_input.textChanged.connect(_validate)
+        vendor_combo.currentIndexChanged.connect(_validate)
+        truck_input.textChanged.connect(_validate)
+        loaded_by_input.textChanged.connect(_validate)
+        btn_create.clicked.connect(_create)
+
+        thread, worker = _run_in_thread(
+            api.list_delivery_vendors,
+            on_result=_vendors_loaded,
+            on_error=_vendors_error,
+        )
+        self._track_thread(thread, worker)
         dlg.exec()
 
     def _sched_change_deadline(self) -> None:
@@ -1774,9 +1861,10 @@ class DeliveryCenterView(QWidget):
         if result is None:
             return
         new_date, reason = result
+        delivery_id = self._standalone_delivery_id(row)
         self._run_action(
-            api.update_delivery_schedule,
-            self._row_requisition_id(row),
+            api.update_standalone_delivery_schedule if delivery_id else api.update_delivery_schedule,
+            delivery_id or self._row_requisition_id(row),
             new_date,
             reason,
             success_message="Prazo de entrega alterado com sucesso.",
