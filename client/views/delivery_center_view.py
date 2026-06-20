@@ -5,10 +5,11 @@ from __future__ import annotations
 from datetime import timedelta as _timedelta
 import re
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal
+from PySide6.QtCore import QObject, QLocale, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCalendarWidget,
     QComboBox,
     QDateEdit,
     QFrame,
@@ -105,6 +106,16 @@ def _primary_action_btn_style(scale: float) -> str:
 
 def _format_weight(value: object) -> str:
     return format_weight_kg(value)
+
+
+def _configure_calendar(date_edit: QDateEdit, scale: float) -> None:
+    calendar = date_edit.calendarWidget()
+    calendar.setLocale(QLocale(QLocale.Language.Portuguese, QLocale.Country.Brazil))
+    calendar.setHorizontalHeaderFormat(QCalendarWidget.HorizontalHeaderFormat.ShortDayNames)
+    calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+    calendar.setGridVisible(False)
+    calendar.setMinimumSize(max(300, int(330 * scale)), max(240, int(270 * scale)))
+    theme.themed(calendar, lambda: theme.calendar_style(scale))
 
 
 def _client_code_key(value: object) -> str:
@@ -1075,6 +1086,7 @@ class DeliveryCenterView(QWidget):
         date_edit.setCalendarPopup(True)
         date_edit.setFixedHeight(max(34, int(38 * self.scale)))
         date_edit.setStyleSheet(theme.input_style(self.scale))
+        _configure_calendar(date_edit, self.scale)
         current = _parse_datetime(req.get("delivery_date"))
         if current is None:
             from PySide6.QtCore import QDate
@@ -1695,6 +1707,7 @@ class DeliveryCenterView(QWidget):
         date_edit.setMinimumDate(QDate.currentDate())
         date_edit.setFixedHeight(field_height)
         date_edit.setStyleSheet(theme.input_style(s))
+        _configure_calendar(date_edit, s)
         layout.addWidget(_label("Data prevista da entrega:"))
         layout.addWidget(date_edit)
 

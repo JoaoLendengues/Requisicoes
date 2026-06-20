@@ -449,6 +449,57 @@ def input_style(scale: float = 1.0) -> str:
     )
 
 
+def calendar_style(scale: float = 1.0) -> str:
+    """Estilo isolado do QCalendarWidget, sem herdar o header das tabelas."""
+    fs = max(8, int(9 * scale))
+    nav_fs = max(9, int(10 * scale))
+    radius = max(8, int(10 * scale))
+    return (
+        f"QCalendarWidget {{"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {rgba(PANEL_NEON_PRIMARY, 90)}; border-radius:{radius}px;"
+        f"}}"
+        f"QCalendarWidget QWidget#qt_calendar_navigationbar {{"
+        f"  background:{PANEL_SURFACE_ALT}; color:{PANEL_TEXT_PRIMARY};"
+        f"  border:none; border-bottom:1px solid {PANEL_BORDER_SOFT};"
+        f"  min-height:{max(34, int(40 * scale))}px;"
+        f"}}"
+        f"QCalendarWidget QToolButton {{"
+        f"  background:transparent; color:{PANEL_TEXT_PRIMARY}; border:none;"
+        f"  border-radius:{max(5, int(6 * scale))}px; padding:5px 8px;"
+        f"  font-size:{nav_fs}pt; font-weight:800; icon-size:{max(14, int(18 * scale))}px;"
+        f"}}"
+        f"QCalendarWidget QToolButton:hover {{"
+        f"  background:{rgba(PANEL_NEON_PRIMARY, 34)}; color:{PANEL_TEXT_PRIMARY};"
+        f"}}"
+        f"QCalendarWidget QMenu {{"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {PANEL_BORDER_SOFT};"
+        f"}}"
+        f"QCalendarWidget QSpinBox {{"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"
+        f"  border:1px solid {PANEL_BORDER_SOFT}; border-radius:6px; padding:3px 6px;"
+        f"}}"
+        f"QCalendarWidget QAbstractItemView {{"
+        f"  background:{PANEL_SURFACE_BG}; color:{PANEL_TEXT_PRIMARY};"
+        f"  alternate-background-color:{PANEL_SURFACE_BG}; border:none; outline:none;"
+        f"  font-size:{fs}pt; selection-background-color:{PRIMARY};"
+        f"  selection-color:{TEXT_WHITE};"
+        f"}}"
+        f"QCalendarWidget QAbstractItemView::item {{"
+        f"  border:none; padding:{max(3, int(5 * scale))}px;"
+        f"}}"
+        f"QCalendarWidget QHeaderView::section {{"
+        f"  background:{PANEL_SURFACE_ALT}; color:{PANEL_TEXT_MUTED};"
+        f"  border:none; border-bottom:1px solid {PANEL_BORDER_SOFT};"
+        f"  padding:{max(4, int(6 * scale))}px 2px; font-size:{fs}pt; font-weight:700;"
+        f"}}"
+        f"QCalendarWidget QTableCornerButton::section {{"
+        f"  background:{PANEL_SURFACE_ALT}; border:none;"
+        f"}}"
+    )
+
+
 def primary_btn_style(scale: float = 1.0) -> str:
     fs = max(9, int(10 * scale))
     fg = "#04111F" if is_dark else TEXT_WHITE
