@@ -852,6 +852,9 @@ class MainWindow(QMainWindow):
         drawer.populate(notifications)
 
     def _mark_all_read(self):
+        # Interrompe na hora os pop-ups das não lidas que ainda estavam
+        # enfileirados — o usuário pediu para parar de subir ao marcar todas.
+        self._toast_manager.clear()
         thread, worker = _run_in_thread(
             api.mark_all_notifications_read,
             on_result=lambda _: self._reset_badge(),

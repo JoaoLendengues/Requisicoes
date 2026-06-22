@@ -417,6 +417,19 @@ class ToastManager:
         if self._current is None and not self._gap_timer.isActive():
             self._show_next()
 
+    def clear(self):
+        """Descarta a fila pendente e dispensa o toast atual.
+
+        Usado ao "marcar todas como lidas": interrompe imediatamente os
+        pop-ups das notificações não vistas que ainda estavam na fila.
+        """
+        self._queue.clear()
+        self._gap_timer.stop()
+        current = self._current
+        self._current = None
+        if current is not None:
+            current._slide_out()
+
     # ── Internos ──────────────────────────────────────────────────────────────
 
     def _target_pos(self, toast_width: int) -> tuple[int, int]:
