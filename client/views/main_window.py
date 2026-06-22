@@ -78,7 +78,7 @@ class MainWindow(QMainWindow):
         self._nav_overlay: QLabel | None = None
         self._setup_ui()
         self._setup_hidden_shortcuts()
-        self._setup_statusbar()
+        self.statusBar().hide()
         self.setWindowTitle("Sistema de Requisições - Ferragens Pinheiro")
         if res.start_maximized:
             self.showMaximized()
@@ -231,19 +231,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, "form_view") and hasattr(self.form_view, "btn_print") and self.form_view.btn_print.isEnabled():
             self.form_view.btn_print.click()
 
-    def _setup_statusbar(self):
-        bar = self.statusBar()
-        bar.setStyleSheet(
-            f"background:{theme.FOOTER_BG}; color:{theme.TEXT_WHITE};"
-            f"font-size:{max(8, int(9 * self.scale))}pt; padding:0 12px;"
-        )
-        bar.showMessage(
-            f"pinheiroferragens.com.br  |  SIA e Taguatinga  |  "
-            f"Sistema de Requisições Pinheiro Ferragens  |  "
-            f"Usuário: {session.user_name}  |  "
-            f"{local_now().strftime('%d/%m/%Y  %H:%M')}"
-        )
-
     def _refresh_session_profile(self):
         thread, worker = _run_in_thread(
             api.get_me,
@@ -256,7 +243,6 @@ class MainWindow(QMainWindow):
         session.update_profile(data)
         self.sidebar.refresh_user()
         self.form_view.refresh_logged_user()
-        self._setup_statusbar()
 
     def _nav_transition(self, page: int) -> None:
         """Cross-fade suave ao trocar de página no stack (160 ms, OutCubic).
@@ -1075,7 +1061,6 @@ class MainWindow(QMainWindow):
         self.sidebar.set_notification_count(self._unread_count)
         self.sidebar.refresh_user()
         self.form_view.refresh_logged_user()
-        self._setup_statusbar()
 
         if current_page == PAGE_HISTORY:
             history_state = state.get("history") or {}
@@ -1323,7 +1308,6 @@ class MainWindow(QMainWindow):
             # repaint completo, somando centenas de ms.
             self._apply_theme_to_view_buffered(current)
         self._refresh_shadows_for(self.sidebar)
-        self._setup_statusbar()
 
     def _on_theme_toggle(self, dark: bool):
         """
