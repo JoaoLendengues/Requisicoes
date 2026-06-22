@@ -251,6 +251,24 @@ class DeliveryCenterView(QWidget):
         status_col.addWidget(self.date_label)
         status_col.addWidget(self.updated_label)
         status_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignRight)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        theme.themed(
+            self.btn_guide,
+            lambda: (
+                f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+                f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+                f"border:1px solid {theme.BORDER_COLOR};"
+                f"border-radius:{sz_g // 2}px; padding:0;"
+            ),
+        )
+        self.btn_guide.clicked.connect(self.guide_requested)
+        status_col.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignRight)
+
         header.addLayout(status_col)
         root.addLayout(header)
 
