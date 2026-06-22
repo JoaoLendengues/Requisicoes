@@ -548,6 +548,48 @@ class Sidebar(QWidget):
     def set_notification_count(self, count: int):
         self._bell.set_count(count)
 
+    def set_update_badge(self, show: bool) -> None:
+        """Mostra/oculta badge laranja de nova versão disponível no botão Atualizações."""
+        btn = self._nav_btns.get("atualizacoes")
+        if btn is None:
+            return
+        badge = getattr(btn, "_update_badge", None)
+        if badge is None:
+            badge = QLabel(btn)
+            badge.setObjectName("updateBadge")
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            badge.setStyleSheet(
+                "QLabel#updateBadge {"
+                "  background:#F59E0B; color:#FFFFFF; border-radius:11px;"
+                "  font-size:8pt; font-weight:800; padding:0 5px;"
+                "  min-width:22px; min-height:22px;"
+                "}"
+            )
+            badge.hide()
+            btn._update_badge = badge  # type: ignore[attr-defined]
+
+            def _resize_badge(event, b=btn, lbl=badge):
+                lbl.adjustSize()
+                w = max(lbl.width(), 22)
+                h = max(lbl.height(), 22)
+                lbl.resize(w, h)
+                lbl.move(b.width() - w - 12, (b.height() - h) // 2)
+                return QPushButton.resizeEvent(b, event)
+            btn.resizeEvent = _resize_badge  # type: ignore[assignment]
+
+        if show:
+            badge.setText("!")
+            badge.adjustSize()
+            w = max(badge.width(), 22)
+            h = max(badge.height(), 22)
+            badge.resize(w, h)
+            badge.move(btn.width() - w - 12, (btn.height() - h) // 2)
+            badge.show()
+            badge.raise_()
+        else:
+            badge.hide()
+
     def set_feedback_unread_count(self, count: int):
         """Badge vermelho com contagem ao lado direito do botão FEEDBACKS."""
         btn = self._nav_btns.get("feedback")

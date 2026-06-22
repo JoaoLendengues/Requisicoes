@@ -87,10 +87,13 @@ class MainWindow(QMainWindow):
             height = max(480, int(800 * self.scale))
             self.resize(width, height)
         self._toast_manager = ToastManager(self)
+        self._pending_update_info: dict | None = None
+        self._bg_update_checker = None
         self._refresh_session_profile()
         self._start_notification_listener()
         self._navigate_to_home()
         QTimer.singleShot(600, self._maybe_show_onboarding)
+        self._start_bg_update_timer()
 
     def _setup_ui(self):
         self.setStyleSheet(f"background:{theme.CONTENT_BG};")
@@ -308,7 +311,14 @@ class MainWindow(QMainWindow):
 
     def _on_nav(self, key: str):
         if key == "atualizacoes":
-            SystemUpdatesDialog(parent=self).exec()
+            if self._pending_update_info is not None:
+                info = self._pending_update_info
+                self._pending_update_info = None
+                self.sidebar.set_update_badge(False)
+                from ..widgets.update_dialog import UpdateAvailableDialog
+                UpdateAvailableDialog(info, parent=self).exec()
+            else:
+                SystemUpdatesDialog(parent=self).exec()
             return
 
         mapping = {
@@ -742,6 +752,40 @@ class MainWindow(QMainWindow):
         )
         self.stack.setCurrentIndex(PAGE_FORM)
         self.sidebar._highlight("nova")
+
+    # ── Verificação periódica de atualizações ────────────────────────────────
+
+    def _start_bg_update_timer(self) -> None:
+        """Timer que verifica novas versões a cada 3 horas em segundo plano."""
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(3 * 60 * 60 * 1000)
+        self._update_timer.timeout.connect(self._run_bg_update_check)
+        self._update_timer.start()
+
+    def _run_bg_update_check(self) -> None:
+        """Dispara UpdateChecker em background. Ignora se já há check em andamento
+        ou se já existe uma atualização pendente aguardando o usuário."""
+        if self._pending_update_info is not None:
+            return
+        if self._bg_update_checker is not None and self._bg_update_checker.isRunning():
+            return
+        from ..updater import UpdateChecker
+        self._bg_update_checker = UpdateChecker(parent=self)
+        self._bg_update_checker.update_available.connect(self._on_bg_update_found)
+        self._bg_update_checker.start()
+
+    def _on_bg_update_found(self, info: dict) -> None:
+        """Nova versão detectada pelo timer periódico: sinaliza via badge + toast."""
+        self._pending_update_info = info
+        self.sidebar.set_update_badge(True)
+        version = info.get("version", "?")
+        self._toast_manager.show(
+            {
+                "type": "update_available",
+                "title": f"Nova versão disponível — v{version}",
+                "body": "Clique em Atualizações para instalar agora.",
+            }
+        )
 
     # ── Notificações ─────────────────────────────────────────────────────────
 
