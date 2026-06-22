@@ -191,7 +191,7 @@ class MainWindow(QMainWindow):
             "historico":          True,
             "config":             True,
             "feedback":           True,
-            "atualizacoes":       (session.settings_show_billing or session.settings_show_connection),
+            "atualizacoes":       True,
         }
         for key, visible in nav_visible.items():
             btn = self.sidebar._nav_btns.get(key)
