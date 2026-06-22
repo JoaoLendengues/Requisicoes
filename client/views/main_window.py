@@ -1546,22 +1546,18 @@ class MainWindow(QMainWindow):
 
         # ── Getters de widgets ────────────────────────────────────────────────
         def nav(key):
-            """Getter para botão da barra lateral."""
             return lambda: mw.sidebar._nav_btns.get(key)
 
         def bell():
             return mw.sidebar._bell
 
         def form(attr):
-            """Getter para atributo do formulário."""
             return lambda: getattr(mw.form_view, attr, None)
 
         def hist(attr):
-            """Getter para atributo do histórico (carregado sob demanda)."""
             return lambda: getattr(mw.history_view, attr, None) if mw.history_view else None
 
         def ar(attr, key=None):
-            """Getter para widget da view A&R (carregada sob demanda)."""
             def _get():
                 view = mw.ar_view
                 if view is None:
@@ -1573,7 +1569,6 @@ class MainWindow(QMainWindow):
             return _get
 
         def pin(attr, key=None):
-            """Getter para widget da view Pinheiro Indústria (carregada sob demanda)."""
             def _get():
                 view = mw.pinheiro_industria_view
                 if view is None:
@@ -1585,7 +1580,6 @@ class MainWindow(QMainWindow):
             return _get
 
         def order(attr, key=None):
-            """Getter para widget da Central de Pedidos (carregada sob demanda)."""
             def _get():
                 view = mw.order_center_view
                 if view is None:
@@ -1597,15 +1591,12 @@ class MainWindow(QMainWindow):
             return _get
 
         def delivery(attr):
-            """Getter para widget da Central de Entregas (carregada sob demanda)."""
             return lambda: getattr(mw.delivery_center_view, attr, None) if mw.delivery_center_view else None
 
         def dash(attr):
-            """Getter para widget do Dashboard (carregado sob demanda)."""
             return lambda: getattr(mw.dashboard_view, attr, None) if mw.dashboard_view else None
 
         def cfg(attr, idx=None):
-            """Getter para widget de Configurações (carregado sob demanda)."""
             def _get():
                 view = mw.settings_view
                 if view is None:
@@ -1616,697 +1607,894 @@ class MainWindow(QMainWindow):
                 return val
             return _get
 
-        # ── Passo de boas-vindas (sem spotlight) ──────────────────────────────
+        # ── Passo de boas-vindas ──────────────────────────────────────────────
         welcome = TourStep(
             title="Bem-vindo ao Sistema de Requisições!",
             body=(
-                "Este tour rápido apresenta as principais funcionalidades "
-                "disponíveis para o seu perfil.<br><br>"
+                "Este tour apresenta <b>todas as funcionalidades</b> disponíveis para o seu perfil, "
+                "tela por tela, passo a passo.<br><br>"
                 "Clique em <b>Próximo</b> para começar, ou "
-                "<b>Pular tour</b> para ir direto ao sistema."
+                "<b>Pular tour</b> para ir direto ao sistema.<br><br>"
+                "Você pode rever este guia a qualquer momento em "
+                "<b>Configurações → Ajuda e Acessibilidade</b>."
             ),
             tooltip_side="center",
         )
 
-        # ── Passos por perfil ─────────────────────────────────────────────────
+        # ── Blocos reutilizáveis ──────────────────────────────────────────────
+
+        steps_nova = [
+            TourStep(
+                "Nova Requisição",
+                "Tela central do sistema — onde toda requisição de compra nasce. "
+                "Preencha o PED, selecione o cliente, adicione os itens, defina o prazo "
+                "e salve. O <b>PDF é gerado automaticamente</b> na pasta de rede.",
+                nav("nova"), "right", "nova",
+            ),
+            TourStep(
+                "Número do PED",
+                "Campo obrigatório. Digite apenas o número (somente dígitos) do pedido "
+                "gerado no sistema de vendas.<br><br>"
+                "<b>PED já existente:</b> a requisição correspondente é reaberta para edição.<br>"
+                "<b>PED novo:</b> um formulário em branco é criado.<br><br>"
+                "O cursor é posicionado aqui automaticamente ao abrir a tela.",
+                form("input_ped"), "bottom",
+            ),
+            TourStep(
+                "Busca de Cliente",
+                "Pesquise por <b>nome</b>, <b>código</b> ou <b>CNPJ</b> do cliente. "
+                "A lista filtra nos +112 mil cadastros em tempo real enquanto você digita.<br><br>"
+                "Selecione o cliente na lista suspensa para vinculá-lo ao pedido. "
+                "Campo obrigatório para salvar.",
+                form("client_search"), "bottom",
+            ),
+            TourStep(
+                "Nome da Obra",
+                "Identifica o projeto ou obra vinculada a esta requisição. "
+                "Aparece no PDF e pode ser usado como filtro nos Relatórios.<br><br>"
+                "Exemplo: <i>OBRA RUA DAS FLORES 123</i> ou <i>REFORMA LOJA CENTRO</i>.",
+                form("input_obra"), "bottom",
+            ),
+            TourStep(
+                "Tabela de Itens",
+                "Adicione os materiais da requisição. Cada linha tem: "
+                "<b>posição</b>, código do produto, descrição, quantidade e peso.<br><br>"
+                "Pressione <b>Enter</b> para confirmar cada linha e avançar para a próxima. "
+                "O peso total é somado automaticamente.",
+                form("item_table"), "top",
+            ),
+            TourStep(
+                "Prazo de Entrega",
+                "Data de entrega acordada com o cliente. "
+                "O sistema bloqueia datas abaixo do <b>prazo mínimo</b> "
+                "configurado em Configurações → Sistema.<br><br>"
+                "Pedidos com prazo vencido aparecem em <b>vermelho</b> "
+                "no Painel Gerencial e na Central de Pedidos.",
+                form("input_prazo"), "bottom",
+            ),
+            TourStep(
+                "Tipo de Entrega — Retirada",
+                "Marque quando o cliente virá buscar o pedido no balcão. "
+                "Ao marcar, o campo de endereço fica oculto.",
+                form("chk_retirada"), "right",
+            ),
+            TourStep(
+                "Tipo de Entrega — Entrega",
+                "Marque quando o pedido será levado à obra pela logística. "
+                "Ao marcar, o campo de <b>endereço</b> torna-se obrigatório "
+                "e o pedido aparece na tela <b>Entregas</b> para a equipe responsável.",
+                form("chk_entrega"), "right",
+            ),
+            TourStep(
+                "Endereço de Entrega",
+                "Endereço completo para o motorista. Obrigatório quando 'Entrega' está marcado.<br><br>"
+                "Inclua rua, número, bairro e cidade para evitar erros de rota.",
+                form("input_address"), "bottom",
+            ),
+            TourStep(
+                "Telefone de Contato",
+                "Telefone do responsável na obra. "
+                "Usado pela logística para confirmar horário de entrega.",
+                form("input_fone"), "bottom",
+            ),
+            TourStep(
+                "Observações",
+                "Instruções especiais de fabricação, detalhes técnicos ou "
+                "informações adicionais para a produção.<br><br>"
+                "Aparecem em destaque no PDF. Use para informar materiais específicos, "
+                "tratamentos superficiais ou atenções do cliente.",
+                form("input_obs"), "top",
+            ),
+            TourStep(
+                "Editor de Desenho",
+                "Clique para abrir o editor de croquis integrado. "
+                "Ferramentas disponíveis: <b>caneta livre</b>, <b>linha</b>, "
+                "<b>seta</b>, <b>retângulo</b>, <b>cota em MM</b> e <b>texto</b>.<br><br>"
+                "O desenho é exportado diretamente no PDF. Use para cotas de dobra, "
+                "medidas especiais ou esquemas técnicos.",
+                form("btn_canvas"), "top",
+            ),
+            TourStep(
+                "Assinatura Digital",
+                "Captura a assinatura do responsável pelo pedido diretamente na tela. "
+                "A imagem é incluída no PDF final, "
+                "servindo como confirmação formal do pedido.",
+                form("btn_sign"), "top",
+            ),
+            TourStep(
+                "Salvar Requisição",
+                "Registra a requisição no banco de dados e <b>gera o PDF automaticamente</b> "
+                "na pasta de rede configurada. Atalho: <b>Ctrl+S</b>.<br><br>"
+                "Uma requisição salva fica em status <i>Rascunho</i> — para enviá-la "
+                "à produção, use o botão <b>Enviar para Produção</b>.",
+                form("btn_save"), "top",
+            ),
+            TourStep(
+                "Enviar para Produção",
+                "Move o pedido para a fila de produção "
+                "(<b>A&R</b> ou <b>Pinheiro Indústria</b>, conforme destino). "
+                "Só fica ativo <b>após salvar</b>.<br><br>"
+                "Ao clicar, o status muda para <i>Aguardando Recebimento</i> "
+                "e a produção recebe notificação automática.",
+                form("btn_production"), "top",
+            ),
+            TourStep(
+                "Imprimir PDF",
+                "Abre o PDF gerado para visualização ou impressão. "
+                "Útil para enviar por WhatsApp ou imprimir uma via física. "
+                "Se o PDF ainda não existe, ele é criado antes de abrir.",
+                form("btn_print"), "top",
+            ),
+        ]
+
+        steps_hist = [
+            TourStep(
+                "Relatórios / Histórico",
+                "Acesse <b>qualquer requisição</b> já criada no sistema. "
+                "Filtre por status, vendedor, cliente, data ou PED. "
+                "Duplo clique em uma linha para abrir a requisição completa.",
+                nav("historico"), "right", "historico",
+            ),
+            TourStep(
+                "Campo de Busca",
+                "Pesquise por <b>número do PED</b>, nome do cliente ou nome da obra. "
+                "Combine com os filtros de status e período (data inicial / final) "
+                "para resultados mais precisos. "
+                "Pressione <b>Enter</b> ou aguarde 1 segundo para iniciar a busca.",
+                hist("input_search"), "bottom",
+            ),
+            TourStep(
+                "Tabela de Resultados",
+                "Clique no cabeçalho de qualquer coluna para ordenar os resultados. "
+                "Linhas em <b>vermelho</b> indicam requisições com prazo vencido. "
+                "Duplo clique em uma linha para abrir a requisição completa.",
+                hist("table"), "top",
+            ),
+            TourStep(
+                "Exportar Excel",
+                "Exporta todas as linhas visíveis para uma planilha Excel.<br><br>"
+                "<b>Atenção:</b> aplique os filtros desejados antes de exportar — "
+                "a exportação reflete exatamente o que está na tela (máximo 300 linhas). "
+                "Para relatórios maiores, reduza o período de busca.",
+                hist("export_btn"), "bottom",
+            ),
+        ]
+
+        steps_cfg_base = [
+            TourStep(
+                "Configurações",
+                "Ajuste a aparência, gerencie sua conta e acesse as opções do sistema.",
+                nav("config"), "right", "config",
+            ),
+            TourStep(
+                "Aba — Ajuda e Acessibilidade",
+                "Ajuste a <b>escala visual</b> (tamanho geral da interface de 60% a 175%), "
+                "o <b>tamanho da fonte</b> e o <b>tamanho dos pop-ups de notificação</b>.<br><br>"
+                "Inclui o botão <b>'Ver Guia Rápido'</b> para rever este tour a qualquer momento "
+                "e a opção de modo escuro.",
+                cfg("_tab_btns", 0), "bottom",
+            ),
+            TourStep(
+                "Aba — Conta",
+                "Altere sua senha de acesso: informe a <b>senha atual</b>, "
+                "a <b>nova senha</b> (mínimo 6 caracteres) e confirme.<br><br>"
+                "Recomenda-se trocar periodicamente por segurança. "
+                "Se esquecer a senha, contate o administrador.",
+                cfg("_tab_btns", 1), "bottom",
+            ),
+        ]
+
+        step_notif = TourStep(
+            "Notificações em Tempo Real",
+            "O <b>sino</b> recebe alertas automáticos: pedidos em produção, "
+            "finalizações, mudanças de prazo, faturamentos pendentes e erros de backup.<br><br>"
+            "Um <b>badge vermelho</b> indica notificações não lidas. "
+            "Clique no sino para abrir o painel e 'Marcar todas como lidas' para limpar o badge. "
+            "Os alertas chegam mesmo com o painel fechado.",
+            bell, "right",
+        )
+
+        step_update = TourStep(
+            "Atualizações do Sistema",
+            "Quando uma nova versão estiver disponível, o sistema avisa automaticamente. "
+            "Aqui você pode verificar manualmente e iniciar a atualização.<br><br>"
+            "O processo é automático: o sistema fecha, aplica a atualização e reabre. "
+            "Suas configurações são preservadas entre versões.",
+            nav("atualizacoes"), "right", "atualizacoes",
+        )
+
+        # ════════════════════════════════════════════════════════════════════════
+        # Admin
+        # ════════════════════════════════════════════════════════════════════════
         if role == "admin":
             return [
                 welcome,
                 # ── Nova Requisição ───────────────────────────────────────────
-                TourStep(
-                    "Nova Requisição",
-                    "Crie e edite pedidos de compra. Preencha o PED, "
-                    "selecione o cliente, adicione os itens e defina o prazo. "
-                    "O <b>PDF é gerado automaticamente</b> ao salvar.",
-                    nav("nova"), "right", "nova",
-                ),
-                TourStep(
-                    "Número do PED",
-                    "Digite aqui o número do pedido. "
-                    "É o campo principal e <b>obrigatório</b> para salvar.",
-                    form("input_ped"), "bottom",
-                ),
-                TourStep(
-                    "Busca de Cliente",
-                    "Pesquise pelo nome, CNPJ ou código do cliente. "
-                    "O sistema busca nos <b>+112 mil cadastros</b> enquanto você digita.",
-                    form("client_search"), "bottom",
-                ),
-                TourStep(
-                    "Tabela de Itens",
-                    "Adicione os itens da requisição: descrição, quantidade e unidade. "
-                    "Pressione <b>Enter</b> para confirmar cada linha e avançar.",
-                    form("item_table"), "top",
-                ),
-                TourStep(
-                    "Prazo de Entrega",
-                    "Defina a data de entrega esperada. "
-                    "Pedidos com prazo vencido aparecem em vermelho no dashboard.",
-                    form("input_prazo"), "bottom",
-                ),
-                TourStep(
-                    "Editor de Desenho",
-                    "Clique no canvas para desenhar croquis e cotas diretamente "
-                    "na requisição. O desenho é exportado no PDF final.",
-                    form("canvas_preview"), "top",
-                ),
-                TourStep(
-                    "Salvar / Imprimir",
-                    "Salvar registra a requisição e gera o PDF automaticamente. "
-                    "Imprimir abre o PDF gerado para impressão ou envio.",
-                    form("btn_save"), "top",
-                ),
-                # ── Central de Usuários ───────────────────────────────────────
-                TourStep(
-                    "Central de Usuários",
-                    "Em <b>Configurações → Usuários</b> você cadastra, edita e "
-                    "desativa membros da equipe e define o nível de acesso: "
-                    "<b>Vendedor, Gerente, A&R, Indústria ou Entrega</b>.",
-                    nav("config"), "right", "config",
-                ),
+                *steps_nova,
                 # ── Painel Gerencial ──────────────────────────────────────────
                 TourStep(
                     "Painel Gerencial",
-                    "Visão executiva da operação: pedidos em produção, "
-                    "atrasos, faturamentos e ritmo diário.",
+                    "Visão executiva da operação: indicadores de volume, "
+                    "pedidos atrasados, faturamentos pendentes e ritmo por vendedor. "
+                    "Use o filtro de datas no topo para ajustar o período de análise.",
                     nav("dashboard"), "right", "dashboard",
                 ),
                 TourStep(
                     "Ranking de Vendedores",
-                    "Volume de requisições emitidas por vendedor no período. "
-                    "Identifique quem está mais ativo.",
+                    "Volume de requisições emitidas por cada vendedor no período selecionado. "
+                    "Identifique quem está mais ativo e compare o desempenho da equipe.",
                     dash("vendors_card"), "right",
                 ),
                 TourStep(
-                    "Pedidos sem Confirmação",
-                    "Pedidos aguardando retorno da produção há mais de <b>1 hora</b>. "
-                    "Ação imediata necessária.",
+                    "Alertas — Pedidos sem Confirmação",
+                    "Pedidos enviados para produção há mais de <b>1 hora</b> "
+                    "sem confirmação de recebimento pela produção.<br><br>"
+                    "Acompanhe diariamente para evitar atrasos não detectados. "
+                    "Clique em qualquer pedido da lista para abri-lo.",
                     dash("alerts_card"), "left",
                 ),
                 TourStep(
                     "Máquinas da A&R",
-                    "Ranking das máquinas da A&R por volume de operações. "
-                    "Identifique gargalos de produção.",
+                    "Ranking de uso das máquinas da A&R por volume de pedidos no período. "
+                    "Identifique equipamentos sobrecarregados e distribua melhor a carga.",
                     dash("machines_ar_card"), "right",
                 ),
                 TourStep(
                     "Máquinas da Indústria",
-                    "Ranking das máquinas da Pinheiro Indústria. "
-                    "Compare o desempenho entre as duas filiais.",
+                    "Mesmo indicador para a Pinheiro Indústria. "
+                    "Compare o ritmo de produção entre as duas plantas.",
                     dash("machines_industria_card"), "left",
                 ),
                 TourStep(
                     "Últimas Requisições",
-                    "Visão rápida das requisições mais recentes do sistema. "
-                    "Duplo clique para abrir qualquer uma.",
+                    "As requisições mais recentes de toda a equipe. "
+                    "Duplo clique em qualquer linha para abrir a requisição completa. "
+                    "Linhas em vermelho indicam prazo vencido.",
                     dash("recent_card"), "top",
                 ),
                 # ── Central de Pedidos ────────────────────────────────────────
                 TourStep(
                     "Central de Pedidos",
-                    "Acompanhe todos os pedidos em andamento por status: "
-                    "aguardando recebimento, em produção, faturamento e cancelados.",
+                    "Acompanhe todos os pedidos em andamento organizados por status. "
+                    "Use os filtros no topo para ver apenas determinados destinos ou vendedores.",
                     nav("pedidos"), "right", "pedidos",
                 ),
                 TourStep(
                     "Aguardando Recebimento",
-                    "Pedidos enviados para produção ainda não confirmados. "
-                    "Duplo clique para abrir e acompanhar.",
+                    "Pedidos já enviados para produção mas <b>ainda não confirmados</b> "
+                    "pela equipe de A&R ou Indústria. "
+                    "A coluna 'Prazo' mostra há quanto tempo o pedido está aguardando. "
+                    "Duplo clique para abrir.",
                     order("_section_cards", "aguardando_recebimento"), "right",
                 ),
                 TourStep(
                     "Em Produção",
-                    "Pedidos que já foram recebidos e estão sendo produzidos. "
-                    "Acompanhe em qual destino cada um está.",
+                    "Pedidos recebidos e atualmente sendo fabricados. "
+                    "A coluna 'Máquina' indica em qual equipamento cada pedido está sendo produzido.",
                     order("_section_cards", "em_producao"), "left",
                 ),
                 TourStep(
-                    "Pedidos Finalizados",
-                    "Pedidos já finalizados. Disponíveis para consulta e "
-                    "reimpressão do PDF quando necessário.",
+                    "Finalizados / Faturados",
+                    "Pedidos concluídos pela produção, aguardando faturamento ou já faturados. "
+                    "Disponíveis para consulta, reimpressão de PDF "
+                    "e ajuste de status quando necessário.",
                     order("_section_cards", "faturados"), "left",
                 ),
+                # ── A&R ───────────────────────────────────────────────────────
+                TourStep(
+                    "Tela A&R",
+                    "Painel operacional da equipe de A&R. "
+                    "Acompanhe toda a fila de produção: "
+                    "recebimento, espera, máquinas ativas e finalizações.",
+                    nav("ar"), "right", "ar",
+                ),
+                TourStep(
+                    "Contadores A&R",
+                    "Totalizadores em tempo real: "
+                    "<b>Aguardando Recebimento</b>, <b>Aguardando na Fila</b> e <b>Em Produção</b>. "
+                    "Clique em <b>ATUALIZAR</b> para ver os números mais recentes.",
+                    ar("summary_waiting_receipt", "card"), "bottom",
+                ),
+                TourStep(
+                    "A&R — Aguardando Recebimento",
+                    "Pedidos enviados pelo vendedor mas ainda não recebidos fisicamente na A&R. "
+                    "Selecione um pedido e clique <b>'Receber'</b> para confirmar que o material chegou. "
+                    "O vendedor é notificado automaticamente.",
+                    ar("waiting_receipt_panel", "card"), "right",
+                ),
+                TourStep(
+                    "A&R — Aguardando na Fila",
+                    "Pedidos já recebidos aguardando uma máquina ficar disponível. "
+                    "Selecione um pedido e clique <b>'Enviar para Máquina'</b> "
+                    "para designar o equipamento e iniciar a produção.",
+                    ar("waiting_queue_panel", "card"), "left",
+                ),
+                TourStep(
+                    "A&R — Máquinas em Produção",
+                    "Cada card representa uma máquina com o pedido em andamento. "
+                    "Clique no card para:<br>"
+                    "• <b>Finalizar</b> — pedido vai para aguardando faturamento<br>"
+                    "• <b>Devolver para Fila</b> — retorna ao aguardando na fila<br>"
+                    "• <b>Alterar Prazo</b> — define nova data com motivo obrigatório",
+                    ar("machines_widget"), "top",
+                ),
+                TourStep(
+                    "A&R — Atualizar",
+                    "Recarrega todos os pedidos e o status das máquinas com dados atualizados. "
+                    "Use quando outro operador fizer uma mudança que você ainda não vê na tela.",
+                    ar("refresh_btn"), "bottom",
+                ),
+                # ── Pinheiro Indústria ────────────────────────────────────────
+                TourStep(
+                    "Pinheiro Indústria",
+                    "Painel operacional da Pinheiro Indústria. "
+                    "Funciona igual à A&R, mas para os pedidos destinados à Indústria.",
+                    nav("pinheiro_industria"), "right", "pinheiro_industria",
+                ),
+                TourStep(
+                    "Contadores — Indústria",
+                    "Totalizadores em tempo real para a Pinheiro Indústria: "
+                    "Aguardando Recebimento, Aguardando na Fila e Em Produção.",
+                    pin("summary_waiting_receipt", "card"), "bottom",
+                ),
+                TourStep(
+                    "Indústria — Aguardando Recebimento",
+                    "Pedidos enviados pelo vendedor aguardando confirmação de chegada "
+                    "na Pinheiro Indústria. Selecione e clique <b>'Receber'</b>.",
+                    pin("waiting_receipt_panel", "card"), "right",
+                ),
+                TourStep(
+                    "Indústria — Aguardando na Fila",
+                    "Pedidos recebidos aguardando máquina disponível na Indústria. "
+                    "Selecione e clique <b>'Enviar para Máquina'</b> para iniciar a produção.",
+                    pin("waiting_queue_panel", "card"), "left",
+                ),
+                TourStep(
+                    "Indústria — Máquinas em Produção",
+                    "Cards das máquinas da Indústria com os pedidos em andamento. "
+                    "Mesmas ações da A&R: Finalizar, Devolver para Fila e Alterar Prazo.",
+                    pin("machines_widget"), "top",
+                ),
+                TourStep(
+                    "Indústria — Atualizar",
+                    "Recarrega pedidos e máquinas da Pinheiro Indústria com dados atualizados.",
+                    pin("refresh_btn"), "bottom",
+                ),
+                # ── Entregas ──────────────────────────────────────────────────
+                TourStep(
+                    "Tela de Entregas",
+                    "Agenda logística: todos os pedidos marcados com 'Entrega' "
+                    "prontos para sair. "
+                    "A equipe de logística gerencia prazos e confirma as entregas aqui.",
+                    nav("entregas"), "right", "entregas",
+                ),
+                TourStep(
+                    "Vista Lista / Cronograma",
+                    "<b>Lista:</b> todos os pedidos pendentes em ordem de prazo.<br>"
+                    "<b>Cronograma:</b> visão calendário organizada por data de entrega.<br><br>"
+                    "Alterne conforme a necessidade da operação logística.",
+                    delivery("_btn_view_list"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Entregas",
+                    "Lista os pedidos com entrega pendente. "
+                    "Selecione um ou mais para acionar os botões de ação. "
+                    "Duplo clique abre a requisição em modo leitura.",
+                    delivery("table"), "top",
+                ),
+                TourStep(
+                    "Alterar Prazo de Entrega",
+                    "Com um pedido selecionado, clique aqui para definir uma nova data. "
+                    "É obrigatório informar um <b>motivo</b> para a alteração. "
+                    "O vendedor responsável é notificado automaticamente.",
+                    delivery("btn_change_deadline"), "bottom",
+                ),
+                TourStep(
+                    "Marcar como Entregue",
+                    "Confirma que o pedido foi entregue ao cliente. "
+                    "O status muda para <b>Finalizado</b> e a data/hora de entrega "
+                    "é registrada no histórico da requisição.",
+                    delivery("btn_mark_delivered"), "bottom",
+                ),
+                TourStep(
+                    "Cancelar Entrega",
+                    "Reverte uma marcação de entregue, devolvendo o pedido "
+                    "para a lista de pendentes. "
+                    "Use quando uma entrega foi registrada por engano.",
+                    delivery("btn_cancel_delivered"), "bottom",
+                ),
                 # ── Histórico ─────────────────────────────────────────────────
-                TourStep(
-                    "Histórico / Busca",
-                    "Busque qualquer requisição por status, cliente, data ou PED. "
-                    "Clique duas vezes para abrir e editar.",
-                    nav("historico"), "right", "historico",
-                ),
-                TourStep(
-                    "Campo de Busca",
-                    "Digite o número do PED, nome do cliente ou obra. "
-                    "Combine com os filtros de status e período para resultados precisos.",
-                    hist("input_search"), "bottom",
-                ),
-                TourStep(
-                    "Tabela de Resultados",
-                    "Clique nos cabeçalhos para ordenar. "
-                    "Duplo clique em uma linha para abrir a requisição completa.",
-                    hist("table"), "top",
-                ),
+                *steps_hist,
                 # ── Configurações ─────────────────────────────────────────────
+                *steps_cfg_base,
                 TourStep(
-                    "Configurações",
-                    "Gerencie backup automático, escala da interface, "
-                    "senha de acesso e alertas de faturamento.",
-                    nav("config"), "right", "config",
-                ),
-                TourStep(
-                    "Aba Ajuda e Acessibilidade",
-                    "Ajuste a <b>escala da interface</b>, o <b>tamanho de fonte</b>, "
-                    "o tamanho das notificações e reabra o <b>Guia Rápido</b> quando precisar.",
-                    cfg("_tab_btns", 0), "bottom",
-                ),
-                TourStep(
-                    "Aba Conta",
-                    "Altere sua senha de acesso. "
-                    "Recomendado trocar periodicamente por segurança.",
-                    cfg("_tab_btns", 1), "bottom",
-                ),
-                TourStep(
-                    "Aba Sistema",
-                    "Configure a <b>URL do servidor</b> e teste a conexão com o backend, "
-                    "ajuste os alertas de faturamento e o prazo mínimo de entrega. "
-                    "Aqui também fica o <b>Painel Técnico</b>, com a saúde do servidor "
-                    "em tempo real: conexão, tempo de resposta, uso de disco e erros.",
+                    "Aba — Sistema",
+                    "Configure a <b>URL do servidor</b> e teste a conexão com o backend. "
+                    "Ajuste o <b>prazo mínimo de entrega</b> em dias, "
+                    "os <b>alertas de faturamento</b> e os <b>motivos de cancelamento</b>.<br><br>"
+                    "O <b>Painel Técnico</b> monitora em tempo real: "
+                    "conexões ativas, tempo de resposta e histórico de erros do servidor.",
                     cfg("_tab_btns", 2), "bottom",
                 ),
                 TourStep(
-                    "Aba Backup",
-                    "Configure o <b>backup automático</b> do banco de dados: "
-                    "horário de execução e retenção diária, semanal e mensal.",
+                    "Aba — Backup",
+                    "Configure o <b>backup automático</b> do banco PostgreSQL: "
+                    "horário diário e períodos de retenção (diário, semanal e mensal).<br><br>"
+                    "A tabela lista os últimos backups com data, tamanho e status. "
+                    "Clique em <b>'Executar Agora'</b> para forçar um backup imediato.",
                     cfg("_tab_btns", 3), "bottom",
                 ),
                 TourStep(
-                    "Aba Usuários",
-                    "Cadastre, edite e desative os usuários do sistema e "
-                    "defina o nível de acesso de cada um.",
+                    "Aba — Usuários",
+                    "Cadastre, edite e desative usuários do sistema. "
+                    "Defina o <b>cargo</b> de cada um: "
+                    "Vendedor, Gerente, A&R, Pinheiro Indústria ou Entrega.<br><br>"
+                    "Você pode forçar a <b>troca de senha no próximo login</b> "
+                    "ao criar ou redefinir o acesso de um usuário.",
                     cfg("_tab_btns", 4), "bottom",
                 ),
                 TourStep(
-                    "Aba Clientes",
-                    "Cadastre clientes individualmente ou <b>importe em lote</b> "
-                    "por planilha Excel, e mantenha a base de clientes atualizada.",
+                    "Aba — Clientes",
+                    "Cadastre clientes individualmente pelo formulário, "
+                    "ou <b>importe em lote</b> por planilha Excel.<br><br>"
+                    "A base tem +112 mil clientes cadastrados. "
+                    "Clientes inativos não aparecem na busca da Nova Requisição.",
                     cfg("_tab_btns", 5), "bottom",
                 ),
                 TourStep(
+                    "Aba — Cadastro de Máquinas",
+                    "Gerencie as máquinas disponíveis na A&R e na Pinheiro Indústria. "
+                    "Cada máquina tem nome, destino e status (ativa ou em manutenção).<br><br>"
+                    "Máquinas em manutenção não aparecem como opção ao enviar um pedido para produção.",
+                    cfg("_tab_btns", 6), "bottom",
+                ),
+                TourStep(
                     "Salvar Configurações",
-                    "Após ajustar as preferências, clique em "
-                    "<b>Salvar Configurações</b> para aplicar as mudanças.",
+                    "Aplica e persiste todas as alterações feitas em qualquer aba. "
+                    "<b>Lembre-se de clicar aqui</b> antes de sair da tela de configurações.",
                     cfg("btn_save"), "top",
                 ),
-                # ── Notificações ──────────────────────────────────────────────
-                TourStep(
-                    "Notificações",
-                    "O sino exibe alertas em tempo real para eventos do sistema. "
-                    "Um <b>badge vermelho</b> indica notificações não lidas.",
-                    bell, "right",
-                ),
+                # ── Notificações + Atualizações ───────────────────────────────
+                step_notif,
+                step_update,
             ]
 
+        # ════════════════════════════════════════════════════════════════════════
+        # Gerente
+        # ════════════════════════════════════════════════════════════════════════
         if role == "gerente":
             return [
                 welcome,
                 # ── Nova Requisição ───────────────────────────────────────────
-                TourStep(
-                    "Nova Requisição",
-                    "Crie requisições para qualquer vendedor da equipe. "
-                    "Como gerente, você tem acesso a <b>todos os pedidos</b>.",
-                    nav("nova"), "right", "nova",
-                ),
-                TourStep(
-                    "Número do PED",
-                    "Digite o número do pedido gerado no sistema de vendas. "
-                    "Campo <b>obrigatório</b> para salvar.",
-                    form("input_ped"), "bottom",
-                ),
-                TourStep(
-                    "Busca de Cliente",
-                    "Pesquise pelo nome, CNPJ ou código do cliente. "
-                    "O sistema busca nos <b>+112 mil cadastros</b> enquanto você digita.",
-                    form("client_search"), "bottom",
-                ),
-                TourStep(
-                    "Tabela de Itens",
-                    "Adicione os itens da requisição. "
-                    "Pressione <b>Enter</b> para confirmar cada linha e avançar.",
-                    form("item_table"), "top",
-                ),
-                TourStep(
-                    "Prazo de Entrega",
-                    "Defina a data de entrega. "
-                    "Pedidos vencidos aparecem em destaque no dashboard.",
-                    form("input_prazo"), "bottom",
-                ),
-                TourStep(
-                    "Editor de Desenho",
-                    "Desenhe croquis e cotas diretamente na requisição. "
-                    "O desenho é incluído no PDF final.",
-                    form("canvas_preview"), "top",
-                ),
-                TourStep(
-                    "Salvar / Imprimir",
-                    "Salvar registra a requisição e envia o PDF para a pasta "
-                    "de rede do vendedor responsável.",
-                    form("btn_save"), "top",
-                ),
+                *steps_nova,
                 # ── Painel Gerencial ──────────────────────────────────────────
                 TourStep(
                     "Painel Gerencial",
-                    "Indicadores executivos da operação: pedidos em produção, "
-                    "atrasos, faturamentos e ritmo diário.",
+                    "Indicadores executivos da operação: volume por vendedor, "
+                    "pedidos atrasados, faturamentos e máquinas em uso. "
+                    "Use o filtro de datas para ajustar o período.",
                     nav("dashboard"), "right", "dashboard",
                 ),
                 TourStep(
                     "Ranking de Vendedores",
-                    "Volume de requisições emitidas por vendedor. "
-                    "Identifique quem está mais ativo no período.",
+                    "Volume de requisições por vendedor no período. "
+                    "Identifique quem está mais ativo e compare o desempenho da equipe.",
                     dash("vendors_card"), "right",
                 ),
                 TourStep(
-                    "Pedidos sem Confirmação",
-                    "Pedidos aguardando retorno da produção há mais de <b>1 hora</b>. "
-                    "Acompanhe para evitar atrasos.",
+                    "Alertas — Sem Confirmação",
+                    "Pedidos enviados para produção há mais de <b>1 hora</b> "
+                    "sem confirmação de recebimento. "
+                    "Acompanhe diariamente para evitar atrasos não detectados.",
                     dash("alerts_card"), "left",
                 ),
                 TourStep(
                     "Máquinas em Operação",
-                    "Ranking das máquinas da A&R e da Indústria por volume. "
-                    "Identifique gargalos operacionais.",
+                    "Ranking de uso das máquinas da A&R e da Indústria. "
+                    "Identifique gargalos operacionais e distribua melhor a carga.",
                     dash("machines_ar_card"), "right",
                 ),
                 TourStep(
                     "Últimas Requisições",
-                    "Visão rápida das requisições mais recentes. "
+                    "Visão rápida das requisições mais recentes de toda a equipe. "
                     "Duplo clique para abrir qualquer uma.",
                     dash("recent_card"), "top",
                 ),
                 # ── Central de Pedidos ────────────────────────────────────────
                 TourStep(
                     "Central de Pedidos",
-                    "Todos os pedidos por status operacional. "
-                    "Acompanhe do recebimento ao faturamento.",
+                    "Todos os pedidos em andamento organizados por status. "
+                    "Como gerente, você vê as requisições de toda a equipe.",
                     nav("pedidos"), "right", "pedidos",
                 ),
                 TourStep(
                     "Aguardando Recebimento",
-                    "Pedidos enviados para produção aguardando confirmação.",
+                    "Pedidos enviados para produção aguardando confirmação. "
+                    "A coluna 'Prazo' mostra há quanto tempo cada pedido está esperando.",
                     order("_section_cards", "aguardando_recebimento"), "right",
                 ),
                 TourStep(
                     "Em Produção",
-                    "Pedidos já recebidos e em andamento na fábrica.",
+                    "Pedidos recebidos e sendo fabricados. "
+                    "Acompanhe em qual máquina cada um está.",
                     order("_section_cards", "em_producao"), "left",
                 ),
                 TourStep(
-                    "Pedidos Finalizados",
-                    "Histórico de pedidos já finalizados para consulta.",
+                    "Finalizados",
+                    "Pedidos concluídos. Disponíveis para consulta e reimpressão de PDF.",
                     order("_section_cards", "faturados"), "left",
                 ),
+                # ── Entregas ──────────────────────────────────────────────────
+                TourStep(
+                    "Tela de Entregas",
+                    "Agenda logística dos pedidos prontos para entrega. "
+                    "Gerencie prazos, confirme entregas e acompanhe o status da logística.",
+                    nav("entregas"), "right", "entregas",
+                ),
+                TourStep(
+                    "Tabela de Entregas",
+                    "Selecione um pedido para alterar prazo ou confirmar entrega. "
+                    "Duplo clique abre os detalhes da requisição.",
+                    delivery("table"), "top",
+                ),
+                TourStep(
+                    "Alterar Prazo / Confirmar Entrega",
+                    "<b>Alterar Prazo:</b> define nova data com motivo obrigatório — "
+                    "vendedor é notificado automaticamente.<br>"
+                    "<b>Marcar Entregue:</b> registra a entrega e finaliza o pedido.<br>"
+                    "<b>Cancelar Entrega:</b> reverte uma entrega confirmada por engano.",
+                    delivery("btn_change_deadline"), "bottom",
+                ),
                 # ── Histórico ─────────────────────────────────────────────────
-                TourStep(
-                    "Histórico / Busca",
-                    "Acesse qualquer requisição já criada. "
-                    "Filtre por status, cliente, data ou PED.",
-                    nav("historico"), "right", "historico",
-                ),
-                TourStep(
-                    "Campo de Busca",
-                    "Digite o número do PED, nome do cliente ou obra "
-                    "para localizar rapidamente qualquer requisição.",
-                    hist("input_search"), "bottom",
-                ),
-                TourStep(
-                    "Tabela de Resultados",
-                    "Clique nos cabeçalhos para ordenar por qualquer coluna. "
-                    "Duplo clique na linha para abrir a requisição.",
-                    hist("table"), "top",
-                ),
+                *steps_hist,
                 # ── Configurações ─────────────────────────────────────────────
+                *steps_cfg_base,
                 TourStep(
-                    "Configurações",
-                    "Ajuste a escala da interface, altere sua senha "
-                    "e configure alertas de faturamento.",
-                    nav("config"), "right", "config",
-                ),
-                TourStep(
-                    "Ajuda e Acessibilidade",
-                    "Ajuste a escala, o tamanho de fonte, o tamanho das notificações "
-                    "e reabra o <b>Guia Rápido</b> quando precisar.",
-                    cfg("_tab_btns", 0), "bottom",
-                ),
-                TourStep(
-                    "Conta",
-                    "Altere sua senha de acesso. Recomendado trocar periodicamente.",
-                    cfg("_tab_btns", 1), "bottom",
-                ),
-                TourStep(
-                    "Sistema",
-                    "Configure alertas de faturamento e visualize as opções de conexão com o servidor.",
+                    "Aba — Sistema",
+                    "Configure a URL do servidor, teste a conexão com o backend, "
+                    "ajuste o prazo mínimo de entrega e os alertas de faturamento.",
                     cfg("_tab_btns", 2), "bottom",
                 ),
                 TourStep(
-                    "Salvar",
-                    "Clique em <b>Salvar Configurações</b> para aplicar as mudanças.",
+                    "Salvar Configurações",
+                    "Aplica e persiste todas as alterações. "
+                    "Clique aqui antes de sair da tela de configurações.",
                     cfg("btn_save"), "top",
                 ),
-                # ── Notificações ──────────────────────────────────────────────
-                TourStep(
-                    "Notificações",
-                    "Receba alertas em tempo real sobre pedidos, "
-                    "produções e faturamentos.",
-                    bell, "right",
-                ),
+                # ── Notificações + Atualizações ───────────────────────────────
+                step_notif,
+                step_update,
             ]
 
+        # ════════════════════════════════════════════════════════════════════════
+        # Vendedor
+        # ════════════════════════════════════════════════════════════════════════
         if role == "vendedor":
             return [
                 welcome,
                 # ── Nova Requisição ───────────────────────────────────────────
+                *steps_nova,
+                # ── Central de Pedidos ────────────────────────────────────────
                 TourStep(
-                    "Nova Requisição",
-                    "Sua tela principal. Preencha o PED, selecione o cliente, "
-                    "adicione os itens e salve. "
-                    "O PDF vai automaticamente para a pasta da rede.",
-                    nav("nova"), "right", "nova",
+                    "Central de Pedidos",
+                    "Acompanhe o status de todos os seus pedidos em tempo real: "
+                    "aguardando recebimento, em produção, finalizados e cancelados. "
+                    "Você vê apenas suas próprias requisições.",
+                    nav("pedidos"), "right", "pedidos",
                 ),
                 TourStep(
-                    "Número do PED",
-                    "Digite o número do pedido gerado no sistema de vendas. "
-                    "Campo <b>obrigatório</b> — sem PED não é possível salvar.",
-                    form("input_ped"), "bottom",
+                    "Aguardando Recebimento",
+                    "Seus pedidos enviados para produção aguardando confirmação. "
+                    "A coluna 'Prazo' indica há quanto tempo cada pedido está esperando. "
+                    "Se estiver há muito tempo, contate a produção.",
+                    order("_section_cards", "aguardando_recebimento"), "right",
                 ),
                 TourStep(
-                    "Busca de Cliente",
-                    "Pesquise pelo nome, CNPJ ou código do cliente. "
-                    "O sistema busca nos <b>+112 mil cadastros</b> em tempo real.",
-                    form("client_search"), "bottom",
+                    "Em Produção",
+                    "Seus pedidos sendo fabricados no momento. "
+                    "Acompanhe o progresso e a máquina alocada para cada um.",
+                    order("_section_cards", "em_producao"), "left",
                 ),
                 TourStep(
-                    "Tabela de Itens",
-                    "Adicione cada item: descrição, quantidade e unidade. "
-                    "Pressione <b>Enter</b> para confirmar e avançar para o próximo.",
-                    form("item_table"), "top",
-                ),
-                TourStep(
-                    "Prazo de Entrega",
-                    "Informe a data de entrega combinada com o cliente. "
-                    "O setor de produção verá esse prazo.",
-                    form("input_prazo"), "bottom",
-                ),
-                TourStep(
-                    "Observações",
-                    "Use este campo para instruções especiais de produção, "
-                    "detalhes da obra ou qualquer informação adicional.",
-                    form("input_obs"), "top",
-                ),
-                TourStep(
-                    "Editor de Desenho",
-                    "Clique aqui para desenhar croquis e medidas. "
-                    "Ferramentas: caneta, linha, seta, retângulo e cota MM. "
-                    "O desenho vai incluído no PDF.",
-                    form("canvas_preview"), "top",
-                ),
-                TourStep(
-                    "Salvar",
-                    "Clique em <b>Salvar</b> para registrar a requisição. "
-                    "O PDF é gerado e enviado para a sua pasta de rede.",
-                    form("btn_save"), "top",
+                    "Finalizados",
+                    "Pedidos já concluídos e disponíveis para faturamento. "
+                    "Duplo clique para abrir e reimprimir o PDF se necessário.",
+                    order("_section_cards", "faturados"), "left",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────
-                TourStep(
-                    "Histórico",
-                    "Todas as suas requisições ficam aqui. "
-                    "Filtre por status ou data e clique duas vezes "
-                    "para reabrir qualquer pedido.",
-                    nav("historico"), "right", "historico",
-                ),
-                TourStep(
-                    "Campo de Busca",
-                    "Encontre rapidamente uma requisição pelo número do PED, "
-                    "nome do cliente ou obra.",
-                    hist("input_search"), "bottom",
-                ),
-                TourStep(
-                    "Tabela de Resultados",
-                    "Clique nos cabeçalhos para ordenar. "
-                    "Duplo clique para reabrir e editar a requisição.",
-                    hist("table"), "top",
-                ),
+                *steps_hist,
                 # ── Configurações ─────────────────────────────────────────────
+                *steps_cfg_base,
                 TourStep(
-                    "Configurações",
-                    "Ajuste a escala da interface e altere sua senha de acesso.",
-                    nav("config"), "right", "config",
+                    "Salvar Configurações",
+                    "Aplica e persiste todas as alterações. "
+                    "Clique aqui antes de sair da tela de configurações.",
+                    cfg("btn_save"), "top",
                 ),
-                TourStep(
-                    "Ajuda e Acessibilidade",
-                    "Escolha a escala, o tamanho de fonte e o tamanho das notificações "
-                    "mais confortáveis para a sua tela.",
-                    cfg("_tab_btns", 0), "bottom",
-                ),
-                TourStep(
-                    "Conta",
-                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
-                    cfg("_tab_btns", 1), "bottom",
-                ),
-                # ── Notificações ──────────────────────────────────────────────
-                TourStep(
-                    "Notificações",
-                    "Receba alertas quando sua requisição entrar em produção, "
-                    "for finalizada ou faturada.",
-                    bell, "right",
-                ),
+                # ── Notificações + Atualizações ───────────────────────────────
+                step_notif,
+                step_update,
             ]
 
+        # ════════════════════════════════════════════════════════════════════════
+        # Produção — A&R
+        # ════════════════════════════════════════════════════════════════════════
         if role == "producao":
             return [
                 welcome,
                 # ── Tela A&R ──────────────────────────────────────────────────
                 TourStep(
-                    "Fila A&R",
-                    "Sua tela principal. Acompanhe todos os pedidos "
-                    "enviados para produção na <b>A&R</b>.",
+                    "Tela A&R — Sua Tela Principal",
+                    "Painel operacional da A&R. "
+                    "Aqui você recebe pedidos, gerencia a fila de produção "
+                    "e controla o status de cada máquina.",
                     nav("ar"), "right", "ar",
                 ),
                 TourStep(
-                    "Contadores de Status",
-                    "Totais em tempo real: <b>Aguardando Recebimento</b>, "
-                    "<b>Aguardando na Fila</b> e <b>Em Produção</b>.",
+                    "Contadores em Tempo Real",
+                    "Totalizadores no topo: "
+                    "<b>Aguardando Recebimento</b> (chegou mas não foi confirmado), "
+                    "<b>Aguardando na Fila</b> (recebido, esperando máquina) e "
+                    "<b>Em Produção</b> (nas máquinas agora).<br><br>"
+                    "Clique em <b>ATUALIZAR</b> para ver os números mais recentes.",
                     ar("summary_waiting_receipt", "card"), "bottom",
                 ),
                 TourStep(
                     "Aguardando Recebimento",
-                    "Pedidos enviados pelo vendedor mas ainda não recebidos. "
-                    "Selecione um e clique <b>Receber</b> "
-                    "para confirmar a chegada do material.",
+                    "Pedidos enviados pelo vendedor que <b>ainda não foram confirmados</b> "
+                    "fisicamente na A&R.<br><br>"
+                    "Para confirmar: selecione o pedido na lista e clique em <b>'Receber'</b>. "
+                    "O pedido vai para 'Aguardando na Fila' e o vendedor é notificado.",
                     ar("waiting_receipt_panel", "card"), "right",
                 ),
                 TourStep(
                     "Aguardando na Fila",
-                    "Pedidos já recebidos esperando uma máquina ficar livre. "
-                    "Selecione e clique <b>Enviar para Máquina</b> "
-                    "para iniciar a produção.",
+                    "Pedidos já recebidos mas sem máquina alocada ainda.<br><br>"
+                    "Para iniciar a produção: selecione o pedido e clique em "
+                    "<b>'Enviar para Máquina'</b>. "
+                    "Escolha a máquina disponível e confirme — "
+                    "o pedido vai para o card da máquina.",
                     ar("waiting_queue_panel", "card"), "left",
                 ),
                 TourStep(
                     "Máquinas em Produção",
-                    "Cada card representa uma máquina ativa com o pedido em andamento. "
-                    "Clique no pedido para <b>finalizar</b> ou <b>devolver para a fila</b>.",
+                    "Cada card representa uma máquina com o pedido em andamento. "
+                    "Clique no card para ver as ações disponíveis:<br>"
+                    "• <b>Finalizar</b> — pedido concluído, vai para faturamento<br>"
+                    "• <b>Devolver para Fila</b> — retorna ao aguardando na fila<br>"
+                    "• <b>Alterar Prazo</b> — define nova data de entrega (motivo obrigatório)",
                     ar("machines_widget"), "top",
                 ),
                 TourStep(
                     "Atualizar",
-                    "Clique em <b>ATUALIZAR</b> para recarregar todos os pedidos "
-                    "e máquinas com os dados mais recentes.",
+                    "Recarrega todos os pedidos e o status das máquinas com dados atualizados. "
+                    "Use sempre que outro operador fizer uma alteração que você ainda não vê.",
                     ar("refresh_btn"), "bottom",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
-                    "Histórico",
-                    "Busque qualquer requisição por PED, cliente ou status. "
-                    "Clique duas vezes para abrir os detalhes completos.",
+                    "Relatórios",
+                    "Consulte qualquer requisição do sistema por PED, cliente ou status. "
+                    "Duplo clique para abrir em modo leitura.",
                     nav("historico"), "right", "historico",
                 ),
                 TourStep(
                     "Campo de Busca",
-                    "Digite o número do PED ou nome do cliente "
-                    "para localizar uma requisição específica.",
+                    "Digite o número do PED ou nome do cliente para localizar uma requisição. "
+                    "Combine com os filtros de status e período.",
                     hist("input_search"), "bottom",
                 ),
                 TourStep(
                     "Tabela de Resultados",
                     "Clique nos cabeçalhos para ordenar. "
-                    "Duplo clique para abrir a requisição completa.",
+                    "Duplo clique para abrir os detalhes completos da requisição.",
                     hist("table"), "top",
                 ),
                 # ── Configurações ─────────────────────────────────────────────
+                *steps_cfg_base,
                 TourStep(
-                    "Configurações",
-                    "Ajuste a escala da interface, o tamanho de fonte e altere sua senha de acesso.",
-                    nav("config"), "right", "config",
+                    "Salvar Configurações",
+                    "Aplica e persiste todas as alterações. "
+                    "Clique aqui antes de sair da tela de configurações.",
+                    cfg("btn_save"), "top",
                 ),
-                TourStep(
-                    "Ajuda e Acessibilidade",
-                    "Ajuste a escala, o tamanho de fonte, o tamanho das notificações "
-                    "e reabra o <b>Guia Rápido</b> quando precisar.",
-                    cfg("_tab_btns", 0), "bottom",
-                ),
-                TourStep(
-                    "Conta",
-                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
-                    cfg("_tab_btns", 1), "bottom",
-                ),
-                # ── Notificações ──────────────────────────────────────────────
-                TourStep(
-                    "Notificações",
-                    "Receba alertas quando novos pedidos chegarem "
-                    "à fila da A&R.",
-                    bell, "right",
-                ),
+                # ── Notificações + Atualizações ───────────────────────────────
+                step_notif,
+                step_update,
             ]
 
+        # ════════════════════════════════════════════════════════════════════════
+        # Pinheiro Indústria
+        # ════════════════════════════════════════════════════════════════════════
         if role == "industria":
             return [
                 welcome,
-                # ── Tela Pinheiro Indústria ────────────────────────────────────
+                # ── Pinheiro Indústria ────────────────────────────────────────
                 TourStep(
-                    "Pinheiro Indústria",
-                    "Sua tela principal. Acompanhe todos os pedidos "
-                    "destinados à <b>Pinheiro Indústria</b>.",
+                    "Pinheiro Indústria — Sua Tela Principal",
+                    "Painel operacional da Pinheiro Indústria. "
+                    "Aqui você recebe pedidos, gerencia a fila de produção "
+                    "e controla o status de cada máquina da Indústria.",
                     nav("pinheiro_industria"), "right", "pinheiro_industria",
                 ),
                 TourStep(
-                    "Contadores de Status",
-                    "Totais em tempo real: <b>Aguardando Recebimento</b>, "
-                    "<b>Aguardando na Fila</b> e <b>Em Produção</b>.",
+                    "Contadores em Tempo Real",
+                    "Totalizadores no topo: "
+                    "<b>Aguardando Recebimento</b> (chegou mas não foi confirmado), "
+                    "<b>Aguardando na Fila</b> (recebido, esperando máquina) e "
+                    "<b>Em Produção</b> (nas máquinas agora).<br><br>"
+                    "Clique em <b>ATUALIZAR</b> para ver os números mais recentes.",
                     pin("summary_waiting_receipt", "card"), "bottom",
                 ),
                 TourStep(
                     "Aguardando Recebimento",
-                    "Pedidos enviados pelo vendedor mas ainda não recebidos. "
-                    "Selecione um e clique <b>Receber</b> "
-                    "para confirmar a chegada do material.",
+                    "Pedidos enviados pelo vendedor que <b>ainda não foram confirmados</b> "
+                    "fisicamente na Indústria.<br><br>"
+                    "Para confirmar: selecione o pedido e clique em <b>'Receber'</b>. "
+                    "O pedido vai para 'Aguardando na Fila' e o vendedor é notificado.",
                     pin("waiting_receipt_panel", "card"), "right",
                 ),
                 TourStep(
                     "Aguardando na Fila",
-                    "Pedidos recebidos aguardando máquina disponível. "
-                    "Selecione e clique <b>Enviar para Máquina</b> "
-                    "para iniciar a produção.",
+                    "Pedidos recebidos aguardando uma máquina ficar disponível.<br><br>"
+                    "Para iniciar a produção: selecione o pedido e clique em "
+                    "<b>'Enviar para Máquina'</b>. "
+                    "Escolha a máquina disponível — o pedido vai para o card da máquina.",
                     pin("waiting_queue_panel", "card"), "left",
                 ),
                 TourStep(
                     "Máquinas em Produção",
-                    "Cada card representa uma máquina ativa. "
-                    "Clique no pedido para <b>finalizar</b> "
-                    "ou <b>devolver para a fila</b>.",
+                    "Cards das máquinas da Indústria com os pedidos em andamento. "
+                    "Clique no card para as ações:<br>"
+                    "• <b>Finalizar</b> — pedido concluído, vai para faturamento<br>"
+                    "• <b>Devolver para Fila</b> — retorna ao aguardando na fila<br>"
+                    "• <b>Alterar Prazo</b> — define nova data de entrega (motivo obrigatório)",
                     pin("machines_widget"), "top",
                 ),
                 TourStep(
                     "Atualizar",
-                    "Clique em <b>ATUALIZAR</b> para recarregar todos os pedidos "
-                    "e máquinas com os dados mais recentes.",
+                    "Recarrega pedidos e máquinas com dados atualizados do servidor. "
+                    "Use sempre que outro operador fizer uma alteração que você ainda não vê.",
                     pin("refresh_btn"), "bottom",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
-                    "Histórico",
-                    "Busque qualquer requisição por PED, cliente ou status. "
-                    "Clique duas vezes para abrir os detalhes completos.",
+                    "Relatórios",
+                    "Consulte qualquer requisição por PED, cliente ou status. "
+                    "Duplo clique para abrir em modo leitura.",
                     nav("historico"), "right", "historico",
                 ),
                 TourStep(
                     "Campo de Busca",
-                    "Digite o número do PED ou nome do cliente "
-                    "para localizar uma requisição específica.",
+                    "Digite o número do PED ou nome do cliente. "
+                    "Combine com os filtros de status e período.",
                     hist("input_search"), "bottom",
                 ),
                 TourStep(
                     "Tabela de Resultados",
                     "Clique nos cabeçalhos para ordenar. "
-                    "Duplo clique para abrir a requisição completa.",
+                    "Duplo clique para abrir os detalhes completos.",
                     hist("table"), "top",
                 ),
                 # ── Configurações ─────────────────────────────────────────────
+                *steps_cfg_base,
                 TourStep(
-                    "Configurações",
-                    "Ajuste a escala da interface, o tamanho de fonte e altere sua senha de acesso.",
-                    nav("config"), "right", "config",
+                    "Salvar Configurações",
+                    "Aplica e persiste todas as alterações. "
+                    "Clique aqui antes de sair da tela de configurações.",
+                    cfg("btn_save"), "top",
                 ),
-                TourStep(
-                    "Ajuda e Acessibilidade",
-                    "Ajuste a escala, o tamanho de fonte, o tamanho das notificações "
-                    "e reabra o <b>Guia Rápido</b> quando precisar.",
-                    cfg("_tab_btns", 0), "bottom",
-                ),
-                TourStep(
-                    "Conta",
-                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
-                    cfg("_tab_btns", 1), "bottom",
-                ),
-                # ── Notificações ──────────────────────────────────────────────
-                TourStep(
-                    "Notificações",
-                    "Receba alertas quando novos pedidos chegarem "
-                    "à fila da Indústria.",
-                    bell, "right",
-                ),
+                # ── Notificações + Atualizações ───────────────────────────────
+                step_notif,
+                step_update,
             ]
 
-        if role == "entregas":
+        # ════════════════════════════════════════════════════════════════════════
+        # Entregas (logística)
+        # ════════════════════════════════════════════════════════════════════════
+        if role in ("entregas", "entrega"):
             return [
                 welcome,
-                # ── Central de Entregas ───────────────────────────────────────
+                # ── Tela Entregas ─────────────────────────────────────────────
                 TourStep(
-                    "Entregas",
-                    "Acompanhe os pedidos marcados para entrega, com prazos, "
-                    "status e confirmação final da entrega.",
+                    "Entregas — Sua Tela Principal",
+                    "Agenda logística: todos os pedidos prontos para entrega ao cliente. "
+                    "Aqui você gerencia prazos, confirma entregas e acompanha o histórico.",
                     nav("entregas"), "right", "entregas",
                 ),
                 TourStep(
-                    "Agenda de Entregas",
-                    "Selecione um pedido para alterar o prazo ou registrar "
-                    "a conclusão quando ele já estiver finalizado.",
+                    "Vista Lista / Cronograma",
+                    "<b>Lista:</b> todos os pedidos pendentes em ordem de prazo de entrega.<br>"
+                    "<b>Cronograma:</b> visão calendário organizada por data — "
+                    "útil para planejar rotas do dia.<br><br>"
+                    "Alterne conforme a necessidade do trabalho.",
+                    delivery("_btn_view_list"), "bottom",
+                ),
+                TourStep(
+                    "Tabela de Pedidos para Entrega",
+                    "Lista os pedidos com entrega pendente. "
+                    "Colunas: PED, cliente, endereço, prazo e status.<br><br>"
+                    "Selecione um pedido para habilitar os botões de ação. "
+                    "Duplo clique abre os detalhes completos da requisição.",
                     delivery("table"), "top",
                 ),
                 TourStep(
-                    "Nova Requisição",
-                    "Seu perfil abre a tela de requisição em modo leitura, "
-                    "sem permitir edição direta dos dados.",
-                    nav("nova"), "right", "nova",
+                    "Alterar Prazo de Entrega",
+                    "Com um pedido selecionado, clique aqui para definir uma nova data. "
+                    "É obrigatório informar um <b>motivo</b> para a alteração.<br><br>"
+                    "O vendedor responsável é notificado automaticamente da mudança.",
+                    delivery("btn_change_deadline"), "bottom",
                 ),
                 TourStep(
+                    "Marcar como Entregue",
+                    "Confirma que o pedido foi entregue ao cliente. "
+                    "A data e hora são registradas no histórico e o status muda para <b>Finalizado</b>.<br><br>"
+                    "Você pode selecionar múltiplos pedidos e marcar todos de uma vez.",
+                    delivery("btn_mark_delivered"), "bottom",
+                ),
+                TourStep(
+                    "Cancelar Entrega",
+                    "Reverte uma entrega confirmada por engano, "
+                    "devolvendo o pedido para a lista de pendentes. "
+                    "Selecione o pedido entregue por engano e clique aqui.",
+                    delivery("btn_cancel_delivered"), "bottom",
+                ),
+                # ── Nova Requisição (leitura) ──────────────────────────────────
+                TourStep(
+                    "Nova Requisição — Modo Leitura",
+                    "Seu perfil permite <b>consultar</b> os detalhes de qualquer requisição, "
+                    "mas <b>não editar</b>. "
+                    "Use para verificar o endereço, itens e observações antes de sair para entrega.",
+                    nav("nova"), "right", "nova",
+                ),
+                # ── Histórico ─────────────────────────────────────────────────
+                TourStep(
                     "Relatórios",
-                    "Use os relatórios para consultar requisições e abrir os "
-                    "detalhes em modo leitura.",
+                    "Consulte qualquer requisição por PED, cliente ou status. "
+                    "Útil para verificar o histórico de entregas de um cliente específico.",
                     nav("historico"), "right", "historico",
                 ),
                 TourStep(
-                    "Configurações",
-                    "Esse perfil mantém acesso à aba de ajuda e acessibilidade "
-                    "e à aba da conta.",
-                    nav("config"), "right", "config",
+                    "Campo de Busca",
+                    "Digite PED, nome do cliente ou endereço para localizar uma requisição.",
+                    hist("input_search"), "bottom",
                 ),
                 TourStep(
-                    "Ajuda e Acessibilidade",
-                    "Ajuste a escala, o tamanho de fonte, o tamanho das notificações "
-                    "e reabra o <b>Guia Rápido</b> quando precisar.",
-                    cfg("_tab_btns", 0), "bottom",
+                    "Tabela de Resultados",
+                    "Duplo clique para abrir os detalhes completos em modo leitura.",
+                    hist("table"), "top",
                 ),
+                # ── Configurações ─────────────────────────────────────────────
+                *steps_cfg_base,
                 TourStep(
-                    "Conta",
-                    "Altere sua senha de acesso pelo campo <b>Nova Senha</b>.",
-                    cfg("_tab_btns", 1), "bottom",
+                    "Salvar Configurações",
+                    "Aplica e persiste todas as alterações. "
+                    "Clique aqui antes de sair da tela de configurações.",
+                    cfg("btn_save"), "top",
                 ),
-                # ── Notificações ──────────────────────────────────────────────
-                TourStep(
-                    "Notificações",
-                    "Receba alertas quando novos pedidos chegarem "
-                    "para entrega.",
-                    bell, "right",
-                ),
+                # ── Notificações + Atualizações ───────────────────────────────
+                step_notif,
+                step_update,
             ]
 
         # Fallback genérico
@@ -2314,12 +2502,12 @@ class MainWindow(QMainWindow):
             welcome,
             TourStep(
                 "Nova Requisição",
-                "Crie e gerencie requisições.",
+                "Crie e gerencie requisições de compra.",
                 nav("nova"), "right", "nova",
             ),
             TourStep(
                 "Histórico",
-                "Busque e filtre todas as requisições.",
+                "Busque e filtre todas as requisições por PED, cliente ou status.",
                 nav("historico"), "right", "historico",
             ),
             TourStep(
@@ -2327,6 +2515,7 @@ class MainWindow(QMainWindow):
                 "Personalize a aparência e gerencie sua conta.",
                 nav("config"), "right", "config",
             ),
+            step_update,
         ]
 
     def _stop_runtime_services(self):
