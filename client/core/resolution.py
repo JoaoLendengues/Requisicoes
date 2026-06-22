@@ -1,7 +1,40 @@
 import json
 import os
+import shutil
+import sys
 
-SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "..", "settings.json")
+
+def _get_settings_file() -> str:
+    if getattr(sys, "frozen", False):
+        # App empacotado: salva ao lado do .exe, fora do _internal.
+        # O update_helper deleta _internal inteiro; aqui o arquivo sobrevive.
+        return os.path.join(os.path.dirname(sys.executable), "settings.json")
+    return os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "settings.json"))
+
+
+def _migrate_settings_to_root() -> None:
+    """Move settings.json de dentro do _internal para a raiz do app (uma vez só).
+
+    Necessário na primeira execução após atualizar de uma versão que ainda
+    salvava o arquivo dentro de _internal/client/settings.json.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    new_path = _get_settings_file()
+    if os.path.exists(new_path):
+        return
+    old_path = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "settings.json")
+    )
+    if os.path.exists(old_path):
+        try:
+            shutil.copy2(old_path, new_path)
+        except Exception:
+            pass
+
+
+_migrate_settings_to_root()
+SETTINGS_FILE = _get_settings_file()
 
 # ── Passos de escala disponíveis (referência: PROJECT_PARALLELv2) ─────────────
 # Cada entrada: (label exibida na UI, fator numérico ou None para automático)
