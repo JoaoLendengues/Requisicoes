@@ -13,6 +13,8 @@ class FirstAccessRequest(BaseModel):
 
 class FirstAccessStatusResponse(BaseModel):
     code: str
+    found: bool = False
+    user_name: str | None = None
     first_access_required: bool
 
 

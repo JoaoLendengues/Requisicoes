@@ -49,6 +49,8 @@ def first_access_status(code: str, db: Session = Depends(get_db)):
     user = get_active_user_by_code(db, code)
     return FirstAccessStatusResponse(
         code=(code or "").strip(),
+        found=bool(user),
+        user_name=(user.name if user else None),
         first_access_required=_requires_first_access(user),
     )
 

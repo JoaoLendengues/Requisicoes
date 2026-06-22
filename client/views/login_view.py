@@ -111,7 +111,7 @@ class FirstAccessWorker(QObject):
 
 
 class FirstAccessStatusWorker(QObject):
-    pending = Signal(str)
+    resolved = Signal(str, dict)
     finished = Signal()
 
     def __init__(self, code: str):
@@ -121,8 +121,7 @@ class FirstAccessStatusWorker(QObject):
     def run(self):
         try:
             result = api.get_first_access_status(self.code)
-            if bool(result.get("first_access_required")):
-                self.pending.emit(self.code)
+            self.resolved.emit(self.code, result)
         except Exception:
             pass
         finally:
@@ -315,7 +314,16 @@ class LoginView(QWidget):
         self.input_code.setValidator(QIntValidator(0, 999999, self.input_code))
         self.input_code.returnPressed.connect(self._focus_password_from_code)
         self.input_code.editingFinished.connect(self._check_first_access_for_code)
+        self.input_code.textChanged.connect(self._clear_code_hint)
         card_layout.addWidget(self.input_code)
+
+        self.code_hint_label = QLabel("")
+        self.code_hint_label.setWordWrap(True)
+        self.code_hint_label.setStyleSheet(
+            f"background:transparent; color:{theme.TEXT_LIGHT}; font-size:{max(8, int(9 * self.scale))}pt; font-weight:600;"
+        )
+        self.code_hint_label.hide()
+        card_layout.addWidget(self.code_hint_label)
 
         lbl_pass = QLabel("SENHA")
         lbl_pass.setStyleSheet(
@@ -456,14 +464,14 @@ class LoginView(QWidget):
 
     def _check_first_access_for_code(self):
         code = self.input_code.text().strip()
-        if not code or code in self._auto_prompted_codes:
+        if not code:
             return
 
         worker = FirstAccessStatusWorker(code)
         thread = QThread()
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.pending.connect(self._on_first_access_required)
+        worker.resolved.connect(self._on_code_info_resolved)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
@@ -501,6 +509,21 @@ class LoginView(QWidget):
     def _on_error(self, message: str):
         self._show_error(message)
 
+    def _on_code_info_resolved(self, code: str, data: dict):
+        current_code = self.input_code.text().strip()
+        if not code or code != current_code:
+            return
+
+        user_name = str(data.get("user_name") or "").strip()
+        if bool(data.get("found")) and user_name:
+            self.code_hint_label.setText(f"NOME: {user_name}")
+            self.code_hint_label.show()
+        else:
+            self._clear_code_hint()
+
+        if bool(data.get("first_access_required")):
+            self._on_first_access_required(code)
+
     def _on_first_access_required(self, code: str):
         code = (code or "").strip()
         if not code or code in self._auto_prompted_codes:
@@ -527,3 +550,7 @@ class LoginView(QWidget):
     def _show_error(self, message: str):
         self.error_label.setText(message)
         self.error_label.show()
+
+    def _clear_code_hint(self, *_args):
+        self.code_hint_label.clear()
+        self.code_hint_label.hide()
