@@ -1607,6 +1607,9 @@ class MainWindow(QMainWindow):
                 return val
             return _get
 
+        def fb(attr):
+            return lambda: getattr(mw.feedback_view, attr, None) if mw.feedback_view else None
+
         # ── Passo de boas-vindas ──────────────────────────────────────────────
         welcome = TourStep(
             title="Bem-vindo ao Sistema de Requisições!",
@@ -1632,12 +1635,13 @@ class MainWindow(QMainWindow):
                 nav("nova"), "right", "nova",
             ),
             TourStep(
-                "Número do PED",
-                "Campo obrigatório. Digite apenas o número (somente dígitos) do pedido "
-                "gerado no sistema de vendas.<br><br>"
-                "<b>PED já existente:</b> a requisição correspondente é reaberta para edição.<br>"
-                "<b>PED novo:</b> um formulário em branco é criado.<br><br>"
-                "O cursor é posicionado aqui automaticamente ao abrir a tela.",
+                "Número do PED — Criar ou Buscar",
+                "Campo obrigatório. Digite apenas o número (somente dígitos) do pedido.<br><br>"
+                "<b>PED já existente:</b> o sistema localiza e abre automaticamente a requisição "
+                "para edição — funciona como <b>busca direta</b> sem precisar ir ao Histórico.<br>"
+                "<b>PED novo:</b> um formulário em branco é criado para preenchimento.<br><br>"
+                "O cursor é posicionado aqui automaticamente ao abrir a tela. "
+                "Se quiser verificar um pedido já feito, basta digitar o PED aqui.",
                 form("input_ped"), "bottom",
             ),
             TourStep(
@@ -1780,6 +1784,265 @@ class MainWindow(QMainWindow):
             ),
         ]
 
+        # ── Central de Pedidos ──────────────────────────────────────────────────
+        steps_pedidos = [
+            TourStep(
+                "Central de Pedidos",
+                "Acompanhe todos os pedidos em andamento organizados por status. "
+                "Cada seção agrupa pedidos por fase do fluxo de produção: "
+                "recebimento, produção, finalização, cancelados e atrasados.",
+                nav("pedidos"), "right", "pedidos",
+            ),
+            TourStep(
+                "Filtros de Seção — Chips",
+                "Cada chip ativa ou desativa a exibição de uma seção inteira da Central. "
+                "Clique nos chips para mostrar apenas as fases que deseja acompanhar: "
+                "<b>Aguardando Recebimento</b>, <b>Em Produção</b>, <b>Finalizados</b>, "
+                "<b>Cancelados</b> ou <b>Atrasados</b>.<br><br>"
+                "Útil para focar em uma fase específica do fluxo sem distrações.",
+                order("_filter_chips", "aguardando_recebimento"), "bottom",
+            ),
+            TourStep(
+                "Aplicar / Redefinir Filtro",
+                "<b>APLICAR:</b> exibe somente as seções com chips marcados — "
+                "as demais ficam ocultas.<br>"
+                "<b>TODOS:</b> reativa todas as seções de uma vez, "
+                "voltando à visão completa do fluxo.",
+                order("_btn_apply_filter"), "bottom",
+            ),
+            TourStep(
+                "Aguardando Recebimento",
+                "Pedidos já enviados para produção mas <b>ainda não confirmados</b>. "
+                "Exibe PED, cliente, vendedor, peso, destino e horário do envio.<br><br>"
+                "Duplo clique para abrir a requisição e ver todos os detalhes.",
+                order("_section_cards", "aguardando_recebimento"), "right",
+            ),
+            TourStep(
+                "Em Produção",
+                "Pedidos recebidos e atualmente sendo fabricados. "
+                "Exibe a máquina alocada, o destino (A&R ou Indústria) e o prazo.<br><br>"
+                "Acompanhe o andamento e identifique pedidos parados há muito tempo.",
+                order("_section_cards", "em_producao"), "left",
+            ),
+            TourStep(
+                "Finalizados",
+                "Pedidos concluídos pela produção. "
+                "Disponíveis para consulta e reimpressão de PDF.<br><br>"
+                "Inclui pedidos com status <i>Finalizado</i>, <i>Faturado</i> "
+                "e <i>Aguardando Faturamento</i>.",
+                order("_section_cards", "faturados"), "left",
+            ),
+            TourStep(
+                "Cancelados",
+                "Pedidos cancelados em qualquer fase do fluxo. "
+                "Exibe o motivo do cancelamento e quem cancelou.<br><br>"
+                "Útil para auditoria e para entender o padrão de cancelamentos da equipe.",
+                order("_section_cards", "cancelados"), "left",
+            ),
+            TourStep(
+                "Atrasados",
+                "Pedidos ainda em aberto com prazo de entrega <b>já vencido</b>. "
+                "Destacados em vermelho para facilitar a identificação urgente.<br><br>"
+                "Tome ação imediata: acione a produção ou comunique o cliente.",
+                order("_section_cards", "atrasados"), "left",
+            ),
+        ]
+
+        # ── A&R ────────────────────────────────────────────────────────────────
+        steps_ar = [
+            TourStep(
+                "Tela A&R — Sua Tela Principal",
+                "Painel operacional da A&R. "
+                "Aqui você recebe pedidos, gerencia a fila de cada máquina "
+                "e registra as finalizações de produção.",
+                nav("ar"), "right", "ar",
+            ),
+            TourStep(
+                "Contadores em Tempo Real",
+                "Totalizadores no topo: "
+                "<b>Aguardando Recebimento</b> — pedidos enviados ainda não confirmados, e "
+                "<b>Em Produção</b> — pedidos ativos nas máquinas agora.<br><br>"
+                "Os números atualizam a cada clique em <b>ATUALIZAR</b>.",
+                ar("summary_waiting_receipt", "card"), "bottom",
+            ),
+            TourStep(
+                "Painel — Aguardando Recebimento",
+                "Lista os pedidos enviados pelo vendedor que <b>ainda não foram confirmados</b> "
+                "fisicamente na A&R.<br><br>"
+                "Para confirmar: selecione o pedido na tabela e clique em <b>'Receber'</b>. "
+                "O pedido entra na fila da máquina selecionada e o vendedor é notificado "
+                "automaticamente.",
+                ar("waiting_receipt_panel", "card"), "right",
+            ),
+            TourStep(
+                "Seletor de Máquina",
+                "Dropdown para selecionar a máquina que deseja visualizar ou operar.<br><br>"
+                "Cada item do dropdown mostra: nome da máquina, "
+                "<b>quantidade em produção</b> e <b>quantidade na fila</b>. "
+                "A pill ao lado indica se a máquina está <b>Funcionando</b> "
+                "ou em <b>Manutenção</b>. "
+                "Troque a máquina selecionada a qualquer momento — "
+                "o painel abaixo atualiza instantaneamente.",
+                ar("_machine_combo"), "bottom",
+            ),
+            TourStep(
+                "Painel da Máquina — Fila e Em Produção",
+                "Painel da máquina selecionada com duas seções integradas:<br>"
+                "• <b>Fila da Máquina:</b> pedidos aguardando iniciar nesta máquina. "
+                "Selecione um e clique <b>'Iniciar'</b> para mover para Em Produção.<br>"
+                "• <b>Em Produção:</b> pedidos rodando agora nesta máquina. "
+                "Selecione e clique <b>'Finalizar'</b> para concluir ou "
+                "<b>'Devolver'</b> para retornar à fila.<br><br>"
+                "Cada linha exibe PED, cliente, peso, prazo e tempo decorrido em produção.",
+                ar("_machine_content_frame"), "top",
+            ),
+            TourStep(
+                "Atualizar",
+                "Recarrega todos os pedidos e o status de todas as máquinas "
+                "com dados atualizados do servidor. "
+                "Use sempre que outro operador fizer uma alteração que você ainda não vê na tela.",
+                ar("refresh_btn"), "bottom",
+            ),
+        ]
+
+        # ── Pinheiro Indústria ──────────────────────────────────────────────────
+        steps_pin = [
+            TourStep(
+                "Pinheiro Indústria — Sua Tela Principal",
+                "Painel operacional da Pinheiro Indústria. "
+                "Mesma estrutura da A&R: receba pedidos, gerencie a fila "
+                "por máquina e registre as finalizações.",
+                nav("pinheiro_industria"), "right", "pinheiro_industria",
+            ),
+            TourStep(
+                "Contadores em Tempo Real",
+                "Totalizadores: "
+                "<b>Aguardando Recebimento</b> e <b>Em Produção</b> na Pinheiro Indústria.<br><br>"
+                "Atualizam a cada clique em <b>ATUALIZAR</b>.",
+                pin("summary_waiting_receipt", "card"), "bottom",
+            ),
+            TourStep(
+                "Painel — Aguardando Recebimento",
+                "Lista os pedidos enviados pelo vendedor que <b>ainda não foram confirmados</b> "
+                "fisicamente na Indústria.<br><br>"
+                "Selecione o pedido na tabela e clique em <b>'Receber'</b> para confirmar. "
+                "O pedido entra na fila da máquina selecionada e o vendedor é notificado.",
+                pin("waiting_receipt_panel", "card"), "right",
+            ),
+            TourStep(
+                "Seletor de Máquina",
+                "Dropdown para selecionar a máquina a visualizar ou operar na Indústria.<br><br>"
+                "Mostra quantidade em produção e na fila por máquina. "
+                "A pill indica se a máquina está <b>Funcionando</b> ou em <b>Manutenção</b>.",
+                pin("_machine_combo"), "bottom",
+            ),
+            TourStep(
+                "Painel da Máquina — Fila e Em Produção",
+                "Painel da máquina selecionada com as mesmas seções da A&R:<br>"
+                "• <b>Fila:</b> pedidos aguardando iniciar — selecione e clique <b>'Iniciar'</b>.<br>"
+                "• <b>Em Produção:</b> pedidos ativos — <b>'Finalizar'</b> ou <b>'Devolver'</b>.",
+                pin("_machine_content_frame"), "top",
+            ),
+            TourStep(
+                "Atualizar",
+                "Recarrega pedidos e máquinas da Pinheiro Indústria com dados atualizados.",
+                pin("refresh_btn"), "bottom",
+            ),
+        ]
+
+        # ── Feedbacks ───────────────────────────────────────────────────────────
+        steps_feedback_base = [
+            TourStep(
+                "Feedbacks",
+                "Tela para reportar problemas, sugestões e elogios sobre o sistema. "
+                "Todos os usuários podem enviar feedbacks e visualizar os públicos.<br><br>"
+                "Use para comunicar bugs, solicitar melhorias ou "
+                "registrar elogios ao sistema.",
+                nav("feedback"), "right", "feedback",
+            ),
+            TourStep(
+                "Escrever Feedback",
+                "Caixa de composição no topo da tela. "
+                "Selecione a categoria, defina a visibilidade e escreva a mensagem.<br><br>"
+                "Seja específico: informe em qual tela o problema ocorreu, "
+                "o que você tentou fazer e o que aconteceu ao invés.",
+                fb("compose_card"), "top",
+            ),
+            TourStep(
+                "Categoria do Feedback",
+                "Classifique o feedback antes de enviar:<br>"
+                "🐛 <b>Bug</b> — algo que não funciona como deveria<br>"
+                "⚠️ <b>Problema</b> — dificuldade de uso ou comportamento inesperado<br>"
+                "💡 <b>Sugestão</b> — ideia de melhoria ou nova funcionalidade<br>"
+                "👍 <b>Elogio</b> — algo que funcionou bem e merece reconhecimento",
+                fb("combo_category"), "bottom",
+            ),
+            TourStep(
+                "Tornar Público",
+                "Quando marcado, todos os usuários verão o feedback na aba <b>Públicos</b>. "
+                "Quando desmarcado, apenas o administrador tem acesso (via Caixa de Entrada).<br><br>"
+                "Use feedbacks privados para reportar situações sensíveis ou específicas.",
+                fb("chk_public"), "bottom",
+            ),
+            TourStep(
+                "Campo de Texto",
+                "Descreva o feedback com o máximo de detalhes possível "
+                "(limite: 1000 caracteres).<br><br>"
+                "O contador no canto inferior esquerdo mostra quantos caracteres já foram usados. "
+                "O sistema bloqueia o envio se o campo estiver vazio.",
+                fb("input_feedback"), "top",
+            ),
+            TourStep(
+                "Enviar Feedback",
+                "Clique em <b>ENVIAR</b> para registrar o feedback. "
+                "O administrador é notificado automaticamente sobre novos feedbacks.<br><br>"
+                "Após o envio, o campo é limpo e o feedback aparece em <b>Meus feedbacks</b>.",
+                fb("btn_send"), "bottom",
+            ),
+            TourStep(
+                "Aba — Públicos",
+                "Exibe todos os feedbacks marcados como públicos por qualquer usuário. "
+                "Consulte antes de enviar para evitar enviar um feedback duplicado "
+                "e acompanhe o andamento de solicitações que você também tem interesse.",
+                fb("btn_tab_public"), "bottom",
+            ),
+            TourStep(
+                "Aba — Meus Feedbacks",
+                "Lista somente os feedbacks que você enviou. "
+                "Acompanhe o status de cada um: "
+                "<b>Nova</b>, <b>Em análise</b>, <b>Resolvida</b> ou <b>Descartada</b>.",
+                fb("btn_tab_mine"), "bottom",
+            ),
+        ]
+
+        steps_feedback_admin_extra = [
+            TourStep(
+                "Aba — Caixa de Entrada (Admin)",
+                "Exibe todos os feedbacks recebidos, públicos e privados, em ordem de chegada. "
+                "Clique em qualquer card para selecioná-lo e usar as ações da barra inferior.<br><br>"
+                "Use os chips abaixo das abas para filtrar por categoria e status.",
+                fb("btn_tab_inbox"), "bottom",
+            ),
+            TourStep(
+                "Filtros por Categoria e Status",
+                "Chips de filtro visíveis na Caixa de Entrada:<br>"
+                "• <b>CATEGORIA:</b> Bug, Problema, Sugestão, Elogio<br>"
+                "• <b>STATUS:</b> Nova, Em análise, Resolvida, Descartada<br><br>"
+                "Combine os dois filtros para focar nos feedbacks mais relevantes.",
+                fb("chips_container"), "bottom",
+            ),
+            TourStep(
+                "Alterar Status do Feedback (Admin)",
+                "Com um feedback selecionado na lista, use esta barra para "
+                "atualizar o status e comunicar ao usuário o andamento:<br>"
+                "• <b>Em análise</b> — sendo investigado<br>"
+                "• <b>Resolvida</b> — corrigido ou implementado<br>"
+                "• <b>Descartada</b> — fora do escopo ou inválido",
+                fb("action_bar"), "bottom",
+            ),
+        ]
+
+        # ── Configurações base ──────────────────────────────────────────────────
         steps_cfg_base = [
             TourStep(
                 "Configurações",
@@ -1804,16 +2067,28 @@ class MainWindow(QMainWindow):
             ),
         ]
 
+        step_cfg_save = TourStep(
+            "Salvar Configurações",
+            "Aplica e persiste todas as alterações feitas em qualquer aba. "
+            "<b>Lembre-se de clicar aqui</b> antes de sair da tela de configurações.",
+            cfg("btn_save"), "top",
+        )
+
+        # ── Notificações ─────────────────────────────────────────────────────────
         step_notif = TourStep(
             "Notificações em Tempo Real",
-            "O <b>sino</b> recebe alertas automáticos: pedidos em produção, "
-            "finalizações, mudanças de prazo, faturamentos pendentes e erros de backup.<br><br>"
-            "Um <b>badge vermelho</b> indica notificações não lidas. "
-            "Clique no sino para abrir o painel e 'Marcar todas como lidas' para limpar o badge. "
-            "Os alertas chegam mesmo com o painel fechado.",
+            "O <b>sino</b> no menu lateral recebe alertas automáticos do servidor "
+            "conforme os eventos acontecem — sem precisar recarregar nenhuma tela.<br><br>"
+            "Tipos de alerta: pedido enviado à produção, recebido, finalizado, "
+            "prazo de entrega alterado, faturamento pendente, backup com erro.<br><br>"
+            "Um <b>badge vermelho</b> exibe a quantidade de alertas não lidos. "
+            "Clique no sino para abrir o painel lateral e ver o histórico. "
+            "Clique em <b>'Marcar todas como lidas'</b> para limpar o badge. "
+            "Cada notificação pode ser clicada para navegar direto ao pedido correspondente.",
             bell, "right",
         )
 
+        # ── Atualizações ─────────────────────────────────────────────────────────
         step_update = TourStep(
             "Atualizações do Sistema",
             "Quando uma nova versão estiver disponível, o sistema avisa automaticamente. "
@@ -1834,152 +2109,45 @@ class MainWindow(QMainWindow):
                 # ── Painel Gerencial ──────────────────────────────────────────
                 TourStep(
                     "Painel Gerencial",
-                    "Visão executiva da operação: indicadores de volume, "
-                    "pedidos atrasados, faturamentos pendentes e ritmo por vendedor. "
-                    "Use o filtro de datas no topo para ajustar o período de análise.",
+                    "Visão executiva da operação com indicadores-chave, "
+                    "alertas e gráficos comparativos. "
+                    "Clique em <b>ATUALIZAR</b> para recarregar todos os dados.",
                     nav("dashboard"), "right", "dashboard",
                 ),
                 TourStep(
-                    "Ranking de Vendedores",
-                    "Volume de requisições emitidas por cada vendedor no período selecionado. "
-                    "Identifique quem está mais ativo e compare o desempenho da equipe.",
-                    dash("vendors_card"), "right",
+                    "IAR Geral — Índice de Aproveitamento",
+                    "Indicador principal: porcentagem de requisições que chegaram "
+                    "à produção em relação ao total emitido no período.<br><br>"
+                    "Inclui filtro de datas para analisar períodos específicos. "
+                    "Um IAR baixo pode indicar cancelamentos excessivos ou "
+                    "pedidos travados antes de chegar à produção.",
+                    dash("iar_card"), "bottom",
                 ),
                 TourStep(
-                    "Alertas — Pedidos sem Confirmação",
-                    "Pedidos enviados para produção há mais de <b>1 hora</b> "
-                    "sem confirmação de recebimento pela produção.<br><br>"
-                    "Acompanhe diariamente para evitar atrasos não detectados. "
-                    "Clique em qualquer pedido da lista para abri-lo.",
-                    dash("alerts_card"), "left",
+                    "Métricas Operacionais",
+                    "8 indicadores atualizados a cada refresh:<br>"
+                    "• <b>Pedidos em Produção</b> e <b>em Atraso</b><br>"
+                    "• <b>Finalizados Hoje</b> e <b>Requisições do Dia</b><br>"
+                    "• <b>Produção A&R</b> e <b>Pinheiro Indústria</b> (filas ativas)<br>"
+                    "• <b>Sem Confirmação há +1h</b> — alerta de ação imediata<br>"
+                    "• <b>Tempo Médio de Finalização</b> — referência de desempenho",
+                    dash("radar_multi_panel_card"), "top",
                 ),
                 TourStep(
-                    "Máquinas da A&R",
-                    "Ranking de uso das máquinas da A&R por volume de pedidos no período. "
-                    "Identifique equipamentos sobrecarregados e distribua melhor a carga.",
-                    dash("machines_ar_card"), "right",
-                ),
-                TourStep(
-                    "Máquinas da Indústria",
-                    "Mesmo indicador para a Pinheiro Indústria. "
-                    "Compare o ritmo de produção entre as duas plantas.",
-                    dash("machines_industria_card"), "left",
-                ),
-                TourStep(
-                    "Últimas Requisições",
-                    "As requisições mais recentes de toda a equipe. "
-                    "Duplo clique em qualquer linha para abrir a requisição completa. "
-                    "Linhas em vermelho indicam prazo vencido.",
-                    dash("recent_card"), "top",
+                    "Radar Comparativo e Filtros Avançados",
+                    "Gráficos de radar comparativos e filtros no painel inferior:<br>"
+                    "• <b>Período:</b> semanal, mensal, trimestral ou intervalo personalizado<br>"
+                    "• <b>Destino:</b> A&R, Pinheiro Indústria ou Todos<br>"
+                    "• <b>Radar por máquina</b> — compare desempenho entre equipamentos<br><br>"
+                    "Use para identificar gargalos e tomar decisões operacionais embasadas.",
+                    dash("radar_multi_panel_card"), "left",
                 ),
                 # ── Central de Pedidos ────────────────────────────────────────
-                TourStep(
-                    "Central de Pedidos",
-                    "Acompanhe todos os pedidos em andamento organizados por status. "
-                    "Use os filtros no topo para ver apenas determinados destinos ou vendedores.",
-                    nav("pedidos"), "right", "pedidos",
-                ),
-                TourStep(
-                    "Aguardando Recebimento",
-                    "Pedidos já enviados para produção mas <b>ainda não confirmados</b> "
-                    "pela equipe de A&R ou Indústria. "
-                    "A coluna 'Prazo' mostra há quanto tempo o pedido está aguardando. "
-                    "Duplo clique para abrir.",
-                    order("_section_cards", "aguardando_recebimento"), "right",
-                ),
-                TourStep(
-                    "Em Produção",
-                    "Pedidos recebidos e atualmente sendo fabricados. "
-                    "A coluna 'Máquina' indica em qual equipamento cada pedido está sendo produzido.",
-                    order("_section_cards", "em_producao"), "left",
-                ),
-                TourStep(
-                    "Finalizados / Faturados",
-                    "Pedidos concluídos pela produção, aguardando faturamento ou já faturados. "
-                    "Disponíveis para consulta, reimpressão de PDF "
-                    "e ajuste de status quando necessário.",
-                    order("_section_cards", "faturados"), "left",
-                ),
+                *steps_pedidos,
                 # ── A&R ───────────────────────────────────────────────────────
-                TourStep(
-                    "Tela A&R",
-                    "Painel operacional da equipe de A&R. "
-                    "Acompanhe toda a fila de produção: "
-                    "recebimento, espera, máquinas ativas e finalizações.",
-                    nav("ar"), "right", "ar",
-                ),
-                TourStep(
-                    "Contadores A&R",
-                    "Totalizadores em tempo real: "
-                    "<b>Aguardando Recebimento</b>, <b>Aguardando na Fila</b> e <b>Em Produção</b>. "
-                    "Clique em <b>ATUALIZAR</b> para ver os números mais recentes.",
-                    ar("summary_waiting_receipt", "card"), "bottom",
-                ),
-                TourStep(
-                    "A&R — Aguardando Recebimento",
-                    "Pedidos enviados pelo vendedor mas ainda não recebidos fisicamente na A&R. "
-                    "Selecione um pedido e clique <b>'Receber'</b> para confirmar que o material chegou. "
-                    "O vendedor é notificado automaticamente.",
-                    ar("waiting_receipt_panel", "card"), "right",
-                ),
-                TourStep(
-                    "A&R — Aguardando na Fila",
-                    "Pedidos já recebidos aguardando uma máquina ficar disponível. "
-                    "Selecione um pedido e clique <b>'Enviar para Máquina'</b> "
-                    "para designar o equipamento e iniciar a produção.",
-                    ar("waiting_queue_panel", "card"), "left",
-                ),
-                TourStep(
-                    "A&R — Máquinas em Produção",
-                    "Cada card representa uma máquina com o pedido em andamento. "
-                    "Clique no card para:<br>"
-                    "• <b>Finalizar</b> — pedido vai para aguardando faturamento<br>"
-                    "• <b>Devolver para Fila</b> — retorna ao aguardando na fila<br>"
-                    "• <b>Alterar Prazo</b> — define nova data com motivo obrigatório",
-                    ar("machines_widget"), "top",
-                ),
-                TourStep(
-                    "A&R — Atualizar",
-                    "Recarrega todos os pedidos e o status das máquinas com dados atualizados. "
-                    "Use quando outro operador fizer uma mudança que você ainda não vê na tela.",
-                    ar("refresh_btn"), "bottom",
-                ),
+                *steps_ar,
                 # ── Pinheiro Indústria ────────────────────────────────────────
-                TourStep(
-                    "Pinheiro Indústria",
-                    "Painel operacional da Pinheiro Indústria. "
-                    "Funciona igual à A&R, mas para os pedidos destinados à Indústria.",
-                    nav("pinheiro_industria"), "right", "pinheiro_industria",
-                ),
-                TourStep(
-                    "Contadores — Indústria",
-                    "Totalizadores em tempo real para a Pinheiro Indústria: "
-                    "Aguardando Recebimento, Aguardando na Fila e Em Produção.",
-                    pin("summary_waiting_receipt", "card"), "bottom",
-                ),
-                TourStep(
-                    "Indústria — Aguardando Recebimento",
-                    "Pedidos enviados pelo vendedor aguardando confirmação de chegada "
-                    "na Pinheiro Indústria. Selecione e clique <b>'Receber'</b>.",
-                    pin("waiting_receipt_panel", "card"), "right",
-                ),
-                TourStep(
-                    "Indústria — Aguardando na Fila",
-                    "Pedidos recebidos aguardando máquina disponível na Indústria. "
-                    "Selecione e clique <b>'Enviar para Máquina'</b> para iniciar a produção.",
-                    pin("waiting_queue_panel", "card"), "left",
-                ),
-                TourStep(
-                    "Indústria — Máquinas em Produção",
-                    "Cards das máquinas da Indústria com os pedidos em andamento. "
-                    "Mesmas ações da A&R: Finalizar, Devolver para Fila e Alterar Prazo.",
-                    pin("machines_widget"), "top",
-                ),
-                TourStep(
-                    "Indústria — Atualizar",
-                    "Recarrega pedidos e máquinas da Pinheiro Indústria com dados atualizados.",
-                    pin("refresh_btn"), "bottom",
-                ),
+                *steps_pin,
                 # ── Entregas ──────────────────────────────────────────────────
                 TourStep(
                     "Tela de Entregas",
@@ -1991,46 +2159,28 @@ class MainWindow(QMainWindow):
                 TourStep(
                     "Vista Lista / Cronograma",
                     "<b>Lista:</b> todos os pedidos pendentes em ordem de prazo.<br>"
-                    "<b>Cronograma:</b> visão calendário organizada por data de entrega.<br><br>"
-                    "Alterne conforme a necessidade da operação logística.",
+                    "<b>Cronograma:</b> visão calendário organizada por data de entrega.",
                     delivery("_btn_view_list"), "bottom",
                 ),
                 TourStep(
-                    "Tabela de Entregas",
-                    "Lista os pedidos com entrega pendente. "
-                    "Selecione um ou mais para acionar os botões de ação. "
-                    "Duplo clique abre a requisição em modo leitura.",
+                    "Tabela e Ações de Entrega",
+                    "Selecione pedidos para acionar as ações:<br>"
+                    "<b>Alterar Prazo</b> — nova data com motivo obrigatório (vendedor notificado)<br>"
+                    "<b>Marcar Entregue</b> — registra a entrega e finaliza o pedido<br>"
+                    "<b>Cancelar Entrega</b> — reverte uma entrega confirmada por engano",
                     delivery("table"), "top",
-                ),
-                TourStep(
-                    "Alterar Prazo de Entrega",
-                    "Com um pedido selecionado, clique aqui para definir uma nova data. "
-                    "É obrigatório informar um <b>motivo</b> para a alteração. "
-                    "O vendedor responsável é notificado automaticamente.",
-                    delivery("btn_change_deadline"), "bottom",
-                ),
-                TourStep(
-                    "Marcar como Entregue",
-                    "Confirma que o pedido foi entregue ao cliente. "
-                    "O status muda para <b>Finalizado</b> e a data/hora de entrega "
-                    "é registrada no histórico da requisição.",
-                    delivery("btn_mark_delivered"), "bottom",
-                ),
-                TourStep(
-                    "Cancelar Entrega",
-                    "Reverte uma marcação de entregue, devolvendo o pedido "
-                    "para a lista de pendentes. "
-                    "Use quando uma entrega foi registrada por engano.",
-                    delivery("btn_cancel_delivered"), "bottom",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────
                 *steps_hist,
+                # ── Feedbacks ─────────────────────────────────────────────────
+                *steps_feedback_base,
+                *steps_feedback_admin_extra,
                 # ── Configurações ─────────────────────────────────────────────
                 *steps_cfg_base,
                 TourStep(
                     "Aba — Sistema",
                     "Configure a <b>URL do servidor</b> e teste a conexão com o backend. "
-                    "Ajuste o <b>prazo mínimo de entrega</b> em dias, "
+                    "Ajuste o <b>prazo mínimo de entrega</b>, "
                     "os <b>alertas de faturamento</b> e os <b>motivos de cancelamento</b>.<br><br>"
                     "O <b>Painel Técnico</b> monitora em tempo real: "
                     "conexões ativas, tempo de resposta e histórico de erros do servidor.",
@@ -2040,40 +2190,30 @@ class MainWindow(QMainWindow):
                     "Aba — Backup",
                     "Configure o <b>backup automático</b> do banco PostgreSQL: "
                     "horário diário e períodos de retenção (diário, semanal e mensal).<br><br>"
-                    "A tabela lista os últimos backups com data, tamanho e status. "
                     "Clique em <b>'Executar Agora'</b> para forçar um backup imediato.",
                     cfg("_tab_btns", 3), "bottom",
                 ),
                 TourStep(
                     "Aba — Usuários",
-                    "Cadastre, edite e desative usuários do sistema. "
-                    "Defina o <b>cargo</b> de cada um: "
-                    "Vendedor, Gerente, A&R, Pinheiro Indústria ou Entrega.<br><br>"
-                    "Você pode forçar a <b>troca de senha no próximo login</b> "
-                    "ao criar ou redefinir o acesso de um usuário.",
+                    "Cadastre, edite e desative usuários. "
+                    "Defina o cargo de cada um: Vendedor, Gerente, A&R, Indústria ou Entrega.<br><br>"
+                    "Você pode forçar a troca de senha no próximo login "
+                    "ao criar ou redefinir o acesso.",
                     cfg("_tab_btns", 4), "bottom",
                 ),
                 TourStep(
                     "Aba — Clientes",
-                    "Cadastre clientes individualmente pelo formulário, "
-                    "ou <b>importe em lote</b> por planilha Excel.<br><br>"
-                    "A base tem +112 mil clientes cadastrados. "
+                    "Cadastre clientes individualmente ou <b>importe em lote</b> por planilha Excel. "
                     "Clientes inativos não aparecem na busca da Nova Requisição.",
                     cfg("_tab_btns", 5), "bottom",
                 ),
                 TourStep(
                     "Aba — Cadastro de Máquinas",
                     "Gerencie as máquinas disponíveis na A&R e na Pinheiro Indústria. "
-                    "Cada máquina tem nome, destino e status (ativa ou em manutenção).<br><br>"
-                    "Máquinas em manutenção não aparecem como opção ao enviar um pedido para produção.",
+                    "Máquinas em manutenção não aparecem como opção no seletor de máquinas.",
                     cfg("_tab_btns", 6), "bottom",
                 ),
-                TourStep(
-                    "Salvar Configurações",
-                    "Aplica e persiste todas as alterações feitas em qualquer aba. "
-                    "<b>Lembre-se de clicar aqui</b> antes de sair da tela de configurações.",
-                    cfg("btn_save"), "top",
-                ),
+                step_cfg_save,
                 # ── Notificações + Atualizações ───────────────────────────────
                 step_notif,
                 step_update,
@@ -2090,60 +2230,27 @@ class MainWindow(QMainWindow):
                 # ── Painel Gerencial ──────────────────────────────────────────
                 TourStep(
                     "Painel Gerencial",
-                    "Indicadores executivos da operação: volume por vendedor, "
-                    "pedidos atrasados, faturamentos e máquinas em uso. "
-                    "Use o filtro de datas para ajustar o período.",
+                    "Visão executiva da operação com indicadores em tempo real. "
+                    "Clique em <b>ATUALIZAR</b> para recarregar os dados.",
                     nav("dashboard"), "right", "dashboard",
                 ),
                 TourStep(
-                    "Ranking de Vendedores",
-                    "Volume de requisições por vendedor no período. "
-                    "Identifique quem está mais ativo e compare o desempenho da equipe.",
-                    dash("vendors_card"), "right",
+                    "IAR Geral — Índice de Aproveitamento",
+                    "Indicador principal: porcentagem de requisições que chegaram "
+                    "à produção em relação ao total emitido no período.<br><br>"
+                    "Ajuste as datas do filtro para analisar períodos específicos.",
+                    dash("iar_card"), "bottom",
                 ),
                 TourStep(
-                    "Alertas — Sem Confirmação",
-                    "Pedidos enviados para produção há mais de <b>1 hora</b> "
-                    "sem confirmação de recebimento. "
-                    "Acompanhe diariamente para evitar atrasos não detectados.",
-                    dash("alerts_card"), "left",
-                ),
-                TourStep(
-                    "Máquinas em Operação",
-                    "Ranking de uso das máquinas da A&R e da Indústria. "
-                    "Identifique gargalos operacionais e distribua melhor a carga.",
-                    dash("machines_ar_card"), "right",
-                ),
-                TourStep(
-                    "Últimas Requisições",
-                    "Visão rápida das requisições mais recentes de toda a equipe. "
-                    "Duplo clique para abrir qualquer uma.",
-                    dash("recent_card"), "top",
+                    "Métricas e Radar Comparativo",
+                    "8 métricas operacionais: pedidos em produção, em atraso, "
+                    "finalizados hoje, requisições do dia, filas A&R e Indústria, "
+                    "pedidos sem confirmação há mais de 1h e tempo médio de finalização.<br><br>"
+                    "O painel radar compara desempenho entre máquinas e períodos.",
+                    dash("radar_multi_panel_card"), "top",
                 ),
                 # ── Central de Pedidos ────────────────────────────────────────
-                TourStep(
-                    "Central de Pedidos",
-                    "Todos os pedidos em andamento organizados por status. "
-                    "Como gerente, você vê as requisições de toda a equipe.",
-                    nav("pedidos"), "right", "pedidos",
-                ),
-                TourStep(
-                    "Aguardando Recebimento",
-                    "Pedidos enviados para produção aguardando confirmação. "
-                    "A coluna 'Prazo' mostra há quanto tempo cada pedido está esperando.",
-                    order("_section_cards", "aguardando_recebimento"), "right",
-                ),
-                TourStep(
-                    "Em Produção",
-                    "Pedidos recebidos e sendo fabricados. "
-                    "Acompanhe em qual máquina cada um está.",
-                    order("_section_cards", "em_producao"), "left",
-                ),
-                TourStep(
-                    "Finalizados",
-                    "Pedidos concluídos. Disponíveis para consulta e reimpressão de PDF.",
-                    order("_section_cards", "faturados"), "left",
-                ),
+                *steps_pedidos,
                 # ── Entregas ──────────────────────────────────────────────────
                 TourStep(
                     "Tela de Entregas",
@@ -2152,35 +2259,24 @@ class MainWindow(QMainWindow):
                     nav("entregas"), "right", "entregas",
                 ),
                 TourStep(
-                    "Tabela de Entregas",
-                    "Selecione um pedido para alterar prazo ou confirmar entrega. "
-                    "Duplo clique abre os detalhes da requisição.",
+                    "Tabela e Ações de Entrega",
+                    "Selecione pedidos para alterar prazo, confirmar entrega ou cancelar entrega.<br>"
+                    "Vistas Lista e Cronograma disponíveis no topo da tela.",
                     delivery("table"), "top",
-                ),
-                TourStep(
-                    "Alterar Prazo / Confirmar Entrega",
-                    "<b>Alterar Prazo:</b> define nova data com motivo obrigatório — "
-                    "vendedor é notificado automaticamente.<br>"
-                    "<b>Marcar Entregue:</b> registra a entrega e finaliza o pedido.<br>"
-                    "<b>Cancelar Entrega:</b> reverte uma entrega confirmada por engano.",
-                    delivery("btn_change_deadline"), "bottom",
                 ),
                 # ── Histórico ─────────────────────────────────────────────────
                 *steps_hist,
+                # ── Feedbacks ─────────────────────────────────────────────────
+                *steps_feedback_base,
                 # ── Configurações ─────────────────────────────────────────────
                 *steps_cfg_base,
                 TourStep(
                     "Aba — Sistema",
-                    "Configure a URL do servidor, teste a conexão com o backend, "
-                    "ajuste o prazo mínimo de entrega e os alertas de faturamento.",
+                    "Configure a URL do servidor, o prazo mínimo de entrega "
+                    "e os alertas de faturamento.",
                     cfg("_tab_btns", 2), "bottom",
                 ),
-                TourStep(
-                    "Salvar Configurações",
-                    "Aplica e persiste todas as alterações. "
-                    "Clique aqui antes de sair da tela de configurações.",
-                    cfg("btn_save"), "top",
-                ),
+                step_cfg_save,
                 # ── Notificações + Atualizações ───────────────────────────────
                 step_notif,
                 step_update,
@@ -2195,42 +2291,14 @@ class MainWindow(QMainWindow):
                 # ── Nova Requisição ───────────────────────────────────────────
                 *steps_nova,
                 # ── Central de Pedidos ────────────────────────────────────────
-                TourStep(
-                    "Central de Pedidos",
-                    "Acompanhe o status de todos os seus pedidos em tempo real: "
-                    "aguardando recebimento, em produção, finalizados e cancelados. "
-                    "Você vê apenas suas próprias requisições.",
-                    nav("pedidos"), "right", "pedidos",
-                ),
-                TourStep(
-                    "Aguardando Recebimento",
-                    "Seus pedidos enviados para produção aguardando confirmação. "
-                    "A coluna 'Prazo' indica há quanto tempo cada pedido está esperando. "
-                    "Se estiver há muito tempo, contate a produção.",
-                    order("_section_cards", "aguardando_recebimento"), "right",
-                ),
-                TourStep(
-                    "Em Produção",
-                    "Seus pedidos sendo fabricados no momento. "
-                    "Acompanhe o progresso e a máquina alocada para cada um.",
-                    order("_section_cards", "em_producao"), "left",
-                ),
-                TourStep(
-                    "Finalizados",
-                    "Pedidos já concluídos e disponíveis para faturamento. "
-                    "Duplo clique para abrir e reimprimir o PDF se necessário.",
-                    order("_section_cards", "faturados"), "left",
-                ),
+                *steps_pedidos,
                 # ── Histórico ─────────────────────────────────────────────────
                 *steps_hist,
+                # ── Feedbacks ─────────────────────────────────────────────────
+                *steps_feedback_base,
                 # ── Configurações ─────────────────────────────────────────────
                 *steps_cfg_base,
-                TourStep(
-                    "Salvar Configurações",
-                    "Aplica e persiste todas as alterações. "
-                    "Clique aqui antes de sair da tela de configurações.",
-                    cfg("btn_save"), "top",
-                ),
+                step_cfg_save,
                 # ── Notificações + Atualizações ───────────────────────────────
                 step_notif,
                 step_update,
@@ -2242,55 +2310,8 @@ class MainWindow(QMainWindow):
         if role == "producao":
             return [
                 welcome,
-                # ── Tela A&R ──────────────────────────────────────────────────
-                TourStep(
-                    "Tela A&R — Sua Tela Principal",
-                    "Painel operacional da A&R. "
-                    "Aqui você recebe pedidos, gerencia a fila de produção "
-                    "e controla o status de cada máquina.",
-                    nav("ar"), "right", "ar",
-                ),
-                TourStep(
-                    "Contadores em Tempo Real",
-                    "Totalizadores no topo: "
-                    "<b>Aguardando Recebimento</b> (chegou mas não foi confirmado), "
-                    "<b>Aguardando na Fila</b> (recebido, esperando máquina) e "
-                    "<b>Em Produção</b> (nas máquinas agora).<br><br>"
-                    "Clique em <b>ATUALIZAR</b> para ver os números mais recentes.",
-                    ar("summary_waiting_receipt", "card"), "bottom",
-                ),
-                TourStep(
-                    "Aguardando Recebimento",
-                    "Pedidos enviados pelo vendedor que <b>ainda não foram confirmados</b> "
-                    "fisicamente na A&R.<br><br>"
-                    "Para confirmar: selecione o pedido na lista e clique em <b>'Receber'</b>. "
-                    "O pedido vai para 'Aguardando na Fila' e o vendedor é notificado.",
-                    ar("waiting_receipt_panel", "card"), "right",
-                ),
-                TourStep(
-                    "Aguardando na Fila",
-                    "Pedidos já recebidos mas sem máquina alocada ainda.<br><br>"
-                    "Para iniciar a produção: selecione o pedido e clique em "
-                    "<b>'Enviar para Máquina'</b>. "
-                    "Escolha a máquina disponível e confirme — "
-                    "o pedido vai para o card da máquina.",
-                    ar("waiting_queue_panel", "card"), "left",
-                ),
-                TourStep(
-                    "Máquinas em Produção",
-                    "Cada card representa uma máquina com o pedido em andamento. "
-                    "Clique no card para ver as ações disponíveis:<br>"
-                    "• <b>Finalizar</b> — pedido concluído, vai para faturamento<br>"
-                    "• <b>Devolver para Fila</b> — retorna ao aguardando na fila<br>"
-                    "• <b>Alterar Prazo</b> — define nova data de entrega (motivo obrigatório)",
-                    ar("machines_widget"), "top",
-                ),
-                TourStep(
-                    "Atualizar",
-                    "Recarrega todos os pedidos e o status das máquinas com dados atualizados. "
-                    "Use sempre que outro operador fizer uma alteração que você ainda não vê.",
-                    ar("refresh_btn"), "bottom",
-                ),
+                # ── A&R ───────────────────────────────────────────────────────
+                *steps_ar,
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
                     "Relatórios",
@@ -2310,14 +2331,11 @@ class MainWindow(QMainWindow):
                     "Duplo clique para abrir os detalhes completos da requisição.",
                     hist("table"), "top",
                 ),
+                # ── Feedbacks ─────────────────────────────────────────────────
+                *steps_feedback_base,
                 # ── Configurações ─────────────────────────────────────────────
                 *steps_cfg_base,
-                TourStep(
-                    "Salvar Configurações",
-                    "Aplica e persiste todas as alterações. "
-                    "Clique aqui antes de sair da tela de configurações.",
-                    cfg("btn_save"), "top",
-                ),
+                step_cfg_save,
                 # ── Notificações + Atualizações ───────────────────────────────
                 step_notif,
                 step_update,
@@ -2330,53 +2348,7 @@ class MainWindow(QMainWindow):
             return [
                 welcome,
                 # ── Pinheiro Indústria ────────────────────────────────────────
-                TourStep(
-                    "Pinheiro Indústria — Sua Tela Principal",
-                    "Painel operacional da Pinheiro Indústria. "
-                    "Aqui você recebe pedidos, gerencia a fila de produção "
-                    "e controla o status de cada máquina da Indústria.",
-                    nav("pinheiro_industria"), "right", "pinheiro_industria",
-                ),
-                TourStep(
-                    "Contadores em Tempo Real",
-                    "Totalizadores no topo: "
-                    "<b>Aguardando Recebimento</b> (chegou mas não foi confirmado), "
-                    "<b>Aguardando na Fila</b> (recebido, esperando máquina) e "
-                    "<b>Em Produção</b> (nas máquinas agora).<br><br>"
-                    "Clique em <b>ATUALIZAR</b> para ver os números mais recentes.",
-                    pin("summary_waiting_receipt", "card"), "bottom",
-                ),
-                TourStep(
-                    "Aguardando Recebimento",
-                    "Pedidos enviados pelo vendedor que <b>ainda não foram confirmados</b> "
-                    "fisicamente na Indústria.<br><br>"
-                    "Para confirmar: selecione o pedido e clique em <b>'Receber'</b>. "
-                    "O pedido vai para 'Aguardando na Fila' e o vendedor é notificado.",
-                    pin("waiting_receipt_panel", "card"), "right",
-                ),
-                TourStep(
-                    "Aguardando na Fila",
-                    "Pedidos recebidos aguardando uma máquina ficar disponível.<br><br>"
-                    "Para iniciar a produção: selecione o pedido e clique em "
-                    "<b>'Enviar para Máquina'</b>. "
-                    "Escolha a máquina disponível — o pedido vai para o card da máquina.",
-                    pin("waiting_queue_panel", "card"), "left",
-                ),
-                TourStep(
-                    "Máquinas em Produção",
-                    "Cards das máquinas da Indústria com os pedidos em andamento. "
-                    "Clique no card para as ações:<br>"
-                    "• <b>Finalizar</b> — pedido concluído, vai para faturamento<br>"
-                    "• <b>Devolver para Fila</b> — retorna ao aguardando na fila<br>"
-                    "• <b>Alterar Prazo</b> — define nova data de entrega (motivo obrigatório)",
-                    pin("machines_widget"), "top",
-                ),
-                TourStep(
-                    "Atualizar",
-                    "Recarrega pedidos e máquinas com dados atualizados do servidor. "
-                    "Use sempre que outro operador fizer uma alteração que você ainda não vê.",
-                    pin("refresh_btn"), "bottom",
-                ),
+                *steps_pin,
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
                     "Relatórios",
@@ -2396,14 +2368,11 @@ class MainWindow(QMainWindow):
                     "Duplo clique para abrir os detalhes completos.",
                     hist("table"), "top",
                 ),
+                # ── Feedbacks ─────────────────────────────────────────────────
+                *steps_feedback_base,
                 # ── Configurações ─────────────────────────────────────────────
                 *steps_cfg_base,
-                TourStep(
-                    "Salvar Configurações",
-                    "Aplica e persiste todas as alterações. "
-                    "Clique aqui antes de sair da tela de configurações.",
-                    cfg("btn_save"), "top",
-                ),
+                step_cfg_save,
                 # ── Notificações + Atualizações ───────────────────────────────
                 step_notif,
                 step_update,
@@ -2415,7 +2384,7 @@ class MainWindow(QMainWindow):
         if role in ("entregas", "entrega"):
             return [
                 welcome,
-                # ── Tela Entregas ─────────────────────────────────────────────
+                # ── Entregas ──────────────────────────────────────────────────
                 TourStep(
                     "Entregas — Sua Tela Principal",
                     "Agenda logística: todos os pedidos prontos para entrega ao cliente. "
@@ -2426,14 +2395,12 @@ class MainWindow(QMainWindow):
                     "Vista Lista / Cronograma",
                     "<b>Lista:</b> todos os pedidos pendentes em ordem de prazo de entrega.<br>"
                     "<b>Cronograma:</b> visão calendário organizada por data — "
-                    "útil para planejar rotas do dia.<br><br>"
-                    "Alterne conforme a necessidade do trabalho.",
+                    "útil para planejar rotas do dia.",
                     delivery("_btn_view_list"), "bottom",
                 ),
                 TourStep(
                     "Tabela de Pedidos para Entrega",
                     "Lista os pedidos com entrega pendente. "
-                    "Colunas: PED, cliente, endereço, prazo e status.<br><br>"
                     "Selecione um pedido para habilitar os botões de ação. "
                     "Duplo clique abre os detalhes completos da requisição.",
                     delivery("table"), "top",
@@ -2455,8 +2422,7 @@ class MainWindow(QMainWindow):
                 TourStep(
                     "Cancelar Entrega",
                     "Reverte uma entrega confirmada por engano, "
-                    "devolvendo o pedido para a lista de pendentes. "
-                    "Selecione o pedido entregue por engano e clique aqui.",
+                    "devolvendo o pedido para a lista de pendentes.",
                     delivery("btn_cancel_delivered"), "bottom",
                 ),
                 # ── Nova Requisição (leitura) ──────────────────────────────────
@@ -2484,14 +2450,11 @@ class MainWindow(QMainWindow):
                     "Duplo clique para abrir os detalhes completos em modo leitura.",
                     hist("table"), "top",
                 ),
+                # ── Feedbacks ─────────────────────────────────────────────────
+                *steps_feedback_base,
                 # ── Configurações ─────────────────────────────────────────────
                 *steps_cfg_base,
-                TourStep(
-                    "Salvar Configurações",
-                    "Aplica e persiste todas as alterações. "
-                    "Clique aqui antes de sair da tela de configurações.",
-                    cfg("btn_save"), "top",
-                ),
+                step_cfg_save,
                 # ── Notificações + Atualizações ───────────────────────────────
                 step_notif,
                 step_update,
