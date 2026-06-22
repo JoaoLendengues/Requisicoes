@@ -754,8 +754,7 @@ class ClientSearchBox(QWidget):
                 self._threads.remove(pair)
             except ValueError:
                 pass
-            worker.deleteLater()
-            thread.deleteLater()
+            # deleteLater já foi conectado por _run_in_thread; não chamar de novo
 
         thread.finished.connect(_cleanup)
 
