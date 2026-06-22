@@ -446,19 +446,23 @@ class SpotlightOverlay(QWidget):
     def _scroll_to_widget(self, widget: QWidget) -> bool:
         """
         Percorre toda a hierarquia de pais chamando ensureWidgetVisible em
-        cada QScrollArea encontrada. Sempre rola (não apenas quando fora dos
-        limites) para garantir que o widget fique confortavelmente visível.
-        Retorna True se pelo menos uma QScrollArea foi encontrada.
+        cada QScrollArea encontrada.
+        Retorna True SOMENTE se o scrollbar realmente mudou de valor — ou
+        seja, se um scroll de fato ocorreu e é necessário aguardar o
+        reposicionamento do layout.
         """
         from PySide6.QtWidgets import QScrollArea
-        found = False
+        did_scroll = False
         parent = widget.parentWidget()
         while parent is not None:
             if isinstance(parent, QScrollArea):
+                bar = parent.verticalScrollBar()
+                before = bar.value()
                 parent.ensureWidgetVisible(widget, 40, 80)
-                found = True
+                if bar.value() != before:
+                    did_scroll = True
             parent = parent.parentWidget()
-        return found
+        return did_scroll
 
     def _show_step(self, index: int) -> None:
         if index != self._current:
@@ -514,7 +518,7 @@ class SpotlightOverlay(QWidget):
     # ── Animação de movimento ─────────────────────────────────────────────────
 
     def _tick(self) -> None:
-        self._anim_t = min(1.0, self._anim_t + 0.08)
+        self._anim_t = min(1.0, self._anim_t + 0.10)
         t = _ease_out_cubic(self._anim_t)
         s, e = self._spot_start, self._spot_target
         self._spot_rect = QRectF(
