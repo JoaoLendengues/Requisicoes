@@ -410,8 +410,19 @@ class SpotlightOverlay(QWidget):
         step = self._steps[index]
 
         if step.navigate_key:
+            page = self._PAGE.get(step.navigate_key)
+            already_there = (
+                page is not None
+                and hasattr(self._mw, "stack")
+                and self._mw.stack.currentIndex() == page
+            )
             self._navigate(step.navigate_key)
-            QTimer.singleShot(320, lambda: self._scroll_then_show(index))
+            if already_there:
+                # Já estamos na página certa — sem delay de navegação
+                self._scroll_then_show(index)
+            else:
+                # Aguarda render da nova página antes de localizar o widget
+                QTimer.singleShot(200, lambda: self._scroll_then_show(index))
         else:
             self._scroll_then_show(index)
 
@@ -427,8 +438,8 @@ class SpotlightOverlay(QWidget):
 
         if widget is not None and widget.isVisible():
             if self._scroll_to_widget(widget):
-                # Pausa para o Qt processar o reposicionamento do conteúdo
-                QTimer.singleShot(150, lambda: self._show_step(index))
+                # Pausa curta para o Qt processar o reposicionamento do scroll
+                QTimer.singleShot(70, lambda: self._show_step(index))
                 return
         self._show_step(index)
 
@@ -503,7 +514,7 @@ class SpotlightOverlay(QWidget):
     # ── Animação de movimento ─────────────────────────────────────────────────
 
     def _tick(self) -> None:
-        self._anim_t = min(1.0, self._anim_t + 0.055)
+        self._anim_t = min(1.0, self._anim_t + 0.08)
         t = _ease_out_cubic(self._anim_t)
         s, e = self._spot_start, self._spot_target
         self._spot_rect = QRectF(
