@@ -882,17 +882,38 @@ class CanvasDialog(QDialog):
             QMessageBox.critical(self, "Importar Desenho", f"Erro ao importar: {exc}")
 
     def _export_drawing(self) -> None:
+        _DEFAULT_DIR = r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\BASE DESENHOS"
+        default_dir = _DEFAULT_DIR if os.path.isdir(_DEFAULT_DIR) else ""
+        default_path = os.path.join(default_dir, "desenho.png")
+
         path, _ = QFileDialog.getSaveFileName(
-            self, "Exportar Desenho", "desenho.json", "Desenho JSON (*.json)"
+            self, "Exportar Desenho como PNG", default_path,
+            "Imagem PNG (*.png)",
         )
         if not path:
             return
-        try:
-            data = self.canvas.to_json()
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(data)
-        except Exception as exc:
-            QMessageBox.critical(self, "Exportar Desenho", f"Erro ao exportar: {exc}")
+        if not path.lower().endswith(".png"):
+            path += ".png"
+
+        scene = self.canvas.scene
+        bounding = scene.itemsBoundingRect()
+        if bounding.isEmpty():
+            QMessageBox.information(self, "Exportar Desenho", "O canvas está vazio — nada para exportar.")
+            return
+
+        margin = 20
+        bounding = bounding.adjusted(-margin, -margin, margin, margin)
+        image = QImage(bounding.size().toSize(), QImage.Format.Format_RGB32)
+        image.fill(QColor("#ffffff"))
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        scene.render(painter, source=bounding)
+        painter.end()
+
+        if not image.save(path, "PNG"):
+            QMessageBox.critical(self, "Exportar Desenho", f"Não foi possível salvar a imagem em:\n{path}")
+            return
+        QMessageBox.information(self, "Exportar Desenho", f"Desenho exportado com sucesso:\n{path}")
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         """Esc desmarca a ferramenta ativa; não fecha o editor."""
