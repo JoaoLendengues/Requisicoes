@@ -105,10 +105,17 @@ class _CustomTitleBar(QWidget):
 
     def _apply_theme(self) -> None:
         s    = self._scale
-        bg   = theme.SIDEBAR_BG
-        fg   = theme.TEXT_WHITE
         fpt  = max(8, int(9 * s))
         bfpt = max(10, int(11 * s))
+
+        if theme.is_dark:
+            bg          = theme.SIDEBAR_BG
+            fg          = theme.TEXT_WHITE
+            hover_ctrl  = "rgba(255,255,255,22)"
+        else:
+            bg          = theme.CARD_BG
+            fg          = "#111111"
+            hover_ctrl  = "rgba(0,0,0,10)"
 
         self.setStyleSheet(f"background:{bg}; border:none;")
         self._lbl.setStyleSheet(
@@ -118,9 +125,9 @@ class _CustomTitleBar(QWidget):
             f"QPushButton {{ background:transparent; border:none;"
             f"  color:{fg}; font-size:{bfpt}pt; font-weight:400; }}"
         )
-        self._btn_min.setStyleSheet(_base + "QPushButton:hover { background:rgba(255,255,255,22); }")
-        self._btn_max.setStyleSheet(_base + "QPushButton:hover { background:rgba(255,255,255,22); }")
-        self._btn_cls.setStyleSheet(_base + "QPushButton:hover { background:#C42B1C; }")
+        self._btn_min.setStyleSheet(_base + f"QPushButton:hover {{ background:{hover_ctrl}; }}")
+        self._btn_max.setStyleSheet(_base + f"QPushButton:hover {{ background:{hover_ctrl}; }}")
+        self._btn_cls.setStyleSheet(_base + "QPushButton:hover { background:#C42B1C; color:#FFF; }")
 
     def _toggle_max(self) -> None:
         if self._mw.isMaximized():
