@@ -1645,6 +1645,20 @@ class MainWindow(QMainWindow):
                 form("input_ped"), "bottom",
             ),
             TourStep(
+                "Busca Avançada de Requisições — Lupa 🔍",
+                "Botão ao lado do formulário que abre a <b>janela de busca completa</b>. "
+                "Use quando não sabe o número do PED ou quer buscar por outros critérios.<br><br>"
+                "<b>O diálogo de busca permite filtrar por:</b><br>"
+                "• PED (número do pedido)<br>"
+                "• Nome ou CNPJ do cliente<br>"
+                "• Nome da obra<br>"
+                "• Vendedor responsável<br>"
+                "• Status atual e período de emissão<br><br>"
+                "Clique em qualquer resultado da tabela para abrir a requisição diretamente no formulário. "
+                "<b>Clique no botão agora</b> para explorar o diálogo de busca.",
+                form("btn_search_req"), "left", None, 12,
+            ),
+            TourStep(
                 "Busca de Cliente",
                 "Pesquise por <b>nome</b>, <b>código</b> ou <b>CNPJ</b> do cliente. "
                 "A lista filtra nos +112 mil cadastros em tempo real enquanto você digita.<br><br>"
@@ -1876,14 +1890,25 @@ class MainWindow(QMainWindow):
             ),
             TourStep(
                 "Seletor de Máquina",
-                "Dropdown para selecionar a máquina que deseja visualizar ou operar.<br><br>"
-                "Cada item do dropdown mostra: nome da máquina, "
-                "<b>quantidade em produção</b> e <b>quantidade na fila</b>. "
-                "A pill ao lado indica se a máquina está <b>Funcionando</b> "
-                "ou em <b>Manutenção</b>. "
+                "Este dropdown é o <b>ponto central de operação</b> da tela. "
+                "Selecione aqui a máquina que quer visualizar ou operar.<br><br>"
+                "Cada opção no dropdown mostra:<br>"
+                "• <b>Nome da máquina</b><br>"
+                "• <b>Quantidade em produção</b> no momento<br>"
+                "• <b>Quantidade na fila</b> aguardando<br><br>"
                 "Troque a máquina selecionada a qualquer momento — "
-                "o painel abaixo atualiza instantaneamente.",
-                ar("_machine_combo"), "bottom",
+                "o painel de conteúdo abaixo atualiza instantaneamente "
+                "sem recarregar a tela inteira.",
+                ar("_machine_combo"), "bottom", None, 36,
+            ),
+            TourStep(
+                "Status da Máquina",
+                "Pill ao lado do seletor que indica o estado operacional da máquina escolhida:<br><br>"
+                "🟢 <b>Funcionando</b> — máquina disponível para receber pedidos<br>"
+                "🔴 <b>Manutenção</b> — máquina indisponível; pedidos não podem ser alocados a ela<br><br>"
+                "O status é definido pelo administrador em "
+                "<b>Configurações → Cadastro de Máquinas</b>.",
+                ar("_machine_status_pill"), "bottom", None, 24,
             ),
             TourStep(
                 "Painel da Máquina — Fila e Em Produção",
@@ -1931,10 +1956,20 @@ class MainWindow(QMainWindow):
             ),
             TourStep(
                 "Seletor de Máquina",
-                "Dropdown para selecionar a máquina a visualizar ou operar na Indústria.<br><br>"
-                "Mostra quantidade em produção e na fila por máquina. "
-                "A pill indica se a máquina está <b>Funcionando</b> ou em <b>Manutenção</b>.",
-                pin("_machine_combo"), "bottom",
+                "Este dropdown é o <b>ponto central de operação</b> da tela. "
+                "Selecione aqui a máquina da Indústria que quer visualizar ou operar.<br><br>"
+                "Cada opção mostra nome da máquina, "
+                "<b>quantidade em produção</b> e <b>quantidade na fila</b>. "
+                "Troque a qualquer momento — o painel abaixo atualiza instantaneamente.",
+                pin("_machine_combo"), "bottom", None, 36,
+            ),
+            TourStep(
+                "Status da Máquina",
+                "Pill ao lado do seletor com o estado operacional da máquina escolhida:<br><br>"
+                "🟢 <b>Funcionando</b> — disponível para receber pedidos<br>"
+                "🔴 <b>Manutenção</b> — indisponível; pedidos não podem ser alocados<br><br>"
+                "Status definido pelo administrador em <b>Configurações → Cadastro de Máquinas</b>.",
+                pin("_machine_status_pill"), "bottom", None, 24,
             ),
             TourStep(
                 "Painel da Máquina — Fila e Em Produção",
