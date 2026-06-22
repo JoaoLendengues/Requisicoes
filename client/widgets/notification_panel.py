@@ -141,6 +141,9 @@ class NotificationDrawer(QWidget):
 
     def __init__(self, notifications: list, parent: QWidget):
         super().__init__(parent)
+        # Oculta imediatamente antes de qualquer setup: filho de parent visível
+        # seria exibido em (0,0) com tamanho mínimo até _setup() chamar hide().
+        self.hide()
         self._notifications: list = list(notifications)
         self._closing       = False
         self._factor = res.notification_factor

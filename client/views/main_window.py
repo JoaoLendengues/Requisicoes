@@ -447,14 +447,22 @@ class MainWindow(QMainWindow):
         if attr is None or getattr(self, attr) is not None:
             return  # PAGE_FORM ou já criada
 
-        view = self._create_view_for_page(page)
-        setattr(self, attr, view)
+        # Bloqueia repintura do stack durante toda a operação de troca:
+        # sem isso, o widget filho recém-criado (parent=self.stack) fica
+        # brevemente visível em (0,0) antes de insertWidget ocultá-lo,
+        # causando um flash de janelinha no Windows.
+        self.stack.setUpdatesEnabled(False)
+        try:
+            view = self._create_view_for_page(page)
+            setattr(self, attr, view)
 
-        # Troca o placeholder pela view real mantendo o índice correto
-        placeholder = self.stack.widget(page)
-        self.stack.removeWidget(placeholder)
-        placeholder.deleteLater()
-        self.stack.insertWidget(page, view)
+            # Troca o placeholder pela view real mantendo o índice correto
+            placeholder = self.stack.widget(page)
+            self.stack.removeWidget(placeholder)
+            placeholder.deleteLater()
+            self.stack.insertWidget(page, view)
+        finally:
+            self.stack.setUpdatesEnabled(True)
 
         self._connect_view_signals(page, view)
 
