@@ -629,6 +629,11 @@ class NotificationDrawer(QWidget):
             card = self._make_card(n)
             self._list_layout.addWidget(card)
 
+        # Stretch sempre presente após os cards: sem ele o QVBoxLayout distribui
+        # espaço extra verticalmente nos cards, que crescem para preencher o drawer.
+        # _build_deferred_cards extrai o stretch, adiciona cards e o re-insere.
+        self._list_layout.addStretch()
+
         if deferred:
             QTimer.singleShot(ANIM_MS + 50, lambda: self._build_deferred_cards(deferred))
 

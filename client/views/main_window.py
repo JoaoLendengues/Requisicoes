@@ -460,22 +460,26 @@ class MainWindow(QMainWindow):
 
     def _create_view_for_page(self, page: int):
         """Instancia a view correspondente ao índice ``page``."""
+        # parent=self.stack evita que a view seja criada como janela top-level no
+        # Windows — sem parent o Qt cria um HWND independente que pisca brevemente
+        # antes do insertWidget reparenteá-la para dentro do stack.
         if page == PAGE_HISTORY:
-            return HistoryView(self.scale)
+            return HistoryView(self.scale, parent=self.stack)
         if page == PAGE_DASHBOARD:
-            return DashboardView(self.scale)
+            return DashboardView(self.scale, parent=self.stack)
         if page == PAGE_TECHNICAL:
-            return TechnicalPanelView(self.scale)
+            return TechnicalPanelView(self.scale, parent=self.stack)
         if page == PAGE_ORDER_CENTER:
-            return OrderCenterView(self.scale)
+            return OrderCenterView(self.scale, parent=self.stack)
         if page == PAGE_DELIVERY_CENTER:
-            return DeliveryCenterView(self.scale)
+            return DeliveryCenterView(self.scale, parent=self.stack)
         if page == PAGE_PINHEIRO_INDUSTRIA:
             return ProductionView(
                 self.scale,
                 destinations=("Pinheiro Indústria",),
                 title="PINHEIRO INDÚSTRIA",
                 subtitle="Acompanhamento operacional das requisições enviadas para a Pinheiro Indústria.",
+                parent=self.stack,
             )
         if page == PAGE_AR:
             return ProductionView(
@@ -483,13 +487,14 @@ class MainWindow(QMainWindow):
                 destinations=("A&R",),
                 title="A&R",
                 subtitle="Acompanhamento operacional das requisições enviadas para a A&R.",
+                parent=self.stack,
             )
         if page == PAGE_USER_CENTER:
-            return UserCenterView(self.scale)
+            return UserCenterView(self.scale, parent=self.stack)
         if page == PAGE_SETTINGS:
-            return SettingsView(self.scale)
+            return SettingsView(self.scale, parent=self.stack)
         if page == PAGE_FEEDBACK:
-            return FeedbackView(self.scale)
+            return FeedbackView(self.scale, parent=self.stack)
         raise ValueError(f"Página desconhecida: {page}")
 
     def _connect_view_signals(self, page: int, view) -> None:
