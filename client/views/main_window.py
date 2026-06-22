@@ -1645,17 +1645,24 @@ class MainWindow(QMainWindow):
                 form("input_ped"), "bottom",
             ),
             TourStep(
-                "Busca Avançada de Requisições — Lupa 🔍",
+                "Lupa 🔍 — Busca de Requisições",
                 "Botão ao lado do formulário que abre a <b>janela de busca completa</b>. "
-                "Use quando não sabe o número do PED ou quer buscar por outros critérios.<br><br>"
-                "<b>O diálogo de busca permite filtrar por:</b><br>"
-                "• PED (número do pedido)<br>"
-                "• Nome ou CNPJ do cliente<br>"
-                "• Nome da obra<br>"
-                "• Vendedor responsável<br>"
-                "• Status atual e período de emissão<br><br>"
-                "Clique em qualquer resultado da tabela para abrir a requisição diretamente no formulário. "
-                "<b>Clique no botão agora</b> para explorar o diálogo de busca.",
+                "Use quando não sabe o número do PED ou quer localizar um pedido "
+                "pelo nome do cliente, pela obra ou por qualquer outra informação.<br><br>"
+                "<b>Clique no botão agora</b> para explorar o diálogo — "
+                "você pode continuar o tour depois, clicando em Próximo.",
+                form("btn_search_req"), "left", None, 12,
+            ),
+            TourStep(
+                "Lupa 🔍 — Filtros Disponíveis",
+                "Dentro do diálogo de busca você pode filtrar por:<br><br>"
+                "• <b>PED</b> — número do pedido<br>"
+                "• <b>Cliente</b> — nome ou CNPJ<br>"
+                "• <b>Obra</b> — nome da obra vinculada<br>"
+                "• <b>Vendedor</b> — nome ou código<br>"
+                "• <b>Status</b> e <b>período de emissão</b><br><br>"
+                "Clique em qualquer linha do resultado para abrir a requisição "
+                "diretamente no formulário.",
                 form("btn_search_req"), "left", None, 12,
             ),
             TourStep(
