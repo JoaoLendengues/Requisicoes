@@ -24,7 +24,7 @@ from .order_center_view import OrderCenterView
 from .delivery_center_view import DeliveryCenterView
 from .production_view import ProductionView
 from .settings_view import SettingsView
-from .system_updates_view import SystemUpdatesView
+from .system_updates_view import SystemUpdatesDialog
 from .user_center_view import UserCenterView
 from .feedback_view import FeedbackView
 
@@ -60,7 +60,6 @@ PAGE_USER_CENTER = 7
 PAGE_SETTINGS = 8
 PAGE_FEEDBACK = 9
 PAGE_DELIVERY_CENTER = 10
-PAGE_SYSTEM_UPDATES = 11
 
 
 class MainWindow(QMainWindow):
@@ -167,11 +166,10 @@ class MainWindow(QMainWindow):
         self.user_center_view: UserCenterView | None = None
         self.settings_view: SettingsView | None = None
         self.feedback_view: FeedbackView | None = None
-        self.system_updates_view: SystemUpdatesView | None = None
 
         self.stack.addWidget(self.form_view)       # PAGE_FORM = 0
         from PySide6.QtWidgets import QWidget as _QW
-        for _ in range(11):                        # páginas 1-11: placeholders leves
+        for _ in range(10):                        # páginas 1-10: placeholders leves
             self.stack.addWidget(_QW())
 
         # Sinal do formulário conectado imediatamente (único que precisa existir já)
@@ -309,6 +307,10 @@ class MainWindow(QMainWindow):
         anim.start()
 
     def _on_nav(self, key: str):
+        if key == "atualizacoes":
+            SystemUpdatesDialog(parent=self).exec()
+            return
+
         mapping = {
             "nova":               PAGE_FORM,
             "historico":          PAGE_HISTORY,
@@ -321,7 +323,6 @@ class MainWindow(QMainWindow):
             "usuarios":           PAGE_USER_CENTER,
             "config":             PAGE_SETTINGS,
             "feedback":           PAGE_FEEDBACK,
-            "atualizacoes":       PAGE_SYSTEM_UPDATES,
         }
         page = mapping.get(key, PAGE_FORM)
 
@@ -382,8 +383,6 @@ class MainWindow(QMainWindow):
             self.ar_view.refresh()
         elif page == PAGE_USER_CENTER:
             self.user_center_view.refresh()
-        elif page == PAGE_SYSTEM_UPDATES:
-            self.system_updates_view.refresh()
         elif page == PAGE_SETTINGS:
             self.settings_view.refresh_operational_settings()
         elif page == PAGE_FEEDBACK:
@@ -433,7 +432,6 @@ class MainWindow(QMainWindow):
             PAGE_USER_CENTER:        "user_center_view",
             PAGE_SETTINGS:           "settings_view",
             PAGE_FEEDBACK:           "feedback_view",
-            PAGE_SYSTEM_UPDATES:     "system_updates_view",
         }
         attr = _attr.get(page)
         if attr is None or getattr(self, attr) is not None:
@@ -482,8 +480,6 @@ class MainWindow(QMainWindow):
             return SettingsView(self.scale)
         if page == PAGE_FEEDBACK:
             return FeedbackView(self.scale)
-        if page == PAGE_SYSTEM_UPDATES:
-            return SystemUpdatesView(self.scale)
         raise ValueError(f"Página desconhecida: {page}")
 
     def _connect_view_signals(self, page: int, view) -> None:
@@ -576,7 +572,6 @@ class MainWindow(QMainWindow):
             PAGE_USER_CENTER: "usuarios",
             PAGE_SETTINGS: "config",
             PAGE_FEEDBACK: "feedback",
-            PAGE_SYSTEM_UPDATES: "atualizacoes",
         }
         self.sidebar._highlight(mapping.get(self.stack.currentIndex(), "nova"))
 
@@ -1155,7 +1150,7 @@ class MainWindow(QMainWindow):
             self.technical_panel_view, self.order_center_view,
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
-            self.delivery_center_view, self.system_updates_view,
+            self.delivery_center_view,
         ]
         idx = self.stack.currentIndex()
         return views[idx] if 0 <= idx < len(views) else None
@@ -1173,7 +1168,6 @@ class MainWindow(QMainWindow):
             self.technical_panel_view, self.order_center_view, self.delivery_center_view,
             self.pinheiro_industria_view, self.ar_view,
             self.user_center_view, self.settings_view, self.feedback_view,
-            self.system_updates_view,
         ]
         current = self._get_current_view()
         for v in all_views:
@@ -1198,7 +1192,6 @@ class MainWindow(QMainWindow):
             PAGE_USER_CENTER:        getattr(self, "user_center_view", None),
             PAGE_SETTINGS:           getattr(self, "settings_view", None),
             PAGE_FEEDBACK:           getattr(self, "feedback_view", None),
-            PAGE_SYSTEM_UPDATES:     getattr(self, "system_updates_view", None),
         }
         view = views_by_page.get(page)
         if view is not None and getattr(view, "_theme_dirty", False):
@@ -2134,10 +2127,11 @@ class MainWindow(QMainWindow):
         step_update = TourStep(
             "Atualizações do Sistema",
             "Quando uma nova versão estiver disponível, o sistema avisa automaticamente. "
-            "Aqui você pode verificar manualmente e iniciar a atualização.<br><br>"
-            "O processo é automático: o sistema fecha, aplica a atualização e reabre. "
-            "Suas configurações são preservadas entre versões.",
-            nav("atualizacoes"), "right", "atualizacoes",
+            "Clique neste botão para <b>verificar manualmente</b> — uma janela abrirá com "
+            "a versão instalada e um botão de verificação.<br><br>"
+            "O processo é automático: o sistema fecha, aplica a atualização e reabre na nova versão. "
+            "Suas configurações e dados são preservados entre versões.",
+            nav("atualizacoes"), "right",
         )
 
         # ════════════════════════════════════════════════════════════════════════

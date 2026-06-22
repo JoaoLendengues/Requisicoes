@@ -384,13 +384,31 @@ class UpdateAvailableDialog(QDialog):
             meta_row.addStretch()
             body_layout.addLayout(meta_row)
 
-        # Cabeçalho "Notas da versão"
-        notes_header = QLabel("📝  Notas da versão")
-        notes_header.setStyleSheet(
-            f"background: transparent; color: {theme.PANEL_NEON_PRIMARY};"
-            f"font-size: 10pt; font-weight: 800; padding-top: 4px;"
+        # Separador antes das release notes
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Plain)
+        sep.setStyleSheet(
+            f"background: {_rgba(theme.PANEL_NEON_PRIMARY, 50)}; border: none; max-height: 1px;"
         )
-        body_layout.addWidget(notes_header)
+        body_layout.addWidget(sep)
+
+        # Badge de cabeçalho "O QUE HÁ DE NOVO"
+        notes_header_row = QHBoxLayout()
+        notes_header_row.setSpacing(8)
+        notes_badge = QLabel("✨  O QUE HÁ DE NOVO")
+        notes_badge.setStyleSheet(
+            f"background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"  stop:0 {_rgba(theme.PANEL_NEON_PRIMARY, 50)},"
+            f"  stop:1 {_rgba(theme.PANEL_NEON_SECONDARY, 35)});"
+            f"color: {theme.PANEL_TEXT_PRIMARY};"
+            f"border: 1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 80)};"
+            f"border-radius: 10px; padding: 4px 14px;"
+            f"font-size: 8pt; font-weight: 800; letter-spacing: 1px;"
+        )
+        notes_header_row.addWidget(notes_badge)
+        notes_header_row.addStretch()
+        body_layout.addLayout(notes_header_row)
 
         # Render Markdown em QTextBrowser (suporta links)
         self._notes = QTextBrowser()
@@ -678,11 +696,7 @@ class UpdateAvailableDialog(QDialog):
 
     @staticmethod
     def _markdown_css() -> str:
-        """Stylesheet CSS aplicado ao documento Markdown renderizado.
-
-        Controla aparência de headings, listas, código, links — emula visual
-        moderno (GitHub-like) mas usando paleta neon do app.
-        """
+        """Stylesheet CSS aplicado ao documento Markdown renderizado."""
         text = theme.PANEL_TEXT_PRIMARY
         muted = theme.PANEL_TEXT_MUTED
         neon = theme.PANEL_NEON_PRIMARY
@@ -692,57 +706,70 @@ class UpdateAvailableDialog(QDialog):
             body {{
                 font-family: 'Inter', 'Segoe UI', sans-serif;
                 color: {text};
-                line-height: 1.6;
+                line-height: 1.65;
             }}
             h1, h2, h3, h4 {{
                 color: {neon};
                 font-weight: 800;
-                margin-top: 14px;
+                margin-top: 16px;
                 margin-bottom: 6px;
+                padding-bottom: 4px;
+                border-bottom: 1px solid {_rgba(neon, 45)};
             }}
             h1 {{ font-size: 14pt; }}
             h2 {{ font-size: 13pt; }}
-            h3 {{ font-size: 12pt; }}
-            h4 {{ font-size: 11pt; }}
+            h3 {{ font-size: 12pt; border-bottom: none; }}
+            h4 {{ font-size: 11pt; border-bottom: none; color: {neon2}; }}
             p {{
                 margin-top: 4px;
-                margin-bottom: 8px;
+                margin-bottom: 10px;
                 color: {text};
             }}
-            ul, ol {{
-                margin-left: 18px;
+            ul {{
+                margin-left: 20px;
                 margin-top: 4px;
-                margin-bottom: 8px;
+                margin-bottom: 10px;
+            }}
+            ol {{
+                margin-left: 20px;
+                margin-top: 4px;
+                margin-bottom: 10px;
             }}
             li {{
-                margin-bottom: 4px;
+                margin-bottom: 5px;
                 color: {text};
+                padding-left: 2px;
             }}
             strong, b {{ color: {neon2}; font-weight: 800; }}
-            em, i {{ color: {muted}; }}
+            em, i {{ color: {muted}; font-style: italic; }}
             code {{
-                background: {_rgba(surface_alt, 200)};
+                background: {_rgba(surface_alt, 220)};
                 color: {neon2};
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-family: 'Consolas', 'Monaco', monospace;
+                padding: 2px 7px;
+                border-radius: 5px;
+                font-family: 'Consolas', 'Cascadia Code', 'Monaco', monospace;
                 font-size: 9pt;
+                border: 1px solid {_rgba(neon2, 40)};
             }}
             pre {{
-                background: {_rgba(surface_alt, 200)};
+                background: {_rgba(surface_alt, 220)};
                 color: {text};
-                padding: 10px 12px;
-                border-radius: 8px;
-                font-family: 'Consolas', 'Monaco', monospace;
+                padding: 12px 14px;
+                border-radius: 10px;
+                font-family: 'Consolas', 'Cascadia Code', 'Monaco', monospace;
                 font-size: 9pt;
                 margin-top: 6px;
-                margin-bottom: 8px;
+                margin-bottom: 10px;
+                border: 1px solid {_rgba(neon, 30)};
             }}
             blockquote {{
                 border-left: 3px solid {neon};
-                padding-left: 12px;
+                background: {_rgba(neon, 10)};
+                padding: 8px 12px 8px 14px;
                 color: {muted};
-                margin: 8px 0;
+                margin: 10px 0;
+                border-radius: 0 6px 6px 0;
+                font-style: italic;
             }}
             a {{
                 color: {neon};
@@ -752,7 +779,27 @@ class UpdateAvailableDialog(QDialog):
             a:hover {{ text-decoration: underline; }}
             hr {{
                 border: none;
-                border-top: 1px solid {_rgba(neon, 60)};
-                margin: 12px 0;
+                border-top: 1px solid {_rgba(neon, 55)};
+                margin: 14px 0;
+            }}
+            table {{
+                border-collapse: collapse;
+                margin: 8px 0;
+                width: 100%;
+            }}
+            th {{
+                background: {_rgba(neon, 35)};
+                color: {text};
+                font-weight: 800;
+                padding: 6px 10px;
+                border: 1px solid {_rgba(neon, 50)};
+            }}
+            td {{
+                padding: 5px 10px;
+                border: 1px solid {_rgba(neon, 28)};
+                color: {text};
+            }}
+            tr:nth-child(even) td {{
+                background: {_rgba(surface_alt, 80)};
             }}
         """

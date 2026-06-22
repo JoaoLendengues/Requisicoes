@@ -1,24 +1,26 @@
+"""
+Diálogo de verificação de atualizações — Requisições Pinheiro.
+
+Acessado pelo botão "Atualizações" na sidebar. Janela independente com
+verificação de nova versão, status e acesso ao UpdateAvailableDialog.
+"""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QFrame,
-    QGraphicsDropShadowEffect,
+    QDialog,
+    QVBoxLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QVBoxLayout,
+    QFrame,
     QWidget,
+    QGraphicsDropShadowEffect,
 )
 
 from ..core import theme
-from ..core.datetime_utils import (
-    format_datetime as _format_datetime,
-    format_header_date as _format_header_date,
-    local_now,
-)
-from ..widgets.smooth_scroll import SmoothScrollArea
+from .. import version as _version_mod
 
 
 def _rgba(color: str, alpha: int) -> str:
@@ -26,240 +28,243 @@ def _rgba(color: str, alpha: int) -> str:
     return f"rgba({parsed.red()}, {parsed.green()}, {parsed.blue()}, {alpha})"
 
 
-def _apply_shadow(widget: QWidget, blur: int = 28, y_offset: int = 6, alpha: int = 24) -> None:
-    shadow = QGraphicsDropShadowEffect(widget)
-    shadow.setBlurRadius(blur)
-    shadow.setOffset(0, y_offset)
-    color = QColor(theme.PANEL_SHADOW)
-    color.setAlpha(alpha)
-    shadow.setColor(color)
-    widget.setGraphicsEffect(shadow)
+class SystemUpdatesDialog(QDialog):
+    """Janela de verificação e gerenciamento de atualizações do sistema."""
 
-
-def _make_card(scale: float, radius: int = 18) -> QFrame:
-    card = QFrame()
-    card.setObjectName("systemUpdatesCard")
-    card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-    card.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-    card.setProperty("theme_bg", "card")
-    card.setStyleSheet(f"QFrame#systemUpdatesCard {{ border-radius:{radius}px; }}")
-    _apply_shadow(card, blur=max(26, int(30 * scale)), y_offset=max(4, int(5 * scale)))
-    return card
-
-
-def _section(title: str, scale: float) -> QLabel:
-    label = QLabel(title)
-    label.setStyleSheet(
-        f"background:transparent; font-size:{max(10, int(12 * scale))}pt; "
-        f"font-weight:800; padding-top:4px;"
-    )
-    return label
-
-
-def _separator() -> QFrame:
-    sep = QFrame()
-    sep.setFrameShape(QFrame.Shape.NoFrame)
-    sep.setFixedHeight(4)
-    sep.setProperty("theme_bg", "separator")
-    sep.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-    sep.setStyleSheet("border:none; border-radius:2px;")
-    return sep
-
-
-def _secondary_btn_style(scale: float) -> str:
-    return theme.secondary_btn_style(scale)
-
-
-class SystemUpdatesView(QWidget):
-    def __init__(self, scale: float = 1.0, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.scale = scale
         self._update_checker = None
         self._setup_ui()
-        self.refresh()
+        self._animate_in()
 
     def _setup_ui(self) -> None:
-        s = self.scale
-        page_bg = theme.CONTENT_BG
-        self.setObjectName("systemUpdatesView")
+        self.setWindowTitle("Atualizações")
+        self.setWindowFlags(
+            Qt.WindowType.Dialog
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setFixedSize(500, 360)
+        self.setModal(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"QWidget#systemUpdatesView {{ background:{page_bg}; }}")
+        self.setObjectName("systemUpdatesDialog")
+        self.setStyleSheet(
+            f"QDialog#systemUpdatesDialog {{"
+            f"  background: qlineargradient(x1:0, y1:0, x2:1, y2:1,"
+            f"    stop:0 {theme.PANEL_CARD_BG_START},"
+            f"    stop:0.55 {theme.PANEL_CARD_BG_MID},"
+            f"    stop:1 {theme.PANEL_CARD_BG_END});"
+            f"}}"
+        )
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(max(18, int(24 * s)), max(18, int(24 * s)), max(18, int(24 * s)), 0)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        root.addWidget(self._build_header())
+        root.addWidget(self._build_body(), 1)
+        root.addWidget(self._build_footer())
 
-        header = QHBoxLayout()
-        header.setSpacing(max(12, int(16 * s)))
-        title_col = QVBoxLayout()
-        title_col.setSpacing(max(4, int(5 * s)))
+    def _build_header(self) -> QWidget:
+        header = QFrame()
+        header.setObjectName("updatesHeader")
+        header.setFixedHeight(108)
+        header.setStyleSheet(
+            f"QFrame#updatesHeader {{"
+            f"  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"    stop:0 {_rgba(theme.PANEL_NEON_PRIMARY, 38)},"
+            f"    stop:0.5 {_rgba(theme.PANEL_NEON_SECONDARY, 28)},"
+            f"    stop:1 {_rgba(theme.PANEL_NEON_PRIMARY, 38)});"
+            f"  border-bottom: 1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)};"
+            f"}}"
+        )
+
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(28, 18, 28, 18)
+        layout.setSpacing(16)
+
+        icon_label = QLabel("🔄")
+        icon_label.setStyleSheet("background: transparent; font-size: 34pt;")
+        icon_label.setFixedWidth(60)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(icon_label)
+
+        col = QVBoxLayout()
+        col.setSpacing(6)
+        col.setContentsMargins(0, 0, 0, 0)
 
         title = QLabel("Atualizações do Sistema")
         title.setStyleSheet(
-            f"background:transparent; font-size:{max(18, int(24 * s))}pt; font-weight:800;"
+            f"background: transparent; color: {theme.PANEL_TEXT_PRIMARY};"
+            f"font-size: 15pt; font-weight: 800;"
         )
-        subtitle = QLabel(
-            "Verifique novas versões do aplicativo e acompanhe o status da atualização."
+        col.addWidget(title)
+
+        current_version = getattr(_version_mod, "CURRENT_VERSION", "?")
+        version_chip = QLabel(f"Versão instalada: v{current_version}")
+        version_chip.setStyleSheet(
+            f"background: {_rgba(theme.PANEL_NEON_PRIMARY, 22)};"
+            f"color: {theme.PANEL_TEXT_PRIMARY};"
+            f"border: 1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 90)};"
+            f"border-radius: 12px; padding: 4px 14px;"
+            f"font-size: 10pt; font-weight: 700;"
         )
-        subtitle.setWordWrap(True)
-        subtitle.setProperty("muted", "1")
-        subtitle.setStyleSheet(f"background:transparent; font-size:{max(8, int(10 * s))}pt;")
-        title_col.addWidget(title)
-        title_col.addWidget(subtitle)
-        header.addLayout(title_col, 1)
+        col.addWidget(version_chip)
+        layout.addLayout(col, 1)
+        return header
 
-        info_card = _make_card(s, radius=max(16, int(18 * s)))
-        info_layout = QVBoxLayout(info_card)
-        info_layout.setContentsMargins(
-            max(14, int(16 * s)),
-            max(10, int(12 * s)),
-            max(14, int(16 * s)),
-            max(10, int(12 * s)),
-        )
-        info_layout.setSpacing(max(2, int(3 * s)))
-        date_hint = QLabel("DATA ATUAL")
-        date_hint.setProperty("muted", "1")
-        date_hint.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; font-weight:700; background:transparent;"
-        )
-        self.date_label = QLabel(_format_header_date())
-        self.date_label.setStyleSheet(
-            f"font-size:{max(13, int(16 * s))}pt; font-weight:800; background:transparent;"
-        )
-        self.updated_label = QLabel("Central de atualização do aplicativo")
-        self.updated_label.setProperty("muted", "1")
-        self.updated_label.setStyleSheet(
-            f"font-size:{max(7, int(8 * s))}pt; background:transparent;"
-        )
-        info_layout.addWidget(date_hint)
-        info_layout.addWidget(self.date_label)
-        info_layout.addWidget(self.updated_label)
-        header.addWidget(info_card)
-        root.addLayout(header)
-
-        root.addSpacing(max(14, int(18 * s)))
-
-        self._page_scroll = SmoothScrollArea()
-        self._page_scroll.setWidgetResizable(True)
-        self._page_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{page_bg}; }}")
-
-        self._page_content = QWidget()
-        self._page_content.setObjectName("systemUpdatesContainer")
-        self._page_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self._page_content.setStyleSheet(f"QWidget#systemUpdatesContainer {{ background:{page_bg}; }}")
-        self._page_scroll.setWidget(self._page_content)
-        root.addWidget(self._page_scroll, 1)
-
-        content = QVBoxLayout(self._page_content)
-        content.setContentsMargins(0, 0, 0, max(18, int(22 * s)))
-        content.setSpacing(max(14, int(18 * s)))
-
-        card = _make_card(s)
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(
-            max(18, int(22 * s)),
-            max(16, int(20 * s)),
-            max(18, int(22 * s)),
-            max(18, int(22 * s)),
-        )
-        card_layout.setSpacing(max(10, int(12 * s)))
-        content.addWidget(card)
-        content.addStretch()
-
-        card_layout.addWidget(_section("Atualizações do Sistema", s))
-        card_layout.addWidget(_separator())
-
-        from ..version import CURRENT_VERSION as _CURRENT_VERSION
-
-        version_row = QHBoxLayout()
-        version_row.setSpacing(max(8, int(10 * s)))
-        self._version_label = QLabel(f"Versão atual: v{_CURRENT_VERSION}")
-        self._version_label.setProperty("muted", "1")
-        self._version_label.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
-        )
-        version_row.addWidget(self._version_label)
-        version_row.addStretch()
-        self.btn_check_update = QPushButton("Verificar atualizações")
-        self.btn_check_update.setFixedHeight(max(38, int(44 * s)))
-        self.btn_check_update.setStyleSheet(_secondary_btn_style(s))
-        self.btn_check_update.clicked.connect(self._check_updates)
-        version_row.addWidget(self.btn_check_update)
-        card_layout.addLayout(version_row)
+    def _build_body(self) -> QWidget:
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(32, 28, 32, 16)
+        layout.setSpacing(14)
 
         helper = QLabel(
-            "Use esta tela para procurar novas versões. Quando houver uma atualização disponível, "
-            "o aplicativo exibirá os detalhes e permitirá iniciar a instalação."
+            "Clique em <b>Verificar agora</b> para checar se há uma nova versão disponível no GitHub. "
+            "Quando houver uma atualização, o sistema exibirá os detalhes e permitirá "
+            "iniciar a instalação com um clique — sem precisar de intervenção manual."
         )
         helper.setWordWrap(True)
-        helper.setProperty("muted", "1")
         helper.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+            f"background: transparent; color: {theme.PANEL_TEXT_MUTED};"
+            f"font-size: 10pt; line-height: 1.6;"
         )
-        card_layout.addWidget(helper)
+        layout.addWidget(helper)
 
-        self._update_status_label = QLabel("")
-        self._update_status_label.setWordWrap(True)
-        self._update_status_label.setProperty("muted", "1")
-        self._update_status_label.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * s))}pt; font-weight:600;"
+        self._status_label = QLabel("")
+        self._status_label.setWordWrap(True)
+        self._status_label.setStyleSheet(
+            f"background: transparent; font-size: 10pt; font-weight: 700;"
+            f"color: {theme.PANEL_TEXT_MUTED};"
         )
-        card_layout.addWidget(self._update_status_label)
+        layout.addWidget(self._status_label)
+        layout.addStretch()
+        return body
 
-    def refresh(self) -> None:
-        current = local_now()
-        self.date_label.setText(_format_header_date(current))
-        self.updated_label.setText(f"Atualizado em {_format_datetime(current)}")
+    def _build_footer(self) -> QWidget:
+        footer = QFrame()
+        footer.setObjectName("updatesFooter")
+        footer.setStyleSheet(
+            f"QFrame#updatesFooter {{"
+            f"  background: {_rgba(theme.PANEL_SURFACE_BG, 60)};"
+            f"  border-top: 1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 64)};"
+            f"}}"
+        )
+
+        layout = QHBoxLayout(footer)
+        layout.setContentsMargins(28, 16, 28, 20)
+        layout.setSpacing(10)
+        layout.addStretch()
+
+        self._btn_close = QPushButton("Fechar")
+        self._btn_close.setFixedHeight(42)
+        self._btn_close.setMinimumWidth(120)
+        self._btn_close.setStyleSheet(self._secondary_style())
+        self._btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_close.clicked.connect(self.reject)
+        layout.addWidget(self._btn_close)
+
+        self._btn_check = QPushButton("🔍  Verificar agora")
+        self._btn_check.setFixedHeight(42)
+        self._btn_check.setMinimumWidth(190)
+        self._btn_check.setStyleSheet(self._primary_style())
+        self._btn_check.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_check.clicked.connect(self._check_updates)
+
+        shadow = QGraphicsDropShadowEffect(self._btn_check)
+        shadow.setBlurRadius(18)
+        shadow.setOffset(0, 3)
+        color = QColor(theme.PANEL_NEON_PRIMARY)
+        color.setAlpha(120)
+        shadow.setColor(color)
+        self._btn_check.setGraphicsEffect(shadow)
+
+        layout.addWidget(self._btn_check)
+        return footer
+
+    def _animate_in(self) -> None:
+        self.setWindowOpacity(0.0)
+        anim = QPropertyAnimation(self, b"windowOpacity", self)
+        anim.setDuration(200)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._anim_in = anim
+        QTimer.singleShot(0, anim.start)
 
     def _check_updates(self) -> None:
         from ..updater import UpdateChecker
 
-        self.btn_check_update.setEnabled(False)
-        self.btn_check_update.setText("Verificando...")
-        self._update_status_label.setText("")
+        self._btn_check.setEnabled(False)
+        self._btn_check.setText("Verificando...")
+        self._set_status("", color=None)
 
         self._update_checker = UpdateChecker(parent=self)
         self._update_checker.update_available.connect(self._on_update_found)
         self._update_checker.no_update.connect(self._on_no_update)
-        self._update_checker.error.connect(self._on_update_check_error)
+        self._update_checker.error.connect(self._on_check_error)
         self._update_checker.start()
 
     def _on_update_found(self, update_info: dict) -> None:
         from ..widgets.update_dialog import UpdateAvailableDialog
 
-        self.btn_check_update.setEnabled(True)
-        self.btn_check_update.setText("Verificar atualizações")
-        self._update_status_label.setText(f"Nova versão disponível: v{update_info['version']}")
-        self._update_status_label.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt; "
-            f"font-weight:600; color:{theme.SUCCESS};"
-        )
+        self._btn_check.setEnabled(True)
+        self._btn_check.setText("🔍  Verificar agora")
+        version = update_info.get("version", "?")
+        self._set_status(f"✓  Nova versão encontrada: v{version}", color=theme.SUCCESS)
         UpdateAvailableDialog(update_info, parent=self).exec()
 
     def _on_no_update(self) -> None:
-        self.btn_check_update.setEnabled(True)
-        self.btn_check_update.setText("Verificar atualizações")
-        self._update_status_label.setText("Você já tem a versão mais recente.")
-        self._update_status_label.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt; "
-            f"font-weight:600; color:{theme.SUCCESS};"
+        self._btn_check.setEnabled(True)
+        self._btn_check.setText("🔍  Verificar agora")
+        self._set_status("✓  Você já tem a versão mais recente.", color=theme.SUCCESS)
+
+    def _on_check_error(self, error_msg: str) -> None:
+        self._btn_check.setEnabled(True)
+        self._btn_check.setText("🔍  Tentar novamente")
+        self._set_status(f"⚠  Erro ao verificar: {error_msg}", color=theme.DANGER)
+
+    def _set_status(self, text: str, color: str | None) -> None:
+        self._status_label.setText(text)
+        fg = color if color else theme.PANEL_TEXT_MUTED
+        self._status_label.setStyleSheet(
+            f"background: transparent; font-size: 10pt; font-weight: 700; color: {fg};"
         )
 
-    def _on_update_check_error(self, error_msg: str) -> None:
-        self.btn_check_update.setEnabled(True)
-        self.btn_check_update.setText("Verificar atualizações")
-        self._update_status_label.setText(f"Erro ao verificar: {error_msg}")
-        self._update_status_label.setStyleSheet(
-            f"background:transparent; font-size:{max(8, int(9 * self.scale))}pt; "
-            f"font-weight:600; color:{theme.DANGER};"
+    @staticmethod
+    def _primary_style() -> str:
+        return (
+            f"QPushButton {{"
+            f"  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"    stop:0 {theme.PANEL_NEON_PRIMARY},"
+            f"    stop:1 {theme.PANEL_NEON_SECONDARY});"
+            f"  color: {theme.PANEL_TEXT_PRIMARY};"
+            f"  border: none; border-radius: 14px;"
+            f"  padding: 0 22px; font-size: 11pt; font-weight: 800;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f"  background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+            f"    stop:0 {theme.PANEL_NEON_SECONDARY},"
+            f"    stop:1 {theme.PANEL_NEON_PRIMARY});"
+            f"}}"
+            f"QPushButton:pressed {{ background: {theme.PANEL_NEON_PRIMARY}; }}"
+            f"QPushButton:disabled {{"
+            f"  background: {_rgba(theme.PANEL_TEXT_MUTED, 100)};"
+            f"  color: {_rgba(theme.PANEL_TEXT_PRIMARY, 160)};"
+            f"}}"
         )
 
-    def apply_theme(self) -> None:
-        s = self.scale
-        bg = theme.CONTENT_BG
-        self.setStyleSheet(f"QWidget#systemUpdatesView {{ background:{bg}; }}")
-        self._page_scroll.setStyleSheet(f"QScrollArea {{ border:none; background:{bg}; }}")
-        self._page_scroll.viewport().setStyleSheet(f"background:{bg}; border:none;")
-        self._page_content.setStyleSheet(f"QWidget#systemUpdatesContainer {{ background:{bg}; }}")
-        self.btn_check_update.setStyleSheet(_secondary_btn_style(s))
+    @staticmethod
+    def _secondary_style() -> str:
+        return (
+            f"QPushButton {{"
+            f"  background: transparent;"
+            f"  color: {theme.PANEL_TEXT_PRIMARY};"
+            f"  border: 1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 110)};"
+            f"  border-radius: 14px;"
+            f"  padding: 0 22px; font-size: 10pt; font-weight: 700;"
+            f"}}"
+            f"QPushButton:hover {{"
+            f"  background: {_rgba(theme.PANEL_NEON_PRIMARY, 28)};"
+            f"  border: 1px solid {theme.PANEL_NEON_PRIMARY};"
+            f"}}"
+        )
