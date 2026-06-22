@@ -416,7 +416,7 @@ class SpotlightOverlay(QWidget):
             self._scroll_then_show(index)
 
     def _scroll_then_show(self, index: int) -> None:
-        """Rola o scroll area pai para o widget alvo (se necessário) e exibe o passo."""
+        """Rola o scroll area pai para o widget alvo e exibe o passo."""
         if index != self._current:
             return
         step = self._steps[index]
@@ -427,30 +427,27 @@ class SpotlightOverlay(QWidget):
 
         if widget is not None and widget.isVisible():
             if self._scroll_to_widget(widget):
-                # Pequena pausa para o Qt processar o reposicionamento do conteúdo
-                QTimer.singleShot(80, lambda: self._show_step(index))
+                # Pausa para o Qt processar o reposicionamento do conteúdo
+                QTimer.singleShot(150, lambda: self._show_step(index))
                 return
         self._show_step(index)
 
     def _scroll_to_widget(self, widget: QWidget) -> bool:
         """
-        Percorre a hierarquia de pais procurando o QScrollArea mais próximo.
-        Se o widget estiver fora do viewport visível, chama ensureWidgetVisible.
-        Retorna True se alguma rolagem foi necessária.
+        Percorre toda a hierarquia de pais chamando ensureWidgetVisible em
+        cada QScrollArea encontrada. Sempre rola (não apenas quando fora dos
+        limites) para garantir que o widget fique confortavelmente visível.
+        Retorna True se pelo menos uma QScrollArea foi encontrada.
         """
         from PySide6.QtWidgets import QScrollArea
+        found = False
         parent = widget.parentWidget()
         while parent is not None:
             if isinstance(parent, QScrollArea):
-                viewport = parent.viewport()
-                top_in_vp = widget.mapTo(viewport, widget.rect().topLeft())
-                bot_in_vp = top_in_vp.y() + widget.height()
-                if top_in_vp.y() < 0 or bot_in_vp > viewport.height():
-                    parent.ensureWidgetVisible(widget, 40, 40)
-                    return True
-                return False
+                parent.ensureWidgetVisible(widget, 40, 80)
+                found = True
             parent = parent.parentWidget()
-        return False
+        return found
 
     def _show_step(self, index: int) -> None:
         if index != self._current:
