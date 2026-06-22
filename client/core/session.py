@@ -84,7 +84,7 @@ class UserSession:
 
     @property
     def can_access_delivery_center(self) -> bool:
-        return self.role in ("admin", "gerente", "vendedor", "producao", "industria", "entregas")
+        return self.role in ("admin", "gerente", "entregas")
 
     @property
     def can_access_ar(self) -> bool:

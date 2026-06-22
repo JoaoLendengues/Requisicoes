@@ -57,9 +57,6 @@ def require_delivery_center_access(current_user: User = Depends(get_current_user
     if current_user.role not in (
         Role.ADMIN,
         Role.GERENTE,
-        Role.VENDEDOR,
-        Role.PRODUCAO,
-        Role.INDUSTRIA,
         Role.ENTREGA,
         Role.ENTREGAS,
     ):
