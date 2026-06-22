@@ -754,8 +754,7 @@ class ClientSearchBox(QWidget):
                 self._threads.remove(pair)
             except ValueError:
                 pass
-            worker.deleteLater()
-            thread.deleteLater()
+            # deleteLater já foi conectado por _run_in_thread; não chamar de novo
 
         thread.finished.connect(_cleanup)
 
@@ -882,8 +881,12 @@ class CanvasDialog(QDialog):
             QMessageBox.critical(self, "Importar Desenho", f"Erro ao importar: {exc}")
 
     def _export_drawing(self) -> None:
+        _DEFAULT_DIR = r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\BASE DESENHOS"
+        default_dir = _DEFAULT_DIR if os.path.isdir(_DEFAULT_DIR) else ""
+        default_path = os.path.join(default_dir, "desenho.json")
+
         path, _ = QFileDialog.getSaveFileName(
-            self, "Exportar Desenho", "desenho.json", "Desenho JSON (*.json)"
+            self, "Exportar Desenho", default_path, "Desenho JSON (*.json)",
         )
         if not path:
             return

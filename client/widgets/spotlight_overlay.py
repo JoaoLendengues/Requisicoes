@@ -410,8 +410,19 @@ class SpotlightOverlay(QWidget):
         step = self._steps[index]
 
         if step.navigate_key:
+            page = self._PAGE.get(step.navigate_key)
+            already_there = (
+                page is not None
+                and hasattr(self._mw, "stack")
+                and self._mw.stack.currentIndex() == page
+            )
             self._navigate(step.navigate_key)
-            QTimer.singleShot(320, lambda: self._scroll_then_show(index))
+            if already_there:
+                # Já estamos na página certa — sem delay de navegação
+                self._scroll_then_show(index)
+            else:
+                # Aguarda render da nova página antes de localizar o widget
+                QTimer.singleShot(200, lambda: self._scroll_then_show(index))
         else:
             self._scroll_then_show(index)
 
@@ -427,27 +438,31 @@ class SpotlightOverlay(QWidget):
 
         if widget is not None and widget.isVisible():
             if self._scroll_to_widget(widget):
-                # Pausa para o Qt processar o reposicionamento do conteúdo
-                QTimer.singleShot(150, lambda: self._show_step(index))
+                # Pausa curta para o Qt processar o reposicionamento do scroll
+                QTimer.singleShot(70, lambda: self._show_step(index))
                 return
         self._show_step(index)
 
     def _scroll_to_widget(self, widget: QWidget) -> bool:
         """
         Percorre toda a hierarquia de pais chamando ensureWidgetVisible em
-        cada QScrollArea encontrada. Sempre rola (não apenas quando fora dos
-        limites) para garantir que o widget fique confortavelmente visível.
-        Retorna True se pelo menos uma QScrollArea foi encontrada.
+        cada QScrollArea encontrada.
+        Retorna True SOMENTE se o scrollbar realmente mudou de valor — ou
+        seja, se um scroll de fato ocorreu e é necessário aguardar o
+        reposicionamento do layout.
         """
         from PySide6.QtWidgets import QScrollArea
-        found = False
+        did_scroll = False
         parent = widget.parentWidget()
         while parent is not None:
             if isinstance(parent, QScrollArea):
+                bar = parent.verticalScrollBar()
+                before = bar.value()
                 parent.ensureWidgetVisible(widget, 40, 80)
-                found = True
+                if bar.value() != before:
+                    did_scroll = True
             parent = parent.parentWidget()
-        return found
+        return did_scroll
 
     def _show_step(self, index: int) -> None:
         if index != self._current:
@@ -503,7 +518,7 @@ class SpotlightOverlay(QWidget):
     # ── Animação de movimento ─────────────────────────────────────────────────
 
     def _tick(self) -> None:
-        self._anim_t = min(1.0, self._anim_t + 0.055)
+        self._anim_t = min(1.0, self._anim_t + 0.10)
         t = _ease_out_cubic(self._anim_t)
         s, e = self._spot_start, self._spot_target
         self._spot_rect = QRectF(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text
+from sqlalchemy import Date, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -21,6 +21,7 @@ class Delivery(Base):
     city: Mapped[str] = mapped_column(String(120))
     truck_name: Mapped[str] = mapped_column(String(120))
     loaded_by: Mapped[str] = mapped_column(String(150))
+    weight: Mapped[float | None] = mapped_column(Float, nullable=True)
     delivery_date: Mapped[date] = mapped_column(Date, index=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     deadline_changed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -53,7 +53,7 @@ def _setup_logging() -> None:
 _setup_logging()
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, qInstallMessageHandler, QtMsgType
 from PySide6.QtGui import QFont, QFontDatabase
 
 from client.core.resolution import res
@@ -105,6 +105,22 @@ def main():
     )
 
     app = QApplication(sys.argv)
+
+    # Suprime aviso cosmético do Windows DWM onde a TV/monitor impõe uma altura
+    # mínima de janela ligeiramente maior que a que o Qt solicita. Os diálogos
+    # abrem e funcionam corretamente; o aviso não indica erro real.
+    def _qt_msg_filter(mode: QtMsgType, _ctx, msg: str) -> None:
+        if "Unable to set geometry" in msg:
+            return
+        if mode == QtMsgType.QtWarningMsg:
+            logging.warning(msg)
+        elif mode == QtMsgType.QtCriticalMsg:
+            logging.error(msg)
+        elif mode == QtMsgType.QtFatalMsg:
+            logging.critical(msg)
+
+    qInstallMessageHandler(_qt_msg_filter)
+
     app.setStyle("Fusion")  # renderização consistente e eficiente em todas as plataformas
     app.setApplicationName("Requisições App")
     app.setOrganizationName("Pinheiro Ferragens")

@@ -11,6 +11,7 @@ class DeliveryCreate(BaseModel):
     city: str = Field(min_length=1, max_length=120)
     truck_name: str = Field(min_length=1, max_length=120)
     loaded_by: str = Field(min_length=1, max_length=150)
+    weight: float = Field(gt=0)
     delivery_date: date
 
     @field_validator("city", "truck_name", "loaded_by", mode="before")
@@ -56,6 +57,7 @@ class DeliveryResponse(BaseModel):
     city: str
     truck_name: str
     loaded_by: str
+    weight: float | None = None
     delivery_date: date
     delivered_at: datetime | None = None
     deadline_changed_at: datetime | None = None

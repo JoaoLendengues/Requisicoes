@@ -6,7 +6,7 @@ from datetime import timedelta as _timedelta
 import re
 
 from PySide6.QtCore import QObject, QLocale, QThread, Qt, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QPalette, QDoubleValidator
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCalendarWidget,
@@ -251,6 +251,24 @@ class DeliveryCenterView(QWidget):
         status_col.addWidget(self.date_label)
         status_col.addWidget(self.updated_label)
         status_col.addWidget(self.refresh_btn, 0, Qt.AlignmentFlag.AlignRight)
+
+        # Botão ? — abre o guia rápido desta tela
+        sz_g = max(24, int(28 * s))
+        self.btn_guide = QPushButton("?")
+        self.btn_guide.setToolTip("Abrir guia rápido")
+        self.btn_guide.setFixedSize(sz_g, sz_g)
+        theme.themed(
+            self.btn_guide,
+            lambda: (
+                f"font-size:{max(10, int(11 * s))}pt; font-weight:700;"
+                f"color:{theme.TEXT_MEDIUM}; background:transparent;"
+                f"border:1px solid {theme.BORDER_COLOR};"
+                f"border-radius:{sz_g // 2}px; padding:0;"
+            ),
+        )
+        self.btn_guide.clicked.connect(self.guide_requested)
+        status_col.addWidget(self.btn_guide, 0, Qt.AlignmentFlag.AlignRight)
+
         header.addLayout(status_col)
         root.addLayout(header)
 
@@ -1698,6 +1716,16 @@ class DeliveryCenterView(QWidget):
         layout.addWidget(_label("Carregado por:"))
         layout.addWidget(loaded_by_input)
 
+        weight_input = QLineEdit()
+        weight_input.setPlaceholderText("Ex: 1250.5")
+        weight_input.setFixedHeight(field_height)
+        weight_input.setStyleSheet(theme.input_style(s))
+        _weight_validator = QDoubleValidator(0.0, 999999.99, 2, weight_input)
+        _weight_validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+        weight_input.setValidator(_weight_validator)
+        layout.addWidget(_label("Peso (kg):"))
+        layout.addWidget(weight_input)
+
         from PySide6.QtCore import QDate
 
         date_edit = QDateEdit()
@@ -1734,12 +1762,18 @@ class DeliveryCenterView(QWidget):
         found_client: list[dict | None] = [None]
 
         def _validate() -> None:
+            weight_str = weight_input.text().strip().replace(",", ".")
+            try:
+                weight_ok = float(weight_str) > 0
+            except ValueError:
+                weight_ok = False
             valid = bool(
                 found_client[0]
                 and int(vendor_combo.currentData() or 0)
                 and city_input.text().strip()
                 and truck_input.text().strip()
                 and loaded_by_input.text().strip()
+                and weight_ok
             )
             btn_create.setEnabled(valid)
 
@@ -1834,6 +1868,7 @@ class DeliveryCenterView(QWidget):
                 "city": city_input.text().strip(),
                 "truck_name": truck_input.text().strip(),
                 "loaded_by": loaded_by_input.text().strip(),
+                "weight": float(weight_input.text().strip().replace(",", ".")),
                 "delivery_date": date_edit.date().toString("yyyy-MM-dd"),
             }
             btn_create.setEnabled(False)
@@ -1866,6 +1901,7 @@ class DeliveryCenterView(QWidget):
         vendor_combo.currentIndexChanged.connect(_validate)
         truck_input.textChanged.connect(_validate)
         loaded_by_input.textChanged.connect(_validate)
+        weight_input.textChanged.connect(_validate)
         btn_create.clicked.connect(_create)
 
         thread, worker = _run_in_thread(

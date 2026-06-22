@@ -1,8 +1,9 @@
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QStackedWidget, QMessageBox, QFrame,
-    QScrollArea, QLabel, QGraphicsOpacityEffect, QGraphicsDropShadowEffect,
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget,
+    QMessageBox, QFrame, QScrollArea, QLabel, QGraphicsOpacityEffect,
+    QGraphicsDropShadowEffect, QPushButton,
 )
-from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate, Signal
+from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate, Signal, QPoint
 from PySide6.QtGui import QAction, QColor, QKeySequence
 
 from ..core import theme
@@ -30,6 +31,7 @@ from .feedback_view import FeedbackView
 
 
 import os
+import sys
 
 from ..core.pdf_folders import vendor_subfolder as _vendor_subfolder
 
@@ -47,6 +49,127 @@ def _vendor_pdf_folder(
         base_folder,
         _vendor_subfolder(user_code, user_name, user_role, req_vendor_code, req_vendor_name),
     )
+
+
+# ── Barra de título customizada ───────────────────────────────────────────────
+
+class _CustomTitleBar(QWidget):
+    """Barra de título temática que substitui a barra nativa do Windows.
+
+    Suporta:
+    - Arrastar para mover (drag-to-move)
+    - Duplo clique para maximizar / restaurar
+    - Botões Min / Max / Fechar com hover temático
+    - Atualização automática de cores ao trocar o tema
+    """
+
+    BORDER_PX = 5  # largura da borda de resize (usada também no nativeEvent)
+
+    def __init__(self, main_window: QWidget, scale: float) -> None:
+        super().__init__(main_window)
+        self._mw = main_window
+        self._scale = scale
+        self._drag_start: QPoint | None = None
+        h = max(30, int(32 * scale))
+        self.setFixedHeight(h)
+        self._build(scale, h)
+        theme.themed(self, self._apply_theme)
+
+    def _build(self, s: float, h: int) -> None:
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(12, 0, 0, 0)
+        lay.setSpacing(0)
+
+        self._lbl = QLabel("Requisições App")
+        lay.addWidget(self._lbl)
+        lay.addStretch()
+
+        bw = max(40, int(46 * s))
+        self._btn_min = QPushButton("─")
+        self._btn_max = QPushButton("□")
+        self._btn_cls = QPushButton("✕")
+
+        self._btn_min.setToolTip("Minimizar")
+        self._btn_max.setToolTip("Maximizar")
+        self._btn_cls.setToolTip("Fechar")
+
+        for btn in (self._btn_min, self._btn_max, self._btn_cls):
+            btn.setFixedSize(bw, h)
+            btn.setCursor(Qt.CursorShape.ArrowCursor)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            lay.addWidget(btn)
+
+        self._btn_min.clicked.connect(self._mw.showMinimized)
+        self._btn_max.clicked.connect(self._toggle_max)
+        self._btn_cls.clicked.connect(self._mw.close)
+
+    def _apply_theme(self) -> None:
+        s    = self._scale
+        fpt  = max(8, int(9 * s))
+        bfpt = max(10, int(11 * s))
+
+        if theme.is_dark:
+            bg          = theme.SIDEBAR_BG
+            fg          = theme.TEXT_WHITE
+            hover_ctrl  = "rgba(255,255,255,22)"
+        else:
+            bg          = theme.CARD_BG
+            fg          = "#111111"
+            hover_ctrl  = "rgba(0,0,0,10)"
+
+        self.setStyleSheet(f"background:{bg}; border:none;")
+        self._lbl.setStyleSheet(
+            f"color:{fg}; font-size:{fpt}pt; font-weight:600; background:transparent;"
+        )
+        _base = (
+            f"QPushButton {{ background:transparent; border:none;"
+            f"  color:{fg}; font-size:{bfpt}pt; font-weight:400; }}"
+        )
+        self._btn_min.setStyleSheet(_base + f"QPushButton:hover {{ background:{hover_ctrl}; }}")
+        self._btn_max.setStyleSheet(_base + f"QPushButton:hover {{ background:{hover_ctrl}; }}")
+        self._btn_cls.setStyleSheet(_base + "QPushButton:hover { background:#C42B1C; color:#FFF; }")
+
+    def _toggle_max(self) -> None:
+        if self._mw.isMaximized():
+            self._mw.showNormal()
+        else:
+            self._mw.showMaximized()
+
+    def sync_max_btn(self) -> None:
+        """Atualiza ícone/tooltip do botão maximizar ao mudar estado da janela."""
+        if self._mw.isMaximized():
+            self._btn_max.setText("❐")
+            self._btn_max.setToolTip("Restaurar")
+        else:
+            self._btn_max.setText("□")
+            self._btn_max.setToolTip("Maximizar")
+
+    # ── Drag para mover ───────────────────────────────────────────────────────
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start = event.globalPosition().toPoint()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if (
+            event.buttons() & Qt.MouseButton.LeftButton
+            and self._drag_start is not None
+            and not self._mw.isMaximized()
+        ):
+            delta = event.globalPosition().toPoint() - self._drag_start
+            self._mw.move(self._mw.pos() + delta)
+            self._drag_start = event.globalPosition().toPoint()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._drag_start = None
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._toggle_max()
+        super().mouseDoubleClickEvent(event)
 
 
 PAGE_FORM = 0
@@ -67,6 +190,10 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        # Remove barra nativa — usamos _CustomTitleBar no lugar
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
+        )
         self.scale = res.effective_scale
         self._allow_close_without_prompt = False
         self._threads: list = []
@@ -78,8 +205,10 @@ class MainWindow(QMainWindow):
         self._nav_overlay: QLabel | None = None
         self._setup_ui()
         self._setup_hidden_shortcuts()
-        self._setup_statusbar()
-        self.setWindowTitle("Sistema de Requisições - Ferragens Pinheiro")
+        self.statusBar().hide()
+        self.setWindowTitle("Requisições App")
+        # Sombra DWM no Windows (frameless não tem sombra por padrão)
+        self._enable_dwm_shadow()
         if res.start_maximized:
             self.showMaximized()
         else:
@@ -100,9 +229,21 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self._central = central
         self.setCentralWidget(central)
-        root = QHBoxLayout(central)
+
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Barra de título customizada
+        self._title_bar = _CustomTitleBar(self, self.scale)
+        outer.addWidget(self._title_bar)
+
+        # Área de conteúdo principal (sidebar + stack)
+        content_widget = QWidget()
+        root = QHBoxLayout(content_widget)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        outer.addWidget(content_widget, 1)
 
         self.sidebar = Sidebar(self.scale)
         self.sidebar.nav_clicked.connect(self._on_nav)
@@ -231,18 +372,60 @@ class MainWindow(QMainWindow):
         if hasattr(self, "form_view") and hasattr(self.form_view, "btn_print") and self.form_view.btn_print.isEnabled():
             self.form_view.btn_print.click()
 
-    def _setup_statusbar(self):
-        bar = self.statusBar()
-        bar.setStyleSheet(
-            f"background:{theme.FOOTER_BG}; color:{theme.TEXT_WHITE};"
-            f"font-size:{max(8, int(9 * self.scale))}pt; padding:0 12px;"
-        )
-        bar.showMessage(
-            f"pinheiroferragens.com.br  |  SIA e Taguatinga  |  "
-            f"Sistema de Requisições Pinheiro Ferragens  |  "
-            f"Usuário: {session.user_name}  |  "
-            f"{local_now().strftime('%d/%m/%Y  %H:%M')}"
-        )
+    # ── Janela frameless ──────────────────────────────────────────────────────
+
+    def changeEvent(self, event) -> None:
+        """Sincroniza o ícone do botão max/restore ao mudar estado da janela."""
+        from PySide6.QtCore import QEvent
+        if event.type() == QEvent.Type.WindowStateChange:
+            if hasattr(self, "_title_bar"):
+                self._title_bar.sync_max_btn()
+        super().changeEvent(event)
+
+    def _enable_dwm_shadow(self) -> None:
+        """Habilita sombra DWM para janela frameless no Windows."""
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            DWMWA_NCRENDERING_POLICY = 2
+            hwnd = int(self.winId())
+            val = ctypes.c_int(2)  # DWMNCRP_ENABLED
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_NCRENDERING_POLICY,
+                ctypes.byref(val), ctypes.sizeof(val),
+            )
+        except Exception:
+            pass
+
+    def nativeEvent(self, event_type: bytes, message) -> tuple:
+        """Habilita redimensionamento nativo por bordas no Windows (WM_NCHITTEST)."""
+        if sys.platform == "win32" and event_type == b"windows_generic_MSG":
+            try:
+                import ctypes
+                import ctypes.wintypes
+                msg = ctypes.wintypes.MSG.from_address(int(message))
+                if msg.message == 0x0084 and not self.isMaximized():  # WM_NCHITTEST
+                    b = _CustomTitleBar.BORDER_PX
+                    lp = msg.lParam
+                    cx = ctypes.c_short(lp & 0xFFFF).value
+                    cy = ctypes.c_short((lp >> 16) & 0xFFFF).value
+                    geo = self.frameGeometry()
+                    l = cx <= geo.left()   + b
+                    r = cx >= geo.right()  - b
+                    t = cy <= geo.top()    + b
+                    d = cy >= geo.bottom() - b
+                    if t and l: return True, 13  # HTTOPLEFT
+                    if t and r: return True, 14  # HTTOPRIGHT
+                    if d and l: return True, 16  # HTBOTTOMLEFT
+                    if d and r: return True, 17  # HTBOTTOMRIGHT
+                    if t:       return True, 12  # HTTOP
+                    if d:       return True, 15  # HTBOTTOM
+                    if l:       return True, 10  # HTLEFT
+                    if r:       return True, 11  # HTRIGHT
+            except Exception:
+                pass
+        return super().nativeEvent(event_type, message)
 
     def _refresh_session_profile(self):
         thread, worker = _run_in_thread(
@@ -256,7 +439,6 @@ class MainWindow(QMainWindow):
         session.update_profile(data)
         self.sidebar.refresh_user()
         self.form_view.refresh_logged_user()
-        self._setup_statusbar()
 
     def _nav_transition(self, page: int) -> None:
         """Cross-fade suave ao trocar de página no stack (160 ms, OutCubic).
@@ -447,35 +629,47 @@ class MainWindow(QMainWindow):
         if attr is None or getattr(self, attr) is not None:
             return  # PAGE_FORM ou já criada
 
-        view = self._create_view_for_page(page)
-        setattr(self, attr, view)
+        # Bloqueia repintura do stack durante toda a operação de troca:
+        # sem isso, o widget filho recém-criado (parent=self.stack) fica
+        # brevemente visível em (0,0) antes de insertWidget ocultá-lo,
+        # causando um flash de janelinha no Windows.
+        self.stack.setUpdatesEnabled(False)
+        try:
+            view = self._create_view_for_page(page)
+            setattr(self, attr, view)
 
-        # Troca o placeholder pela view real mantendo o índice correto
-        placeholder = self.stack.widget(page)
-        self.stack.removeWidget(placeholder)
-        placeholder.deleteLater()
-        self.stack.insertWidget(page, view)
+            # Troca o placeholder pela view real mantendo o índice correto
+            placeholder = self.stack.widget(page)
+            self.stack.removeWidget(placeholder)
+            placeholder.deleteLater()
+            self.stack.insertWidget(page, view)
+        finally:
+            self.stack.setUpdatesEnabled(True)
 
         self._connect_view_signals(page, view)
 
     def _create_view_for_page(self, page: int):
         """Instancia a view correspondente ao índice ``page``."""
+        # parent=self.stack evita que a view seja criada como janela top-level no
+        # Windows — sem parent o Qt cria um HWND independente que pisca brevemente
+        # antes do insertWidget reparenteá-la para dentro do stack.
         if page == PAGE_HISTORY:
-            return HistoryView(self.scale)
+            return HistoryView(self.scale, parent=self.stack)
         if page == PAGE_DASHBOARD:
-            return DashboardView(self.scale)
+            return DashboardView(self.scale, parent=self.stack)
         if page == PAGE_TECHNICAL:
-            return TechnicalPanelView(self.scale)
+            return TechnicalPanelView(self.scale, parent=self.stack)
         if page == PAGE_ORDER_CENTER:
-            return OrderCenterView(self.scale)
+            return OrderCenterView(self.scale, parent=self.stack)
         if page == PAGE_DELIVERY_CENTER:
-            return DeliveryCenterView(self.scale)
+            return DeliveryCenterView(self.scale, parent=self.stack)
         if page == PAGE_PINHEIRO_INDUSTRIA:
             return ProductionView(
                 self.scale,
                 destinations=("Pinheiro Indústria",),
                 title="PINHEIRO INDÚSTRIA",
                 subtitle="Acompanhamento operacional das requisições enviadas para a Pinheiro Indústria.",
+                parent=self.stack,
             )
         if page == PAGE_AR:
             return ProductionView(
@@ -483,13 +677,14 @@ class MainWindow(QMainWindow):
                 destinations=("A&R",),
                 title="A&R",
                 subtitle="Acompanhamento operacional das requisições enviadas para a A&R.",
+                parent=self.stack,
             )
         if page == PAGE_USER_CENTER:
-            return UserCenterView(self.scale)
+            return UserCenterView(self.scale, parent=self.stack)
         if page == PAGE_SETTINGS:
-            return SettingsView(self.scale)
+            return SettingsView(self.scale, parent=self.stack)
         if page == PAGE_FEEDBACK:
-            return FeedbackView(self.scale)
+            return FeedbackView(self.scale, parent=self.stack)
         raise ValueError(f"Página desconhecida: {page}")
 
     def _connect_view_signals(self, page: int, view) -> None:
@@ -1062,7 +1257,6 @@ class MainWindow(QMainWindow):
         self.sidebar.set_notification_count(self._unread_count)
         self.sidebar.refresh_user()
         self.form_view.refresh_logged_user()
-        self._setup_statusbar()
 
         if current_page == PAGE_HISTORY:
             history_state = state.get("history") or {}
@@ -1310,7 +1504,6 @@ class MainWindow(QMainWindow):
             # repaint completo, somando centenas de ms.
             self._apply_theme_to_view_buffered(current)
         self._refresh_shadows_for(self.sidebar)
-        self._setup_statusbar()
 
     def _on_theme_toggle(self, dark: bool):
         """

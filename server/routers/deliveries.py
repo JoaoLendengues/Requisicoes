@@ -39,6 +39,7 @@ def _response(delivery: Delivery) -> DeliveryResponse:
         city=delivery.city,
         truck_name=delivery.truck_name,
         loaded_by=delivery.loaded_by,
+        weight=delivery.weight,
         delivery_date=delivery.delivery_date,
         delivered_at=delivery.delivered_at,
         deadline_changed_at=delivery.deadline_changed_at,
@@ -110,6 +111,7 @@ def create_delivery(
         city=data.city,
         truck_name=data.truck_name,
         loaded_by=data.loaded_by,
+        weight=data.weight,
         delivery_date=data.delivery_date,
     )
     delivery.client = client
@@ -128,6 +130,7 @@ def create_delivery(
             "city": delivery.city,
             "truck_name": delivery.truck_name,
             "loaded_by": delivery.loaded_by,
+            "weight": delivery.weight,
             "delivery_date": delivery.delivery_date.isoformat(),
         },
     )

@@ -141,6 +141,9 @@ class NotificationDrawer(QWidget):
 
     def __init__(self, notifications: list, parent: QWidget):
         super().__init__(parent)
+        # Oculta imediatamente antes de qualquer setup: filho de parent visível
+        # seria exibido em (0,0) com tamanho mínimo até _setup() chamar hide().
+        self.hide()
         self._notifications: list = list(notifications)
         self._closing       = False
         self._factor = res.notification_factor
@@ -628,6 +631,11 @@ class NotificationDrawer(QWidget):
         for n in eager:
             card = self._make_card(n)
             self._list_layout.addWidget(card)
+
+        # Stretch sempre presente após os cards: sem ele o QVBoxLayout distribui
+        # espaço extra verticalmente nos cards, que crescem para preencher o drawer.
+        # _build_deferred_cards extrai o stretch, adiciona cards e o re-insere.
+        self._list_layout.addStretch()
 
         if deferred:
             QTimer.singleShot(ANIM_MS + 50, lambda: self._build_deferred_cards(deferred))
