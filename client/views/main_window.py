@@ -1179,17 +1179,11 @@ class MainWindow(QMainWindow):
         state = {"scale_label": selected_scale}
         if hasattr(self.settings_view, "input_url"):
             state["url"] = self.settings_view.input_url.text()
-        if hasattr(self.settings_view, "input_pending_invoice_days"):
-            state["pending_invoice_alert_days"] = self.settings_view.input_pending_invoice_days.value()
         return state
 
     def _restore_settings_state(self, state: dict) -> None:
         if hasattr(self.settings_view, "input_url"):
             self.settings_view.input_url.setText(state.get("url") or "")
-        if hasattr(self.settings_view, "input_pending_invoice_days"):
-            self.settings_view.input_pending_invoice_days.setValue(
-                int(state.get("pending_invoice_alert_days") or 1)
-            )
         selected_scale = state.get("scale_label")
         for label, btn in self.settings_view._scale_btns.items():
             btn.setChecked(label == selected_scale)

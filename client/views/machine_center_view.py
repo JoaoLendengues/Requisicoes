@@ -200,11 +200,10 @@ class MachineCenterView(QWidget):
         self.table.itemSelectionChanged.connect(self._load_current_selection)
 
         head = self.table.horizontalHeader()
-        head.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        head.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        head.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        head.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        head.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        head.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(0, max(150, int(170 * s)))  # NOME
+        self.table.setColumnWidth(2, max(140, int(155 * s)))  # OPERADOR
+        self.table.setColumnWidth(3, max(140, int(155 * s)))  # AJUDANTE
         self.table.setMinimumHeight(max(360, int(420 * s)))
         self.table.setSortingEnabled(True)
         self._apply_table_style()

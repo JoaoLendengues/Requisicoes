@@ -792,23 +792,7 @@ class HistoryView(QWidget):
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         apply_smooth_scroll(self.table)
         header_widget = self.table.horizontalHeader()
-        for col in range(len(COLS)):
-            mode = (
-                QHeaderView.ResizeMode.Stretch
-                if col in TABLE_STRETCH_COLUMNS
-                else QHeaderView.ResizeMode.ResizeToContents
-            )
-            header_widget.setSectionResizeMode(col, mode)
-        header_widget.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(9, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(10, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(11, QHeaderView.ResizeMode.Interactive)
-        header_widget.setSectionResizeMode(12, QHeaderView.ResizeMode.Interactive)
+        header_widget.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))

@@ -804,8 +804,20 @@ class ClientSearchBox(QWidget):
 class CanvasDialog(QDialog):
     """Janela modal com o editor de desenho técnico."""
 
-    def __init__(self, json_data: str, scale: float, parent=None):
+    _last_dir: str = ""  # persiste enquanto o processo estiver rodando
+
+    _BASE_DIR = r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\BASE DESENHOS"
+
+    def __init__(
+        self,
+        json_data: str,
+        scale: float,
+        parent=None,
+        *,
+        ped_number: str = "",
+    ):
         super().__init__(parent)
+        self._ped_number = ped_number.strip()
         self.setWindowTitle("Editor de Desenho")
         self.setModal(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -867,12 +879,27 @@ class CanvasDialog(QDialog):
     def get_json(self) -> str:
         return self.canvas.to_json()
 
+    def _resolve_dir(self) -> str:
+        """BASE DESENHOS como pasta padrão; usa última pasta visitada como fallback."""
+        for candidate in (CanvasDialog._BASE_DIR, CanvasDialog._last_dir):
+            if candidate and os.path.isdir(candidate):
+                return candidate
+        return ""
+
     def _import_drawing(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Importar Desenho", "", "Desenho JSON (*.json)"
-        )
+        start_dir = self._resolve_dir()
+        dlg = QFileDialog(self, "Importar Desenho", start_dir)
+        dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
+        dlg.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
+        dlg.setNameFilter("Desenho JSON (*.json)")
+        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, False)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        files = dlg.selectedFiles()
+        path = str(files[0]).strip() if files else ""
         if not path:
             return
+        CanvasDialog._last_dir = os.path.dirname(path)
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = f.read()
@@ -881,19 +908,31 @@ class CanvasDialog(QDialog):
             QMessageBox.critical(self, "Importar Desenho", f"Erro ao importar: {exc}")
 
     def _export_drawing(self) -> None:
-        _DEFAULT_DIR = r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\BASE DESENHOS"
-        default_dir = _DEFAULT_DIR if os.path.isdir(_DEFAULT_DIR) else ""
-        default_path = os.path.join(default_dir, "desenho.json")
+        start_dir = self._resolve_dir()
+        filename = f"REQ-{self._ped_number.zfill(6)}.json" if self._ped_number else "desenho.json"
+        default_path = os.path.join(start_dir, filename) if start_dir else filename
 
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Exportar Desenho", default_path, "Desenho JSON (*.json)",
-        )
+        dlg = QFileDialog(self, "Exportar Desenho")
+        dlg.setFileMode(QFileDialog.FileMode.AnyFile)
+        dlg.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        dlg.setNameFilter("Desenho JSON (*.json)")
+        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, False)
+        dlg.selectFile(default_path)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        files = dlg.selectedFiles()
+        path = str(files[0]).strip() if files else ""
         if not path:
             return
+        CanvasDialog._last_dir = os.path.dirname(path)
         try:
             data = self.canvas.to_json()
             with open(path, "w", encoding="utf-8") as f:
                 f.write(data)
+            QMessageBox.information(
+                self, "Exportar Desenho",
+                f"Desenho exportado com sucesso:\n{os.path.basename(path)}",
+            )
         except Exception as exc:
             QMessageBox.critical(self, "Exportar Desenho", f"Erro ao exportar: {exc}")
 
@@ -1923,12 +1962,9 @@ class RequisitionForm(QWidget):
         apply_smooth_scroll(results)
 
         head = results.horizontalHeader()
-        head.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        head.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        head.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        head.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        head.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        head.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        head.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        results.setColumnWidth(1, max(200, int(220 * s)))  # NOME
+        results.setColumnWidth(2, max(150, int(165 * s)))  # CNPJ
         layout.addWidget(results, 1)
 
         hint = QLabel("Digite ao menos 2 caracteres na busca principal, filtre por vendedor e/ou informe um período.")
@@ -3304,7 +3340,8 @@ class RequisitionForm(QWidget):
 
     # ── Editor de desenho (modal) ─────────────────────────────────────────────
     def _open_canvas_dialog(self):
-        dlg = CanvasDialog(self._canvas_json, self.scale, self)
+        ped = self.input_ped.text().strip()
+        dlg = CanvasDialog(self._canvas_json, self.scale, self, ped_number=ped)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._canvas_json = dlg.get_json()
             self._update_canvas_preview()
