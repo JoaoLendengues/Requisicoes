@@ -491,6 +491,17 @@ def update_delivery_date_and_resend(req_id: int, delivery_date: str, reason: str
         ))
 
 
+def update_split_delivery_date_and_resend(split_id: int, delivery_date: str, reason: str) -> dict:
+    """Produção altera o prazo de uma PARCELA e reenvia só ela para
+    Aguardando Recebimento — sem afetar as demais parcelas da requisição.
+    """
+    with _cli() as client:
+        return _check(client.patch(
+            f"/requisitions/production-splits/{split_id}/delivery-date-and-resend",
+            json={"delivery_date": delivery_date, "reason": reason},
+        ))
+
+
 def update_delivery_schedule(req_id: int, delivery_date: str, reason: str) -> dict:
     with _cli() as client:
         return _check(client.patch(

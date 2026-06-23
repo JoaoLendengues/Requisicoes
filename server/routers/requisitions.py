@@ -2534,7 +2534,7 @@ def _history_row_from_split(req: Requisition, split: RequisitionProductionSplit)
         "is_partial_split": True,
         "ped_number": _split_display_ped_number(req, split),
         "emission_date": req.emission_date,
-        "delivery_date": req.delivery_date,
+        "delivery_date": split.delivery_date or req.delivery_date,
         "os_number": req.os_number,
         "vendor_id": req.vendor_id,
         "vendor_name": req.vendor_name,
@@ -5149,6 +5149,92 @@ def update_delivery_date_and_resend(
     db.commit()
     push_all(notifications)
     return _get_or_404(db, req_id)
+
+
+@router.patch("/production-splits/{split_id}/delivery-date-and-resend", response_model=RequisitionResponse)
+def update_split_delivery_date_and_resend(
+    split_id: int,
+    data: DeliveryDateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Producao altera o prazo de entrega DE UMA PARCELA e reenvia apenas
+    essa parcela para Aguardando Recebimento — sem afetar as outras parcelas.
+    """
+    role = _role_key(current_user.role)
+    if role not in (Role.ADMIN.value, Role.PRODUCAO.value, Role.INDUSTRIA.value):
+        raise HTTPException(
+            status_code=403,
+            detail="Apenas a producao pode alterar o prazo e reenviar para producao",
+        )
+
+    split = _get_split_or_404(db, split_id)
+    req = split.requisition
+
+    if split.status in (RequisitionStatus.CANCELADA, RequisitionStatus.FINALIZADO):
+        raise HTTPException(
+            status_code=400,
+            detail="Nao e possivel alterar o prazo de uma parcela cancelada ou finalizada",
+        )
+
+    destination = _destination_for_role(role)
+    if destination and split.destination and split.destination != destination:
+        raise HTTPException(
+            status_code=403,
+            detail="Sem permissao para alterar o prazo desta parcela",
+        )
+
+    old_date = split.delivery_date or req.delivery_date
+    old_str = old_date.strftime("%d/%m/%Y") if old_date else ""
+    new_str = data.delivery_date.strftime("%d/%m/%Y")
+
+    split.delivery_date = data.delivery_date
+
+    note_change = f"Prazo da parcela alterado de {old_str} para {new_str}. Motivo: {data.reason}"
+    old_split_status = split.status
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        production_split_id=split.id,
+        old_status=old_split_status,
+        new_status=RequisitionStatus.PRAZO_ALTERADO,
+        changed_by_id=current_user.id,
+        note=note_change,
+    ))
+
+    split.status = RequisitionStatus.AGUARDANDO_RECEBIMENTO
+    split.production_machine = None
+
+    resend_target = destination or split.destination or _current_production_destination(req) or ""
+    note_resend = _compose_production_note(_PROD_SEND, resend_target, reason=data.reason)
+    db.add(StatusHistory(
+        requisition_id=req.id,
+        production_split_id=split.id,
+        old_status=RequisitionStatus.PRAZO_ALTERADO,
+        new_status=RequisitionStatus.AGUARDANDO_RECEBIMENTO,
+        changed_by_id=current_user.id,
+        note=note_resend,
+    ))
+
+    log_action(
+        db,
+        entity="requisition",
+        entity_id=req.id,
+        action="UPDATE",
+        changed_by=current_user,
+        changes={
+            "split_id": split_id,
+            "delivery_date": {"old": old_str, "new": new_str},
+            "motivo": data.reason,
+            "status_flow": "prazo_alterado -> aguardando_recebimento (parcela)",
+        },
+    )
+
+    notifications = build_vendor_event(db, req, "prazo_alterado", data.reason)
+    notifications.extend(build_production_sent(db, req, resend_target))
+
+    db.commit()
+    push_all(notifications)
+    return _get_or_404(db, req.id)
 
 
 @router.patch("/{req_id}/delivery-schedule", response_model=RequisitionResponse)

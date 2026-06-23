@@ -3100,16 +3100,29 @@ class ProductionView(QWidget):
         if result is None:
             return
         new_date, reason = result
-        self._run_action(
-            self._update_delivery_date_and_waiting_receipt,
-            self._row_requisition_id(req),
-            new_date,
-            reason,
-            success_message=(
-                "Prazo de entrega alterado. "
-                "Status atualizado para aguardando recebimento e vendedor notificado."
-            ),
-        )
+        split_id = self._row_split_id(req)
+        if split_id is not None:
+            self._run_action(
+                api.update_split_delivery_date_and_resend,
+                split_id,
+                new_date,
+                reason,
+                success_message=(
+                    "Prazo da parcela alterado. "
+                    "Status atualizado para aguardando recebimento e vendedor notificado."
+                ),
+            )
+        else:
+            self._run_action(
+                self._update_delivery_date_and_waiting_receipt,
+                self._row_requisition_id(req),
+                new_date,
+                reason,
+                success_message=(
+                    "Prazo de entrega alterado. "
+                    "Status atualizado para aguardando recebimento e vendedor notificado."
+                ),
+            )
 
     def _update_delivery_date_and_waiting_receipt(self, req_id: int, new_date: str, reason: str) -> dict:
         # Usa endpoint transacional novo (commit 884d995++) — antes eram 2
