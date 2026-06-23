@@ -362,9 +362,9 @@ class DeliveryCenterView(QWidget):
         title_row.addLayout(title_col, 1)
 
         self._btn_view_list = QPushButton("Lista")
-        self._btn_view_list.setFixedHeight(max(32, int(36 * s)))
+        self._btn_view_list.setFixedHeight(max(34, int(38 * s)))
         self._btn_view_sched = QPushButton("Cronograma")
-        self._btn_view_sched.setFixedHeight(max(32, int(36 * s)))
+        self._btn_view_sched.setFixedHeight(max(34, int(38 * s)))
         theme.themed(self._btn_view_list, lambda: self._toggle_btn_style("list"))
         theme.themed(self._btn_view_sched, lambda: self._toggle_btn_style("schedule"))
         self._btn_view_list.clicked.connect(lambda: self._set_delivery_view("list"))
@@ -374,13 +374,8 @@ class DeliveryCenterView(QWidget):
         title_row.addSpacing(max(8, int(10 * s)))
 
         btn_create = QPushButton("CRIAR")
-        btn_create.setFixedHeight(max(32, int(36 * s)))
-        theme.themed(btn_create, lambda: (
-            f"QPushButton {{ background:{_rgba(theme.SUCCESS, 35)}; color:{theme.SUCCESS};"
-            f"border:1px solid {_rgba(theme.SUCCESS, 80)}; border-radius:{max(5, int(6 * s))}px;"
-            f"padding:0 {max(10, int(12 * s))}px; font-size:{max(8, int(9 * s))}pt; font-weight:600; }}"
-            f"QPushButton:hover {{ background:{_rgba(theme.SUCCESS, 55)}; }}"
-        ))
+        btn_create.setFixedHeight(max(34, int(38 * s)))
+        theme.themed(btn_create, lambda: theme.primary_btn_style(s))
         btn_create.clicked.connect(self._open_create_delivery_dialog)
         btn_create.setVisible(
             session.role in ("admin", "gerente", "vendedor", "entrega", "entregas")
@@ -1610,10 +1605,12 @@ class DeliveryCenterView(QWidget):
 
     def _toggle_active_style(self) -> str:
         s = self.scale
+        fs = max(9, int(10 * s))
         return (
             f"QPushButton {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.PRIMARY};"
-            f"border:1px solid {_rgba(theme.PRIMARY, 90)}; border-radius:{max(5, int(6 * s))}px;"
-            f"padding:0 {max(10, int(12 * s))}px; font-size:{max(8, int(9 * s))}pt; font-weight:600; }}"
+            f"border:1px solid {_rgba(theme.PRIMARY, 90)}; border-radius:14px;"
+            f"padding:9px 18px; font-size:{fs}pt; font-weight:700; }}"
+            f"QPushButton:hover {{ background:{_rgba(theme.PRIMARY, 55)}; }}"
         )
 
     def _toggle_btn_style(self, mode: str) -> str:
