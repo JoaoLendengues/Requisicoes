@@ -4101,7 +4101,10 @@ def get_production_summary(
         RequisitionStatus.AGUARDANDO_NA_FILA,
         RequisitionStatus.EM_PRODUCAO,
     ]
-    q = db.query(Requisition).options(*_LIST_LOAD_OPTS)
+    q = db.query(Requisition).options(
+        *_LIST_LOAD_OPTS,
+        selectinload(Requisition.items),
+    )
     q = _visibility_filter_sql(q, current_user)
     q = q.filter(
         or_(
