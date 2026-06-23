@@ -914,7 +914,7 @@ class OrderCenterView(QWidget):
             "aguardando_recebimento": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "DATA ENVIO PARA PRODUÇÃO", "PRAZO", "AGUARDANDO RECEBIMENTO"],
             "em_producao": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "RECEBIDO EM", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "AJUDANTE", "PRAZO"],
             "faturados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "FATURADO EM", "FINALIZADO EM", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "AJUDANTE", "ATENDEU AO PRAZO"],
-            "cancelados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "CANCELADO EM", "MOTIVO DE CANCELAMENTO"],
+            "cancelados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "CANCELADO EM", "CANCELADO POR", "MOTIVO DE CANCELAMENTO"],
             "atrasados": ["PEDIDO", "CLIENTE", "VENDEDOR", "PESO", "PRAZO ENTREGA", "ATRASO", "PRODUÇÃO", "MÁQUINA", "OPERADOR", "AJUDANTE", "STATUS"],
         }
 
@@ -1145,6 +1145,7 @@ class OrderCenterView(QWidget):
                     str(row_data.get("vendor_name") or "-"),
                     _format_weight(row_data.get("weight")),
                     _format_datetime(row_data.get("canceled_at")),
+                    str(row_data.get("canceled_by_name") or "-"),
                     str(row_data.get("cancel_reason") or "-"),
                 ]
                 sort_keys = [
@@ -1153,6 +1154,7 @@ class OrderCenterView(QWidget):
                     None,
                     weight_sort,
                     str(row_data.get("canceled_at") or ""),
+                    None,
                     None,
                 ]
             else:  # atrasados

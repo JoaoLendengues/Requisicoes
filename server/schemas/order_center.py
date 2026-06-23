@@ -35,6 +35,7 @@ class OrderCenterItemResponse(BaseModel):
     invoiced_at: Optional[datetime] = None
     canceled_at: Optional[datetime] = None
     cancel_reason: Optional[str] = None
+    canceled_by_name: Optional[str] = None
     machine_name: Optional[str] = None
     operator_names: list[str] = Field(default_factory=list)
     helper_names: list[str] = Field(default_factory=list)

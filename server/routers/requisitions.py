@@ -106,7 +106,7 @@ _LOAD_OPTS = [
 # Listagens não precisam de itens nem do canvas (desenho); status_history é
 # necessário só para derivar os campos de produção. Carrega o mínimo.
 _LIST_LOAD_OPTS = [
-    selectinload(Requisition.status_history),
+    selectinload(Requisition.status_history).selectinload(StatusHistory.changed_by),
     selectinload(Requisition.production_splits).selectinload(RequisitionProductionSplit.status_history),
     selectinload(Requisition.client),
     selectinload(Requisition.vendor),
@@ -1489,6 +1489,15 @@ def _latest_status_changed_at(req: Requisition, status_value: str) -> datetime |
     for entry in reversed(_sorted_status_history(req)):
         if str(entry.new_status) == str(target_status):
             return entry.changed_at
+
+
+def _latest_status_changed_by_name(req: Requisition, status_value: str) -> str | None:
+    target_status = getattr(status_value, "value", status_value)
+    for entry in reversed(_sorted_status_history(req)):
+        if str(entry.new_status) == str(target_status):
+            user = getattr(entry, "changed_by", None)
+            return str(user.name) if user and user.name else None
+    return None
     return None
 
 
@@ -2253,6 +2262,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                         destination=destination,
                         canceled_at=_latest_status_changed_at(req, RequisitionStatus.CANCELADA),
                         cancel_reason=_cancel_reason_for(req),
+                        canceled_by_name=_latest_status_changed_by_name(req, RequisitionStatus.CANCELADA),
                     )
                 )
             continue
@@ -2364,6 +2374,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     destination=destination,
                     canceled_at=canceled_at,
                     cancel_reason=_cancel_reason_for(req),
+                    canceled_by_name=_latest_status_changed_by_name(req, RequisitionStatus.CANCELADA),
                 )
             )
 
