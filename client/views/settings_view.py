@@ -657,30 +657,12 @@ class SettingsView(QWidget):
             lay_sis.addWidget(self._conn_section)
             self._conn_section.setVisible(session.settings_show_connection)
 
-            # Alertas de Faturamento (admin + gerente)
+            # Configurações operacionais (admin + gerente)
             self._billing_section = QWidget()
             billing_vl = QVBoxLayout(self._billing_section)
             billing_vl.setContentsMargins(0, 0, 0, 0)
             billing_vl.setSpacing(max(8, int(10 * s)))
-            billing_vl.addWidget(_section("Alertas de Faturamento", s))
-            billing_vl.addWidget(_separator())
-            billing_row = QHBoxLayout()
-            billing_row.setSpacing(max(8, int(10 * s)))
-            billing_row.addWidget(self._lbl("Dias para notificar gerente:", s))
-            self.input_pending_invoice_days = QSpinBox()
-            self.input_pending_invoice_days.setRange(1, 3650)
-            self.input_pending_invoice_days.setValue(
-                int(res._read_file().get("pending_invoice_alert_days", 1) or 1)
-            )
-            self.input_pending_invoice_days.setFixedHeight(max(38, int(44 * s)))
-            self.input_pending_invoice_days.setFixedWidth(max(110, int(130 * s)))
-            self.input_pending_invoice_days.setStyleSheet(_spinbox_style(s))
-            billing_row.addWidget(self.input_pending_invoice_days)
-            billing_row.addStretch()
-            billing_vl.addLayout(billing_row)
-            self.operational_status = QLabel(
-                "Sincronizando prazo de alerta com o servidor..."
-            )
+            self.operational_status = QLabel("")
             self.operational_status.setProperty("muted", "1")
             self.operational_status.setStyleSheet(
                 f"background:transparent; font-size:{max(8,int(9*s))}pt; font-weight:600;"
@@ -1532,7 +1514,7 @@ class SettingsView(QWidget):
         if not session.settings_show_billing:
             return
         if not silent:
-            self.operational_status.setText("Sincronizando prazo de alerta com o servidor...")
+            self.operational_status.setText("Sincronizando configurações com o servidor...")
         self._start_api_worker("load_operational")
 
     def _start_api_worker(self, action: str, payload: dict | None = None):
@@ -1555,8 +1537,6 @@ class SettingsView(QWidget):
     def _on_api_result(self, action: str, payload: object):
         if action == "load_operational":
             data = payload if isinstance(payload, dict) else {}
-            days = int(data.get("pending_invoice_alert_days") or 1)
-            self.input_pending_invoice_days.setValue(days)
             min_deliv = int(data.get("min_delivery_business_days") or 0)
             self.input_min_delivery_days.setValue(min_deliv)
             cancel_reasons = data.get("cancel_reasons") or []
@@ -1589,11 +1569,8 @@ class SettingsView(QWidget):
                 if isinstance(item, dict)
             ]
             self._populate_delivery_deadline_reason_table(normalized_deadline_reasons)
-            self.operational_status.setText(
-                f"Prazo sincronizado com o servidor: {days} dia(s)."
-            )
-            res.save(pending_invoice_alert_days=days,
-                     min_delivery_business_days=min_deliv)
+            self.operational_status.setText("Configurações sincronizadas com o servidor.")
+            res.save(min_delivery_business_days=min_deliv)
             return
 
         if action == "save_operational":
@@ -1911,8 +1888,7 @@ class SettingsView(QWidget):
         )
 
         if session.settings_show_billing:
-            # Admin / Gerente: salva aparência + prazo de faturamento no servidor
-            pending_invoice_alert_days = int(self.input_pending_invoice_days.value())
+            # Admin / Gerente: salva aparência + configurações operacionais no servidor
             min_delivery_business_days = int(self.input_min_delivery_days.value())
             try:
                 cancel_reasons = self._collect_cancel_reasons()
@@ -1926,7 +1902,6 @@ class SettingsView(QWidget):
                 )
                 return
             res.save(**save_kwargs,
-                     pending_invoice_alert_days=pending_invoice_alert_days,
                      min_delivery_business_days=min_delivery_business_days)
             self._pending_save_context = {
                 "scale_changed": scale_changed,
@@ -1937,7 +1912,6 @@ class SettingsView(QWidget):
             self._start_api_worker(
                 "save_operational",
                 {
-                    "pending_invoice_alert_days": pending_invoice_alert_days,
                     "min_delivery_business_days": min_delivery_business_days,
                     "cancel_reasons": cancel_reasons,
                     "delivery_cancel_reasons": delivery_cancel_reasons,
