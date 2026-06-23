@@ -954,18 +954,14 @@ class OrderCenterView(QWidget):
         header_metrics = QFontMetrics(header.font())
         header_padding = max(26, int(34 * self.scale))
 
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         for col in range(table.columnCount()):
-            if col in stretch_columns:
-                header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
-                continue
-
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
             table.resizeColumnToContents(col)
             header_text = table.horizontalHeaderItem(col).text() if table.horizontalHeaderItem(col) else ""
             header_width = header_metrics.horizontalAdvance(header_text) + header_padding
             minimum_width = int(min_widths.get(col, 0) * self.scale)
-            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
-            table.setColumnWidth(col, max(table.columnWidth(col), header_width, minimum_width))
+            stretch_default = max(150, int(170 * self.scale)) if col in stretch_columns else 0
+            table.setColumnWidth(col, max(table.columnWidth(col), header_width, minimum_width, stretch_default))
 
     def refresh(self):
         self._set_loading(True)

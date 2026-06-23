@@ -373,10 +373,10 @@ class UserCenterView(QWidget):
         self.table.doubleClicked.connect(self._load_selected_user)
         self.table.itemSelectionChanged.connect(self._load_current_selection)
         header_widget = self.table.horizontalHeader()
-        for col in (1, 2, 3):
-            header_widget.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
-        for col in (0, 4, 5, 6):
-            header_widget.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+        header_widget.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.setColumnWidth(1, max(160, int(180 * s)))  # NOME
+        self.table.setColumnWidth(2, max(140, int(155 * s)))  # CONTATO
+        self.table.setColumnWidth(3, max(130, int(145 * s)))  # SETOR
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))

@@ -547,18 +547,15 @@ class DeliveryCenterView(QWidget):
             table.doubleClicked.connect(lambda index, handler=open_handler: handler(index.row()))
 
         header = table.horizontalHeader()
-        stretch_columns = {1, 2, 5, 7, 9}
-        for col in range(len(headers)):
-            mode = (
-                QHeaderView.ResizeMode.Stretch
-                if col in stretch_columns
-                else QHeaderView.ResizeMode.ResizeToContents
-            )
-            header.setSectionResizeMode(col, mode)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        table.setColumnWidth(1, max(160, int(180 * self.scale)))   # CLIENTE
+        table.setColumnWidth(2, max(140, int(160 * self.scale)))   # VENDEDOR
+        table.setColumnWidth(5, max(130, int(145 * self.scale)))   # CIDADE
+        table.setColumnWidth(7, max(150, int(165 * self.scale)))   # CARREGADO POR
+        table.setColumnWidth(9, max(165, int(185 * self.scale)))   # MOTIVO ALTERACAO PRAZO
+        table.setColumnWidth(10, max(190, int(210 * self.scale)))  # STATUS
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setMinimumHeight(max(34, int(40 * self.scale)))
-        header.setSectionResizeMode(10, QHeaderView.ResizeMode.Interactive)
-        table.setColumnWidth(10, max(190, int(210 * self.scale)))
         table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
         table.setSortingEnabled(True)
         self._apply_table_style(table)

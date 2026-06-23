@@ -1005,9 +1005,9 @@ class ProductionView(QWidget):
         table.setShowGrid(False)
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         header_widget = table.horizontalHeader()
-        for col in range(len(headers)):
-            mode = QHeaderView.ResizeMode.Stretch if col in stretch_columns else QHeaderView.ResizeMode.ResizeToContents
-            header_widget.setSectionResizeMode(col, mode)
+        header_widget.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for col in stretch_columns:
+            table.setColumnWidth(col, max(140, int(160 * s)))
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))
@@ -2138,10 +2138,8 @@ class ProductionView(QWidget):
             combos.append(combo)
 
         hdr_view = table.horizontalHeader()
-        hdr_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        hdr_view.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        hdr_view.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr_view.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        table.setColumnWidth(1, max(160, int(180 * s)))
         table.setMinimumHeight(max(120, min(int(36 * len(items) + 44), int(320 * s))))
         layout.addWidget(table)
 
@@ -2383,9 +2381,9 @@ class ProductionView(QWidget):
         )
         theme.apply_neon_table_palette(table)
         hdr = table.horizontalHeader()
-        for col in range(len(HEADERS)):
-            mode = QHeaderView.ResizeMode.Stretch if col in {1, 2, DESENV_COL} else QHeaderView.ResizeMode.ResizeToContents
-            hdr.setSectionResizeMode(col, mode)
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for col in {1, 2, DESENV_COL}:
+            table.setColumnWidth(col, max(140, int(160 * s)))
         hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         hdr.setMinimumHeight(max(34, int(40 * s)))
         table.verticalHeader().setDefaultSectionSize(max(36, int(42 * s)))

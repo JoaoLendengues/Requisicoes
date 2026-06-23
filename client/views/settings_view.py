@@ -764,8 +764,8 @@ class SettingsView(QWidget):
             self.cancel_reason_table = QTableWidget(0, 2)
             apply_smooth_scroll(self.cancel_reason_table)
             self.cancel_reason_table.setHorizontalHeaderLabels(["Código", "Motivo"])
-            self.cancel_reason_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-            self.cancel_reason_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            self.cancel_reason_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+            self.cancel_reason_table.setColumnWidth(1, max(250, int(280 * s)))
             self.cancel_reason_table.verticalHeader().setVisible(False)
             self.cancel_reason_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
             self.cancel_reason_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -832,8 +832,8 @@ class SettingsView(QWidget):
             self.delivery_cancel_reason_table = QTableWidget(0, 2)
             apply_smooth_scroll(self.delivery_cancel_reason_table)
             self.delivery_cancel_reason_table.setHorizontalHeaderLabels(["Codigo", "Motivo"])
-            self.delivery_cancel_reason_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-            self.delivery_cancel_reason_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            self.delivery_cancel_reason_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+            self.delivery_cancel_reason_table.setColumnWidth(1, max(250, int(280 * s)))
             self.delivery_cancel_reason_table.verticalHeader().setVisible(False)
             self.delivery_cancel_reason_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
             self.delivery_cancel_reason_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -900,8 +900,8 @@ class SettingsView(QWidget):
             self.delivery_deadline_reason_table = QTableWidget(0, 2)
             apply_smooth_scroll(self.delivery_deadline_reason_table)
             self.delivery_deadline_reason_table.setHorizontalHeaderLabels(["Codigo", "Motivo"])
-            self.delivery_deadline_reason_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-            self.delivery_deadline_reason_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            self.delivery_deadline_reason_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+            self.delivery_deadline_reason_table.setColumnWidth(1, max(250, int(280 * s)))
             self.delivery_deadline_reason_table.verticalHeader().setVisible(False)
             self.delivery_deadline_reason_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
             self.delivery_deadline_reason_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1170,15 +1170,8 @@ class SettingsView(QWidget):
             self._backup_table.setHorizontalHeaderLabels(
                 ["Arquivo", "Tamanho", "Criado em"]
             )
-            self._backup_table.horizontalHeader().setSectionResizeMode(
-                0, QHeaderView.ResizeMode.Stretch
-            )
-            self._backup_table.horizontalHeader().setSectionResizeMode(
-                1, QHeaderView.ResizeMode.ResizeToContents
-            )
-            self._backup_table.horizontalHeader().setSectionResizeMode(
-                2, QHeaderView.ResizeMode.ResizeToContents
-            )
+            self._backup_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+            self._backup_table.setColumnWidth(0, max(280, int(320 * s)))
             self._backup_table.verticalHeader().setVisible(False)
             self._backup_table.setSelectionBehavior(
                 QAbstractItemView.SelectionBehavior.SelectRows

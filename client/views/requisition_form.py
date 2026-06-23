@@ -1937,12 +1937,9 @@ class RequisitionForm(QWidget):
         apply_smooth_scroll(results)
 
         head = results.horizontalHeader()
-        head.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        head.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        head.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        head.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        head.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        head.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        head.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        results.setColumnWidth(1, max(200, int(220 * s)))  # NOME
+        results.setColumnWidth(2, max(150, int(165 * s)))  # CNPJ
         layout.addWidget(results, 1)
 
         hint = QLabel("Digite ao menos 2 caracteres na busca principal, filtre por vendedor e/ou informe um período.")

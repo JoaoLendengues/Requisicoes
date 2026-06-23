@@ -2030,13 +2030,9 @@ class DashboardView(QWidget):
         table.setShowGrid(False)
 
         header = table.horizontalHeader()
-        for index in range(len(headers)):
-            mode = (
-                QHeaderView.ResizeMode.Stretch
-                if index in stretch_columns
-                else QHeaderView.ResizeMode.ResizeToContents
-            )
-            header.setSectionResizeMode(index, mode)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for index in stretch_columns:
+            table.setColumnWidth(index, max(140, int(160 * s)))
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setMinimumHeight(max(34, int(40 * s)))
         header.setSortIndicatorShown(False)
@@ -2180,8 +2176,6 @@ class DashboardView(QWidget):
             blocked_sort_columns={0},
             rank_column=0,
         )
-        header = self.top_machines_ar_table.horizontalHeader()
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
         self.top_machines_ar_table.setColumnWidth(8, max(140, int(170 * self.scale)))
         self.top_machines_ar_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
         self.top_machines_ar_table.setMinimumHeight(max(300, int(340 * self.scale)))
@@ -2204,8 +2198,6 @@ class DashboardView(QWidget):
             blocked_sort_columns={0},
             rank_column=0,
         )
-        header = self.top_machines_industria_table.horizontalHeader()
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Interactive)
         self.top_machines_industria_table.setColumnWidth(8, max(140, int(170 * self.scale)))
         self.top_machines_industria_table.verticalHeader().setDefaultSectionSize(max(36, int(42 * self.scale)))
         self.top_machines_industria_table.setMinimumHeight(max(300, int(340 * self.scale)))
