@@ -77,7 +77,7 @@ ALL_DATES_SENTINEL = QDate(2000, 1, 1)
 
 STATUS_LABELS = {
     **theme.STATUS_LABELS,
-    "finalizada_producao": "Finalizada na Produção",
+    "finalizada_producao": "Finalizado",
     "cancelada_producao": "Cancelada na Produção",
 }
 
@@ -553,7 +553,7 @@ class HistoryView(QWidget):
             ("aguardando_na_fila",     "Aguardando na Fila"),
             ("em_producao",            "Em Produção"),
             ("aguardando_entrega",     "Aguardando Entrega"),
-            ("finalizado",             "Finalizada"),
+            ("finalizado",             "Finalizado"),
         ]:
             self.combo_status.addItem(label, key)
         self.combo_status.setFixedHeight(max(38, int(44 * s)))
