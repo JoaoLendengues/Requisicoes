@@ -1317,9 +1317,20 @@ class DeliveryCenterView(QWidget):
         # Navigation row
         nav_row = QHBoxLayout()
         nav_row.setSpacing(max(6, int(8 * s)))
+        def _nav_btn_style() -> str:
+            return (
+                f"QPushButton {{"
+                f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
+                f"  border:1px solid {theme.rgba(theme.PANEL_NEON_PRIMARY, 110)};"
+                f"  border-radius:14px; padding:0px; font-size:{max(10, int(12 * s))}pt; font-weight:700;"
+                f"}}"
+                f"QPushButton:hover {{ background:{theme.PANEL_SURFACE_ALT}; border-color:{theme.PANEL_NEON_SECONDARY}; }}"
+                f"QPushButton:pressed {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 26)}; }}"
+            )
+
         btn_prev = QPushButton("◀")
         btn_prev.setFixedSize(max(28, int(32 * s)), max(28, int(32 * s)))
-        theme.themed(btn_prev, lambda: theme.secondary_btn_style(s))
+        theme.themed(btn_prev, _nav_btn_style)
         btn_prev.clicked.connect(lambda: self._sched_navigate(-1))
         self._sched_week_label = QLabel()
         self._sched_week_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1330,7 +1341,7 @@ class DeliveryCenterView(QWidget):
         ))
         btn_next = QPushButton("▶")
         btn_next.setFixedSize(max(28, int(32 * s)), max(28, int(32 * s)))
-        theme.themed(btn_next, lambda: theme.secondary_btn_style(s))
+        theme.themed(btn_next, _nav_btn_style)
         btn_next.clicked.connect(lambda: self._sched_navigate(1))
         nav_row.addStretch()
         nav_row.addWidget(btn_prev)
