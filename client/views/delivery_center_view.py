@@ -1504,8 +1504,8 @@ class DeliveryCenterView(QWidget):
     def _sched_chip_qss(self, row: dict) -> str:
         s = self.scale
         if row.get("delivered_at"):
-            bg = _rgba(theme.TEXT_MEDIUM, 22)
-            fg = theme.TEXT_MEDIUM
+            bg = _rgba(theme.SUCCESS, 35)
+            fg = theme.SUCCESS
         else:
             delivery_dt = _parse_datetime(row.get("delivery_date"))
             today = local_now().date()
