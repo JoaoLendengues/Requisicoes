@@ -112,8 +112,17 @@ class RequisitionItem(Base):
     tipo: Mapped[str | None] = mapped_column(String(50), nullable=True)
     weight: Mapped[float | None] = mapped_column(Float, nullable=True)
     draw_ref: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    split_id: Mapped[int | None] = mapped_column(
+        ForeignKey("requisition_production_splits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     requisition: Mapped[Requisition] = relationship("Requisition", back_populates="items")
+    split: Mapped[RequisitionProductionSplit | None] = relationship(
+        "RequisitionProductionSplit",
+        foreign_keys=[split_id],
+        back_populates="items",
+    )
 
 
 class CanvasData(Base):
@@ -152,6 +161,11 @@ class RequisitionProductionSplit(Base):
     )
 
     requisition: Mapped[Requisition] = relationship("Requisition", back_populates="production_splits")
+    items: Mapped[list[RequisitionItem]] = relationship(
+        "RequisitionItem",
+        foreign_keys="RequisitionItem.split_id",
+        back_populates="split",
+    )
     status_history: Mapped[list[StatusHistory]] = relationship(
         "StatusHistory", back_populates="production_split", cascade="all, delete-orphan"
     )

@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget,
     QMessageBox, QFrame, QScrollArea, QLabel, QGraphicsOpacityEffect,
-    QGraphicsDropShadowEffect, QPushButton,
+    QGraphicsDropShadowEffect, QPushButton, QSplitter,
 )
 from PySide6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation, QDate, Signal, QPoint
 from PySide6.QtGui import QAction, QColor, QKeySequence
@@ -238,12 +238,12 @@ class MainWindow(QMainWindow):
         self._title_bar = _CustomTitleBar(self, self.scale)
         outer.addWidget(self._title_bar)
 
-        # Área de conteúdo principal (sidebar + stack)
-        content_widget = QWidget()
-        root = QHBoxLayout(content_widget)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        outer.addWidget(content_widget, 1)
+        # Área de conteúdo principal (sidebar + stack) — splitter redimensionável
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.setChildrenCollapsible(False)
+        self._splitter.setHandleWidth(4)
+        self._splitter.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self._splitter, 1)
 
         self.sidebar = Sidebar(self.scale)
         self.sidebar.nav_clicked.connect(self._on_nav)
@@ -251,13 +251,7 @@ class MainWindow(QMainWindow):
         self.sidebar.switch_user_clicked.connect(self._switch_user)
         self.sidebar.bell_clicked.connect(self._show_notification_panel)
         self.sidebar.theme_toggled.connect(self._on_theme_toggle)
-        root.addWidget(self.sidebar)
-
-        self._sep = QFrame()
-        self._sep.setFrameShape(QFrame.Shape.VLine)
-        self._sep.setFixedWidth(1)
-        self._sep.setStyleSheet(f"background:{theme.SIDEBAR_BG}; color:{theme.SIDEBAR_BG}; border:none;")
-        root.addWidget(self._sep)
+        self._splitter.addWidget(self.sidebar)
 
         # ── Área de conteúdo com scroll ───────────────────────────────────────
         # O QScrollArea garante que qualquer view seja acessível por rolagem
@@ -293,7 +287,11 @@ class MainWindow(QMainWindow):
             f"QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}"
         )
         self._scroll_main.setWidget(self.stack)
-        root.addWidget(self._scroll_main, 1)
+        self._splitter.addWidget(self._scroll_main)
+        self._splitter.setStretchFactor(0, 0)   # sidebar não estica com a janela
+        self._splitter.setStretchFactor(1, 1)   # conteúdo toma o espaço restante
+        self._splitter.setSizes([self.sidebar._default_width, 9999])
+        theme.themed_callback(self._splitter, self._apply_splitter_style)
 
         # ── Inicialização lazy das views ─────────────────────────────────────
         # Apenas o formulário (tela inicial) é criado agora.
@@ -1451,6 +1449,17 @@ class MainWindow(QMainWindow):
         finally:
             view.setUpdatesEnabled(True)
 
+    def _apply_splitter_style(self, _widget) -> None:
+        self._splitter.setStyleSheet(
+            f"QSplitter::handle:horizontal {{"
+            f"  background:{theme.SIDEBAR_BG};"
+            f"  width:4px;"
+            f"}}"
+            f"QSplitter::handle:horizontal:hover {{"
+            f"  background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 160)};"
+            f"}}"
+        )
+
     def _refresh_shadows_for(self, root) -> None:
         """Atualiza a cor dos QGraphicsDropShadowEffect dentro de um widget."""
         for child in root.findChildren(QWidget):
@@ -2524,6 +2533,10 @@ class MainWindow(QMainWindow):
                 ),
                 # ── Central de Pedidos ────────────────────────────────────────
                 *steps_pedidos,
+                # ── A&R ───────────────────────────────────────────────────────
+                *steps_ar,
+                # ── Pinheiro Indústria ────────────────────────────────────────
+                *steps_pin,
                 # ── Entregas ──────────────────────────────────────────────────
                 TourStep(
                     "Tela de Entregas",
@@ -2622,6 +2635,16 @@ class MainWindow(QMainWindow):
                 welcome,
                 # ── Pinheiro Indústria ────────────────────────────────────────
                 *steps_pin,
+                # ── Central de Pedidos ────────────────────────────────────────
+                *steps_pedidos,
+                # ── Nova Requisição — Modo Leitura ────────────────────────────
+                TourStep(
+                    "Nova Requisição — Modo Leitura",
+                    "Seu perfil permite <b>consultar</b> os detalhes de qualquer requisição, "
+                    "mas <b>não editar</b>. "
+                    "Use para verificar especificações técnicas, peso e observações antes de produzir.",
+                    nav("nova"), "right", "nova",
+                ),
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
                     "Relatórios",
@@ -2757,6 +2780,13 @@ class MainWindow(QMainWindow):
     def _stop_runtime_services(self):
         if hasattr(self, "_notif_timer") and self._notif_timer is not None:
             self._notif_timer.stop()
+        if hasattr(self, "_update_timer") and self._update_timer is not None:
+            self._update_timer.stop()
+        if hasattr(self, "_bg_update_checker") and self._bg_update_checker is not None:
+            try:
+                self._bg_update_checker.disconnect()
+            except RuntimeError:
+                pass
         if self._listener:
             self._listener.stop()
 

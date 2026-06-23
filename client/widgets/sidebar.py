@@ -340,7 +340,9 @@ class Sidebar(QWidget):
         self._active = "nova"
         self.setObjectName("SidebarColumn")
         self._setup_ui()
-        self.setFixedWidth(self._compute_width())
+        self._default_width = self._compute_width()
+        self.setMinimumWidth(max(160, int(self._default_width * 0.65)))
+        self.setMaximumWidth(int(self._default_width * 2.5))
 
     def _compute_width(self) -> int:
         """Largura que comporta o MAIOR nome de tela na fonte atual — assim

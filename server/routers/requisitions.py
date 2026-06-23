@@ -1,3 +1,4 @@
+from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import and_, func, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -54,9 +55,11 @@ from ..schemas.production import (
     ProductionMachineCardResponse,
     ProductionMachineStatusResponse,
     ProductionMachineStatusUpdate,
+    ProductionReceiveByItemsRequest,
     ProductionSplitCreateRequest,
     ProductionSplitStatusUpdate,
     ProductionSummaryStatsResponse,
+    RequisitionItemSimple,
 )
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse, RequisitionListItem,
@@ -106,7 +109,7 @@ _LOAD_OPTS = [
 # Listagens não precisam de itens nem do canvas (desenho); status_history é
 # necessário só para derivar os campos de produção. Carrega o mínimo.
 _LIST_LOAD_OPTS = [
-    selectinload(Requisition.status_history),
+    selectinload(Requisition.status_history).selectinload(StatusHistory.changed_by),
     selectinload(Requisition.production_splits).selectinload(RequisitionProductionSplit.status_history),
     selectinload(Requisition.client),
     selectinload(Requisition.vendor),
@@ -1489,6 +1492,15 @@ def _latest_status_changed_at(req: Requisition, status_value: str) -> datetime |
     for entry in reversed(_sorted_status_history(req)):
         if str(entry.new_status) == str(target_status):
             return entry.changed_at
+
+
+def _latest_status_changed_by_name(req: Requisition, status_value: str) -> str | None:
+    target_status = getattr(status_value, "value", status_value)
+    for entry in reversed(_sorted_status_history(req)):
+        if str(entry.new_status) == str(target_status):
+            user = getattr(entry, "changed_by", None)
+            return str(user.name) if user and user.name else None
+    return None
     return None
 
 
@@ -1664,6 +1676,17 @@ def _production_item(
         helper_names=_clean_operator_names(helper_names or []),
         waiting_since=waiting_since,
         production_started_at=production_started_at,
+        items=[
+            RequisitionItemSimple(
+                id=item.id,
+                position=item.position,
+                product_code=item.product_code,
+                product_name=item.product_name,
+                quantity=item.quantity,
+                weight=item.weight,
+            )
+            for item in sorted(req.items or [], key=lambda i: i.position or "")
+        ],
     )
 
 
@@ -1722,6 +1745,7 @@ def _build_production_summary(
     reqs: list[Requisition],
     machines: list[ProductionMachine],
     destination: str,
+    cycle_reqs: list[Requisition] | None = None,
 ) -> ProductionDestinationSummaryResponse:
     normalized_destination = _canonical_destination(destination)
     waiting_receipt: list[ProductionItemResponse] = []
@@ -1870,6 +1894,16 @@ def _build_production_summary(
                 )
             )
 
+        for cycle in _all_finished_cycles(req):
+            if cycle.get("target") != normalized_destination:
+                continue
+            machine_name = _normalize_machine_name(cycle.get("machine"))
+            if machine_name in machine_cycles:
+                machine_cycles[machine_name].append(cycle)
+
+    # Requisições finalizadas recentemente (não estão em `reqs`) também
+    # alimentam machine_cycles para o cálculo do tempo médio por máquina.
+    for req in (cycle_reqs or []):
         for cycle in _all_finished_cycles(req):
             if cycle.get("target") != normalized_destination:
                 continue
@@ -2253,6 +2287,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                         destination=destination,
                         canceled_at=_latest_status_changed_at(req, RequisitionStatus.CANCELADA),
                         cancel_reason=_cancel_reason_for(req),
+                        canceled_by_name=_latest_status_changed_by_name(req, RequisitionStatus.CANCELADA),
                     )
                 )
             continue
@@ -2364,6 +2399,7 @@ def _build_order_center(reqs: list[Requisition]) -> OrderCenterResponse:
                     destination=destination,
                     canceled_at=canceled_at,
                     cancel_reason=_cancel_reason_for(req),
+                    canceled_by_name=_latest_status_changed_by_name(req, RequisitionStatus.CANCELADA),
                 )
             )
 
@@ -4076,7 +4112,10 @@ def get_production_summary(
         RequisitionStatus.AGUARDANDO_NA_FILA,
         RequisitionStatus.EM_PRODUCAO,
     ]
-    q = db.query(Requisition).options(*_LIST_LOAD_OPTS)
+    q = db.query(Requisition).options(
+        *_LIST_LOAD_OPTS,
+        selectinload(Requisition.items),
+    )
     q = _visibility_filter_sql(q, current_user)
     q = q.filter(
         or_(
@@ -4100,7 +4139,32 @@ def get_production_summary(
             int(getattr(machine, "id", 0) or 0),
         )
     )
-    return _build_production_summary(visible, machines, normalized_destination)
+
+    # Carrega requisições finalizadas recentemente para calcular tempo médio
+    # por máquina. São excluídas do query principal (status ativo), por isso
+    # precisam de uma consulta separada.
+    cycle_cutoff = datetime.utcnow() - timedelta(days=30)
+    cycle_reqs = (
+        db.query(Requisition)
+        .options(
+            selectinload(Requisition.status_history),
+            selectinload(Requisition.production_splits).selectinload(
+                RequisitionProductionSplit.status_history
+            ),
+        )
+        .filter(
+            Requisition.production_destination == normalized_destination,
+            Requisition.status.in_([
+                RequisitionStatus.FINALIZADO,
+                RequisitionStatus.FATURADO,
+                RequisitionStatus.AGUARDANDO_ENTREGA,
+            ]),
+            Requisition.finalized_at >= cycle_cutoff,
+        )
+        .all()
+    )
+
+    return _build_production_summary(visible, machines, normalized_destination, cycle_reqs)
 
 
 @router.get("/production/machines", response_model=List[str])
@@ -4161,10 +4225,10 @@ def create_production_split(
             detail="A requisicao ja esta vinculada a outra producao",
         )
 
-    # Peso do split é auto-calculado: usa o saldo restante da requisição.
-    # O peso definitivo é confirmado apenas na finalização (PROD_FINISHED).
-    remaining_weight = _remaining_requisition_weight(req) if _has_production_splits(req) else round(float(req.weight or 0.0), 3)
-    weight_value = round(float(data.weight or 0.0), 3) if (data.weight or 0.0) > 0 else remaining_weight
+    # O peso do split é confirmado na finalização (PROD_FINISHED), quando o
+    # operador informa o peso real produzido. Nasce com 0 para não consumir
+    # o saldo restante e permitir criar múltiplos splits (P01, P02, P03...).
+    weight_value = round(float(data.weight or 0.0), 3)
 
     machine_name = _normalize_machine_name(data.machine_name)
     if not machine_name:
@@ -4210,7 +4274,7 @@ def create_production_split(
         req,
         db,
         current_user,
-        note=f"Desmembramento {split.sequence:02d} criado para {weight_value:.3f} kg.",
+        note=f"Desmembramento {split.sequence:02d} criado (peso a confirmar na finalizacao).",
     )
 
     notifications: list = []
@@ -4227,6 +4291,141 @@ def create_production_split(
         helper_names=helpers,
         production_started_at=datetime.utcnow(),
     )
+
+
+@router.post("/{req_id}/receive-by-items", status_code=status.HTTP_200_OK)
+def receive_by_items(
+    req_id: int,
+    body: ProductionReceiveByItemsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Recebe uma requisição distribuindo itens entre máquinas.
+
+    - 1 máquina → coloca na fila daquela máquina (sem split)
+    - N máquinas → cria um split por máquina com os itens associados
+    """
+    req = (
+        db.query(Requisition)
+        .options(
+            selectinload(Requisition.items),
+            selectinload(Requisition.production_splits).selectinload(RequisitionProductionSplit.status_history),
+        )
+        .filter(Requisition.id == req_id)
+        .first()
+    )
+    if req is None:
+        raise HTTPException(status_code=404, detail="Requisição não encontrada")
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
+    if req.status != RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+        raise HTTPException(status_code=400, detail="Requisição não está aguardando recebimento")
+
+    normalized_destination = _canonical_destination(body.destination)
+    _ensure_destination_access(current_user, normalized_destination)
+
+    item_map = {item.id: item for item in (req.items or [])}
+    if not item_map:
+        raise HTTPException(status_code=400, detail="Requisição sem itens")
+    if not body.assignments:
+        raise HTTPException(status_code=400, detail="Informe a atribuição de itens às máquinas")
+
+    # Valida que todos os itens foram atribuídos e agrupa por máquina
+    assigned_ids = {a.item_id for a in body.assignments}
+    missing = set(item_map.keys()) - assigned_ids
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Itens sem máquina atribuída: {sorted(missing)}",
+        )
+
+    machine_items: dict[str, list[RequisitionItem]] = defaultdict(list)
+    for assignment in body.assignments:
+        machine_name = _normalize_machine_name(assignment.machine_name)
+        if not machine_name:
+            raise HTTPException(status_code=400, detail="Nome de máquina inválido")
+        if assignment.item_id not in item_map:
+            raise HTTPException(status_code=400, detail=f"Item {assignment.item_id} não pertence a esta requisição")
+        machine_items[machine_name].append(item_map[assignment.item_id])
+
+    machines_used = list(machine_items.keys())
+
+    if len(machines_used) == 1:
+        # Caminho simples: uma máquina, sem split
+        machine_name = machines_used[0]
+        _ensure_machine_accepts_production(db, normalized_destination, machine_name)
+
+        note = _compose_production_note(_PROD_QUEUED, normalized_destination, machine=machine_name)
+        db.add(
+            StatusHistory(
+                requisition_id=req.id,
+                old_status=str(req.status.value),
+                new_status=RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                changed_by_id=current_user.id,
+                note=note,
+            )
+        )
+        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
+        req.production_machine = machine_name
+        req.production_destination = normalized_destination
+        req.finalized_at = req.finalized_at or datetime.utcnow()
+    else:
+        # Múltiplas máquinas: cria um split por máquina
+        existing_count = len(_sorted_requisition_splits(req))
+        for seq_offset, (machine_name, items) in enumerate(machine_items.items()):
+            _ensure_machine_accepts_production(db, normalized_destination, machine_name)
+
+            weight_value = round(
+                float(
+                    body.weight_overrides.get(machine_name)
+                    or sum(float(i.weight or 0.0) for i in items)
+                ),
+                3,
+            )
+
+            split = RequisitionProductionSplit(
+                requisition=req,
+                sequence=existing_count + seq_offset + 1,
+                weight=weight_value,
+                status=RequisitionStatus.AGUARDANDO_NA_FILA,
+                destination=normalized_destination,
+                production_machine=machine_name,
+            )
+            db.add(split)
+            db.flush()
+
+            for item in items:
+                item.split_id = split.id
+
+            note = _compose_production_note(_PROD_QUEUED, normalized_destination, machine=machine_name)
+            db.add(
+                StatusHistory(
+                    requisition_id=req.id,
+                    production_split_id=split.id,
+                    old_status=RequisitionStatus.AGUARDANDO_RECEBIMENTO.value,
+                    new_status=RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                    changed_by_id=current_user.id,
+                    note=note,
+                )
+            )
+
+        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
+        req.production_destination = normalized_destination
+        req.production_machine = None
+        req.finalized_at = req.finalized_at or datetime.utcnow()
+        db.add(
+            StatusHistory(
+                requisition_id=req.id,
+                old_status=RequisitionStatus.AGUARDANDO_RECEBIMENTO.value,
+                new_status=RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                changed_by_id=current_user.id,
+                note=f"Recebido e distribuído entre {len(machines_used)} máquinas.",
+            )
+        )
+
+    cache.invalidate("production_summary:")
+    db.commit()
+    return {"ok": True}
 
 
 @router.post(
@@ -4361,6 +4560,10 @@ def update_production_split_status(
         helpers = []
         split.status = RequisitionStatus.FINALIZADO
         split.production_machine = None
+        # Grava o peso real informado pelo operador na finalização
+        actual_weight = prod_event.get("weight")
+        if actual_weight is not None:
+            split.weight = round(float(actual_weight), 3)
     elif action == _PROD_CANCELED:
         if requested_status != RequisitionStatus.AGUARDANDO_NA_FILA:
             raise HTTPException(status_code=400, detail="Status invalido para cancelar a parcela")

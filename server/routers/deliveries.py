@@ -15,7 +15,9 @@ from ..schemas.delivery import (
     DeliveryScheduleUpdate,
     DeliveryVendorResponse,
 )
+from ..models.notification import Notification
 from ..services.audit_service import log_action
+from ..services import sse_manager
 
 
 router = APIRouter(prefix="/deliveries", tags=["Entregas"])
@@ -136,6 +138,28 @@ def create_delivery(
     )
     db.commit()
     db.refresh(delivery)
+
+    # Notifica o vendedor que uma entrega foi criada para o cliente dele
+    date_str = delivery.delivery_date.strftime("%d/%m/%Y") if delivery.delivery_date else "data a definir"
+    notif = Notification(
+        user_id=vendor.id,
+        type="delivery_created",
+        title="Entrega Agendada 🚚",
+        message=f"Uma entrega para {client.name} foi agendada para {date_str}.",
+    )
+    db.add(notif)
+    db.commit()
+    db.refresh(notif)
+    sse_manager.push_to_user(vendor.id, {
+        "id": notif.id,
+        "type": notif.type,
+        "title": notif.title,
+        "message": notif.message,
+        "requisition_id": None,
+        "read": False,
+        "created_at": notif.created_at.isoformat(),
+    })
+
     return _response(delivery)
 
 

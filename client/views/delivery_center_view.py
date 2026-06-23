@@ -362,9 +362,9 @@ class DeliveryCenterView(QWidget):
         title_row.addLayout(title_col, 1)
 
         self._btn_view_list = QPushButton("Lista")
-        self._btn_view_list.setFixedHeight(max(32, int(36 * s)))
+        self._btn_view_list.setFixedHeight(max(34, int(38 * s)))
         self._btn_view_sched = QPushButton("Cronograma")
-        self._btn_view_sched.setFixedHeight(max(32, int(36 * s)))
+        self._btn_view_sched.setFixedHeight(max(34, int(38 * s)))
         theme.themed(self._btn_view_list, lambda: self._toggle_btn_style("list"))
         theme.themed(self._btn_view_sched, lambda: self._toggle_btn_style("schedule"))
         self._btn_view_list.clicked.connect(lambda: self._set_delivery_view("list"))
@@ -374,13 +374,8 @@ class DeliveryCenterView(QWidget):
         title_row.addSpacing(max(8, int(10 * s)))
 
         btn_create = QPushButton("CRIAR")
-        btn_create.setFixedHeight(max(32, int(36 * s)))
-        theme.themed(btn_create, lambda: (
-            f"QPushButton {{ background:{_rgba(theme.SUCCESS, 35)}; color:{theme.SUCCESS};"
-            f"border:1px solid {_rgba(theme.SUCCESS, 80)}; border-radius:{max(5, int(6 * s))}px;"
-            f"padding:0 {max(10, int(12 * s))}px; font-size:{max(8, int(9 * s))}pt; font-weight:600; }}"
-            f"QPushButton:hover {{ background:{_rgba(theme.SUCCESS, 55)}; }}"
-        ))
+        btn_create.setFixedHeight(max(34, int(38 * s)))
+        theme.themed(btn_create, lambda: theme.primary_btn_style(s))
         btn_create.clicked.connect(self._open_create_delivery_dialog)
         btn_create.setVisible(
             session.role in ("admin", "gerente", "vendedor", "entrega", "entregas")
@@ -538,7 +533,6 @@ class DeliveryCenterView(QWidget):
             "DATA PREVISTA",
             "MOTIVO ALTERACAO PRAZO",
             "STATUS",
-            "DATA DA ENTREGA",
         ]
         table = QTableWidget(0, len(headers))
         table.setHorizontalHeaderLabels(headers)
@@ -676,7 +670,7 @@ class DeliveryCenterView(QWidget):
             self._completed_rows,
             self._completed_row_by_id,
             "Nenhuma entrega realizada ainda.",
-            sort_column=11,
+            sort_column=8,
             sort_order=Qt.SortOrder.DescendingOrder,
         )
         self._update_action_buttons()
@@ -734,7 +728,6 @@ class DeliveryCenterView(QWidget):
                 _format_date(row_data.get("delivery_date")),
                 str(row_data.get("deadline_change_reason") or "-"),
                 theme.STATUS_LABELS.get(status, status or "-"),
-                _format_datetime(row_data.get("delivered_at")),
             ]
             sort_keys = [
                 ped_sort,
@@ -748,7 +741,6 @@ class DeliveryCenterView(QWidget):
                 str(row_data.get("delivery_date") or ""),
                 str(row_data.get("deadline_change_reason") or ""),
                 None,
-                str(row_data.get("delivered_at") or ""),
             ]
 
             for col, value in enumerate(values):
@@ -896,7 +888,7 @@ class DeliveryCenterView(QWidget):
             return False
         if self._standalone_delivery_id(row):
             return True
-        return str(row.get("status") or "").strip().lower() in {"finalizado", "prazo_alterado"}
+        return str(row.get("status") or "").strip().lower() in {"finalizado", "prazo_alterado", "aguardando_entrega"}
 
     def _can_mark_rows_delivered(self, rows: list[dict]) -> bool:
         return bool(rows) and all(self._can_mark_row_delivered(row) for row in rows)
@@ -1317,9 +1309,20 @@ class DeliveryCenterView(QWidget):
         # Navigation row
         nav_row = QHBoxLayout()
         nav_row.setSpacing(max(6, int(8 * s)))
+        def _nav_btn_style() -> str:
+            return (
+                f"QPushButton {{"
+                f"  background:{theme.PANEL_SURFACE_BG}; color:{theme.PANEL_TEXT_PRIMARY};"
+                f"  border:1px solid {theme.rgba(theme.PANEL_NEON_PRIMARY, 110)};"
+                f"  border-radius:14px; padding:0px; font-size:{max(10, int(12 * s))}pt; font-weight:700;"
+                f"}}"
+                f"QPushButton:hover {{ background:{theme.PANEL_SURFACE_ALT}; border-color:{theme.PANEL_NEON_SECONDARY}; }}"
+                f"QPushButton:pressed {{ background:{theme.rgba(theme.PANEL_NEON_PRIMARY, 26)}; }}"
+            )
+
         btn_prev = QPushButton("◀")
         btn_prev.setFixedSize(max(28, int(32 * s)), max(28, int(32 * s)))
-        theme.themed(btn_prev, lambda: theme.secondary_btn_style(s))
+        theme.themed(btn_prev, _nav_btn_style)
         btn_prev.clicked.connect(lambda: self._sched_navigate(-1))
         self._sched_week_label = QLabel()
         self._sched_week_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1330,7 +1333,7 @@ class DeliveryCenterView(QWidget):
         ))
         btn_next = QPushButton("▶")
         btn_next.setFixedSize(max(28, int(32 * s)), max(28, int(32 * s)))
-        theme.themed(btn_next, lambda: theme.secondary_btn_style(s))
+        theme.themed(btn_next, _nav_btn_style)
         btn_next.clicked.connect(lambda: self._sched_navigate(1))
         nav_row.addStretch()
         nav_row.addWidget(btn_prev)
@@ -1433,6 +1436,7 @@ class DeliveryCenterView(QWidget):
             f"QFrame {{ background:{theme.PANEL_SURFACE_BG};"
             f"border:1px solid {theme.PANEL_BORDER_SOFT};"
             f"border-radius:{max(8, int(10 * s))}px; }}"
+            f"QLabel {{ border:none; }}"
         ))
         self._sched_detail_frame.setVisible(False)
         detail_layout = QVBoxLayout(self._sched_detail_frame)
@@ -1495,8 +1499,8 @@ class DeliveryCenterView(QWidget):
     def _sched_chip_qss(self, row: dict) -> str:
         s = self.scale
         if row.get("delivered_at"):
-            bg = _rgba(theme.TEXT_MEDIUM, 22)
-            fg = theme.TEXT_MEDIUM
+            bg = _rgba(theme.SUCCESS, 35)
+            fg = theme.SUCCESS
         else:
             delivery_dt = _parse_datetime(row.get("delivery_date"))
             today = local_now().date()
@@ -1601,10 +1605,12 @@ class DeliveryCenterView(QWidget):
 
     def _toggle_active_style(self) -> str:
         s = self.scale
+        fs = max(9, int(10 * s))
         return (
             f"QPushButton {{ background:{_rgba(theme.PRIMARY, 40)}; color:{theme.PRIMARY};"
-            f"border:1px solid {_rgba(theme.PRIMARY, 90)}; border-radius:{max(5, int(6 * s))}px;"
-            f"padding:0 {max(10, int(12 * s))}px; font-size:{max(8, int(9 * s))}pt; font-weight:600; }}"
+            f"border:1px solid {_rgba(theme.PRIMARY, 90)}; border-radius:14px;"
+            f"padding:9px 18px; font-size:{fs}pt; font-weight:700; }}"
+            f"QPushButton:hover {{ background:{_rgba(theme.PRIMARY, 55)}; }}"
         )
 
     def _toggle_btn_style(self, mode: str) -> str:
@@ -1647,8 +1653,8 @@ class DeliveryCenterView(QWidget):
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Informe o codigo do cliente e os dados do carregamento. "
-            "A entrega sera adicionada diretamente a agenda."
+            "Informe o código do cliente e os dados do carregamento. "
+            "A entrega será adicionada diretamente à agenda."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -1667,7 +1673,7 @@ class DeliveryCenterView(QWidget):
         client_row = QHBoxLayout()
         client_row.setSpacing(max(6, int(8 * s)))
         client_input = QLineEdit()
-        client_input.setPlaceholderText("Codigo do cliente")
+        client_input.setPlaceholderText("Código do cliente")
         client_input.setFixedHeight(field_height)
         client_input.setStyleSheet(theme.input_style(s))
         btn_search = QPushButton("BUSCAR")
@@ -1678,7 +1684,7 @@ class DeliveryCenterView(QWidget):
         layout.addWidget(_label("Cliente:"))
         layout.addLayout(client_row)
 
-        client_result = QLabel("Digite o codigo e clique em Buscar.")
+        client_result = QLabel("Digite o código e clique em Buscar.")
         client_result.setWordWrap(True)
         client_result.setStyleSheet(
             f"background:{_rgba(theme.PRIMARY, 15)}; color:{theme.TEXT_MEDIUM};"
@@ -1703,14 +1709,14 @@ class DeliveryCenterView(QWidget):
         layout.addWidget(vendor_combo)
 
         truck_input = QLineEdit()
-        truck_input.setPlaceholderText("Nome ou identificacao do caminhao")
+        truck_input.setPlaceholderText("Nome ou identificação do caminhão")
         truck_input.setFixedHeight(field_height)
         truck_input.setStyleSheet(theme.input_style(s))
-        layout.addWidget(_label("Caminhao:"))
+        layout.addWidget(_label("Caminhão:"))
         layout.addWidget(truck_input)
 
         loaded_by_input = QLineEdit()
-        loaded_by_input.setPlaceholderText("Pessoa responsavel pelo carregamento")
+        loaded_by_input.setPlaceholderText("Pessoa responsável pelo carregamento")
         loaded_by_input.setFixedHeight(field_height)
         loaded_by_input.setStyleSheet(theme.input_style(s))
         layout.addWidget(_label("Carregado por:"))
@@ -1781,13 +1787,13 @@ class DeliveryCenterView(QWidget):
             current = found_client[0]
             if current and _client_code_key(current.get("code")) != _client_code_key(client_input.text()):
                 found_client[0] = None
-                client_result.setText("Codigo alterado. Clique em Buscar novamente.")
+                client_result.setText("Código alterado. Clique em Buscar novamente.")
             _validate()
 
         def _search_client() -> None:
             code = client_input.text().strip()
             if not code:
-                error_label.setText("Informe o codigo do cliente.")
+                error_label.setText("Informe o código do cliente.")
                 error_label.setVisible(True)
                 return
             btn_search.setEnabled(False)
@@ -1807,7 +1813,7 @@ class DeliveryCenterView(QWidget):
                 )
                 found_client[0] = match
                 if match is None:
-                    client_result.setText("Cliente nao encontrado com esse codigo.")
+                    client_result.setText("Cliente não encontrado com esse código.")
                 else:
                     client_input.blockSignals(True)
                     client_input.setText(str(match.get("code") or code))
@@ -1820,7 +1826,7 @@ class DeliveryCenterView(QWidget):
             def _search_error(message: str) -> None:
                 btn_search.setEnabled(True)
                 found_client[0] = None
-                client_result.setText("Nao foi possivel buscar o cliente.")
+                client_result.setText("Não foi possível buscar o cliente.")
                 error_label.setText(message)
                 error_label.setVisible(True)
                 _validate()
@@ -1854,7 +1860,7 @@ class DeliveryCenterView(QWidget):
             vendor_combo.clear()
             detail = str(message or "Erro desconhecido").strip()
             vendor_combo.addItem(f"Erro ao carregar: {detail}", 0)
-            error_label.setText(f"Nao foi possivel carregar vendedores: {detail}")
+            error_label.setText(f"Não foi possível carregar vendedores: {detail}")
             error_label.setVisible(True)
             _validate()
 
@@ -1894,13 +1900,25 @@ class DeliveryCenterView(QWidget):
             )
             self._track_thread(thread, worker)
 
+        def _force_upper(field: QLineEdit, after=None) -> None:
+            text = field.text()
+            upper = text.upper()
+            if text != upper:
+                pos = field.cursorPosition()
+                field.blockSignals(True)
+                field.setText(upper)
+                field.setCursorPosition(pos)
+                field.blockSignals(False)
+            if after:
+                after()
+
         client_input.textChanged.connect(_client_changed)
         client_input.returnPressed.connect(_search_client)
         btn_search.clicked.connect(_search_client)
-        city_input.textChanged.connect(_validate)
+        city_input.textChanged.connect(lambda: _force_upper(city_input, _validate))
         vendor_combo.currentIndexChanged.connect(_validate)
-        truck_input.textChanged.connect(_validate)
-        loaded_by_input.textChanged.connect(_validate)
+        truck_input.textChanged.connect(lambda: _force_upper(truck_input, _validate))
+        loaded_by_input.textChanged.connect(lambda: _force_upper(loaded_by_input, _validate))
         weight_input.textChanged.connect(_validate)
         btn_create.clicked.connect(_create)
 
