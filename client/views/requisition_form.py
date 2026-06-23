@@ -804,8 +804,20 @@ class ClientSearchBox(QWidget):
 class CanvasDialog(QDialog):
     """Janela modal com o editor de desenho técnico."""
 
-    def __init__(self, json_data: str, scale: float, parent=None):
+    _last_dir: str = ""  # persiste enquanto o processo estiver rodando
+
+    def __init__(
+        self,
+        json_data: str,
+        scale: float,
+        parent=None,
+        *,
+        ped_number: str = "",
+        suggested_dir: str = "",
+    ):
         super().__init__(parent)
+        self._ped_number = ped_number.strip()
+        self._suggested_dir = suggested_dir.strip()
         self.setWindowTitle("Editor de Desenho")
         self.setModal(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -867,8 +879,16 @@ class CanvasDialog(QDialog):
     def get_json(self) -> str:
         return self.canvas.to_json()
 
+    def _resolve_dir(self) -> str:
+        """Pasta preferida para import/export: pasta do vendedor > última usada > temp."""
+        for candidate in (self._suggested_dir, CanvasDialog._last_dir):
+            if candidate and os.path.isdir(candidate):
+                return candidate
+        return ""
+
     def _import_drawing(self) -> None:
-        dlg = QFileDialog(self, "Importar Desenho")
+        start_dir = self._resolve_dir()
+        dlg = QFileDialog(self, "Importar Desenho", start_dir)
         dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
         dlg.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
         dlg.setNameFilter("Desenho JSON (*.json)")
@@ -879,6 +899,7 @@ class CanvasDialog(QDialog):
         path = str(files[0]).strip() if files else ""
         if not path:
             return
+        CanvasDialog._last_dir = os.path.dirname(path)
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = f.read()
@@ -887,27 +908,31 @@ class CanvasDialog(QDialog):
             QMessageBox.critical(self, "Importar Desenho", f"Erro ao importar: {exc}")
 
     def _export_drawing(self) -> None:
-        _DEFAULT_DIR = r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\BASE DESENHOS"
-        default_dir = _DEFAULT_DIR if os.path.isdir(_DEFAULT_DIR) else ""
-        default_path = os.path.join(default_dir, "desenho.json")
+        start_dir = self._resolve_dir()
+        filename = f"REQ-{self._ped_number.zfill(6)}.json" if self._ped_number else "desenho.json"
+        default_path = os.path.join(start_dir, filename) if start_dir else filename
 
         dlg = QFileDialog(self, "Exportar Desenho")
         dlg.setFileMode(QFileDialog.FileMode.AnyFile)
         dlg.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
         dlg.setNameFilter("Desenho JSON (*.json)")
         dlg.setOption(QFileDialog.Option.DontUseNativeDialog, False)
-        if default_path:
-            dlg.selectFile(default_path)
+        dlg.selectFile(default_path)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         files = dlg.selectedFiles()
         path = str(files[0]).strip() if files else ""
         if not path:
             return
+        CanvasDialog._last_dir = os.path.dirname(path)
         try:
             data = self.canvas.to_json()
             with open(path, "w", encoding="utf-8") as f:
                 f.write(data)
+            QMessageBox.information(
+                self, "Exportar Desenho",
+                f"Desenho exportado com sucesso:\n{os.path.basename(path)}",
+            )
         except Exception as exc:
             QMessageBox.critical(self, "Exportar Desenho", f"Erro ao exportar: {exc}")
 
@@ -3315,7 +3340,22 @@ class RequisitionForm(QWidget):
 
     # ── Editor de desenho (modal) ─────────────────────────────────────────────
     def _open_canvas_dialog(self):
-        dlg = CanvasDialog(self._canvas_json, self.scale, self)
+        ped = self.input_ped.text().strip()
+        req_hint = {
+            "vendor_code": getattr(self, "_req_vendor_code", ""),
+            "vendor_name": getattr(self, "_req_vendor_name", ""),
+        }
+        try:
+            suggested = self._resolve_pdf_output_folder(
+                require_configured_folder=False, req=req_hint
+            )
+        except Exception:
+            suggested = ""
+        dlg = CanvasDialog(
+            self._canvas_json, self.scale, self,
+            ped_number=ped,
+            suggested_dir=suggested,
+        )
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._canvas_json = dlg.get_json()
             self._update_canvas_preview()
