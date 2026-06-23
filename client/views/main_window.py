@@ -2622,6 +2622,16 @@ class MainWindow(QMainWindow):
                 welcome,
                 # ── Pinheiro Indústria ────────────────────────────────────────
                 *steps_pin,
+                # ── Central de Pedidos ────────────────────────────────────────
+                *steps_pedidos,
+                # ── Nova Requisição — Modo Leitura ────────────────────────────
+                TourStep(
+                    "Nova Requisição — Modo Leitura",
+                    "Seu perfil permite <b>consultar</b> os detalhes de qualquer requisição, "
+                    "mas <b>não editar</b>. "
+                    "Use para verificar especificações técnicas, peso e observações antes de produzir.",
+                    nav("nova"), "right", "nova",
+                ),
                 # ── Histórico ─────────────────────────────────────────────────
                 TourStep(
                     "Relatórios",
