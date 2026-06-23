@@ -1441,6 +1441,7 @@ class DeliveryCenterView(QWidget):
             f"QFrame {{ background:{theme.PANEL_SURFACE_BG};"
             f"border:1px solid {theme.PANEL_BORDER_SOFT};"
             f"border-radius:{max(8, int(10 * s))}px; }}"
+            f"QLabel {{ border:none; }}"
         ))
         self._sched_detail_frame.setVisible(False)
         detail_layout = QVBoxLayout(self._sched_detail_frame)
