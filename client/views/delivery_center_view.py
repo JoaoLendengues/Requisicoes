@@ -538,7 +538,6 @@ class DeliveryCenterView(QWidget):
             "DATA PREVISTA",
             "MOTIVO ALTERACAO PRAZO",
             "STATUS",
-            "DATA DA ENTREGA",
         ]
         table = QTableWidget(0, len(headers))
         table.setHorizontalHeaderLabels(headers)
@@ -676,7 +675,7 @@ class DeliveryCenterView(QWidget):
             self._completed_rows,
             self._completed_row_by_id,
             "Nenhuma entrega realizada ainda.",
-            sort_column=11,
+            sort_column=8,
             sort_order=Qt.SortOrder.DescendingOrder,
         )
         self._update_action_buttons()
@@ -734,7 +733,6 @@ class DeliveryCenterView(QWidget):
                 _format_date(row_data.get("delivery_date")),
                 str(row_data.get("deadline_change_reason") or "-"),
                 theme.STATUS_LABELS.get(status, status or "-"),
-                _format_datetime(row_data.get("delivered_at")),
             ]
             sort_keys = [
                 ped_sort,
@@ -748,7 +746,6 @@ class DeliveryCenterView(QWidget):
                 str(row_data.get("delivery_date") or ""),
                 str(row_data.get("deadline_change_reason") or ""),
                 None,
-                str(row_data.get("delivered_at") or ""),
             ]
 
             for col, value in enumerate(values):
@@ -896,7 +893,7 @@ class DeliveryCenterView(QWidget):
             return False
         if self._standalone_delivery_id(row):
             return True
-        return str(row.get("status") or "").strip().lower() in {"finalizado", "prazo_alterado"}
+        return str(row.get("status") or "").strip().lower() in {"finalizado", "prazo_alterado", "aguardando_entrega"}
 
     def _can_mark_rows_delivered(self, rows: list[dict]) -> bool:
         return bool(rows) and all(self._can_mark_row_delivered(row) for row in rows)
