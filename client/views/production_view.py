@@ -42,6 +42,7 @@ from ..core import theme
 from ..core.formatters import format_weight_kg
 from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
 from ..core.datetime_utils import (
+    format_date as _format_date,
     format_datetime as _format_datetime,
     format_header_date as _format_header_date,
     local_now,
@@ -767,7 +768,7 @@ class ProductionView(QWidget):
             WAITING_RECEIPT_STAGE,
             "Aguardando Recebimento",
             "Selecione a requisição e clique em Receber para escolher a máquina.",
-            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "PESO(kg)", "ENVIADA EM"],
+            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "PESO(kg)", "ENTREGA", "ENVIADA EM"],
             "Receber",
         )
         layout.addWidget(self.waiting_receipt_panel["card"])
@@ -1083,6 +1084,7 @@ class ProductionView(QWidget):
                 str(req.get("vendor_name") or "-"),
                 str(req.get("obra") or "-"),
                 _format_weight_kg(req.get("weight")),
+                _format_date(req.get("delivery_date")),
                 _format_elapsed(req.get("waiting_since")),
             ]
             for col, value in enumerate(values):
@@ -1509,7 +1511,7 @@ class ProductionView(QWidget):
         s = self.scale
 
         table = self._build_table(
-            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "NA FILA DESDE"],
+            ["PED", "CLIENTE", "VENDEDOR", "OBRA", "ENTREGA", "NA FILA DESDE"],
             stretch_columns={1, 2, 3},
         )
         table.setMinimumHeight(max(100, int(120 * s)))
@@ -1538,7 +1540,7 @@ class ProductionView(QWidget):
         s = self.scale
 
         table = self._build_table(
-            ["PED", "CLIENTE", "VENDEDOR", "OPERADOR", "AJUDANTE", "INICIADO EM", "PESO(kg)"],
+            ["PED", "CLIENTE", "VENDEDOR", "OPERADOR", "AJUDANTE", "ENTREGA", "INICIADO EM", "PESO(kg)"],
             stretch_columns={1, 2, 3, 4},
         )
         table.setMinimumHeight(max(180, int(210 * s)))
@@ -1662,6 +1664,7 @@ class ProductionView(QWidget):
                 str(req.get("vendor_name") or "-"),
                 ", ".join(operator_names) if operator_names else "-",
                 ", ".join(helper_names) if helper_names else "-",
+                _format_date(req.get("delivery_date")),
                 _format_elapsed(req.get("production_started_at")),
                 _format_weight_kg(req.get("weight")),
             ]
@@ -1682,6 +1685,7 @@ class ProductionView(QWidget):
                 str(req.get("client_name") or "-"),
                 str(req.get("vendor_name") or "-"),
                 str(req.get("obra") or "-"),
+                _format_date(req.get("delivery_date")),
                 _format_elapsed(req.get("waiting_since")),
             ]
             for col, value in enumerate(values):
