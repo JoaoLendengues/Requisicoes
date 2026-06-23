@@ -806,6 +806,8 @@ class CanvasDialog(QDialog):
 
     _last_dir: str = ""  # persiste enquanto o processo estiver rodando
 
+    _BASE_DIR = r"\\10.1.1.140\ti\REQUISIÇÕES (VENDAS)\BASE DESENHOS"
+
     def __init__(
         self,
         json_data: str,
@@ -813,11 +815,9 @@ class CanvasDialog(QDialog):
         parent=None,
         *,
         ped_number: str = "",
-        suggested_dir: str = "",
     ):
         super().__init__(parent)
         self._ped_number = ped_number.strip()
-        self._suggested_dir = suggested_dir.strip()
         self.setWindowTitle("Editor de Desenho")
         self.setModal(True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -880,8 +880,8 @@ class CanvasDialog(QDialog):
         return self.canvas.to_json()
 
     def _resolve_dir(self) -> str:
-        """Pasta preferida para import/export: pasta do vendedor > última usada > temp."""
-        for candidate in (self._suggested_dir, CanvasDialog._last_dir):
+        """BASE DESENHOS como pasta padrão; usa última pasta visitada como fallback."""
+        for candidate in (CanvasDialog._BASE_DIR, CanvasDialog._last_dir):
             if candidate and os.path.isdir(candidate):
                 return candidate
         return ""
@@ -3341,21 +3341,7 @@ class RequisitionForm(QWidget):
     # ── Editor de desenho (modal) ─────────────────────────────────────────────
     def _open_canvas_dialog(self):
         ped = self.input_ped.text().strip()
-        req_hint = {
-            "vendor_code": getattr(self, "_req_vendor_code", ""),
-            "vendor_name": getattr(self, "_req_vendor_name", ""),
-        }
-        try:
-            suggested = self._resolve_pdf_output_folder(
-                require_configured_folder=False, req=req_hint
-            )
-        except Exception:
-            suggested = ""
-        dlg = CanvasDialog(
-            self._canvas_json, self.scale, self,
-            ped_number=ped,
-            suggested_dir=suggested,
-        )
+        dlg = CanvasDialog(self._canvas_json, self.scale, self, ped_number=ped)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._canvas_json = dlg.get_json()
             self._update_canvas_preview()
