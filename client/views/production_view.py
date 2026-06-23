@@ -2471,6 +2471,8 @@ class ProductionView(QWidget):
         machine_name = str(machine.get("name") or "").strip()
 
         req_id = self._row_requisition_id(req)
+        split_id = self._row_split_id(req)
+
         try:
             requisition = api.get_requisition(req_id)
         except api.APIError as exc:
@@ -2479,6 +2481,16 @@ class ProductionView(QWidget):
         except Exception as exc:
             self._show_error(str(exc))
             return
+
+        # Quando é um split, mostra apenas os itens atribuídos a esta parcela
+        if split_id is not None:
+            all_items = requisition.get("items") or []
+            requisition = dict(requisition)
+            split_items = [
+                item for item in all_items
+                if isinstance(item, dict) and item.get("split_id") == split_id
+            ]
+            requisition["items"] = split_items if split_items else all_items
 
         updates = self._ask_development_items(machine, requisition)
         if updates is None:
@@ -2502,21 +2514,39 @@ class ProductionView(QWidget):
         if not selected_team:
             return
 
-        note = _build_production_note(
-            PROD_RECEIVED,
-            self.destination,
-            machine=machine_name,
-            operators=selected_team["operators"],
-            helpers=selected_team["helpers"],
-        )
         self._pending_expand_machine_name = machine_name
-        self._run_action(
-            api.update_status,
-            req_id,
-            "em_producao",
-            note,
-            success_message=f"Requisicao iniciada na maquina {machine_name}.",
-        )
+
+        if split_id is not None:
+            # Split: usa o endpoint de status de parcela com ação INICIADA
+            note = _build_production_note(
+                PROD_STARTED,
+                self.destination,
+                machine=machine_name,
+                operators=selected_team["operators"],
+                helpers=selected_team["helpers"],
+            )
+            self._run_action(
+                api.update_production_split_status,
+                split_id,
+                "em_producao",
+                note,
+                success_message=f"Parcela iniciada na maquina {machine_name}.",
+            )
+        else:
+            note = _build_production_note(
+                PROD_RECEIVED,
+                self.destination,
+                machine=machine_name,
+                operators=selected_team["operators"],
+                helpers=selected_team["helpers"],
+            )
+            self._run_action(
+                api.update_status,
+                req_id,
+                "em_producao",
+                note,
+                success_message=f"Requisicao iniciada na maquina {machine_name}.",
+            )
 
     def _pick_machine_for_production(self, req: dict) -> dict | None:
         machines = [

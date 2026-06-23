@@ -54,6 +54,7 @@ class RequisitionItemCreate(BaseModel):
 class RequisitionItemResponse(RequisitionItemCreate):
     id: int
     requisition_id: int
+    split_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
