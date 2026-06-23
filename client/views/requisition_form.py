@@ -868,9 +868,15 @@ class CanvasDialog(QDialog):
         return self.canvas.to_json()
 
     def _import_drawing(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Importar Desenho", "", "Desenho JSON (*.json)"
-        )
+        dlg = QFileDialog(self, "Importar Desenho")
+        dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
+        dlg.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
+        dlg.setNameFilter("Desenho JSON (*.json)")
+        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, False)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        files = dlg.selectedFiles()
+        path = str(files[0]).strip() if files else ""
         if not path:
             return
         try:
@@ -885,9 +891,17 @@ class CanvasDialog(QDialog):
         default_dir = _DEFAULT_DIR if os.path.isdir(_DEFAULT_DIR) else ""
         default_path = os.path.join(default_dir, "desenho.json")
 
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Exportar Desenho", default_path, "Desenho JSON (*.json)",
-        )
+        dlg = QFileDialog(self, "Exportar Desenho")
+        dlg.setFileMode(QFileDialog.FileMode.AnyFile)
+        dlg.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        dlg.setNameFilter("Desenho JSON (*.json)")
+        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, False)
+        if default_path:
+            dlg.selectFile(default_path)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        files = dlg.selectedFiles()
+        path = str(files[0]).strip() if files else ""
         if not path:
             return
         try:
