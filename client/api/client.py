@@ -436,6 +436,18 @@ def update_status(req_id: int, status: str, note: str = "") -> dict:
         ))
 
 
+def receive_by_items(req_id: int, destination: str, assignments: list[dict], weight_overrides: dict | None = None) -> dict:
+    with _cli() as client:
+        return _check(client.post(
+            f"/requisitions/{req_id}/receive-by-items",
+            json={
+                "destination": destination,
+                "assignments": assignments,
+                "weight_overrides": weight_overrides or {},
+            },
+        ))
+
+
 def create_production_split(req_id: int, data: dict) -> dict:
     with _cli() as client:
         return _check(client.post(f"/requisitions/{req_id}/production-splits", json=data))

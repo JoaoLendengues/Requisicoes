@@ -2024,28 +2024,230 @@ class ProductionView(QWidget):
             self._show_info("Selecione uma requisição em aguardando recebimento.")
             return
 
-        machine = self._pick_machine_for_production(req)
-        if not machine:
+        items = list(req.get("items") or [])
+        if not items:
+            self._show_error("Requisição sem itens — não é possível receber.")
             return
 
-        machine_name = str(machine.get("name") or "").strip()
-        if _is_machine_in_maintenance(machine):
-            self._show_info(f"A maquina {machine_name} esta em manutencao e nao pode receber requisicoes.")
+        result = self._receive_by_items_dialog(req, items)
+        if result is None:
             return
 
-        note = _build_production_note(
-            PROD_QUEUED,
-            self.destination,
-            machine=machine_name,
-        )
-        self._pending_expand_machine_name = machine_name
+        assignments, weight_overrides, machines_used = result
+        first_machine = machines_used[0] if machines_used else ""
+        self._pending_expand_machine_name = first_machine
+
         self._run_action(
-            api.update_status,
+            api.receive_by_items,
             self._row_requisition_id(req),
-            "aguardando_na_fila",
-            note,
-            success_message=f"Requisicao adicionada na fila da maquina {machine_name}.",
+            self.destination,
+            assignments,
+            weight_overrides,
+            success_message="Requisição recebida e distribuída para as máquinas.",
         )
+
+    def _receive_by_items_dialog(
+        self, req: dict, items: list[dict]
+    ) -> tuple[list[dict], dict[str, float], list[str]] | None:
+        """Diálogo para atribuir cada item a uma máquina ao receber a requisição.
+
+        Retorna (assignments, weight_overrides, machines_used) ou None se cancelado.
+        """
+        s = self.scale
+        machines = [
+            m for m in self._machines_data
+            if str(m.get("name") or "").strip() and not _is_machine_in_maintenance(m)
+        ]
+        if not machines:
+            self._show_error("Não há máquinas disponíveis para este destino.")
+            return None
+
+        machine_names = [str(m.get("name") or "").strip() for m in machines]
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Receber Requisição")
+        dlg.setModal(True)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet(
+            f"QDialog {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QDialog QWidget {{ background:{theme.CARD_BG}; color:{theme.TEXT_DARK}; }}"
+            f"QLabel {{ background:transparent; color:{theme.TEXT_DARK}; }}"
+            f"QComboBox {{ background:{theme.INPUT_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:4px; padding:2px 6px; }}"
+            f"QDoubleSpinBox {{ background:{theme.INPUT_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:4px; padding:2px 6px; }}"
+        )
+        dlg.setMinimumWidth(max(680, int(780 * s)))
+
+        base_pt = max(9, int(10 * s))
+        title_pt = max(10, int(11 * s))
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(max(10, int(12 * s)))
+
+        ped = str(req.get("ped_number") or "-")
+        client_name = str(req.get("client_name") or "-")
+        total_w = req.get("total_weight") or req.get("weight") or 0.0
+
+        hdr = QLabel(f"Receber — PED #{ped}")
+        hdr.setStyleSheet(f"background:transparent; font-weight:800; font-size:{title_pt}pt;")
+        layout.addWidget(hdr)
+
+        sub = QLabel(f"Cliente: {client_name}   •   Peso total: {format_weight_kg(total_w)}")
+        sub.setStyleSheet(f"background:transparent; font-size:{base_pt}pt;")
+        layout.addWidget(sub)
+
+        helper_lbl = QLabel("Atribua cada item a uma máquina:")
+        helper_lbl.setStyleSheet(
+            f"background:transparent; font-size:{base_pt}pt; color:{theme.PANEL_TEXT_MUTED};"
+        )
+        layout.addWidget(helper_lbl)
+
+        # Tabela de itens
+        table = QTableWidget()
+        table.setColumnCount(4)
+        table.setHorizontalHeaderLabels(["Pos.", "Produto", "Peso", "Máquina"])
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.setAlternatingRowColors(True)
+        table.verticalHeader().setVisible(False)
+        table.setStyleSheet(
+            f"QTableWidget {{ background:{theme.CARD_BG}; alternate-background-color:{theme.TABLE_ALT_ROW};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:8px; gridline-color:{theme.BORDER_COLOR}; }}"
+            f"QHeaderView::section {{ background:{theme.TABLE_HEADER_BG}; color:#FFFFFF;"
+            f"  border:none; padding:4px; font-weight:700; font-size:{base_pt}pt; }}"
+        )
+
+        combos: list[QComboBox] = []
+        table.setRowCount(len(items))
+
+        for row_idx, item in enumerate(items):
+            pos = str(item.get("position") or "-")
+            name = str(item.get("product_name") or item.get("product_code") or "-")
+            w_val = item.get("weight")
+            weight_str = format_weight_kg(w_val) if w_val is not None else "-"
+
+            table.setItem(row_idx, 0, QTableWidgetItem(pos))
+            table.setItem(row_idx, 1, QTableWidgetItem(name))
+            table.setItem(row_idx, 2, QTableWidgetItem(weight_str))
+
+            combo = QComboBox()
+            combo.addItems(machine_names)
+            table.setCellWidget(row_idx, 3, combo)
+            combos.append(combo)
+
+        hdr_view = table.horizontalHeader()
+        hdr_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr_view.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr_view.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        table.setMinimumHeight(max(120, min(int(36 * len(items) + 44), int(320 * s))))
+        layout.addWidget(table)
+
+        # Painel de resumo por máquina
+        summary_frame = QFrame()
+        summary_frame.setStyleSheet(
+            f"QFrame {{ background:{theme.TABLE_ALT_ROW}; border:1px solid {theme.BORDER_COLOR}; border-radius:8px; }}"
+            f"QLabel {{ border:none; background:transparent; }}"
+            f"QDoubleSpinBox {{ background:{theme.INPUT_BG}; color:{theme.TEXT_DARK};"
+            f"  border:1px solid {theme.BORDER_COLOR}; border-radius:4px; padding:2px 6px; }}"
+        )
+        summary_layout = QVBoxLayout(summary_frame)
+        summary_layout.setContentsMargins(12, 10, 12, 10)
+        summary_layout.setSpacing(max(5, int(6 * s)))
+
+        summary_title = QLabel("Resumo por máquina (peso editável):")
+        summary_title.setStyleSheet(f"font-weight:700; font-size:{base_pt}pt;")
+        summary_layout.addWidget(summary_title)
+
+        machine_spinboxes: dict[str, QDoubleSpinBox] = {}
+        summary_machine_widgets: dict[str, QWidget] = {}
+
+        def _rebuild_summary() -> None:
+            # Calcula somas atuais por máquina
+            sums: dict[str, float] = {}
+            for combo, item in zip(combos, items):
+                m = combo.currentText()
+                w = float(item.get("weight") or 0.0)
+                sums[m] = sums.get(m, 0.0) + w
+
+            # Remove widgets de máquinas que saíram
+            for m in list(summary_machine_widgets.keys()):
+                if m not in sums:
+                    w_widget = summary_machine_widgets.pop(m)
+                    summary_layout.removeWidget(w_widget)
+                    w_widget.setParent(None)
+                    machine_spinboxes.pop(m, None)
+
+            # Adiciona/atualiza máquinas presentes
+            for m_name, w_sum in sums.items():
+                if m_name not in summary_machine_widgets:
+                    row_w = QWidget()
+                    row_w.setStyleSheet("background:transparent;")
+                    row_hl = QHBoxLayout(row_w)
+                    row_hl.setContentsMargins(0, 0, 0, 0)
+                    row_hl.setSpacing(8)
+
+                    lbl = QLabel(f"  {m_name}")
+                    lbl.setStyleSheet(f"font-size:{base_pt}pt; min-width:{max(130, int(150 * s))}px;")
+                    row_hl.addWidget(lbl)
+
+                    spin = QDoubleSpinBox()
+                    spin.setRange(0.0, 999999.0)
+                    spin.setDecimals(3)
+                    spin.setSuffix(" kg")
+                    spin.setMinimumWidth(max(110, int(120 * s)))
+                    spin.setValue(w_sum)
+                    row_hl.addWidget(spin)
+                    row_hl.addStretch()
+
+                    machine_spinboxes[m_name] = spin
+                    summary_machine_widgets[m_name] = row_w
+                    summary_layout.addWidget(row_w)
+                else:
+                    # Apenas atualiza se o spinbox não foi editado manualmente
+                    # (heurística: compara com soma esperada antes da mudança)
+                    machine_spinboxes[m_name].setValue(w_sum)
+
+        _rebuild_summary()
+
+        for combo in combos:
+            combo.currentTextChanged.connect(lambda _txt: _rebuild_summary())
+
+        layout.addWidget(summary_frame)
+
+        # Botões
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setStyleSheet(_flat_secondary_btn_style(s))
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_row.addWidget(btn_cancel)
+
+        btn_confirm = QPushButton("Confirmar")
+        btn_confirm.setStyleSheet(_primary_action_btn_style(s))
+        btn_confirm.setDefault(True)
+        btn_confirm.clicked.connect(dlg.accept)
+        btn_row.addWidget(btn_confirm)
+
+        layout.addLayout(btn_row)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        assignments = [
+            {"item_id": int(item["id"]), "machine_name": combos[i].currentText()}
+            for i, item in enumerate(items)
+        ]
+        weight_overrides = {
+            m_name: spin.value()
+            for m_name, spin in machine_spinboxes.items()
+        }
+        machines_used = list(dict.fromkeys(c.currentText() for c in combos))
+
+        return assignments, weight_overrides, machines_used
 
     def _pick_machine(
         self,

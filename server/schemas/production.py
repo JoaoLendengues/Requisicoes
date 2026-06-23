@@ -13,6 +13,26 @@ class ProductionMachineStatusUpdate(BaseModel):
     status: MachineOperationalStatus
 
 
+class RequisitionItemSimple(BaseModel):
+    id: int
+    position: str
+    product_code: Optional[str] = None
+    product_name: Optional[str] = None
+    quantity: Optional[float] = None
+    weight: Optional[float] = None
+
+
+class ItemMachineAssignment(BaseModel):
+    item_id: int
+    machine_name: str
+
+
+class ProductionReceiveByItemsRequest(BaseModel):
+    destination: str
+    assignments: list[ItemMachineAssignment]
+    weight_overrides: dict[str, float] = Field(default_factory=dict)
+
+
 class ProductionItemResponse(BaseModel):
     id: int
     source_requisition_id: Optional[int] = None
@@ -35,6 +55,7 @@ class ProductionItemResponse(BaseModel):
     helper_names: list[str] = Field(default_factory=list)
     waiting_since: Optional[datetime] = None
     production_started_at: Optional[datetime] = None
+    items: list[RequisitionItemSimple] = Field(default_factory=list)
 
 
 class ProductionSplitCreateRequest(BaseModel):

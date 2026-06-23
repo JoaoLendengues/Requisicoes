@@ -1,3 +1,4 @@
+from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import and_, func, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -54,9 +55,11 @@ from ..schemas.production import (
     ProductionMachineCardResponse,
     ProductionMachineStatusResponse,
     ProductionMachineStatusUpdate,
+    ProductionReceiveByItemsRequest,
     ProductionSplitCreateRequest,
     ProductionSplitStatusUpdate,
     ProductionSummaryStatsResponse,
+    RequisitionItemSimple,
 )
 from ..schemas.requisition import (
     RequisitionCreate, RequisitionUpdate, RequisitionResponse, RequisitionListItem,
@@ -1673,6 +1676,17 @@ def _production_item(
         helper_names=_clean_operator_names(helper_names or []),
         waiting_since=waiting_since,
         production_started_at=production_started_at,
+        items=[
+            RequisitionItemSimple(
+                id=item.id,
+                position=item.position,
+                product_code=item.product_code,
+                product_name=item.product_name,
+                quantity=item.quantity,
+                weight=item.weight,
+            )
+            for item in sorted(req.items or [], key=lambda i: i.position or "")
+        ],
     )
 
 
@@ -4238,6 +4252,141 @@ def create_production_split(
         helper_names=helpers,
         production_started_at=datetime.utcnow(),
     )
+
+
+@router.post("/{req_id}/receive-by-items", status_code=status.HTTP_200_OK)
+def receive_by_items(
+    req_id: int,
+    body: ProductionReceiveByItemsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Recebe uma requisição distribuindo itens entre máquinas.
+
+    - 1 máquina → coloca na fila daquela máquina (sem split)
+    - N máquinas → cria um split por máquina com os itens associados
+    """
+    req = (
+        db.query(Requisition)
+        .options(
+            selectinload(Requisition.items),
+            selectinload(Requisition.production_splits).selectinload(RequisitionProductionSplit.status_history),
+        )
+        .filter(Requisition.id == req_id)
+        .first()
+    )
+    if req is None:
+        raise HTTPException(status_code=404, detail="Requisição não encontrada")
+    if not _can_edit_requisition(req, current_user):
+        raise HTTPException(status_code=403, detail="Sem permissão para atualizar esta requisição")
+    if req.status != RequisitionStatus.AGUARDANDO_RECEBIMENTO:
+        raise HTTPException(status_code=400, detail="Requisição não está aguardando recebimento")
+
+    normalized_destination = _canonical_destination(body.destination)
+    _ensure_destination_access(current_user, normalized_destination)
+
+    item_map = {item.id: item for item in (req.items or [])}
+    if not item_map:
+        raise HTTPException(status_code=400, detail="Requisição sem itens")
+    if not body.assignments:
+        raise HTTPException(status_code=400, detail="Informe a atribuição de itens às máquinas")
+
+    # Valida que todos os itens foram atribuídos e agrupa por máquina
+    assigned_ids = {a.item_id for a in body.assignments}
+    missing = set(item_map.keys()) - assigned_ids
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Itens sem máquina atribuída: {sorted(missing)}",
+        )
+
+    machine_items: dict[str, list[RequisitionItem]] = defaultdict(list)
+    for assignment in body.assignments:
+        machine_name = _normalize_machine_name(assignment.machine_name)
+        if not machine_name:
+            raise HTTPException(status_code=400, detail="Nome de máquina inválido")
+        if assignment.item_id not in item_map:
+            raise HTTPException(status_code=400, detail=f"Item {assignment.item_id} não pertence a esta requisição")
+        machine_items[machine_name].append(item_map[assignment.item_id])
+
+    machines_used = list(machine_items.keys())
+
+    if len(machines_used) == 1:
+        # Caminho simples: uma máquina, sem split
+        machine_name = machines_used[0]
+        _ensure_machine_accepts_production(db, normalized_destination, machine_name)
+
+        note = _compose_production_note(_PROD_QUEUED, normalized_destination, machine=machine_name)
+        db.add(
+            StatusHistory(
+                requisition_id=req.id,
+                old_status=str(req.status.value),
+                new_status=RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                changed_by_id=current_user.id,
+                note=note,
+            )
+        )
+        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
+        req.production_machine = machine_name
+        req.production_destination = normalized_destination
+        req.finalized_at = req.finalized_at or datetime.utcnow()
+    else:
+        # Múltiplas máquinas: cria um split por máquina
+        existing_count = len(_sorted_requisition_splits(req))
+        for seq_offset, (machine_name, items) in enumerate(machine_items.items()):
+            _ensure_machine_accepts_production(db, normalized_destination, machine_name)
+
+            weight_value = round(
+                float(
+                    body.weight_overrides.get(machine_name)
+                    or sum(float(i.weight or 0.0) for i in items)
+                ),
+                3,
+            )
+
+            split = RequisitionProductionSplit(
+                requisition=req,
+                sequence=existing_count + seq_offset + 1,
+                weight=weight_value,
+                status=RequisitionStatus.AGUARDANDO_NA_FILA,
+                destination=normalized_destination,
+                production_machine=machine_name,
+            )
+            db.add(split)
+            db.flush()
+
+            for item in items:
+                item.split_id = split.id
+
+            note = _compose_production_note(_PROD_QUEUED, normalized_destination, machine=machine_name)
+            db.add(
+                StatusHistory(
+                    requisition_id=req.id,
+                    production_split_id=split.id,
+                    old_status=RequisitionStatus.AGUARDANDO_RECEBIMENTO.value,
+                    new_status=RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                    changed_by_id=current_user.id,
+                    note=note,
+                )
+            )
+
+        req.status = RequisitionStatus.AGUARDANDO_NA_FILA
+        req.production_destination = normalized_destination
+        req.production_machine = None
+        req.finalized_at = req.finalized_at or datetime.utcnow()
+        db.add(
+            StatusHistory(
+                requisition_id=req.id,
+                old_status=RequisitionStatus.AGUARDANDO_RECEBIMENTO.value,
+                new_status=RequisitionStatus.AGUARDANDO_NA_FILA.value,
+                changed_by_id=current_user.id,
+                note=f"Recebido e distribuído entre {len(machines_used)} máquinas.",
+            )
+        )
+
+    cache.invalidate("production_summary:")
+    db.commit()
+    return {"ok": True}
 
 
 @router.post(
