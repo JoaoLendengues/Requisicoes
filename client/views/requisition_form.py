@@ -3250,7 +3250,7 @@ class RequisitionForm(QWidget):
         box.setTextFormat(Qt.TextFormat.PlainText)
 
         btn_yes = box.addButton("Sim", QMessageBox.ButtonRole.YesRole)
-        btn_save = box.addButton("Apenas salvar", QMessageBox.ButtonRole.ActionRole)
+        btn_save = box.addButton("Salvar", QMessageBox.ButtonRole.ActionRole)
         btn_cancel = box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
 
         box.setDefaultButton(btn_yes)
