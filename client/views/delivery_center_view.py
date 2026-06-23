@@ -1653,8 +1653,8 @@ class DeliveryCenterView(QWidget):
         layout.addWidget(title)
 
         subtitle = QLabel(
-            "Informe o codigo do cliente e os dados do carregamento. "
-            "A entrega sera adicionada diretamente a agenda."
+            "Informe o código do cliente e os dados do carregamento. "
+            "A entrega será adicionada diretamente à agenda."
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(
@@ -1673,7 +1673,7 @@ class DeliveryCenterView(QWidget):
         client_row = QHBoxLayout()
         client_row.setSpacing(max(6, int(8 * s)))
         client_input = QLineEdit()
-        client_input.setPlaceholderText("Codigo do cliente")
+        client_input.setPlaceholderText("Código do cliente")
         client_input.setFixedHeight(field_height)
         client_input.setStyleSheet(theme.input_style(s))
         btn_search = QPushButton("BUSCAR")
@@ -1684,7 +1684,7 @@ class DeliveryCenterView(QWidget):
         layout.addWidget(_label("Cliente:"))
         layout.addLayout(client_row)
 
-        client_result = QLabel("Digite o codigo e clique em Buscar.")
+        client_result = QLabel("Digite o código e clique em Buscar.")
         client_result.setWordWrap(True)
         client_result.setStyleSheet(
             f"background:{_rgba(theme.PRIMARY, 15)}; color:{theme.TEXT_MEDIUM};"
@@ -1709,14 +1709,14 @@ class DeliveryCenterView(QWidget):
         layout.addWidget(vendor_combo)
 
         truck_input = QLineEdit()
-        truck_input.setPlaceholderText("Nome ou identificacao do caminhao")
+        truck_input.setPlaceholderText("Nome ou identificação do caminhão")
         truck_input.setFixedHeight(field_height)
         truck_input.setStyleSheet(theme.input_style(s))
-        layout.addWidget(_label("Caminhao:"))
+        layout.addWidget(_label("Caminhão:"))
         layout.addWidget(truck_input)
 
         loaded_by_input = QLineEdit()
-        loaded_by_input.setPlaceholderText("Pessoa responsavel pelo carregamento")
+        loaded_by_input.setPlaceholderText("Pessoa responsável pelo carregamento")
         loaded_by_input.setFixedHeight(field_height)
         loaded_by_input.setStyleSheet(theme.input_style(s))
         layout.addWidget(_label("Carregado por:"))
@@ -1787,13 +1787,13 @@ class DeliveryCenterView(QWidget):
             current = found_client[0]
             if current and _client_code_key(current.get("code")) != _client_code_key(client_input.text()):
                 found_client[0] = None
-                client_result.setText("Codigo alterado. Clique em Buscar novamente.")
+                client_result.setText("Código alterado. Clique em Buscar novamente.")
             _validate()
 
         def _search_client() -> None:
             code = client_input.text().strip()
             if not code:
-                error_label.setText("Informe o codigo do cliente.")
+                error_label.setText("Informe o código do cliente.")
                 error_label.setVisible(True)
                 return
             btn_search.setEnabled(False)
@@ -1813,7 +1813,7 @@ class DeliveryCenterView(QWidget):
                 )
                 found_client[0] = match
                 if match is None:
-                    client_result.setText("Cliente nao encontrado com esse codigo.")
+                    client_result.setText("Cliente não encontrado com esse código.")
                 else:
                     client_input.blockSignals(True)
                     client_input.setText(str(match.get("code") or code))
@@ -1826,7 +1826,7 @@ class DeliveryCenterView(QWidget):
             def _search_error(message: str) -> None:
                 btn_search.setEnabled(True)
                 found_client[0] = None
-                client_result.setText("Nao foi possivel buscar o cliente.")
+                client_result.setText("Não foi possível buscar o cliente.")
                 error_label.setText(message)
                 error_label.setVisible(True)
                 _validate()
@@ -1860,7 +1860,7 @@ class DeliveryCenterView(QWidget):
             vendor_combo.clear()
             detail = str(message or "Erro desconhecido").strip()
             vendor_combo.addItem(f"Erro ao carregar: {detail}", 0)
-            error_label.setText(f"Nao foi possivel carregar vendedores: {detail}")
+            error_label.setText(f"Não foi possível carregar vendedores: {detail}")
             error_label.setVisible(True)
             _validate()
 
@@ -1900,13 +1900,25 @@ class DeliveryCenterView(QWidget):
             )
             self._track_thread(thread, worker)
 
+        def _force_upper(field: QLineEdit, after=None) -> None:
+            text = field.text()
+            upper = text.upper()
+            if text != upper:
+                pos = field.cursorPosition()
+                field.blockSignals(True)
+                field.setText(upper)
+                field.setCursorPosition(pos)
+                field.blockSignals(False)
+            if after:
+                after()
+
         client_input.textChanged.connect(_client_changed)
         client_input.returnPressed.connect(_search_client)
         btn_search.clicked.connect(_search_client)
-        city_input.textChanged.connect(_validate)
+        city_input.textChanged.connect(lambda: _force_upper(city_input, _validate))
         vendor_combo.currentIndexChanged.connect(_validate)
-        truck_input.textChanged.connect(_validate)
-        loaded_by_input.textChanged.connect(_validate)
+        truck_input.textChanged.connect(lambda: _force_upper(truck_input, _validate))
+        loaded_by_input.textChanged.connect(lambda: _force_upper(loaded_by_input, _validate))
         weight_input.textChanged.connect(_validate)
         btn_create.clicked.connect(_create)
 
