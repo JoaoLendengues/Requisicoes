@@ -2076,9 +2076,15 @@ def _ensure_waiting_queue_fifo_for_split(
     current_user: User,
     destination: str,
     split_id: int,
+    requisition_id: int | None = None,
 ) -> None:
     summary = _load_production_pending_summary(db, current_user, destination)
     first_item = summary.waiting_queue[0] if summary.waiting_queue else None
+    # Parcelas da MESMA requisição podem ser processadas em qualquer ordem.
+    # O FIFO só se aplica quando o primeiro da fila é de uma requisição diferente.
+    if first_item is not None and requisition_id is not None:
+        if int(first_item.source_requisition_id or 0) == requisition_id:
+            return
     _ensure_production_fifo_item(
         first_item,
         stage="waiting_queue",
@@ -4539,6 +4545,7 @@ def update_production_split_status(
                 current_user,
                 normalized_destination,
                 split.id,
+                split.requisition_id,
             )
         split.status = RequisitionStatus.EM_PRODUCAO
         split.production_machine = machine_name
