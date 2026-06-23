@@ -2771,6 +2771,13 @@ class MainWindow(QMainWindow):
     def _stop_runtime_services(self):
         if hasattr(self, "_notif_timer") and self._notif_timer is not None:
             self._notif_timer.stop()
+        if hasattr(self, "_update_timer") and self._update_timer is not None:
+            self._update_timer.stop()
+        if hasattr(self, "_bg_update_checker") and self._bg_update_checker is not None:
+            try:
+                self._bg_update_checker.disconnect()
+            except RuntimeError:
+                pass
         if self._listener:
             self._listener.stop()
 
