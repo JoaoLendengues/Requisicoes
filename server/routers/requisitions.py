@@ -4161,10 +4161,10 @@ def create_production_split(
             detail="A requisicao ja esta vinculada a outra producao",
         )
 
-    # Peso do split é auto-calculado: usa o saldo restante da requisição.
-    # O peso definitivo é confirmado apenas na finalização (PROD_FINISHED).
-    remaining_weight = _remaining_requisition_weight(req) if _has_production_splits(req) else round(float(req.weight or 0.0), 3)
-    weight_value = round(float(data.weight or 0.0), 3) if (data.weight or 0.0) > 0 else remaining_weight
+    # O peso do split é confirmado na finalização (PROD_FINISHED), quando o
+    # operador informa o peso real produzido. Nasce com 0 para não consumir
+    # o saldo restante e permitir criar múltiplos splits (P01, P02, P03...).
+    weight_value = round(float(data.weight or 0.0), 3)
 
     machine_name = _normalize_machine_name(data.machine_name)
     if not machine_name:
@@ -4210,7 +4210,7 @@ def create_production_split(
         req,
         db,
         current_user,
-        note=f"Desmembramento {split.sequence:02d} criado para {weight_value:.3f} kg.",
+        note=f"Desmembramento {split.sequence:02d} criado (peso a confirmar na finalizacao).",
     )
 
     notifications: list = []
@@ -4361,6 +4361,10 @@ def update_production_split_status(
         helpers = []
         split.status = RequisitionStatus.FINALIZADO
         split.production_machine = None
+        # Grava o peso real informado pelo operador na finalização
+        actual_weight = prod_event.get("weight")
+        if actual_weight is not None:
+            split.weight = round(float(actual_weight), 3)
     elif action == _PROD_CANCELED:
         if requested_status != RequisitionStatus.AGUARDANDO_NA_FILA:
             raise HTTPException(status_code=400, detail="Status invalido para cancelar a parcela")
