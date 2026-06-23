@@ -1745,6 +1745,7 @@ def _build_production_summary(
     reqs: list[Requisition],
     machines: list[ProductionMachine],
     destination: str,
+    cycle_reqs: list[Requisition] | None = None,
 ) -> ProductionDestinationSummaryResponse:
     normalized_destination = _canonical_destination(destination)
     waiting_receipt: list[ProductionItemResponse] = []
@@ -1893,6 +1894,16 @@ def _build_production_summary(
                 )
             )
 
+        for cycle in _all_finished_cycles(req):
+            if cycle.get("target") != normalized_destination:
+                continue
+            machine_name = _normalize_machine_name(cycle.get("machine"))
+            if machine_name in machine_cycles:
+                machine_cycles[machine_name].append(cycle)
+
+    # Requisições finalizadas recentemente (não estão em `reqs`) também
+    # alimentam machine_cycles para o cálculo do tempo médio por máquina.
+    for req in (cycle_reqs or []):
         for cycle in _all_finished_cycles(req):
             if cycle.get("target") != normalized_destination:
                 continue
@@ -4128,7 +4139,32 @@ def get_production_summary(
             int(getattr(machine, "id", 0) or 0),
         )
     )
-    return _build_production_summary(visible, machines, normalized_destination)
+
+    # Carrega requisições finalizadas recentemente para calcular tempo médio
+    # por máquina. São excluídas do query principal (status ativo), por isso
+    # precisam de uma consulta separada.
+    cycle_cutoff = datetime.utcnow() - timedelta(days=30)
+    cycle_reqs = (
+        db.query(Requisition)
+        .options(
+            selectinload(Requisition.status_history),
+            selectinload(Requisition.production_splits).selectinload(
+                RequisitionProductionSplit.status_history
+            ),
+        )
+        .filter(
+            Requisition.production_destination == normalized_destination,
+            Requisition.status.in_([
+                RequisitionStatus.FINALIZADO,
+                RequisitionStatus.FATURADO,
+                RequisitionStatus.AGUARDANDO_ENTREGA,
+            ]),
+            Requisition.finalized_at >= cycle_cutoff,
+        )
+        .all()
+    )
+
+    return _build_production_summary(visible, machines, normalized_destination, cycle_reqs)
 
 
 @router.get("/production/machines", response_model=List[str])
