@@ -2792,9 +2792,15 @@ class ProductionView(QWidget):
         api.update_status(req_id, "finalizado", note)
 
     def _return_selected_machine_to_queue(self, machine_id: int):
+        # Se há item selecionado na FILA do card → cancelar a requisição
+        queue_req = self._selected_machine_queue_row(machine_id)
+        if queue_req:
+            self._cancel_to_progress(queue_req)
+            return
+
         req, machine = self._selected_machine_row(machine_id)
         if not req or not machine:
-            self._show_info("Selecione uma requisição em produção dentro do card da máquina.")
+            self._show_info("Selecione uma requisição em produção ou na fila do card da máquina.")
             return
         if self._is_split_row(req):
             regroup_all = self._ask_split_cancel_mode()
