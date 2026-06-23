@@ -2524,6 +2524,10 @@ class MainWindow(QMainWindow):
                 ),
                 # ── Central de Pedidos ────────────────────────────────────────
                 *steps_pedidos,
+                # ── A&R ───────────────────────────────────────────────────────
+                *steps_ar,
+                # ── Pinheiro Indústria ────────────────────────────────────────
+                *steps_pin,
                 # ── Entregas ──────────────────────────────────────────────────
                 TourStep(
                     "Tela de Entregas",
