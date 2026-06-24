@@ -46,7 +46,7 @@ from ..core.text_case import bind_uppercase_line_edit, bind_uppercase_text_edit
 from ..api import client as api
 from ..widgets.status_badge import StatusBadge
 from ..widgets.item_table import ItemTable
-from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_scene, Tool
+from ..widgets.canvas_widget import DrawingCanvas, CanvasPreview, load_canvas_scene, Tool, build_canvas_item_from_dict
 
 PROD_NOTE_PREFIX = "PRODUCAO"
 PROD_SEND = "ENVIADA"
@@ -904,35 +904,23 @@ class CanvasDialog(QDialog):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = f.read()
+            obj = json.loads(data)
         except Exception as exc:
             QMessageBox.critical(self, "Importar Desenho", f"Erro ao importar: {exc}")
             return
 
-        # Verifica se já há conteúdo no canvas antes de sobrescrever
+        # Adiciona os itens do arquivo por cima do desenho existente (merge),
+        # sem apagar o que o usuário já desenhou manualmente.
         try:
-            existing = json.loads(self.canvas.to_json())
-        except Exception:
-            existing = {}
-        has_content = bool(
-            existing.get("items")
-            or existing.get("pdf")
-            or existing.get("dwg")
-        )
-        if has_content:
-            reply = QMessageBox.question(
-                self,
-                "Substituir Desenho",
-                "Já existe um desenho no editor.\n\n"
-                "Importar este arquivo irá APAGAR o desenho atual.\n"
-                "Deseja continuar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-
-        try:
-            self.canvas.from_json(data)
+            from PySide6.QtWidgets import QGraphicsItem
+            for item_data in obj.get("items", []):
+                item = build_canvas_item_from_dict(item_data)
+                if item:
+                    item.setFlags(
+                        QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                        QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+                    )
+                    self.canvas.scene.addItem(item)
         except Exception as exc:
             QMessageBox.critical(self, "Importar Desenho", f"Erro ao importar: {exc}")
 
