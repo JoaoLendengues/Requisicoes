@@ -3,6 +3,7 @@ Formulário principal de requisição — fiel ao mockup fornecido.
 """
 import os
 import io
+import json
 import base64
 import shutil
 import tempfile
@@ -903,6 +904,34 @@ class CanvasDialog(QDialog):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = f.read()
+        except Exception as exc:
+            QMessageBox.critical(self, "Importar Desenho", f"Erro ao importar: {exc}")
+            return
+
+        # Verifica se já há conteúdo no canvas antes de sobrescrever
+        try:
+            existing = json.loads(self.canvas.to_json())
+        except Exception:
+            existing = {}
+        has_content = bool(
+            existing.get("items")
+            or existing.get("pdf")
+            or existing.get("dwg")
+        )
+        if has_content:
+            reply = QMessageBox.question(
+                self,
+                "Substituir Desenho",
+                "Já existe um desenho no editor.\n\n"
+                "Importar este arquivo irá APAGAR o desenho atual.\n"
+                "Deseja continuar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
             self.canvas.from_json(data)
         except Exception as exc:
             QMessageBox.critical(self, "Importar Desenho", f"Erro ao importar: {exc}")
