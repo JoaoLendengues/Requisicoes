@@ -107,6 +107,7 @@ class ItemTable(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setTabKeyNavigation(True)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setColumnWidth(PRODUCT_NAME_COL, max(180, int(200 * self.scale)))
         self.table.horizontalHeader().sectionResized.connect(self._on_section_resized)
         self._apply_table_stylesheet()

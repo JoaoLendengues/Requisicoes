@@ -374,6 +374,7 @@ class UserCenterView(QWidget):
         self.table.itemSelectionChanged.connect(self._load_current_selection)
         header_widget = self.table.horizontalHeader()
         header_widget.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header_widget.setStretchLastSection(True)
         self.table.setColumnWidth(1, max(160, int(180 * s)))  # NOME
         self.table.setColumnWidth(2, max(140, int(155 * s)))  # CONTATO
         self.table.setColumnWidth(3, max(130, int(145 * s)))  # SETOR

@@ -1007,6 +1007,8 @@ class ProductionView(QWidget):
         table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         header_widget = table.horizontalHeader()
         header_widget.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header_widget.setStretchLastSection(True)
+        table.setColumnWidth(0, max(60, int(70 * s)))
         for col in stretch_columns:
             table.setColumnWidth(col, max(140, int(160 * s)))
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2143,6 +2145,7 @@ class ProductionView(QWidget):
 
         hdr_view = table.horizontalHeader()
         hdr_view.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hdr_view.setStretchLastSection(True)
         table.setColumnWidth(1, max(160, int(180 * s)))
         table.setMinimumHeight(max(120, min(int(36 * len(items) + 44), int(320 * s))))
         layout.addWidget(table)
@@ -2386,6 +2389,7 @@ class ProductionView(QWidget):
         theme.apply_neon_table_palette(table)
         hdr = table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hdr.setStretchLastSection(True)
         for col in {1, 2, DESENV_COL}:
             table.setColumnWidth(col, max(140, int(160 * s)))
         hdr.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)

@@ -793,6 +793,7 @@ class HistoryView(QWidget):
         apply_smooth_scroll(self.table)
         header_widget = self.table.horizontalHeader()
         header_widget.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header_widget.setStretchLastSection(True)
         header_widget.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         header_widget.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))

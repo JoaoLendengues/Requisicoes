@@ -548,6 +548,7 @@ class DeliveryCenterView(QWidget):
 
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(True)
         table.setColumnWidth(1, max(160, int(180 * self.scale)))   # CLIENTE
         table.setColumnWidth(2, max(140, int(160 * self.scale)))   # VENDEDOR
         table.setColumnWidth(5, max(130, int(145 * self.scale)))   # CIDADE

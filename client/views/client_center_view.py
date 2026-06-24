@@ -239,6 +239,7 @@ class ClientCenterView(QWidget):
         self.table.itemSelectionChanged.connect(self._load_current_selection)
         head = self.table.horizontalHeader()
         head.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        head.setStretchLastSection(True)
         self.table.setColumnWidth(1, max(200, int(220 * s)))
         head.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         head.setMinimumHeight(max(34, int(40 * s)))

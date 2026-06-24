@@ -201,6 +201,7 @@ class MachineCenterView(QWidget):
 
         head = self.table.horizontalHeader()
         head.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        head.setStretchLastSection(True)
         self.table.setColumnWidth(0, max(150, int(170 * s)))  # NOME
         self.table.setColumnWidth(2, max(140, int(155 * s)))  # OPERADOR
         self.table.setColumnWidth(3, max(140, int(155 * s)))  # AJUDANTE

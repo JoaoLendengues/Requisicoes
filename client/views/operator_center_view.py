@@ -152,6 +152,7 @@ class OperatorCenterView(QWidget):
         self.table.itemSelectionChanged.connect(self._load_current_selection)
         head = self.table.horizontalHeader()
         head.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        head.setStretchLastSection(True)
         self.table.setColumnWidth(0, max(180, int(200 * s)))  # NOME
         head.setMinimumHeight(max(34, int(40 * s)))
         self.table.verticalHeader().setDefaultSectionSize(max(32, int(38 * s)))

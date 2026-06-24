@@ -1980,6 +1980,7 @@ class RequisitionForm(QWidget):
 
         head = results.horizontalHeader()
         head.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        head.setStretchLastSection(True)
         results.setColumnWidth(1, max(200, int(220 * s)))  # NOME
         results.setColumnWidth(2, max(150, int(165 * s)))  # CNPJ
         layout.addWidget(results, 1)

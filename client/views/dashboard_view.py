@@ -2031,6 +2031,7 @@ class DashboardView(QWidget):
 
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(True)
         for index in stretch_columns:
             table.setColumnWidth(index, max(140, int(160 * s)))
         header.setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)

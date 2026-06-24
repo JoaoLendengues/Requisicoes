@@ -955,6 +955,7 @@ class OrderCenterView(QWidget):
         header_padding = max(26, int(34 * self.scale))
 
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(True)
         for col in range(table.columnCount()):
             table.resizeColumnToContents(col)
             header_text = table.horizontalHeaderItem(col).text() if table.horizontalHeaderItem(col) else ""
