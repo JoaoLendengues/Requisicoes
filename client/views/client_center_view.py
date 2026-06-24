@@ -35,7 +35,7 @@ from ..core.datetime_utils import (
     local_now,
 )
 from ..core.text_case import bind_uppercase_line_edit
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 
 # Reaproveita os estilos/helpers já usados na Central de Usuários para manter
 # a aparência consistente entre as abas de Configurações.
@@ -388,6 +388,7 @@ class ClientCenterView(QWidget):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(row, col, item)
+        expand_columns_to_content(self.table)
 
     # ── Seleção / formulário ──────────────────────────────────────────────────
     def _prepare_new_client(self):

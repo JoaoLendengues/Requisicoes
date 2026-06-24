@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..core.formatters import format_weight_kg
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -1093,6 +1093,7 @@ class ProductionView(QWidget):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(row, col, item)
+        expand_columns_to_content(table)
 
     def _clear_layout(self, layout: QGridLayout):
         while layout.count():
@@ -1676,6 +1677,7 @@ class ProductionView(QWidget):
                 if tooltip:
                     item.setToolTip(tooltip)
                 table.setItem(row, col, item)
+        expand_columns_to_content(table)
 
     def _fill_queue_table(self, table: QTableWidget, rows: list[dict]):
         table.setRowCount(0)
@@ -1694,6 +1696,7 @@ class ProductionView(QWidget):
                 item = QTableWidgetItem(value)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(row, col, item)
+        expand_columns_to_content(table)
 
     def _selected_stage_row(self, stage: str) -> dict | None:
         if stage != WAITING_RECEIPT_STAGE:

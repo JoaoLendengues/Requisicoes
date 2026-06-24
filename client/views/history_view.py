@@ -26,7 +26,7 @@ from ..api import client as api
 from ..core import theme
 from ..core.formatters import format_weight_kg
 from ..core.session import session
-from ..widgets.smooth_scroll import apply_smooth_scroll
+from ..widgets.smooth_scroll import apply_smooth_scroll, expand_columns_to_content
 from ..widgets.sortable_item import SortableItem
 from ..core.datetime_utils import (
     format_date as _format_date,
@@ -1236,6 +1236,7 @@ class HistoryView(QWidget):
                         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.table.setItem(row, col, item)
         self.table.setSortingEnabled(True)
+        expand_columns_to_content(self.table)
 
         current = local_now()
         self.date_label.setText(_format_header_date(current))

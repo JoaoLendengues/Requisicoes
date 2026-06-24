@@ -23,7 +23,7 @@ from ..core import theme
 from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import format_datetime as _format_datetime, local_now
 from ..core.text_case import bind_uppercase_line_edit
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 from .user_center_view import (
     ActionWorker,
     UiCallback,
@@ -251,6 +251,7 @@ class OperatorCenterView(QWidget):
             role_item = QTableWidgetItem(_role_label(op.get("role")))
             role_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 1, role_item)
+        expand_columns_to_content(self.table)
         n = len(self._operators)
         self.result_hint.setText(f"{n} cadastro(s).")
 

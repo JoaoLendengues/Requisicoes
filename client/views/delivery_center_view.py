@@ -41,7 +41,7 @@ from ..core.datetime_utils import (
     local_now,
     parse_datetime as _parse_datetime,
 )
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 from ..widgets.sortable_item import SortableItem
 from .requisition_form import _run_in_thread
 
@@ -766,6 +766,7 @@ class DeliveryCenterView(QWidget):
 
         table.setSortingEnabled(True)
         table.sortByColumn(sort_column, sort_order)
+        expand_columns_to_content(table)
 
     def _set_empty_message(self, table: QTableWidget, message: str):
         table.setRowCount(1)

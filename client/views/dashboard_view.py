@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..core.formatters import format_weight_kg
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 from ..core.datetime_utils import (
     format_date as _format_date,
     format_datetime as _format_datetime,
@@ -2398,6 +2398,7 @@ class DashboardView(QWidget):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
         _restore_table_sorting(table)
+        expand_columns_to_content(table)
 
     def _fill_top_people_table(self, table: QTableWidget, rows: object, empty_message: str):
         table.setSortingEnabled(False)
@@ -2433,6 +2434,7 @@ class DashboardView(QWidget):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
         _restore_table_sorting(table)
+        expand_columns_to_content(table)
 
     def _fill_alerts_table(self, rows: object):
         table = self.alerts_table
@@ -2469,6 +2471,7 @@ class DashboardView(QWidget):
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(line, col, item)
         _restore_table_sorting(table)
+        expand_columns_to_content(table)
 
     def _fill_top_machines_table(
         self,
@@ -2535,6 +2538,7 @@ class DashboardView(QWidget):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(line, col, item)
         _restore_table_sorting(table)
+        expand_columns_to_content(table)
 
     def _fill_recent_table(self, rows: object):
         table = self.recent_table
@@ -2602,6 +2606,7 @@ class DashboardView(QWidget):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     table.setItem(line, col, item)
         _restore_table_sorting(table)
+        expand_columns_to_content(table)
 
     def _set_empty_message(self, table: QTableWidget, message: str):
         table.setProperty("showingEmptyMessage", True)

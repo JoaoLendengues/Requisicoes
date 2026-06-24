@@ -33,7 +33,7 @@ import time
 
 from PySide6.QtCore import QEvent, QObject, QTimer, Qt
 from PySide6.QtGui import QWheelEvent
-from PySide6.QtWidgets import QAbstractItemView, QAbstractScrollArea, QScrollArea
+from PySide6.QtWidgets import QAbstractItemView, QAbstractScrollArea, QScrollArea, QTableWidget
 
 _FRAME_MS    = 8        # intervalo do timer (ms) — 8 ms = suporte nativo a 120 Hz
 _FRAME_REF_S = 0.016    # referência para BASE_LERP — independente do timer
@@ -207,3 +207,13 @@ class SmoothScrollArea(QScrollArea):
             self._timer.start()
 
         event.accept()
+
+
+def expand_columns_to_content(table: QTableWidget) -> None:
+    """Expande colunas cujo conteúdo é mais largo que a largura atual.
+    Nunca encolhe — só cresce. Última coluna (stretch) é ignorada."""
+    last = table.columnCount() - 1
+    for col in range(last):
+        needed = table.sizeHintForColumn(col)
+        if needed > table.columnWidth(col):
+            table.setColumnWidth(col, needed)

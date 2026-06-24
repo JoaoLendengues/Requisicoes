@@ -28,7 +28,7 @@ from ..core.datetime_utils import (
     local_now,
 )
 from ..core.text_case import bind_uppercase_line_edit
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 from ..widgets.sortable_item import SortableItem, natural_sort_key
 from .user_center_view import (
     ActionWorker,
@@ -558,6 +558,7 @@ class MachineCenterView(QWidget):
         self.table.setSortingEnabled(True)
         if sort_section >= 0:
             self.table.sortItems(sort_section, sort_order)
+        expand_columns_to_content(self.table)
 
         total = len(self._machines_all)
         self.result_hint.setText(f"{total} máquina(s) importada(s) da produção.")

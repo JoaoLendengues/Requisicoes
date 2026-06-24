@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from ..api import client as api
 from ..core import theme
 from ..core.formatters import format_weight_kg
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 from ..widgets.sortable_item import SortableItem
 from ..core.dialogs import apply_message_box_theme, fit_dialog_button_widths
 from ..core.datetime_utils import (
@@ -1216,6 +1216,7 @@ class OrderCenterView(QWidget):
                     table.setItem(row, col, item)
         table.setSortingEnabled(True)
         self._configure_table_columns(table, key)
+        expand_columns_to_content(table)
 
     def _set_empty_message(self, table: QTableWidget, message: str):
         table.setRowCount(1)

@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 
 from ..api import client as api
 from ..core import theme
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 from ..widgets.sortable_item import SortableItem, natural_sort_key
 from ..core.dialogs import ask_confirmation
 from ..core.datetime_utils import (
@@ -625,6 +625,7 @@ class UserCenterView(QWidget):
         self.table.setSortingEnabled(True)
         if sort_section >= 0:
             self.table.sortItems(sort_section, sort_order)
+        expand_columns_to_content(self.table)
 
         if self._pending_code:
             matched = False

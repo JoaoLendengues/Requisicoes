@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor
 
 from ..core import theme
 from ..core import login_backgrounds
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 from ..core.datetime_utils import (
     format_datetime as _format_datetime,
     format_header_date as _format_header_date,
@@ -1262,6 +1262,7 @@ class SettingsView(QWidget):
             self.cancel_reason_table.insertRow(row)
             self.cancel_reason_table.setItem(row, 0, QTableWidgetItem(str(row_data.get("code") or "")))
             self.cancel_reason_table.setItem(row, 1, QTableWidgetItem(str(row_data.get("reason") or "")))
+        expand_columns_to_content(self.cancel_reason_table)
         self.cancel_reason_status.setText(
             f"{len(self._cancel_reason_rows)} motivo(s) carregado(s)."
         )
@@ -1346,6 +1347,7 @@ class SettingsView(QWidget):
             self.delivery_cancel_reason_table.insertRow(row)
             self.delivery_cancel_reason_table.setItem(row, 0, QTableWidgetItem(str(row_data.get("code") or "")))
             self.delivery_cancel_reason_table.setItem(row, 1, QTableWidgetItem(str(row_data.get("reason") or "")))
+        expand_columns_to_content(self.delivery_cancel_reason_table)
         self.delivery_cancel_reason_status.setText(
             f"{len(self._delivery_cancel_reason_rows)} motivo(s) de entrega carregado(s)."
         )
@@ -1434,6 +1436,7 @@ class SettingsView(QWidget):
             self.delivery_deadline_reason_table.insertRow(row)
             self.delivery_deadline_reason_table.setItem(row, 0, QTableWidgetItem(str(row_data.get("code") or "")))
             self.delivery_deadline_reason_table.setItem(row, 1, QTableWidgetItem(str(row_data.get("reason") or "")))
+        expand_columns_to_content(self.delivery_deadline_reason_table)
         self.delivery_deadline_reason_status.setText(
             f"{len(self._delivery_deadline_reason_rows)} motivo(s) de prazo carregado(s)."
         )
@@ -2121,6 +2124,7 @@ class SettingsView(QWidget):
             formatted_dt = _format_datetime(raw_dt)
             dt_str = formatted_dt if formatted_dt != "-" else str(raw_dt or "")
             self._backup_table.setItem(row, 2, QTableWidgetItem(dt_str))
+        expand_columns_to_content(self._backup_table)
 
     def _check_updates(self) -> None:
         from ..updater import UpdateChecker

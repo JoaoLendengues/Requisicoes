@@ -37,7 +37,7 @@ except ImportError:
 
 from ..core import theme
 from ..core.formatters import format_weight_kg, parse_decimal
-from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll
+from ..widgets.smooth_scroll import SmoothScrollArea, apply_smooth_scroll, expand_columns_to_content
 from ..core.datetime_utils import local_now
 from ..core.dialogs import apply_message_box_theme, ask_confirmation
 from ..core.resolution import res
@@ -2055,6 +2055,7 @@ class RequisitionForm(QWidget):
                     if value != "-":
                         item.setToolTip(value)
                     results.setItem(row, col, item)
+            expand_columns_to_content(results)
 
         def _do_search():
             term = search.text().strip()
