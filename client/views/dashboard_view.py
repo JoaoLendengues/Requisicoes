@@ -1479,6 +1479,7 @@ class DashboardView(QWidget):
         panel_scroll = SmoothScrollArea()
         panel_scroll.setWidgetResizable(True)
         panel_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        panel_scroll.setMinimumHeight(max(200, int(260 * s)))
         apply_smooth_scroll(panel_scroll)
         theme.themed(panel_scroll, lambda: f"QScrollArea{{border:none;background:{theme.CARD_BG};}}")
         theme.themed(panel_scroll.viewport(), lambda: f"background:{theme.CARD_BG};border:none;")
