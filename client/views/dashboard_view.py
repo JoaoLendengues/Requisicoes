@@ -1380,7 +1380,7 @@ class DashboardView(QWidget):
         ("maq_ind",         "Máquinas que mais operam — Indústria",         "industria"),
         ("recentes",        "Últimas requisições",                           None),
     ]
-    _RADAR_DEFAULT_OPEN: frozenset[str] = frozenset({"destinos", "top_vendors", "recentes"})
+    _RADAR_DEFAULT_OPEN: frozenset[str] = frozenset()
 
     def _build_radar_multi_panel_card(self) -> QFrame:
         s = self.scale
