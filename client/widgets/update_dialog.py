@@ -13,6 +13,7 @@ UpdateAvailableDialog:
 """
 from __future__ import annotations
 
+import html as _html
 import re
 
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize, QUrl, QThread, Signal
@@ -416,33 +417,37 @@ class UpdateAvailableDialog(QDialog):
         self._notes.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._notes.setStyleSheet(
             f"QTextBrowser {{"
-            f"  background: {_rgba(theme.PANEL_SURFACE_BG, 220)};"
+            f"  background: {_rgba(theme.PANEL_SURFACE_BG, 230)};"
             f"  color: {theme.PANEL_TEXT_PRIMARY};"
-            f"  border: 1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 64)};"
-            f"  border-radius: 12px;"
-            f"  padding: 14px 16px;"
+            f"  border: 1px solid {_rgba(theme.PANEL_NEON_PRIMARY, 90)};"
+            f"  border-radius: 14px;"
+            f"  padding: 16px 18px 16px 16px;"
             f"  font-size: 10pt;"
             f"  selection-background-color: {_rgba(theme.PANEL_NEON_PRIMARY, 80)};"
             f"  selection-color: {theme.PANEL_TEXT_PRIMARY};"
             f"}}"
             f"QScrollBar:vertical {{"
-            f"  background: transparent; width: 8px; margin: 4px 2px;"
+            f"  background: {_rgba(theme.PANEL_SURFACE_ALT, 70)};"
+            f"  width: 10px; margin: 10px 3px;"
+            f"  border-radius: 5px;"
             f"}}"
             f"QScrollBar::handle:vertical {{"
-            f"  background: {_rgba(theme.PANEL_NEON_PRIMARY, 110)};"
-            f"  border-radius: 4px; min-height: 32px;"
+            f"  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f"    stop:0 {theme.PANEL_NEON_PRIMARY},"
+            f"    stop:1 {theme.PANEL_NEON_SECONDARY});"
+            f"  border-radius: 5px; min-height: 36px;"
             f"}}"
             f"QScrollBar::handle:vertical:hover {{"
-            f"  background: {_rgba(theme.PANEL_NEON_PRIMARY, 180)};"
+            f"  background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+            f"    stop:0 {theme.PANEL_NEON_SECONDARY},"
+            f"    stop:1 {theme.PANEL_NEON_PRIMARY});"
             f"}}"
             f"QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}"
+            f"QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}"
         )
 
-        # CSS embutido no documento — controla aparência do Markdown renderizado
-        self._notes.document().setDefaultStyleSheet(self._markdown_css())
-
         changelog_md = self.update_info.get("changelog") or "_Sem notas de versão._"
-        self._notes.setMarkdown(changelog_md)
+        self._notes.setHtml(self._md_to_html(changelog_md))
 
         # Aplica paleta cuidadosamente para garantir cor de texto correta
         pal = self._notes.palette()
@@ -695,111 +700,125 @@ class UpdateAvailableDialog(QDialog):
         )
 
     @staticmethod
-    def _markdown_css() -> str:
-        """Stylesheet CSS aplicado ao documento Markdown renderizado."""
-        text = theme.PANEL_TEXT_PRIMARY
-        muted = theme.PANEL_TEXT_MUTED
-        neon = theme.PANEL_NEON_PRIMARY
-        neon2 = theme.PANEL_NEON_SECONDARY
-        surface_alt = theme.PANEL_SURFACE_ALT
-        return f"""
-            body {{
-                font-family: 'Inter', 'Segoe UI', sans-serif;
-                color: {text};
-                line-height: 1.65;
-            }}
-            h1, h2, h3, h4 {{
-                color: {neon};
-                font-weight: 800;
-                margin-top: 16px;
-                margin-bottom: 6px;
-                padding-bottom: 4px;
-                border-bottom: 1px solid {_rgba(neon, 45)};
-            }}
-            h1 {{ font-size: 14pt; }}
-            h2 {{ font-size: 13pt; }}
-            h3 {{ font-size: 12pt; border-bottom: none; }}
-            h4 {{ font-size: 11pt; border-bottom: none; color: {neon2}; }}
-            p {{
-                margin-top: 4px;
-                margin-bottom: 10px;
-                color: {text};
-            }}
-            ul {{
-                margin-left: 20px;
-                margin-top: 4px;
-                margin-bottom: 10px;
-            }}
-            ol {{
-                margin-left: 20px;
-                margin-top: 4px;
-                margin-bottom: 10px;
-            }}
-            li {{
-                margin-bottom: 5px;
-                color: {text};
-                padding-left: 2px;
-            }}
-            strong, b {{ color: {neon2}; font-weight: 800; }}
-            em, i {{ color: {muted}; font-style: italic; }}
-            code {{
-                background: {_rgba(surface_alt, 220)};
-                color: {neon2};
-                padding: 2px 7px;
-                border-radius: 5px;
-                font-family: 'Consolas', 'Cascadia Code', 'Monaco', monospace;
-                font-size: 9pt;
-                border: 1px solid {_rgba(neon2, 40)};
-            }}
-            pre {{
-                background: {_rgba(surface_alt, 220)};
-                color: {text};
-                padding: 12px 14px;
-                border-radius: 10px;
-                font-family: 'Consolas', 'Cascadia Code', 'Monaco', monospace;
-                font-size: 9pt;
-                margin-top: 6px;
-                margin-bottom: 10px;
-                border: 1px solid {_rgba(neon, 30)};
-            }}
-            blockquote {{
-                border-left: 3px solid {neon};
-                background: {_rgba(neon, 10)};
-                padding: 8px 12px 8px 14px;
-                color: {muted};
-                margin: 10px 0;
-                border-radius: 0 6px 6px 0;
-                font-style: italic;
-            }}
-            a {{
-                color: {neon};
-                text-decoration: none;
-                font-weight: 700;
-            }}
-            a:hover {{ text-decoration: underline; }}
-            hr {{
-                border: none;
-                border-top: 1px solid {_rgba(neon, 55)};
-                margin: 14px 0;
-            }}
-            table {{
-                border-collapse: collapse;
-                margin: 8px 0;
-                width: 100%;
-            }}
-            th {{
-                background: {_rgba(neon, 35)};
-                color: {text};
-                font-weight: 800;
-                padding: 6px 10px;
-                border: 1px solid {_rgba(neon, 50)};
-            }}
-            td {{
-                padding: 5px 10px;
-                border: 1px solid {_rgba(neon, 28)};
-                color: {text};
-            }}
-            tr:nth-child(even) td {{
-                background: {_rgba(surface_alt, 80)};
-            }}
+    def _md_to_html(md: str) -> str:
+        """Converte Markdown simplificado para HTML com estilos inline.
+
+        Usa estilos inline em vez de setDefaultStyleSheet porque o Qt não
+        aplica color via CSS em headings quando a QPalette.Text está definida.
         """
+        t   = theme.PANEL_TEXT_PRIMARY
+        muted = theme.PANEL_TEXT_MUTED
+        neon  = theme.PANEL_NEON_PRIMARY
+        neon2 = theme.PANEL_NEON_SECONDARY
+        sa    = theme.PANEL_SURFACE_ALT
+
+        def fmt_inline(s: str) -> str:
+            s = _html.escape(s)
+            s = re.sub(r'\*\*(.+?)\*\*',
+                       f'<b style="color:{neon2};font-weight:700;">\\1</b>', s)
+            s = re.sub(r'\*(.+?)\*',
+                       f'<i style="color:{muted};">\\1</i>', s)
+            s = re.sub(
+                r'`(.+?)`',
+                f'<code style="background:{_rgba(sa,200)};color:{neon2};'
+                f'padding:2px 6px;border-radius:4px;'
+                f'font-family:Consolas,monospace;font-size:9pt;">\\1</code>',
+                s,
+            )
+            return s
+
+        lines = md.split('\n')
+        out: list[str] = [
+            f'<html><body style="color:{t};'
+            f'font-family:\'Segoe UI\',Inter,sans-serif;'
+            f'font-size:10pt;line-height:1.7;margin:0;padding:0;">'
+        ]
+
+        in_ul = False
+        in_pre = False
+        pre_buf: list[str] = []
+
+        for line in lines:
+            if line.strip().startswith('```'):
+                if not in_pre:
+                    in_pre = True
+                    pre_buf = []
+                else:
+                    in_pre = False
+                    code = _html.escape('\n'.join(pre_buf))
+                    out.append(
+                        f'<pre style="background:{_rgba(sa,220)};color:{t};'
+                        f'padding:12px 14px;border-radius:8px;'
+                        f'font-family:Consolas,monospace;font-size:9pt;'
+                        f'margin:6px 0 10px;border:1px solid {_rgba(neon,30)};'
+                        f'white-space:pre-wrap;">{code}</pre>'
+                    )
+                continue
+
+            if in_pre:
+                pre_buf.append(line)
+                continue
+
+            is_list = re.match(r'^[-*] (.+)', line)
+
+            if in_ul and not is_list:
+                out.append('</ul>')
+                in_ul = False
+
+            m1 = re.match(r'^# (.+)',    line)
+            m2 = re.match(r'^## (.+)',   line)
+            m3 = re.match(r'^### (.+)',  line)
+            m4 = re.match(r'^#### (.+)', line)
+
+            if m1:
+                out.append(
+                    f'<h1 style="color:{neon};font-size:14pt;font-weight:800;'
+                    f'padding-bottom:6px;border-bottom:2px solid {_rgba(neon,80)};'
+                    f'margin-top:14px;margin-bottom:6px;">{fmt_inline(m1.group(1))}</h1>'
+                )
+            elif m2:
+                out.append(
+                    f'<h2 style="color:{neon};font-size:13pt;font-weight:800;'
+                    f'padding-bottom:5px;border-bottom:1px solid {_rgba(neon,60)};'
+                    f'margin-top:14px;margin-bottom:6px;">{fmt_inline(m2.group(1))}</h2>'
+                )
+            elif m3:
+                out.append(
+                    f'<h3 style="color:{neon2};font-size:11pt;font-weight:700;'
+                    f'margin-top:12px;margin-bottom:4px;">{fmt_inline(m3.group(1))}</h3>'
+                )
+            elif m4:
+                out.append(
+                    f'<h4 style="color:{neon2};font-size:10pt;font-weight:700;'
+                    f'margin-top:10px;margin-bottom:4px;">{fmt_inline(m4.group(1))}</h4>'
+                )
+            elif is_list:
+                if not in_ul:
+                    out.append(
+                        f'<ul style="margin-left:8px;padding-left:16px;'
+                        f'margin-top:4px;margin-bottom:12px;">'
+                    )
+                    in_ul = True
+                out.append(
+                    f'<li style="margin-bottom:6px;padding-left:4px;'
+                    f'line-height:1.7;">{fmt_inline(is_list.group(1))}</li>'
+                )
+            elif re.match(r'^---+$', line.strip()):
+                out.append(
+                    f'<hr style="border:none;border-top:1px solid '
+                    f'{_rgba(neon,55)};margin:14px 0;"/>'
+                )
+            elif line.strip():
+                out.append(
+                    f'<p style="margin-top:4px;margin-bottom:10px;">'
+                    f'{fmt_inline(line)}</p>'
+                )
+            else:
+                if not in_ul:
+                    out.append('<p style="margin:0;padding:0;"></p>')
+
+        if in_ul:
+            out.append('</ul>')
+
+        out.append('</body></html>')
+        return '\n'.join(out)

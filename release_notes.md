@@ -1,30 +1,38 @@
-## Requisições App v1.3.0
+## Requisições App v1.4.0
 
 ### Novidades
 
-- **Editor de desenho com 3 modos de toolbar** — escolha em *Configurações → Aparência → Editor de Desenho* entre **Clássico** (barra horizontal antiga), **Técnico** (barra vertical flutuante no canto, padrão) e **Escritório** (barra vertical fixa na lateral). Cada perfil escolhe o que prefere.
-- **Toolbar vertical no canvas** — uma única coluna estreita no canto superior esquerdo, com scroll automático quando o conteúdo passa da altura da tela. Animação "gaveta + cascata" preservada ao abrir/fechar.
-- **Tema escuro/claro instantâneo em todas as telas** — novo sistema interno reaplica os estilos de cada widget automaticamente ao trocar de tema. Antes era preciso fechar e reabrir a tela; agora a mudança é imediata e suave.
-- **Ícones novos no sidebar** — Entregas e Atualizações agora têm seus próprios ícones, em vez de reaproveitar os da Central de Pedidos e Configurações.
+- **Sidebar redimensionável** — arraste a borda direita da sidebar para ajustar a largura ao seu gosto, estilo VSCode. A largura é salva entre sessões.
+- **Titlebar temática** — barra de título customizada com botões de minimizar, maximizar e fechar nas cores do tema escolhido (claro ou escuro).
+- **Tray icon do servidor** — o servidor FastAPI agora roda com ícone na bandeja do sistema (system tray), com menu para iniciar/parar e ver o status sem abrir janelas.
+- **Verificação de atualização periódica** — o app verifica novas versões automaticamente em segundo plano e avisa quando há update disponível, sem precisar reiniciar.
+- **Radar Comparativo multi-visão** — o Radar no Painel Gerencial vira um painel empilhável: adicione e remova visões (Destinos, Top Vendedores, Recentes, etc.) independentemente. Começa vazio para o gerente montar do jeito que preferir.
+- **Tour guiado reescrito** — o Guia Rápido foi completamente refeito com cobertura total por perfil. Cada função (Vendedor, Gerente, A&R, Pinheiro Indústria, Entregas) tem um tour dedicado que cobre todas as telas acessíveis.
+- **Exportar desenho como PNG** — além de JSON, o editor de desenho agora exporta a arte como imagem PNG direto para a pasta compartilhada da rede.
+- **Coluna "Data Prevista de Entrega" na produção** — as tabelas de A&R e Pinheiro Indústria mostram a data de entrega de cada requisição/parcela diretamente na listagem.
+- **Cronograma semanal de Entregas** — a tela Entregas ganhou um toggle entre vista Lista e Cronograma semanal, com código de cores por status e botão Criar integrado.
+- **Mostrar quem cancelou** — a Central de Pedidos (aba Cancelados) exibe o nome do usuário responsável pelo cancelamento de cada requisição.
+- **Colunas auto-expandem ao conteúdo** — todas as tabelas do sistema crescem automaticamente para acomodar o texto ao carregar dados, sem perder o redimensionamento manual.
 
 ### Melhorias
 
-- **Caixas de confirmação adaptam-se à escala e tamanho de fonte** — todos os botões (`Apenas salvar`, `Pinheiro Indústria`, `Aguardando na fila`, `Cancelar requisição` etc.) agora respeitam as configurações de tamanho do usuário e nunca mais cortam o texto.
-- **Seleção de máquina mais legível** — na tela de A&R / Pinheiro Indústria, ao confirmar uma produção, a lista de máquinas vem com texto centralizado, com nomes longos (`GUILHOTINA`, `NEWTON`, operadores completos) cabendo sempre por inteiro.
-- **Tabela "Aguardando na fila"** — margens internas ajustadas para melhorar leitura.
-- **Painel Gerencial mais responsivo** — títulos, combos e chips (MENSAL / SEMANAL / DIÁRIO) agora reagem instantaneamente à troca de tema.
-- **Entregas: cores e cards** — fundo da view, agenda e botões `ALTERAR PRAZO` / `ENTREGUE` / `CANCELAR ENTREGA` recebem a paleta correta em qualquer tema.
+- **Tela de A&R / Pinheiro Indústria reformulada** — dropdown de máquinas substitui o seletor horizontal; cards com pills de status (Na Fila / Em Produção / Finalizadas) e contadores no combo; mini-tabela "Aguardando na Fila" por máquina; botões em duas linhas para evitar corte em telas menores.
+- **Recebimento por atribuição de itens** — ao receber uma requisição, é possível atribuir cada item a uma máquina específica na hora, sem precisar editar depois.
+- **Prazo de entrega por parcela** — alterar o prazo em A&R ou Pinheiro agora afeta apenas a parcela selecionada, não a requisição inteira.
+- **Finalizar parcelas em qualquer ordem** — removida a regra FIFO de finalização; cada parcela pode ser finalizada independentemente das demais.
+- **Canvas: importar sem apagar** — importar um desenho existente agora adiciona ao canvas atual em vez de substituir tudo. Confirmação antes de sobrescrever.
+- **Ferramentas do canvas em 2 por linha** — a toolbar vertical do editor de desenho exibe as ferramentas em grade 2×N, desfazer/refazer acima de Selecionar, aproveitando melhor o espaço.
+- **Caixa "O que há de novo" aprimorada** — a janela de atualização disponível ganhou scrollbar com gradiente neon, títulos coloridos por nível (azul para seções, rosa para subtítulos) e tipografia mais legível.
+- **Filtro de status no Histórico** — reduzido para os 6 status operacionais mais usados, eliminando entradas redundantes.
 
 ### Correções
 
-- **Ferramenta Selecionar do canvas** — a "caixinha" azul de seleção retangular voltou a funcionar. Estava desativada por engano nos últimos builds.
-- **Desenho técnico no PDF** — presets 3D (paralelepípedo, cilindro, pingadeira, rufo, calha, bandeja, cantoneira, chapa, perfil — 87 ao todo) e qualquer caneta vetorial com curvas agora reproduzem no PDF exatamente o que está na prévia. Antes, formas com múltiplos sub-traços apareciam "tortas" no PDF.
-- **Painel Gerencial e Entregas: fundo escuro residual** — ao trocar do escuro para o claro (ou vice-versa) com essas telas abertas, áreas entre os cards mantinham a cor do tema antigo. Resolvido.
-- **Logo da sidebar** — o topo da sidebar não mudava de cor com o tema. Resolvido.
-- **Painel Gerencial: títulos sumindo** — IAR GERAL, RADAR COMPARATIVO, Prazo, Produtividade e Cancelamentos não eram mais visíveis depois de trocar tema. Resolvido com cor explícita nos labels.
-
-### Sob o capô
-
-- Sistema unificado de **registry de tema** (`theme.themed`) — qualquer widget novo declarado com esse helper se atualiza automaticamente em toda troca de tema, sem precisar manter listas de reaplicação manual em cada view.
-- Pipeline de desenho do PDF agora preserva **sub-paths e curvas Bézier** via deserialização por `segments` (cmd M/L/C), mantendo paridade pixel-com-pixel entre prévia e PDF.
-- Limpeza de assets de desenvolvimento (`tmp_3d_previews/`) e regra `tmp_*/` no `.gitignore` para evitar vazamento futuro.
+- Guia rápido funcionando corretamente para todos os perfis, incluindo A&R, Pinheiro Indústria e Entregas.
+- Cor da titlebar no tema claro: texto e botões agora ficam pretos (não brancos sobre fundo claro).
+- Historico: label corrigida de "Finalizada na Produção" para "Finalizado".
+- Botão renomeado de "Apenas salvar" para "Salvar" no diálogo de faturamento.
+- Criação de múltiplos splits (partes de produção) corrigida — sem duplicação de itens.
+- Thread de PDF não gerava double-deleteLater ao fechar requisição rapidamente.
+- Entregas: cor verde para registros já entregues no cronograma; ortografia e capitalização corrigidas no formulário Criar.
+- Tempo médio por máquina no Painel Gerencial agora considera apenas requisições finalizadas (não em produção).
+- Contadores do combo de máquinas sempre visíveis, mesmo com valor zero.
