@@ -1470,9 +1470,6 @@ class MainWindow(QMainWindow):
 
         bg = theme.CONTENT_BG
         self.setStyleSheet(f"background:{bg};")
-        self._sep.setStyleSheet(
-            f"background:{theme.SIDEBAR_BG}; color:{theme.SIDEBAR_BG}; border:none;"
-        )
         self.stack.setStyleSheet(f"background:{bg};")
         self._scroll_main.setStyleSheet(
             f"QScrollArea {{ background:{bg}; border:none; }}"
